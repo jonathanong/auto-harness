@@ -37,10 +37,8 @@ function response(ok: boolean, body = "") {
   };
 }
 
-afterEach(() => {
-  document.body.replaceChildren();
-  vi.unstubAllGlobals();
-});
+afterEach(() => document.body.replaceChildren());
+afterEach(() => vi.unstubAllGlobals());
 
 describe("SessionActions", () => {
   it("renders status-specific controls and refreshes after cancel and archive", async () => {
@@ -153,6 +151,23 @@ describe("SessionActions", () => {
     act(() => cloneEdit.click());
     expect(router.push).toHaveBeenCalledWith("/sessions/new?cloneFrom=old");
     expect(fetchMock).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it("omits Resume for a workspace session while retaining clone actions", () => {
+    const router = { push: vi.fn(), refresh: vi.fn() };
+    const view = mount(
+      <SessionActions
+        sessionId="workspace"
+        status="failed"
+        sessionType="workspace"
+        cloneEditHref="/sessions/new?cloneFrom=workspace"
+      />,
+      router,
+    );
+    expect(view.container.querySelector('[data-pw="session-resume"]')).toBeNull();
+    expect(view.container.querySelector('[data-pw="session-clone"]')).not.toBeNull();
+    expect(view.container.querySelector('[data-pw="session-clone-edit"]')).not.toBeNull();
     view.unmount();
   });
 

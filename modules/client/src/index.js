@@ -86,6 +86,25 @@ export class AutoHarnessClient {
     return this.request(`/sessions/${encodeURIComponent(id)}`);
   }
 
+  createChildSession(parentId, input) {
+    return this.request(`/sessions/${encodeURIComponent(parentId)}/children`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  }
+
+  listChildSessions(parentId, options = {}) {
+    const query = new URLSearchParams();
+    if (options.limit !== undefined) query.set("limit", String(options.limit));
+    if (options.cursor !== undefined) query.set("cursor", options.cursor);
+    const suffix = query.toString();
+    return this.request(
+      suffix
+        ? `/sessions/${encodeURIComponent(parentId)}/children?${suffix}`
+        : `/sessions/${encodeURIComponent(parentId)}/children`,
+    );
+  }
+
   cancelSession(id) {
     return this.request(`/sessions/${encodeURIComponent(id)}/cancel`, { method: "POST" });
   }

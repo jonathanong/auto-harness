@@ -5,6 +5,7 @@ import {
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
 import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
+import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 
 /** Persist a schedule update before replacing the cache entry. */
 export async function updateScheduleDurable(
@@ -18,6 +19,13 @@ export async function updateScheduleDurable(
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const existing = state.schedules.get(id);
     if (!existing) return { ok: false, error: "schedule not found" };
+    const workspacePoolId =
+      patch.repositoryId === null
+        ? (patch.workspacePoolId ?? existing.workspacePoolId)
+        : patch.repositoryId === undefined && !existing.repositoryId
+          ? (patch.workspacePoolId ?? existing.workspacePoolId)
+          : undefined;
+    if (workspacePoolId) await getWorkspacePoolDurable(state, workspacePoolId);
     const result = prepareUpdateSchedule(state, id, patch);
     if (!result.ok) return result;
     const saved = await state.storage.updateScheduleManagement(

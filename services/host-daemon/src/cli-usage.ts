@@ -2,7 +2,7 @@ export function printUsage(log: (msg: string) => void = console.log): void {
   log(`Usage:
   auto-harness-host-daemon status [--config-only]
   auto-harness-host-daemon run-session --file session.json
-  auto-harness-host-daemon start [--ws ws://host/ws]
+  auto-harness-host-daemon start [--ws wss://host/ws]
   auto-harness-host-daemon install-service [--api-url https://control.example.com]
   auto-harness-host-daemon uninstall-service
 

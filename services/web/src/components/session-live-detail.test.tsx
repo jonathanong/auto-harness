@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- live refresh and action-policy coverage share a client fixture. */
 // @vitest-environment happy-dom
 
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime.js";
@@ -160,6 +161,22 @@ describe("session live detail", () => {
     });
     expect(view.container.querySelector('[data-pw="session-agent-offline"]')).toBeNull();
     expect(view.container.querySelector('[data-pw="session-cancel"]')).not.toBeNull();
+    view.unmount();
+  });
+
+  it("threads a workspace session type to actions without offering Resume", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(response(true, { id: "workspace", status: "failed" })),
+    );
+    const view = mount(
+      <SessionLiveDetail
+        initialSession={{ id: "workspace", status: "failed", type: "workspace" }}
+        initialHosts={[]}
+      />,
+    );
+    expect(view.container.querySelector('[data-pw="session-resume"]')).toBeNull();
+    expect(view.container.querySelector('[data-pw="session-clone"]')).not.toBeNull();
     view.unmount();
   });
 

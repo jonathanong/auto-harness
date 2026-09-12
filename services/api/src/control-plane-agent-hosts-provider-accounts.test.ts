@@ -154,4 +154,43 @@ describe("agent host inventory providerAccounts", () => {
       }),
     ).toMatchObject({ ok: true });
   });
+
+  it("hydrates durable workspace slots before projecting a new inventory", async () => {
+    const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
+    plane.createWorkspacePool({ id: "pool-1", name: "pool" });
+    const busy = {
+      id: "slot-1",
+      workspacePoolId: "pool-1",
+      hostId: "host-1",
+      name: "one",
+      path: "/workspace/one",
+      status: "busy" as const,
+      online: true,
+      currentSessionId: "session-1",
+    };
+    setDurableReadStorage(plane.state, {
+      listWorkspaceSlots: async () => [busy],
+      listWorkspaceSlotsByPool: async () => [busy],
+      putHostInventory: async () => true,
+      putWorkspaceSlot: async () => undefined,
+      deleteWorkspaceSlot: async () => undefined,
+      putWorktree: async () => undefined,
+      deleteWorktree: async () => undefined,
+    });
+    const result = await putHostInventoryDurable(plane.state, "host-1", {
+      repositories: [],
+      workspacePools: [
+        {
+          workspacePoolId: "pool-1",
+          slots: [{ id: "slot-1", name: "one", path: "/workspace/one" }],
+        },
+      ],
+      commandProfiles: {},
+    });
+    expect(result).toMatchObject({ ok: true });
+    expect(plane.state.workspaceSlots.get("slot-1")).toMatchObject({
+      status: "busy",
+      currentSessionId: "session-1",
+    });
+  });
 });

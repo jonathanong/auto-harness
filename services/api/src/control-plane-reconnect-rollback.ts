@@ -1,9 +1,14 @@
 import type { ControlPlaneState } from "./control-plane-state.ts";
 
-export type ReconnectConfirmation = {
-  session: import("./db/types.ts").SessionRecord;
-  worktree: import("./db/types.ts").WorktreeRecord;
-};
+export type ReconnectConfirmation =
+  | {
+      session: import("./db/types.ts").SessionRecord;
+      worktree: import("./db/types.ts").WorktreeRecord;
+    }
+  | {
+      session: import("./db/types.ts").SessionRecord;
+      workspaceSlot: import("./db/types.ts").WorkspaceSlotRecord;
+    };
 
 /** Roll back previously-confirmed reports before the registration owner drops
  * its host lease. Every durable restore is fenced by that exact lease, so a
@@ -17,10 +22,34 @@ export async function restoreConfirmedSessions(
   for (const item of confirmed.toReversed()) {
     if (!state.storage) {
       state.sessions.set(item.session.id, item.session);
-      state.worktrees.set(item.worktree.id, item.worktree);
+      if ("worktree" in item) state.worktrees.set(item.worktree.id, item.worktree);
+      else state.workspaceSlots.set(item.workspaceSlot.id, item.workspaceSlot);
       continue;
     }
     if (!connectionId) return;
+    if ("workspaceSlot" in item) {
+      const restored = await state.storage.restoreWorkspaceReconnectPending({
+        sessionId: item.session.id,
+        hostId,
+        workspaceSlotId: item.workspaceSlot.id,
+        connectionId,
+        expectedStatus: item.session.status === "cancelled" ? "cancelled" : "running",
+        ...(item.session.reconnectDeadlineAt
+          ? { previousDeadlineAt: item.session.reconnectDeadlineAt }
+          : {}),
+        ...(item.session.assignmentConnectionId
+          ? { previousAssignmentConnectionId: item.session.assignmentConnectionId }
+          : {}),
+        ...(item.workspaceSlot.connectionId
+          ? { previousWorkspaceSlotConnectionId: item.workspaceSlot.connectionId }
+          : {}),
+      });
+      if (restored) {
+        state.sessions.set(item.session.id, item.session);
+        state.workspaceSlots.set(item.workspaceSlot.id, item.workspaceSlot);
+      }
+      continue;
+    }
     const restored = await state.storage.restoreReconnectPending({
       sessionId: item.session.id,
       hostId,

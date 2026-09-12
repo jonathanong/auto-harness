@@ -90,6 +90,22 @@ describe("host session live detail", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("schedules another poll after a successful non-terminal refresh", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(response(true, { ...queued, status: "running" })),
+    );
+    const view = mount(<SessionLiveDetail initialSession={queued} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("keeps the last state, reports a failure, and schedules a retry", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(

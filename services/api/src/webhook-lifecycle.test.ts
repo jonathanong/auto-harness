@@ -58,6 +58,8 @@ describe("webhook lifecycle reconciliation", () => {
       expect(webhookLifecycleSnapshot(session(status))).toEqual({
         sessionId: `session-${status}`,
         repositoryId: "repository-1",
+        workspacePoolId: null,
+        workspaceSlotId: null,
         attemptId: null,
         status,
         occurredAt,
@@ -66,6 +68,28 @@ describe("webhook lifecycle reconciliation", () => {
     expect(
       webhookLifecycleSnapshot(session("completed", { attemptId: "attempt-1" })),
     ).toMatchObject({ attemptId: "attempt-1" });
+    expect(
+      webhookLifecycleSnapshot(
+        session("completed", {
+          repositoryId: "",
+          workspacePoolId: "workspace-pool-1",
+          workspaceSlotId: null,
+          resolvedRoute: {
+            targetIndex: 0,
+            commandId: "command-1",
+            hostId: "host-1",
+            worktreeId: null,
+            workspacePoolId: "workspace-pool-1",
+            workspaceSlotId: "workspace-slot-1",
+            attemptId: "attempt-1",
+          },
+        }),
+      ),
+    ).toMatchObject({
+      repositoryId: null,
+      workspacePoolId: "workspace-pool-1",
+      workspaceSlotId: "workspace-slot-1",
+    });
     expect(webhookLifecycleSnapshot(session("running"))).toBeNull();
     expect(webhookLifecycleSnapshot(session("cancelled", { completedAt: undefined }))).toBeNull();
   });
@@ -87,6 +111,8 @@ describe("webhook lifecycle reconciliation", () => {
     expect(selectDestinations).toHaveBeenCalledWith({
       sessionId: completed.id,
       repositoryId: completed.repositoryId,
+      workspacePoolId: null,
+      workspaceSlotId: null,
       attemptId: completed.attemptId,
       status: completed.status,
       occurredAt,
@@ -104,5 +130,42 @@ describe("webhook lifecycle reconciliation", () => {
       reconcileWebhookSession({ store: store(), selectDestinations, session: session("queued") }),
     ).resolves.toEqual({ created: 0, existing: 0 });
     expect(selectDestinations).not.toHaveBeenCalled();
+  });
+
+  it("reconciles a terminal workspace session without inventing a repository", async () => {
+    const outbox = store();
+    const selectDestinations = vi.fn(async () => [
+      { configurationId: "operations", configurationVersion: 3 },
+    ]);
+    const completed = session("completed", {
+      id: "workspace-session",
+      repositoryId: "",
+      workspacePoolId: "workspace-pool-1",
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "command-1",
+        hostId: "host-1",
+        worktreeId: null,
+        workspacePoolId: "workspace-pool-1",
+        workspaceSlotId: "workspace-slot-1",
+        attemptId: "attempt-1",
+      },
+    });
+
+    await expect(
+      reconcileWebhookSession({ store: outbox, selectDestinations, session: completed }),
+    ).resolves.toEqual({ created: 1, existing: 0 });
+    expect(selectDestinations).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repositoryId: null,
+        workspacePoolId: "workspace-pool-1",
+        workspaceSlotId: "workspace-slot-1",
+      }),
+    );
+    expect([...outbox.rows.values()][0]?.event.data).toMatchObject({
+      repositoryId: null,
+      workspacePoolId: "workspace-pool-1",
+      workspaceSlotId: "workspace-slot-1",
+    });
   });
 });

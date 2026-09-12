@@ -45,6 +45,9 @@ async function readInventory(
       ...(cfg.updateConfig === undefined
         ? {}
         : { updateConfig: parseHostUpdateConfig(cfg.updateConfig) }),
+      ...(Array.isArray(cfg.workspacePools)
+        ? { workspacePools: cfg.workspacePools as HostInventory["workspacePools"] }
+        : {}),
       repositories: Array.isArray(cfg.repositories)
         ? (cfg.repositories as HostInventory["repositories"])
         : [],
@@ -73,6 +76,7 @@ export async function putInventory(
         ? { requiredEnvironment: inv.requiredEnvironment }
         : {}),
       ...(inv.updateConfig !== undefined ? { updateConfig: inv.updateConfig } : {}),
+      ...(inv.workspacePools !== undefined ? { workspacePools: inv.workspacePools } : {}),
       repositories: inv.repositories,
       providerAccounts: inv.providerAccounts,
       ...(inv.capabilities !== undefined ? { capabilities: inv.capabilities } : {}),

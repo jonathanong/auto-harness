@@ -116,7 +116,11 @@ async function resolveTargetSpecs(client2, input2) {
   return { ...resolved, fallbacks };
 }
 async function resolveCreateSessionTargets(client2, input2) {
+  if (Object.hasOwn(input2, "setupScript")) {
+    throw new TypeError("setupScript is not accepted; use setupProfileId");
+  }
   const withTargets = await resolveTargetSpecs(client2, input2);
+  if (input2.repositoryId === null) return withTargets;
   const repositoryId = await resolveRepositoryId(
     client2,
     input2.repositoryId !== void 0 ? input2.repositoryId : { repositoryName: input2.repositoryName }
@@ -194,6 +198,21 @@ var AutoHarnessClient = class _AutoHarnessClient {
   }
   getSession(id) {
     return this.request(`/sessions/${encodeURIComponent(id)}`);
+  }
+  createChildSession(parentId, input2) {
+    return this.request(`/sessions/${encodeURIComponent(parentId)}/children`, {
+      method: "POST",
+      body: JSON.stringify(input2)
+    });
+  }
+  listChildSessions(parentId, options = {}) {
+    const query = new URLSearchParams();
+    if (options.limit !== void 0) query.set("limit", String(options.limit));
+    if (options.cursor !== void 0) query.set("cursor", options.cursor);
+    const suffix = query.toString();
+    return this.request(
+      suffix ? `/sessions/${encodeURIComponent(parentId)}/children?${suffix}` : `/sessions/${encodeURIComponent(parentId)}/children`
+    );
   }
   cancelSession(id) {
     return this.request(`/sessions/${encodeURIComponent(id)}/cancel`, { method: "POST" });

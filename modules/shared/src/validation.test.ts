@@ -21,8 +21,10 @@ import {
 describe("repositoryUrlError", () => {
   it("accepts credential-free HTTPS and SCP-style SSH remotes", () => {
     for (const url of [
+      "https://example.test",
       "https://example.test/repository.git",
       "https://example.test:8443/repository.git",
+      "https://example.test",
       "git@example.test:repository.git",
       "git@example.test:group/repository.git",
     ]) {
@@ -209,6 +211,137 @@ describe("validateCreateSessionInput", () => {
     }
   });
 
+  it("accepts a workspace session without resolving a repository", () => {
+    const result = validateCreateSessionInput({
+      ...base,
+      repositoryId: null,
+      workspacePoolId: "pool-1",
+      setupProfileId: "profile-1",
+      destroyWorkspaceAfter: false,
+      requiredLabels: [],
+    });
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        repositoryId: null,
+        type: "workspace",
+        workspacePoolId: "pool-1",
+        setupProfileId: "profile-1",
+        destroyWorkspaceAfter: false,
+      }),
+    });
+  });
+
+  it("rejects repository refs, labels, and raw setup scripts for workspace sessions", () => {
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        ref: "main",
+      }),
+    ).toEqual({ ok: false, error: "ref is not supported for workspace sessions" });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        requiredLabels: ["linux"],
+      }),
+    ).toEqual({ ok: false, error: "requiredLabels are not supported for workspace sessions" });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        setupScript: "echo unsafe",
+      }),
+    ).toEqual({ ok: false, error: "setupScript is not accepted; use setupProfileId" });
+  });
+
+  it("requires a pool and boolean cleanup policy for workspace sessions", () => {
+    expect(validateCreateSessionInput({ ...base, repositoryId: null })).toEqual({
+      ok: false,
+      error: "workspacePoolId is required for workspace sessions",
+    });
+    expect(
+      validateCreateSessionInput({ ...base, repositoryId: null, workspacePoolId: "pool" }),
+    ).toMatchObject({ ok: true, value: { type: "workspace", workspacePoolId: "pool" } });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        destroyWorkspaceAfter: "yes",
+      }),
+    ).toEqual({
+      ok: false,
+      error: "destroyWorkspaceAfter must be a boolean when set",
+    });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        setupProfileId: "",
+      }),
+    ).toEqual({ ok: false, error: "setupProfileId must be a non-empty string when set" });
+  });
+
+  it("rejects workspace-only fields on repository sessions and invalid workspace types", () => {
+    expect(validateCreateSessionInput({ ...base, workspacePoolId: "pool" })).toEqual({
+      ok: false,
+      error: "workspacePoolId is only valid for workspace sessions",
+    });
+    expect(validateCreateSessionInput({ ...base, setupProfileId: "profile" })).toEqual({
+      ok: false,
+      error: "setupProfileId is only valid for workspace sessions",
+    });
+    expect(validateCreateSessionInput({ ...base, destroyWorkspaceAfter: false })).toEqual({
+      ok: false,
+      error: "destroyWorkspaceAfter is only valid for workspace sessions",
+    });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        type: "prompt",
+      }),
+    ).toEqual({ ok: false, error: "workspace sessions must have type workspace" });
+    expect(validateCreateSessionInput({ ...base, type: "workspace" })).toEqual({
+      ok: false,
+      error: "workspace type requires repositoryId null",
+    });
+  });
+
+  it("rejects blank workspace prompts and workspace refs after common validation", () => {
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        prompt: "",
+      }),
+    ).toEqual({ ok: false, error: "prompt is required" });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        ref: "",
+      }),
+    ).toEqual({ ok: false, error: "ref must be a non-empty string when set" });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        ref: "main",
+      }),
+    ).toEqual({ ok: false, error: "ref is not supported for workspace sessions" });
+  });
+
   it("rejects missing repositoryId", () => {
     const result = validateCreateSessionInput({ ...base, repositoryId: "" });
     expect(result).toEqual({ ok: false, error: "repositoryId is required" });
@@ -294,10 +427,7 @@ describe("validateCreateSessionInput", () => {
     ).toEqual({ ok: false, error: "fallbacks[0].commandId must be a non-empty string" });
   });
 
-  it("caps fallbacks so durable session creation stays within DynamoDB's transaction limit", () => {
-    // 91 route markers (target + 90 fallbacks) + repository/principal markers +
-    // cursor/repository/drain/principal checks + session/activity/concurrency
-    // writes = DynamoDB's 100-action maximum.
+  it("caps general session fallback routing", () => {
     expect(MAX_FALLBACKS).toBe(90);
     const fallbacks = Array.from({ length: MAX_FALLBACKS }, (_, index) => ({
       commandId: `fallback-${index}`,
@@ -442,6 +572,9 @@ describe("validateCreateSessionInput", () => {
     ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
     expect(
       validateCreateSessionInput({ ...base, concurrencyId: "provider-lease:acct:0" }),
+    ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
+    expect(
+      validateCreateSessionInput({ ...base, concurrencyId: "session-spawn:parent:digest" }),
     ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
     expect(
       validateCreateSessionInput({

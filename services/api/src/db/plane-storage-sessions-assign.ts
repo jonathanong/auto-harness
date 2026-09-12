@@ -48,6 +48,7 @@ export async function tryAssignSession(
     hostAssignmentCap?: number;
     legacyAssignmentCount?: number;
     queueShard: number;
+    sessionApiKeyHash?: string;
   },
 ): Promise<AssignmentWriteResult> {
   const sessionSets = [
@@ -79,6 +80,10 @@ export async function tryAssignSession(
     ":route": opts.resolvedRoute,
   };
   const hostAssignmentLease = opts.hostAssignmentLease ?? { hostId: opts.hostId };
+  if (opts.sessionApiKeyHash !== undefined) {
+    sessionSets.push("sessionApiKeyHash = :sessionApiKeyHash");
+    sessionValues[":sessionApiKeyHash"] = opts.sessionApiKeyHash;
+  }
   if (opts.resumeSpec !== undefined) {
     sessionSets.push("resumeSpec = if_not_exists(resumeSpec, :resumeSpec)");
     sessionValues[":resumeSpec"] = opts.resumeSpec;

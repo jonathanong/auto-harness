@@ -1,7 +1,8 @@
+/* eslint-disable max-lines -- schedule submission and structured execution controls share one form. */
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Button, Input, Label, WithTooltip, showToast, withToast } from "@auto-harness/ui";
 
 import { apiBase, apiErrorMessage } from "@auto-harness/shared";
@@ -12,6 +13,8 @@ import {
 } from "../session-target.ts";
 import { SchedulePromptField } from "./schedule-prompt-field.tsx";
 import { SessionRoutingFields } from "./session-routing-fields.tsx";
+import { SessionExecutionMode } from "./session-execution-mode.tsx";
+import { WorkspaceSessionFields, type WorkspacePoolOption } from "./workspace-session-fields.tsx";
 
 type ScheduleFormValue = {
   id: string;
@@ -24,19 +27,44 @@ type ScheduleFormValue = {
   queueTtlSeconds: number;
   ref?: string;
   prompt?: string;
+  workspacePoolId?: string | null;
+  setupProfileId?: string | null;
+  destroyWorkspaceAfter?: boolean | null;
 };
 
 export function ScheduleCreateForm({
   targets,
   repositories,
+  workspacePools = [],
+  canWriteExecConfig = false,
   schedule,
 }: {
   targets: SessionTarget[];
   repositories: Array<{ id: string; name: string }>;
+  workspacePools?: WorkspacePoolOption[];
+  canWriteExecConfig?: boolean;
   schedule?: ScheduleFormValue;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [mode, setMode] = useState<"repository" | "workspace">(
+    schedule?.workspacePoolId ? "workspace" : "repository",
+  );
+  const [workspacePoolId, setWorkspacePoolId] = useState(schedule?.workspacePoolId ?? "");
+  const pools =
+    schedule?.workspacePoolId && !workspacePools.some((pool) => pool.id === workspacePoolId)
+      ? [
+          ...workspacePools,
+          {
+            id: schedule.workspacePoolId,
+            name: schedule.workspacePoolId,
+            setupProfiles: schedule.setupProfileId
+              ? [{ id: schedule.setupProfileId, name: schedule.setupProfileId }]
+              : [],
+            destroyWorkspaceAfter: schedule.destroyWorkspaceAfter ?? false,
+          },
+        ]
+      : workspacePools;
 
   return (
     <form
@@ -47,17 +75,29 @@ export function ScheduleCreateForm({
         const form = e.currentTarget;
         const fd = new FormData(form);
         const { target, fallbacks } = decodeSessionRoutingFormData(fd);
+        const destroyWorkspaceAfter = String(fd.get("destroyWorkspaceAfter") ?? "inherit");
         const body = {
-          repositoryId: String(fd.get("repositoryId") ?? ""),
+          repositoryId: mode === "workspace" ? null : String(fd.get("repositoryId") ?? ""),
           name: String(fd.get("name") ?? ""),
           target,
           fallbacks,
           queueTtlSeconds: Number(fd.get("queueTtlSeconds") ?? 691200),
           cron: String(fd.get("cron") ?? ""),
           timeout: Number(fd.get("timeout") ?? 600),
-          ref: String(fd.get("ref") ?? "") || undefined,
+          ref: mode === "workspace" ? undefined : String(fd.get("ref") ?? "") || undefined,
           concurrencyId: String(fd.get("concurrencyId") ?? "").trim() || undefined,
           prompt: String(fd.get("prompt") ?? ""),
+          ...(mode === "workspace"
+            ? {
+                workspacePoolId,
+                ...(String(fd.get("setupProfileId") ?? "")
+                  ? { setupProfileId: String(fd.get("setupProfileId")) }
+                  : {}),
+                ...(destroyWorkspaceAfter === "inherit"
+                  ? {}
+                  : { destroyWorkspaceAfter: destroyWorkspaceAfter === "true" }),
+              }
+            : {}),
         };
         start(async () => {
           const res = await fetch(
@@ -89,29 +129,43 @@ export function ScheduleCreateForm({
         });
       }}
     >
-      <div className="space-y-1">
-        <Label
-          htmlFor="repositoryId"
-          tip="Catalog repository id (control-plane repository), not necessarily a filesystem path"
-        >
-          Repository
-        </Label>
-        <select
-          id="repositoryId"
-          name="repositoryId"
-          required
-          data-pw="schedule-repository-id"
-          defaultValue={schedule?.repositoryId ?? repositories[0]?.id ?? ""}
-          className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
-        >
-          {repositories.length === 0 ? <option value="">(none — add a repository)</option> : null}
-          {repositories.map((repository) => (
-            <option key={repository.id} value={repository.id}>
-              {repository.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      <SessionExecutionMode mode={mode} onModeChange={setMode} selectorPrefix="schedule" />
+      {mode === "repository" ? (
+        <div className="space-y-1">
+          <Label
+            htmlFor="repositoryId"
+            tip="Catalog repository id (control-plane repository), not necessarily a filesystem path"
+          >
+            Repository
+          </Label>
+          <select
+            id="repositoryId"
+            name="repositoryId"
+            required
+            data-pw="schedule-repository-id"
+            defaultValue={schedule?.repositoryId ?? repositories[0]?.id ?? ""}
+            className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+          >
+            {repositories.length === 0 ? <option value="">(none — add a repository)</option> : null}
+            {repositories.map((repository) => (
+              <option key={repository.id} value={repository.id}>
+                {repository.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        <WorkspaceSessionFields
+          pools={pools}
+          poolId={workspacePoolId}
+          onPoolIdChange={setWorkspacePoolId}
+          initialPoolId={schedule?.workspacePoolId ?? undefined}
+          initialProfileId={schedule?.setupProfileId ?? undefined}
+          initialDestroyWorkspaceAfter={schedule?.destroyWorkspaceAfter ?? undefined}
+          canWriteExecConfig={canWriteExecConfig}
+          selectorPrefix="schedule"
+        />
+      )}
       <div className="space-y-1">
         <Label htmlFor="name">Name</Label>
         <Input
@@ -149,10 +203,12 @@ export function ScheduleCreateForm({
             defaultValue={schedule?.timeout ?? 600}
           />
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="ref">Ref</Label>
-          <Input id="ref" name="ref" defaultValue={schedule?.ref ?? "main"} />
-        </div>
+        {mode === "repository" ? (
+          <div className="space-y-1">
+            <Label htmlFor="ref">Ref</Label>
+            <Input id="ref" name="ref" defaultValue={schedule?.ref ?? "main"} />
+          </div>
+        ) : null}
       </div>
       <div className="space-y-1">
         <Label htmlFor="queueTtlSeconds">Queue TTL (s)</Label>
@@ -183,7 +239,11 @@ export function ScheduleCreateForm({
       >
         <Button
           type="submit"
-          disabled={pending || targets.length === 0}
+          disabled={
+            pending ||
+            targets.length === 0 ||
+            (mode === "repository" ? repositories.length === 0 : !workspacePoolId)
+          }
           data-pw={schedule ? `schedule-edit-submit-${schedule.id}` : "schedule-submit"}
         >
           {pending ? "Saving…" : schedule ? "Save schedule" : "Create schedule"}

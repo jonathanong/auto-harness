@@ -344,15 +344,19 @@ envelope:
   "subject": { "type": "session", "id": "sess_123" },
   "data": {
     "repositoryId": "repo_123",
+    "workspacePoolId": null,
+    "workspaceSlotId": null,
     "attemptId": "attempt_123",
     "status": "completed"
   }
 }
 ```
 
-`attemptId` is `null` when a session becomes terminal before its first assignment, such as a queued
-cancellation or queue expiry. The null participates in the stable event digest; the worker never
-fabricates an assignment identity.
+`repositoryId` is `null` for a workspace session. In that case `workspacePoolId` identifies the
+non-Git pool and `workspaceSlotId` records the slot used by its terminal attempt (or is `null`
+when it never received one). `attemptId` is `null` when a session becomes terminal before its first
+assignment, such as a queued cancellation or queue expiry. The null participates in the stable
+event digest; the worker never fabricates an assignment identity.
 
 The outbox deliberately does not persist an endpoint, signing secret, request headers, prompt,
 logs, metadata, response body, or free-form failure text. Destination selection freezes only the

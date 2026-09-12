@@ -11,6 +11,7 @@ import {
   explainPromptPlacement,
   planPromptPlacement,
   planScheduledPlacement,
+  planWorkspacePlacement,
   targetIsAvailable,
 } from "./queue-placement-planner.ts";
 
@@ -276,6 +277,60 @@ describe("queue placement planner", () => {
         Date.parse(NOW),
       ),
     ).toEqual({ action: "clear_pin" });
+  });
+
+  it("orders workspace slots fairly and ignores routes from the wrong target index", () => {
+    const plane = new ControlPlane({ now: () => NOW, shardCount: 1 });
+    seedBaseCommand(plane);
+    markHostReady(plane, "host");
+    const connection = plane.state.connections.get("host-connection")!;
+    plane.state.connections.set("host-connection", {
+      ...connection,
+      capabilities: ["workspace-sessions"],
+    });
+    for (const [id, path] of [
+      ["slot-b", "/workspace/b"],
+      ["slot-a", "/workspace/a"],
+    ]) {
+      plane.state.workspaceSlots.set(id, {
+        id,
+        name: id,
+        hostId: "host",
+        workspacePoolId: "pool",
+        path,
+        status: "idle",
+        online: true,
+        lastAssignedAt: NOW,
+      });
+    }
+    const result = planWorkspacePlacement(
+      plane.state,
+      buildProviderCatalog(plane.state),
+      session({
+        workspacePoolId: "pool",
+        target: { commandId: "missing" },
+        fallbacks: [{ commandId: BASE_COMMAND_ID }],
+      }),
+      Date.parse(NOW),
+    );
+    expect(result.action).toBe("assign");
+    if (result.action !== "assign") return;
+    expect(result.candidates.map(({ slot, route }) => [slot.id, route.targetIndex])).toEqual([
+      ["slot-a", 1],
+      ["slot-b", 1],
+    ]);
+  });
+
+  it("skips workspace placement when the session has no workspace pool", () => {
+    const plane = new ControlPlane({ now: () => NOW, shardCount: 1 });
+    expect(
+      planWorkspacePlacement(
+        plane.state,
+        buildProviderCatalog(plane.state),
+        session(),
+        Date.parse(NOW),
+      ),
+    ).toEqual({ action: "skip", reason: "no_idle_worktree" });
   });
 
   it("assigns a later shard's higher-priority session before draining shard 0", () => {

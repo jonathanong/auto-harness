@@ -22,11 +22,13 @@ const runtimeRoot = mkdtempSync(join(tmpdir(), "ah-runtime-unit-"));
 const runtimeRepo = join(runtimeRoot, "repo");
 const runtimeWorktree = join(runtimeRoot, "wt-1");
 const runtimeGitDir = join(runtimeRepo, ".git", "worktrees", "one");
+const runtimeWorkspace = join(runtimeRoot, "workspace", "slot");
 
 beforeAll(() => {
   mkdirSync(runtimeRepo);
   mkdirSync(runtimeWorktree);
   mkdirSync(runtimeGitDir, { recursive: true });
+  mkdirSync(runtimeWorkspace, { recursive: true });
   writeFileSync(join(runtimeWorktree, ".git"), `gitdir: ${runtimeGitDir}\n`);
   writeFileSync(join(runtimeGitDir, "gitdir"), `${join(runtimeWorktree, ".git")}\n`);
 });
@@ -85,6 +87,33 @@ describe("runtime helpers", () => {
     };
 
     await expect(ensureDaemonReady(config, runner)).resolves.toMatchObject({
+      gitReady: false,
+      gitReadinessReason: "git_unavailable",
+    });
+    expect(calls).toEqual(["git --version"]);
+  });
+
+  it("validates a workspace-only host when Git is unavailable", async () => {
+    const calls: string[] = [];
+    const runner: ProcessRunner = {
+      async run(options) {
+        calls.push(options.argv.join(" "));
+        return { exitCode: 1, timedOut: false, signal: null };
+      },
+    };
+    const workspaceOnly = parseDaemonConfig({
+      hostId: "workspace-only",
+      allowedRoots: [runtimeRoot],
+      repositories: [],
+      workspacePools: [
+        {
+          workspacePoolId: "pool",
+          slots: [{ id: "slot", name: "slot", path: runtimeWorkspace }],
+        },
+      ],
+    });
+
+    await expect(ensureDaemonReady(workspaceOnly, runner)).resolves.toMatchObject({
       gitReady: false,
       gitReadinessReason: "git_unavailable",
     });

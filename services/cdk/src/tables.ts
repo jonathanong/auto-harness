@@ -40,6 +40,26 @@ export const DYNAMO_TABLES: TableDef[] = [
     ],
   },
   {
+    name: "WorkspacePools",
+    partitionKey: { name: "id", type: "S" },
+  },
+  {
+    name: "WorkspaceSlots",
+    partitionKey: { name: "id", type: "S" },
+    gsis: [
+      {
+        name: "workspacePoolId-id",
+        partitionKey: { name: "workspacePoolId", type: "S" },
+        sortKey: { name: "id", type: "S" },
+      },
+      {
+        name: "hostId-id",
+        partitionKey: { name: "hostId", type: "S" },
+        sortKey: { name: "id", type: "S" },
+      },
+    ],
+  },
+  {
     name: "Sessions",
     partitionKey: { name: "id", type: "S" },
     gsis: [
@@ -77,6 +97,12 @@ export const DYNAMO_TABLES: TableDef[] = [
         name: "repositoryId-createdAt",
         partitionKey: { name: "repositoryId", type: "S" },
         sortKey: { name: "createdAt", type: "S" },
+      },
+      {
+        // Direct child-session history, oldest first.
+        name: "parentSessionId-createdOrder",
+        partitionKey: { name: "parentSessionId", type: "S" },
+        sortKey: { name: "createdOrder", type: "S" },
       },
       {
         // Sparse: only assignments whose host-owned lease still needs reconciliation.

@@ -99,5 +99,6 @@ describe("DynamoPlaneStorage catalog delegators", () => {
     ).toBe(true);
     await storage.clearAll();
     expect(await storage.listProviders()).toEqual([]);
+    expect(await storage.listAllAuditLogs()).toEqual([]);
   });
 });

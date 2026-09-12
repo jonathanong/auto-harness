@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- public client declarations share one compatibility surface. */
 import type { Command, Provider } from "./catalog-types.js";
 export type { Command, Provider, ResumeRefCapture, UsageRates } from "./catalog-types.js";
 
@@ -41,7 +42,7 @@ export type RepositoryRef =
 export type SessionMetadataValue = string | number | boolean | null;
 
 /** Whether a session was created directly or fired by a schedule. */
-export type SessionType = "prompt" | "scheduled";
+export type SessionType = "prompt" | "scheduled" | "workspace";
 
 /** Origin that requested the session. */
 export type SessionSource = "api" | "ui" | "webhook" | "schedule";
@@ -49,7 +50,7 @@ export type SessionSource = "api" | "ui" | "webhook" | "schedule";
 /** `source` values `POST /sessions` honors; anything else collapses to `"api"`. */
 export type CreatableSessionSource = "api" | "ui" | "webhook";
 
-export type CreateSessionInput = RepositoryRef & {
+type CreateSessionOptions = {
   prompt: string;
   target: TargetSpec;
   fallbacks?: TargetSpec[];
@@ -62,11 +63,33 @@ export type CreateSessionInput = RepositoryRef & {
   metadata?: Record<string, SessionMetadataValue>;
   /** Defaults to `"api"`; `"ui"`/`"webhook"` pass through, anything else becomes `"api"`. */
   source?: CreatableSessionSource;
+  /** Raw setup scripts are not a session input; select a trusted profile by id. */
+  setupScript?: never;
 };
+
+/** Host-scoped, non-git create-session input. */
+export type WorkspaceSessionInput = CreateSessionOptions & {
+  repositoryId: null;
+  workspacePoolId: string;
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
+  type?: "workspace";
+  ref?: never;
+  requiredLabels?: [];
+};
+
+/** Existing repository-backed create-session input, retained unchanged. */
+export type CreateSessionInput =
+  | (RepositoryRef & CreateSessionOptions & { type?: "prompt" | "scheduled" })
+  | WorkspaceSessionInput;
 
 export type Session = {
   id: string;
-  repositoryId: string;
+  repositoryId: string | null;
+  workspacePoolId?: string;
+  workspaceSlotId?: string | null;
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
   prompt: string;
   target: TargetRef;
   fallbacks?: TargetRef[];
@@ -87,7 +110,18 @@ export type Session = {
   created?: boolean;
   /** Present on detail reads and terminal action results when available. */
   result?: SessionResult;
+  parentSessionId?: string;
+  rootSessionId?: string;
 };
+
+export type CreateChildSessionInput = {
+  prompt: string;
+  spawnKey: string;
+  priority?: number;
+  queueTtlSeconds?: number;
+};
+
+export type ListChildSessionsOptions = { limit?: number; cursor?: string };
 
 /** Body accepted by `POST /sessions/:id/resume`. `target`/`fallbacks` are an optional
  * rebinding override — passing `target` alone clears any inherited `fallbacks`, and
@@ -248,6 +282,11 @@ export class AutoHarnessClient {
   constructor(options: AutoHarnessClientOptions);
   createSession(input: CreateSessionInput): Promise<Session & { created: boolean }>;
   getSession(id: string): Promise<Session>;
+  createChildSession(
+    parentId: string,
+    input: CreateChildSessionInput,
+  ): Promise<Session & { created: boolean }>;
+  listChildSessions(parentId: string, options?: ListChildSessionsOptions): Promise<SessionPage>;
   cancelSession(id: string): Promise<Session>;
   resumeSession(id: string, input?: ResumeSessionInput): Promise<Session & { created: boolean }>;
   listSessions(options?: ListSessionsOptions): Promise<SessionPage>;

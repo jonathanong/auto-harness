@@ -116,12 +116,13 @@ export async function invokeBadJson(
   handler: (req: never, res: never) => void | Promise<void>,
   method: string,
   path: string,
+  headers: Record<string, string> = {},
 ): Promise<number> {
   let status = 0;
   const req = {
     method,
     url: path,
-    headers: {},
+    headers,
     on(event: string, cb: (...args: unknown[]) => void) {
       if (event === "data") {
         cb(Buffer.from("{bad"));

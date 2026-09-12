@@ -163,7 +163,7 @@ export async function handleSessionResumeRoute(ctx: RouteCtx): Promise<boolean> 
           ...(result.operationId
             ? {
                 operationId: result.operationId,
-                statusUrl: `/api/v1/repositories/${encodeURIComponent(existing.repositoryId)}/session-drains/${encodeURIComponent(result.operationId)}`,
+                statusUrl: `/api/v1/repositories/${encodeURIComponent(existing.repositoryId ?? "")}/session-drains/${encodeURIComponent(result.operationId)}`,
               }
             : {}),
         },

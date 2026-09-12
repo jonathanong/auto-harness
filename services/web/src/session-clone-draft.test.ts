@@ -87,6 +87,25 @@ describe("session clone edit draft", () => {
     ]);
   });
 
+  it("initializes workspace clone drafts without carrying a Git ref", () => {
+    const draft = sessionCloneDraft({
+      repositoryId: null,
+      workspacePoolId: "pool",
+      setupProfileId: "setup",
+      destroyWorkspaceAfter: true,
+      prompt: "again",
+      target: { commandId: "command" },
+      ref: "must-not-copy",
+    });
+    expect(draft).toMatchObject({
+      repositoryId: null,
+      workspacePoolId: "pool",
+      setupProfileId: "setup",
+      destroyWorkspaceAfter: true,
+    });
+    expect(draft).not.toHaveProperty("ref");
+  });
+
   it("accepts only one bounded clone source id", () => {
     expect(cloneSourceId("session/one")).toBe("session/one");
     expect(cloneSourceId(undefined)).toBeNull();

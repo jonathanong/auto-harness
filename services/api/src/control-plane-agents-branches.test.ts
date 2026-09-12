@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { disconnectHost, drainHost, drainHostDurable } from "./control-plane-agents.ts";
 import { ControlPlane } from "./control-plane.ts";
@@ -36,6 +36,32 @@ function worktree(overrides: Record<string, unknown> = {}) {
     labels: [],
     status: "busy" as const,
     online: true,
+    currentSessionId: "s",
+    ...overrides,
+  };
+}
+
+function workspaceSession(overrides: Record<string, unknown> = {}) {
+  return session({
+    repositoryId: "",
+    workspacePoolId: "pool",
+    workspaceSlotId: "slot",
+    workspaceSlotLease: true,
+    worktreeId: null,
+    reconnectDeadlineAt: "later",
+    ...overrides,
+  });
+}
+
+function workspaceSlot(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "slot",
+    name: "slot",
+    path: "/workspace",
+    hostId: "h",
+    workspacePoolId: "pool",
+    status: "busy" as const,
+    online: false,
     currentSessionId: "s",
     ...overrides,
   };
@@ -104,6 +130,110 @@ describe("agent registration branch boundaries", () => {
         runningSessions: ["s", "s"],
       }),
     ).toEqual({ ok: false, error: "duplicate running session s" });
+  });
+
+  it("accepts an exact local workspace ownership claim and confirms its reconnect", async () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "replacement" });
+    plane.state.sessions.set("s", workspaceSession());
+    plane.state.workspaceSlots.set("slot", workspaceSlot());
+
+    expect(
+      plane.registerHost({
+        hostId: "h",
+        worktrees: [],
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [{ id: "slot", name: "slot", path: "/workspace" }],
+          },
+        ],
+        commandProfiles: [],
+        runningSessions: ["s"],
+      }),
+    ).toEqual({ ok: true, connectionId: "replacement" });
+
+    await Promise.resolve();
+
+    expect(plane.state.sessions.get("s")).not.toHaveProperty("reconnectDeadlineAt");
+    expect(plane.state.workspaceSlots.get("slot")).toMatchObject({
+      currentSessionId: "s",
+      online: true,
+      connectionId: "replacement",
+    });
+  });
+
+  it("publishes and offlines only this host's idle workspace slots", async () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "workspace" });
+    const putWorkspaceSlot = vi.fn(async () => undefined);
+    plane.state.storage = { putWorkspaceSlot } as never;
+    plane.state.workspaceSlots.set(
+      "own",
+      workspaceSlot({
+        id: "own",
+        status: "idle",
+        currentSessionId: null,
+        hostId: "h",
+      }),
+    );
+    plane.state.workspaceSlots.set(
+      "foreign",
+      workspaceSlot({
+        id: "foreign",
+        status: "idle",
+        currentSessionId: null,
+        hostId: "other",
+      }),
+    );
+
+    const registration = plane.registerHost({
+      hostId: "h",
+      worktrees: [],
+      workspacePools: [
+        {
+          workspacePoolId: "pool",
+          slots: [{ id: "own", name: "own", path: "/workspace" }],
+        },
+      ],
+      commandProfiles: [],
+    });
+    if (!registration.ok) throw new Error(registration.error);
+    await plane.state.writeTail;
+    expect(plane.state.workspaceSlots.get("own")).toMatchObject({
+      online: true,
+      connectionId: registration.connectionId,
+    });
+    expect(putWorkspaceSlot).toHaveBeenCalled();
+
+    expect(disconnectHost(plane.state, registration.connectionId)).toEqual([]);
+    expect(plane.state.workspaceSlots.get("own")).toMatchObject({ online: false });
+    expect(plane.state.workspaceSlots.get("foreign")).toMatchObject({ online: false });
+  });
+
+  it("rejects every local workspace ownership mismatch", () => {
+    const cases = [
+      [workspaceSession({ status: "queued" }), workspaceSlot()],
+      [workspaceSession({ ackReceivedAt: undefined }), workspaceSlot()],
+      [workspaceSession({ hostId: "other" }), workspaceSlot()],
+      [workspaceSession({ workspaceSlotLease: false }), workspaceSlot()],
+      [workspaceSession(), null],
+      [workspaceSession(), workspaceSlot({ hostId: "other" })],
+      [workspaceSession(), workspaceSlot({ currentSessionId: "other" })],
+    ] as const;
+    for (const [record, slot] of cases) {
+      const plane = new ControlPlane();
+      plane.state.sessions.set("s", record);
+      if (slot) plane.state.workspaceSlots.set("slot", slot);
+
+      expect(
+        plane.registerHost({
+          hostId: "h",
+          worktrees: [],
+          workspacePools: [],
+          commandProfiles: [],
+          runningSessions: ["s"],
+        }),
+      ).toEqual({ ok: false, error: "running session s is not owned by host h" });
+    }
   });
 
   it("rejects every durable running-session ownership mismatch", async () => {
@@ -266,6 +396,76 @@ describe("agent registration branch boundaries", () => {
     expect(await drainHostDurable(plane.state, "h")).toEqual({ ok: false, runningSessionIds: [] });
     expect(plane.isDraining("h")).toBe(false);
     expect(plane.getWorktree("w")).toMatchObject({ online: true });
+  });
+
+  it("keeps acknowledged workspace work reconnectable and clears unacknowledged or timed-out slots", () => {
+    const plane = new ControlPlane({
+      now: () => "2026-09-12T00:00:00.000Z",
+      reconnectGraceMs: 30_000,
+    });
+    const registration = plane.registerHost({ hostId: "h", worktrees: [], commandProfiles: [] });
+    if (!registration.ok) throw new Error(registration.error);
+    const acknowledged = workspaceSession({
+      id: "acknowledged",
+      ackReceivedAt: "2026-09-11T23:59:00.000Z",
+      workspaceSlotId: "ack-slot",
+    });
+    const unacknowledged = workspaceSession({
+      id: "unacknowledged",
+      ackReceivedAt: undefined,
+      workspaceSlotId: "unack-slot",
+      assignmentConnectionId: registration.connectionId,
+      assignmentSentAt: "2026-09-12T00:00:00.000Z",
+    });
+    const timedOut = workspaceSession({
+      id: "timed-out",
+      status: "timed_out",
+      workspaceSlotId: "timeout-slot",
+      timedOutHostId: "h",
+      timedOutAssignmentConnectionId: registration.connectionId,
+      ackReceivedAt: "t",
+    });
+    for (const workspaceRecord of [acknowledged, unacknowledged, timedOut]) {
+      plane.state.sessions.set(workspaceRecord.id, workspaceRecord);
+    }
+    for (const [id, sessionId] of [
+      ["ack-slot", acknowledged.id],
+      ["unack-slot", unacknowledged.id],
+      ["timeout-slot", timedOut.id],
+    ] as const) {
+      plane.state.workspaceSlots.set(id, workspaceSlot({ id, currentSessionId: sessionId }));
+    }
+
+    expect(disconnectHost(plane.state, registration.connectionId)).toEqual([unacknowledged.id]);
+    expect(plane.state.sessions.get(acknowledged.id)).toMatchObject({
+      status: "running",
+      reconnectDeadlineAt: "2026-09-12T00:00:30.000Z",
+    });
+    expect(plane.state.workspaceSlots.get("ack-slot")).toMatchObject({
+      status: "busy",
+      online: false,
+      currentSessionId: acknowledged.id,
+    });
+    expect(plane.state.sessions.get(unacknowledged.id)).toMatchObject({
+      status: "queued",
+      hostId: null,
+      workspaceSlotId: null,
+      errorMessage: "agent disconnected; requeued",
+    });
+    expect(plane.state.workspaceSlots.get("unack-slot")).toMatchObject({
+      status: "idle",
+      online: false,
+      currentSessionId: null,
+    });
+    expect(plane.state.sessions.get(timedOut.id)).toMatchObject({
+      status: "timed_out",
+      workspaceSlotId: null,
+    });
+    expect(plane.state.workspaceSlots.get("timeout-slot")).toMatchObject({
+      status: "idle",
+      online: false,
+      currentSessionId: null,
+    });
   });
 
   it("publishes omitted durable idle inventory even when the process cache is stale", async () => {

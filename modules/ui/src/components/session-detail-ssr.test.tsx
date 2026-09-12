@@ -32,6 +32,8 @@ describe("SessionDetail static markup", () => {
       errorMessage: "Retrying",
       resumeFallback: true,
       resumedFromSessionId: "session/old",
+      parentSessionId: "session/parent",
+      rootSessionId: "session/root",
     };
     const linked = render(
       <SessionDetail
@@ -77,6 +79,10 @@ describe("SessionDetail static markup", () => {
     expect(details).toContain("30s");
     expect(details).toContain('data-pw="session-detail-priority">0');
     expect(details).toContain('data-pw="session-usage-summary"');
+    expect(details).toContain('data-pw="session-detail-parent-session"');
+    expect(details).toContain('href="/sessions/session%2Fparent"');
+    expect(details).toContain('data-pw="session-detail-root-session"');
+    expect(details).toContain('href="/sessions/session%2Froot"');
 
     const prompts = render(
       <SessionDetail session={linkedSession} breadcrumbs={[]} defaultTab="prompts" />,
@@ -147,5 +153,52 @@ describe("SessionDetail static markup", () => {
         />,
       ),
     ).toContain('data-pw="session-detail-worktree">Main checkout');
+  });
+
+  it("uses workspace-specific placement and resolved-route fields", () => {
+    const detail = render(
+      <SessionDetail
+        session={{
+          id: "workspace-session",
+          type: "workspace",
+          status: "running",
+          workspacePoolId: "pool/a",
+          setupProfileId: "setup/a",
+          workspaceSlotId: "slot/a",
+          hostId: "host/a",
+          resolvedRoute: {
+            hostId: "host/a",
+            commandId: "command/a",
+            workspacePoolId: "pool/a",
+            workspaceSlotId: "slot/a",
+          },
+        }}
+        breadcrumbs={[]}
+        defaultTab="details"
+        hostHrefBase="/hosts"
+      />,
+    );
+    expect(detail).toContain('data-pw="session-detail-workspace-pool">pool/a');
+    expect(detail).toContain('data-pw="session-detail-setup-profile">setup/a');
+    expect(detail).toContain('data-pw="session-detail-workspace-slot">slot/a');
+    expect(detail).toContain('href="/hosts/host%2Fa"');
+    expect(detail).toContain("workspace pool: pool/a");
+    expect(detail).toContain("workspace slot: slot/a");
+    expect(detail).not.toContain("Repository</dt>");
+    expect(detail).not.toContain("Worktree</dt>");
+  });
+
+  it("renders unassigned workspace fallback placement without a host", () => {
+    const detail = render(
+      <SessionDetail
+        session={{ id: "workspace-unassigned", type: "workspace", status: "queued" }}
+        breadcrumbs={[]}
+        defaultTab="details"
+      />,
+    );
+    expect(detail).toContain('data-pw="session-detail-workspace-pool">—');
+    expect(detail).toContain('data-pw="session-detail-setup-profile">Pool default');
+    expect(detail).toContain('data-pw="session-detail-workspace-slot">—');
+    expect(detail).not.toContain("Host</dt>");
   });
 });

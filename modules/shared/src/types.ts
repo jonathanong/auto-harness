@@ -7,7 +7,7 @@ export type SessionStatus =
   | "cancelled"
   | "timed_out";
 
-export type SessionType = "prompt" | "scheduled";
+export type SessionType = "prompt" | "scheduled" | "workspace";
 
 export type SessionSource = "api" | "ui" | "webhook" | "schedule";
 
@@ -19,7 +19,8 @@ export type SessionErrorCode =
   | "queue_expired"
   | "resume_failed"
   | "unknown_command_profile"
-  | "setup_failed";
+  | "setup_failed"
+  | "workspace_cleanup_failed";
 
 export type UserRole = "read-only" | "author" | "operator" | "maintainer" | "agent" | "admin";
 

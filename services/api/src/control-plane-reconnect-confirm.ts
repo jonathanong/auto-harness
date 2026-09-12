@@ -51,3 +51,33 @@ export async function confirmReportedSession(
   }
   return confirmed;
 }
+
+export async function confirmReportedWorkspaceSession(
+  state: ControlPlaneState,
+  session: import("./db/types.ts").SessionRecord,
+  slot: import("./db/types.ts").WorkspaceSlotRecord,
+  hostId: string,
+  connectionId: string | undefined,
+): Promise<boolean> {
+  if (state.storage && !connectionId) return false;
+  const deadlineAt = session.reconnectDeadlineAt;
+  const confirmed =
+    !state.storage ||
+    (await state.storage.confirmWorkspaceReconnect?.({
+      sessionId: session.id,
+      hostId,
+      workspaceSlotId: slot.id,
+      ...(deadlineAt ? { deadlineAt } : {}),
+      connectionId: connectionId!,
+      expectedStatus: session.status === "cancelled" ? "cancelled" : "running",
+    }));
+  if (!confirmed) return false;
+  const { reconnectDeadlineAt: _, ...next } = session;
+  state.sessions.set(session.id, next);
+  state.workspaceSlots.set(slot.id, {
+    ...slot,
+    online: true,
+    ...(connectionId ? { connectionId } : {}),
+  });
+  return true;
+}

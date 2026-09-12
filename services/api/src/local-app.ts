@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- login, logout, and actor rate-limit paths share one handler. */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createHash } from "node:crypto";
 
 import { AuthService } from "./auth.ts";
 import { auditActor } from "./audit.ts";
@@ -21,6 +22,7 @@ import { handleSessionRoutes } from "./local-routes-sessions.ts";
 import { handleSessionDrainRoutes } from "./local-routes-session-drains.ts";
 import { handleSessionTargetRoutes } from "./local-routes-session-targets.ts";
 import { handleUsageRoutes } from "./local-routes-usage.ts";
+import { handleWorkspacePoolRoutes } from "./local-routes-workspace-pools.ts";
 import { handleSlackIntegrationRoutes } from "./local-routes-slack-integration.ts";
 import {
   handlePublicSlackRoutes,
@@ -81,6 +83,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     const url = new URL(req.url ?? "/", "http://localhost");
     const method = req.method ?? "GET";
     const ctx: import("./local-http.ts").RouteCtx = { plane, req, res, url, method };
+    const childRoute = /^\/api\/v1\/sessions\/([^/]+)\/children$/.exec(url.pathname);
     if (method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true });
     if (
       isPublicSlackIngressRoute(method, url.pathname) &&
@@ -128,23 +131,54 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     }
     const authorizationHeader = req.headers?.authorization;
     const authorization = typeof authorizationHeader === "string" ? authorizationHeader : "";
+    const sessionKey = authorization.startsWith("Bearer hns_session_")
+      ? authorization.slice("Bearer ".length)
+      : undefined;
+    // Session credentials are not AuthService principals, so their parent lookup
+    // happens before the ordinary authenticated-route limiter. Consume the route's
+    // mutation budget first, keyed by the peer address, so invalid session keys cannot
+    // turn arbitrary parent ids into an unauthenticated durable-read oracle. Mark the
+    // route as already limited below: one request gets one normal mutation/login budget,
+    // not a pre-auth token plus a second post-auth token.
+    const sessionCredentialRoute = method === "POST" && Boolean(childRoute && sessionKey);
+    let preAuthRouteRateLimited = false;
+    if (sessionCredentialRoute) {
+      if (await enforceRateLimit({ ...loginLimit, bucket: "mutation" })) return;
+      preAuthRouteRateLimited = true;
+    }
+    // A session token is deliberately not an AuthService principal: it cannot
+    // reach any route other than its own children collection.
+    if (
+      method === "POST" &&
+      childRoute &&
+      sessionKey &&
+      (await plane.authenticateSessionApiKey(childRoute[1]!, sessionKey))
+    ) {
+      ctx.sessionParentId = childRoute[1]!;
+      ctx.sessionCredentialHash = createHash("sha256").update(sessionKey).digest("hex");
+    }
     const basicGuess = authorization.startsWith("Basic ") && !hasSessionCookie(req.headers?.cookie);
     if (auth.mode === "required") {
       // Password guesses must consume the spray budget before bcrypt.
       if (basicGuess && (await enforceRateLimit(loginLimit))) return;
-      const principal = await auth.authenticate(req);
-      if (!principal) {
-        if (!basicGuess && (await enforceRateLimit(loginLimit))) return;
+      const principal = ctx.sessionParentId ? null : await auth.authenticate(req);
+      if (!ctx.sessionParentId && !principal) {
+        if (!basicGuess && !sessionCredentialRoute && (await enforceRateLimit(loginLimit))) return;
         return auditAuthFailure(ctx, "auth:authenticate", 401, "authentication required");
       }
-      ctx.principal = principal;
-      if (!selfServiceAuthRoute && !logoutRoute && !authorize(principal, method, url.pathname)) {
+      if (principal) ctx.principal = principal;
+      if (
+        !ctx.sessionParentId &&
+        !selfServiceAuthRoute &&
+        !logoutRoute &&
+        !authorize(principal!, method, url.pathname)
+      ) {
         const deniedBucket = classifyRateLimitBucket(method, url.pathname);
         if (
           deniedBucket &&
           (await enforceRateLimit({
             ...loginLimit,
-            principal,
+            principal: principal!,
             bucket: deniedBucket,
           }))
         )
@@ -165,7 +199,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
       if (principal) ctx.principal = principal;
     }
     const bucket = classifyRateLimitBucket(method, url.pathname);
-    if (bucket) {
+    if (bucket && !preAuthRouteRateLimited) {
       const limited = await enforceRateLimit({
         config,
         memoryLimiter,
@@ -188,6 +222,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     if (await handleSessionDrainRoutes(ctx)) return;
     if (await handleUsageRoutes(ctx)) return;
     if (await handleRepositoryRoutes(ctx)) return;
+    if (await handleWorkspacePoolRoutes(ctx)) return;
     if (await handleScheduleRoutes(ctx)) return;
     if (await handleHostSchedulerRoutes(ctx)) return;
     if (await handleHostInventoryRoutes(ctx)) return;

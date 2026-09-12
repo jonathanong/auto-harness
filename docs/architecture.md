@@ -104,6 +104,7 @@ rules.
 | Public API & auth      | [api.md](api.md), [websocket.md](websocket.md), [auth.md](auth.md), [security.md](security.md) | API key over WSS ([cli.md](cli.md) / [local-development.md](local-development.md))           |
 | Session queue / assign | Scheduler + round-robin                                                                        | Accepts `session:assign` only                                                                |
 | Worktrees              | DynamoDB inventory + online flags                                                              | Create/claim/release on disk                                                                 |
+| Workspace pools/slots  | Pool/profile records + host path-only attachments                                              | Claim/release host-local non-git directories; realpath under `allowedRoots`                  |
 | Logs                   | SessionLogs + UI fan-out + optional S3 JSONL writes; DynamoDB Archives stores bounded metadata | Current: assigned-command PTY + pipe-based setup/hooks, each `session:log`; target: batching |
 | Schedules              | EventBridge cron → sessions                                                                    | Main-checkout lock + run command                                                             |
 | Secrets                | No repo/AI secrets                                                                             | `.env`, SSH, vendor keys                                                                     |
@@ -195,6 +196,16 @@ out before the scheduler begins emitting null-worktree assignments.
 
 Details: [aws.md — Cron](aws.md#cron-evaluator), [host-daemon.md — Non-worktree](host-daemon.md#non-worktree-sessions-scheduled).
 
+### Workspace session
+
+Workspace sessions use `repositoryId: null` and select a `workspacePoolId`; placement chooses an
+idle slot on a host advertising `workspace-sessions`. The daemon skips Git checkout and worktree
+label matching, runs host setup followed by the selected trusted setup profile, and optionally
+cleans the slot when the session ends. `ref`, non-empty `requiredLabels`, and raw setup scripts are
+invalid; workspace sessions are fresh-only (no resume) but support clone. Missing or unsafe paths
+are rejected by the existing non-empty `allowedRoots` realpath check. Slot cleanup failures are
+reported as `workspace_cleanup_failed` and quarantine the slot until it is safe to reuse.
+
 ---
 
 ## Key Design Decisions
@@ -212,6 +223,7 @@ Details: [aws.md — Cron](aws.md#cron-evaluator), [host-daemon.md — Non-workt
 | Priority queue + FIFO ties                   | CI fixes can preempt batch work                                                                                                                                                                                                                                                                       |
 | DynamoDB on-demand                           | Bursty session traffic                                                                                                                                                                                                                                                                                |
 | Scheduled on main checkout                   | Maintenance without burning worktree slots; serial per repo                                                                                                                                                                                                                                           |
+| Host-scoped workspace pools                  | Non-git research/data/orchestration runs use pre-provisioned host directories, with the same realpath trust boundary as repository paths and explicit capability gating                                                                                                                               |
 | Session log viewer — current                 | Readable wrapping log document by default (pretty JSONL, type labels, `#L<n>` links); optional xterm.js 120×40 raw replay for ANSI/cursor-addressed PTY output                                                                                                                                        |
 | Session `source`                             | Audit and filter by api / ui / webhook / schedule                                                                                                                                                                                                                                                     |
 | Agent auto-update drains                     | Signed-manifest orchestration drains, waits, verifies, stages, activates, restarts the supervisor, and rolls back on failure; HTTPS fetch/install/supervisor adapters run when update env is set, and the manual runbook remains available                                                            |

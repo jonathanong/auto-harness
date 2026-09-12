@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- terminal release coordinates sessions and both workspace kinds. */
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { SessionResult } from "@auto-harness/shared";
 
@@ -20,6 +21,8 @@ import {
 type FinishSessionOpts = {
   sessionId: string;
   worktreeId?: string | null;
+  workspaceSlotId?: string | null;
+  workspaceSlotError?: string;
   attemptId: string;
   status: string;
   queueShard: number;
@@ -37,8 +40,14 @@ type FinishSessionOpts = {
   preserveProviderAccountLease?: boolean;
   /** Timeout keeps host capacity until terminal/disconnect cleanup. */
   preserveHostAssignmentLease?: boolean;
+  /** Timeout keeps a workspace slot until terminal/disconnect cleanup. */
+  preserveWorkspaceSlotLease?: boolean;
+  /** A disconnected timeout keeps its reconnect marker until grace expiry. */
+  preserveReconnectDeadlineAt?: boolean;
   timedOutHostId?: string;
   timedOutAssignmentConnectionId?: string;
+  expectedStatus?: string;
+  expectedReconnectDeadlineAt?: string;
 };
 
 function setOptional(
@@ -71,7 +80,6 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
   const values: Record<string, unknown> = {
     ":status": opts.status,
     ":statusShard": statusShardAttr(opts.status, opts.queueShard),
-    ":running": "running",
     ":null": null,
     ":worktreeId": opts.worktreeId ?? null,
     ":attemptId": opts.attemptId,
@@ -80,6 +88,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     "#s = :status",
     "statusShard = :statusShard",
     "worktreeId = :null",
+    ...(opts.preserveWorkspaceSlotLease ? [] : ["workspaceSlotId = :null"]),
     ...(opts.status === "queued" ? ["hostId = :null"] : []),
   ];
   setOptional(sets, values, "completedAt", opts.completedAt);
@@ -101,11 +110,13 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     values,
     sets,
     removes: [
-      "reconnectDeadlineAt",
+      ...(opts.preserveReconnectDeadlineAt ? [] : ["reconnectDeadlineAt"]),
       "assignmentConnectionId",
       ...(opts.preserveHostAssignmentLease ? [] : ["activeHostId", "activeHostOrder"]),
       ...(opts.preserveHostAssignmentLease ? [] : ["hostAssignmentLease"]),
       ...(opts.preserveProviderAccountLease ? [] : ["providerAccountLease"]),
+      ...(opts.preserveWorkspaceSlotLease ? [] : ["workspaceSlotLease"]),
+      "sessionApiKeyHash",
     ],
   };
 }
@@ -135,9 +146,18 @@ function finishSessionItems(
         Key: { id: opts.sessionId },
         UpdateExpression: `SET ${update.sets.join(", ")} REMOVE ${update.removes.join(", ")}`,
         ConditionExpression:
-          "#s = :running AND worktreeId = :worktreeId AND attemptId = :attemptId",
+          "#s = :expectedStatus AND worktreeId = :worktreeId AND attemptId = :attemptId" +
+          (opts.expectedReconnectDeadlineAt
+            ? " AND reconnectDeadlineAt = :expectedReconnectDeadlineAt"
+            : ""),
         ExpressionAttributeNames: update.names,
-        ExpressionAttributeValues: update.values,
+        ExpressionAttributeValues: {
+          ...update.values,
+          ":expectedStatus": opts.expectedStatus ?? "running",
+          ...(opts.expectedReconnectDeadlineAt
+            ? { ":expectedReconnectDeadlineAt": opts.expectedReconnectDeadlineAt }
+            : {}),
+        },
       },
     },
   ];
@@ -150,6 +170,26 @@ function finishSessionItems(
         ConditionExpression: "currentSessionId = :sid",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: { ":idle": "idle", ":null": null, ":sid": opts.sessionId },
+      },
+    });
+  }
+  if (opts.workspaceSlotId && !opts.preserveWorkspaceSlotLease) {
+    const failed = opts.workspaceSlotError !== undefined;
+    items.push({
+      Update: {
+        TableName: ctx.tables.workspaceSlots,
+        Key: { id: opts.workspaceSlotId },
+        UpdateExpression: failed
+          ? "SET #s = :status, currentSessionId = :null, errorMessage = :errorMessage"
+          : "SET #s = :status, currentSessionId = :null REMOVE errorMessage",
+        ConditionExpression: "currentSessionId = :sessionId",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":status": failed ? "error" : "idle",
+          ":null": null,
+          ":sessionId": opts.sessionId,
+          ...(failed ? { ":errorMessage": opts.workspaceSlotError } : {}),
+        },
       },
     });
   }

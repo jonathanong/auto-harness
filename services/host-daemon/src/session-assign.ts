@@ -24,9 +24,16 @@ export function sessionAssignFromWire(message: AssignMessage): SessionAssign {
     attemptId: message.attemptId,
     repositoryId: message.repositoryId,
     prompt: message.prompt,
+    ...(message.sessionApiKey !== undefined ? { sessionApiKey: message.sessionApiKey } : {}),
     resolvedArgv: message.resolvedArgv,
     timeout: message.timeout,
     worktreeId: message.worktreeId,
+    ...(message.workspacePoolId !== undefined ? { workspacePoolId: message.workspacePoolId } : {}),
+    ...(message.workspaceSlotId !== undefined ? { workspaceSlotId: message.workspaceSlotId } : {}),
+    ...(message.setupProfileId !== undefined ? { setupProfileId: message.setupProfileId } : {}),
+    ...(message.destroyWorkspaceAfter !== undefined
+      ? { destroyWorkspaceAfter: message.destroyWorkspaceAfter }
+      : {}),
     ...(message.ref !== undefined ? { ref: message.ref } : {}),
     ...(message.setupScript !== undefined ? { setupScript: message.setupScript } : {}),
     ...(message.resume !== undefined ? { resume: message.resume } : {}),

@@ -8,9 +8,11 @@ export type { CreateSessionResult } from "./plane-storage-sessions-errors.ts";
 export {
   getConcurrencyLock,
   releaseConcurrencyLock,
+  MAX_SESSION_DESCENDANTS,
 } from "./plane-storage-sessions-concurrency.ts";
 export {
   getSession,
+  listSessionChildren,
   listAllSessions,
   listSessionsByRepository,
   countSessionsByRepository,
@@ -42,7 +44,9 @@ export { tryRequeueSession } from "./plane-storage-sessions-requeue.ts";
 export { finishSession } from "./plane-storage-sessions-terminal.ts";
 export {
   requeueUsageLimitedSession,
+  requeueUsageLimitedWorkspaceSession,
   suppressProviderlessUsageLimit,
+  suppressProviderlessUsageLimitWorkspace,
 } from "./plane-storage-sessions-usage-limit.ts";
 export {
   releaseWorktree,
@@ -53,5 +57,6 @@ export {
   finishSessionOptsFromPlan,
   legacyHostAssignmentForSession,
   requeueUsageLimitedSessionOptsFromPlan,
+  requeueUsageLimitedWorkspaceSessionOptsFromPlan,
   suppressProviderlessUsageLimitOptsFromPlan,
 } from "./plane-storage-sessions-plan.ts";

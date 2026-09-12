@@ -103,7 +103,7 @@ describe("requestAssignment", () => {
 
     await requestAssignment(plane.state);
 
-    expect(queuedReads).toBe(2);
+    expect(queuedReads).toBe(3);
     expect(backfills).toBe(0);
   });
 

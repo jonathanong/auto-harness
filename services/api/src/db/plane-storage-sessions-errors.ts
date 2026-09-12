@@ -35,6 +35,20 @@ export class RepositoryAdmissionClosedError extends Error {
   }
 }
 
+export class ParentSessionAttemptEndedError extends Error {
+  constructor() {
+    super("parent session attempt is no longer running");
+    this.name = "ParentSessionAttemptEndedError";
+  }
+}
+
+export class SessionDescendantBudgetExceededError extends Error {
+  constructor() {
+    super("root session descendant budget is exhausted");
+    this.name = "SessionDescendantBudgetExceededError";
+  }
+}
+
 class SessionDrainActiveError extends Error {
   readonly operationId: string;
 
@@ -68,5 +82,7 @@ export function isCreateSessionConflict(err: unknown): boolean {
     "SessionIdCollisionError",
     "CreateSessionRetryExhaustedError",
     "CatalogDeletionInProgressError",
+    "ParentSessionAttemptEndedError",
+    "SessionDescendantBudgetExceededError",
   ].includes(err.name);
 }

@@ -4,8 +4,8 @@ export type AuditOutcome = "success" | "denied" | "failed";
 
 export type AuditActor = {
   id: string;
-  kind: Principal["kind"] | "system" | "anonymous";
-  role: Role | "system" | "anonymous";
+  kind: Principal["kind"] | "session" | "system" | "anonymous";
+  role: Role | "session" | "system" | "anonymous";
 };
 
 /** Intentionally small JSON subset: audit events are not a second log store. */
@@ -20,7 +20,7 @@ export type AuditLogRecord = {
   resourceId: string;
   // `| undefined` since callers commonly forward an already-optional value verbatim
   // (e.g. a possibly-null resource's repositoryId, or a parsed query-string param).
-  repositoryId?: string | undefined;
+  repositoryId?: string | null | undefined;
   outcome: AuditOutcome;
   metadata: AuditMetadata;
 };

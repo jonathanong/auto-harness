@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- durable create, resume, and clone share admission semantics. */
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { noteSlackSessionLifecycle, toPublic } from "./control-plane-state.ts";
@@ -20,6 +21,7 @@ import {
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
 import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
+import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 
 function sessionDrainFailure(
   error: unknown,
@@ -51,6 +53,12 @@ export async function createSessionDurable(
     typeof (body as { repositoryId?: unknown }).repositoryId === "string"
   ) {
     await getRepositoryDurable(state, (body as { repositoryId: string }).repositoryId);
+  } else if (
+    typeof body === "object" &&
+    body !== null &&
+    typeof (body as { workspacePoolId?: unknown }).workspacePoolId === "string"
+  ) {
+    await getWorkspacePoolDurable(state, (body as { workspacePoolId: string }).workspacePoolId);
   }
   const prepared = validateSessionCreate(state, body);
   if (!prepared.ok) return prepared;
@@ -96,7 +104,7 @@ export async function resumeSessionDurable(
   }
   await getSessionRecordDurable(state, sessionId);
   const source = state.sessions.get(sessionId);
-  if (source) await getRepositoryDurable(state, source.repositoryId);
+  if (source?.repositoryId) await getRepositoryDurable(state, source.repositoryId);
   // A target override validates against state.commands/state.providers, which a cold
   // Lambda has not populated — gated so an ordinary resume pays nothing extra.
   if (opts.target !== undefined) await refreshTargetCatalogDurable(state);
@@ -144,7 +152,14 @@ export async function cloneSessionDurable(
       state.storage.listProviderAccounts(),
     ]);
     if (!source) return { ok: false, error: "session not found", code: "NOT_FOUND" };
-    const repository = await state.storage.getRepository(source.repositoryId);
+    const [repository, workspacePool] = await Promise.all([
+      source.repositoryId
+        ? state.storage.getRepository(source.repositoryId)
+        : Promise.resolve(null),
+      source.workspacePoolId
+        ? state.storage.getWorkspacePool(source.workspacePoolId)
+        : Promise.resolve(null),
+    ]);
     state.sessions.set(source.id, { ...source });
     // Catalog scans are an authorization-time snapshot. Keep them isolated so
     // a concurrent management write cannot be erased from the shared cache.
@@ -154,6 +169,7 @@ export async function cloneSessionDurable(
       providers: new Map(providers.map((provider) => [provider.id, provider])),
       providerAccounts: new Map(accounts.map((account) => [account.id, account])),
       repositories: new Map(repository ? [[repository.id, repository]] : []),
+      workspacePools: new Map(workspacePool ? [[workspacePool.id, workspacePool]] : []),
     };
   }
   const prepared = prepareClonedSession(cloneState, sessionId, opts);

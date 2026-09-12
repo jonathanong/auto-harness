@@ -12,7 +12,11 @@ export type { LogQuery, LogRecord } from "./db/plane-storage-types.ts";
 
 export type ScheduleRecord = {
   id: string;
+  /** Empty string is the internal sentinel for a workspace-only schedule. */
   repositoryId: string;
+  workspacePoolId?: string;
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
   name: string;
   target: TargetRef;
   fallbacks: TargetRef[];
@@ -75,6 +79,7 @@ export type ControlPlaneOptions = {
   connectionIdFactory?: () => string;
   scheduleIdFactory?: () => string;
   repositoryIdFactory?: () => string;
+  workspacePoolIdFactory?: () => string;
   providerIdFactory?: () => string;
   providerAccountIdFactory?: () => string;
   commandIdFactory?: () => string;
@@ -102,8 +107,15 @@ export type ControlPlaneOptions = {
 
 export type PublicSession = Omit<
   SessionRecord,
-  "principalId" | "cancelledByDrainOperationId" | "activeHostId" | "activeHostOrder"
+  | "repositoryId"
+  | "principalId"
+  | "cancelledByDrainOperationId"
+  | "activeHostId"
+  | "activeHostOrder"
+  | "sessionApiKeyHash"
+  | "descendantCount"
 > & {
+  repositoryId: string | null;
   url: string;
 };
 

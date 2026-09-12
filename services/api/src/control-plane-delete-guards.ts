@@ -38,6 +38,7 @@ export type DeleteReferences = {
   schedules: ReadonlyArray<{
     id: string;
     repositoryId: string;
+    workspacePoolId?: string;
     principalId?: string;
     target: TargetRef;
     fallbacks: TargetRef[];
@@ -62,6 +63,7 @@ export type DeleteReferences = {
       }>;
     }>;
     providerAccounts: Array<{ providerAccountId: string; commandId?: string }>;
+    workspacePools?: Array<{ workspacePoolId: string }>;
   }>;
   providers: ReadonlyArray<ProviderRecord>;
   accounts: ReadonlyArray<ProviderAccountRecord>;

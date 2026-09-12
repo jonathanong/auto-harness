@@ -33,7 +33,7 @@ export async function cancelSessionDurable(
     if (!session.mainCheckoutLease) {
       if (
         assignment.status !== "running" ||
-        !assignment.worktreeId ||
+        (!assignment.worktreeId && !assignment.workspaceSlotId) ||
         !assignment.hostId ||
         !assignment.assignmentConnectionId ||
         !assignment.attemptId
@@ -44,7 +44,8 @@ export async function cancelSessionDurable(
       const errorMessage = "cancelled by operator";
       const cancelled = await state.storage.cancelRunningSession({
         sessionId: id,
-        worktreeId: assignment.worktreeId,
+        worktreeId: assignment.worktreeId ?? null,
+        ...(assignment.workspaceSlotId ? { workspaceSlotId: assignment.workspaceSlotId } : {}),
         hostId: assignment.hostId,
         connectionId: assignment.assignmentConnectionId,
         attemptId: assignment.attemptId,
@@ -61,6 +62,7 @@ export async function cancelSessionDurable(
       session.status = "cancelled";
       session.errorMessage = errorMessage;
       session.completedAt = completedAt;
+      delete session.sessionApiKeyHash;
       const updatedSession = {
         ...session,
         ...(options.drainOperationId
@@ -108,6 +110,7 @@ export async function cancelSessionDurable(
     session.errorMessage = errorMessage;
     session.completedAt = completedAt;
     session.reconnectDeadlineAt = deadlineAt;
+    delete session.sessionApiKeyHash;
     const updatedSession = {
       ...session,
       ...(options.drainOperationId
@@ -149,6 +152,7 @@ export async function cancelSessionDurable(
   session.completedAt = completedAt;
   session.worktreeId = null;
   session.hostId = null;
+  delete session.sessionApiKeyHash;
   const updatedSession = {
     ...session,
     ...(options.drainOperationId ? { cancelledByDrainOperationId: options.drainOperationId } : {}),

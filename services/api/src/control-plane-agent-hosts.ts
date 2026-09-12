@@ -1,7 +1,9 @@
 /* eslint-disable max-lines -- durable inventory projections and version-fenced mutations share one state boundary. */
+import { posix, win32 } from "node:path";
+
 import { thrownMessage } from "@auto-harness/shared";
 import type { DynamoPlaneStorage, HostInventoryRecord } from "./db/plane-storage.ts";
-import type { WorktreeRecord } from "./db/types.ts";
+import type { WorkspaceSlotRecord, WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { parseHostBody } from "./control-plane-agent-hosts-parse.ts";
@@ -15,8 +17,74 @@ import {
   listHostInventoriesDurable,
   listProviderAccountsDurable,
 } from "./control-plane-durable-read-catalog.ts";
-import { listWorktreesDurable } from "./control-plane-durable-read-runtime.ts";
+import { listWorkspacePoolsDurable } from "./control-plane-workspace-pools.ts";
+import {
+  listWorkspaceSlotsDurable,
+  listWorktreesDurable,
+} from "./control-plane-durable-read-runtime.ts";
 import { inventoryReferenceMarkers } from "./control-plane-delete-reference-markers.ts";
+
+async function persistRetiredWorkspaceSlot(
+  storage: DynamoPlaneStorage,
+  slot: WorkspaceSlotRecord,
+): Promise<WorkspaceSlotRecord | null> {
+  if (!slot.currentSessionId || typeof storage.retireWorkspaceSlot !== "function") {
+    await storage.putWorkspaceSlot({ ...slot });
+    return slot;
+  }
+  if (await storage.retireWorkspaceSlot(slot.id, slot.currentSessionId)) return slot;
+
+  // The terminal transition (or a second scheduler) won between projection
+  // and the retire fence. Re-read: an idle row can disappear now; a newly
+  // claimed row becomes the tombstone's new owner instead of returning to
+  // capacity under a removed inventory attachment.
+  let current =
+    typeof storage.getWorkspaceSlot === "function" ? await storage.getWorkspaceSlot(slot.id) : null;
+  // A racing terminal/reassignment may change ownership between each read and
+  // conditional mutation. Never synthesize `retired` locally: either fence a
+  // real current owner, delete a released row, or fail so the queued durable
+  // projection retry observes a fresh state.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (!current) return null;
+    if (current.currentSessionId && typeof storage.retireWorkspaceSlot === "function") {
+      if (await storage.retireWorkspaceSlot(current.id, current.currentSessionId)) {
+        return { ...current, online: false, retired: true };
+      }
+    } else if (
+      !current.currentSessionId &&
+      typeof storage.deleteWorkspaceSlotIfIdle === "function" &&
+      (await storage.deleteWorkspaceSlotIfIdle(current.id))
+    ) {
+      return null;
+    }
+    current =
+      typeof storage.getWorkspaceSlot === "function"
+        ? await storage.getWorkspaceSlot(slot.id)
+        : null;
+  }
+  throw new Error("workspace slot changed repeatedly while retiring it from inventory");
+}
+
+/**
+ * Remove a slot only if the scheduler has not claimed it since this inventory
+ * projection was prepared. A lost idle-delete fence re-reads durable ownership
+ * and retires the winner, so a removed attachment can never become capacity.
+ */
+async function removeWorkspaceSlotFromDurableProjection(
+  storage: DynamoPlaneStorage,
+  id: string,
+): Promise<WorkspaceSlotRecord | null> {
+  if (typeof storage.deleteWorkspaceSlotIfIdle !== "function") {
+    await storage.deleteWorkspaceSlot(id);
+    return null;
+  }
+  if (await storage.deleteWorkspaceSlotIfIdle(id)) return null;
+  const current =
+    typeof storage.getWorkspaceSlot === "function" ? await storage.getWorkspaceSlot(id) : null;
+  if (!current) return null;
+  if (!current.currentSessionId) return { ...current, online: false };
+  return persistRetiredWorkspaceSlot(storage, { ...current, online: false, retired: true });
+}
 
 function syncWorktreesFromHost(state: ControlPlaneState, host: HostInventoryRecord): void {
   const { worktrees, removedIds } = projectHostWorktrees(state, host);
@@ -24,6 +92,167 @@ function syncWorktreesFromHost(state: ControlPlaneState, host: HostInventoryReco
     persistWorktree(state, worktree);
   }
   for (const id of removedIds) state.worktrees.delete(id);
+}
+
+function projectHostWorkspaceSlots(
+  state: ControlPlaneState,
+  host: HostInventoryRecord,
+  options: {
+    advertisedWorkspacePools?: readonly import("@auto-harness/shared").WorkspacePoolAttachment[];
+  } = {},
+): { slots: WorkspaceSlotRecord[]; retiredSlots: WorkspaceSlotRecord[]; removedIds: string[] } {
+  const online = state.hostConnection.has(host.hostId);
+  const configuredIds = new Set<string>();
+  const slots: WorkspaceSlotRecord[] = [];
+  for (const attachment of host.workspacePools ?? []) {
+    for (const slot of attachment.slots) {
+      configuredIds.add(slot.id);
+      const previous = state.workspaceSlots.get(slot.id);
+      const unchanged =
+        previous?.hostId === host.hostId &&
+        previous.workspacePoolId === attachment.workspacePoolId &&
+        previous.path === slot.path;
+      const daemonAcknowledged = options.advertisedWorkspacePools?.some(
+        (advertisedPool) =>
+          advertisedPool.workspacePoolId === attachment.workspacePoolId &&
+          advertisedPool.slots.some(
+            (advertisedSlot) =>
+              advertisedSlot.id === slot.id &&
+              advertisedSlot.name === slot.name &&
+              advertisedSlot.path === slot.path,
+          ),
+      );
+      const connectionId = daemonAcknowledged
+        ? state.hostConnection.get(host.hostId)
+        : options.advertisedWorkspacePools
+          ? undefined
+          : unchanged
+            ? previous.connectionId
+            : undefined;
+      slots.push({
+        id: slot.id,
+        name: slot.name,
+        path: slot.path,
+        hostId: host.hostId,
+        workspacePoolId: attachment.workspacePoolId,
+        status:
+          previous?.status === "busy" || previous?.status === "error" ? previous.status : "idle",
+        online: options.advertisedWorkspacePools
+          ? Boolean(daemonAcknowledged && online)
+          : unchanged
+            ? previous.online
+            : false,
+        currentSessionId: previous?.currentSessionId ?? null,
+        lastAssignedAt: previous?.lastAssignedAt ?? null,
+        ...(connectionId ? { connectionId } : {}),
+        ...(previous?.errorMessage ? { errorMessage: previous.errorMessage } : {}),
+      });
+    }
+  }
+  const removedIds = [...state.workspaceSlots.values()]
+    .filter(
+      (slot) =>
+        slot.hostId === host.hostId && !configuredIds.has(slot.id) && slot.status !== "busy",
+    )
+    .map((slot) => slot.id);
+  // Do not erase an active allocation merely because the next inventory
+  // snapshot no longer advertises it. The terminal transition must not turn
+  // that path into a new candidate; retain an offline tombstone until its
+  // exact owner releases it.
+  const retiredSlots = [...state.workspaceSlots.values()]
+    .filter(
+      (slot) =>
+        slot.hostId === host.hostId &&
+        !configuredIds.has(slot.id) &&
+        (slot.status === "busy" || slot.currentSessionId != null),
+    )
+    .map((slot) => ({ ...slot, online: false, retired: true }));
+  return { slots, retiredSlots, removedIds };
+}
+
+/** Project a locally accepted inventory snapshot into its workspace-slot read model. */
+export function syncHostWorkspaceSlots(
+  state: ControlPlaneState,
+  host: HostInventoryRecord,
+  advertisedWorkspacePools?:
+    | readonly import("@auto-harness/shared").WorkspacePoolAttachment[]
+    | null,
+): void {
+  const advertised = advertisedWorkspacePools ?? host.workspacePools ?? [];
+  const projection = projectHostWorkspaceSlots(
+    state,
+    host,
+    advertisedWorkspacePools === null ? {} : { advertisedWorkspacePools: advertised },
+  );
+  for (const slot of projection.slots) {
+    state.workspaceSlots.set(slot.id, slot);
+    if (state.storage) queueWrite(state, (storage) => storage!.putWorkspaceSlot({ ...slot }));
+  }
+  for (const slot of projection.retiredSlots) {
+    state.workspaceSlots.set(slot.id, slot);
+    if (state.storage)
+      queueWrite(state, async (storage) => {
+        const result = await persistRetiredWorkspaceSlot(storage!, slot);
+        if (result) state.workspaceSlots.set(result.id, result);
+        else state.workspaceSlots.delete(slot.id);
+      });
+  }
+  for (const id of projection.removedIds) {
+    state.workspaceSlots.delete(id);
+    if (state.storage) queueWrite(state, (storage) => storage!.deleteWorkspaceSlot(id));
+  }
+}
+
+/** Persist a durable registration's workspace-slot projection before acknowledging it. */
+export async function syncHostWorkspaceSlotsDurable(
+  state: ControlPlaneState,
+  host: HostInventoryRecord,
+  advertisedWorkspacePools?:
+    | readonly import("@auto-harness/shared").WorkspacePoolAttachment[]
+    | null,
+): Promise<void> {
+  const advertised = advertisedWorkspacePools ?? host.workspacePools ?? [];
+  if (!state.storage) return syncHostWorkspaceSlots(state, host, advertisedWorkspacePools);
+  const projection = projectHostWorkspaceSlots(
+    state,
+    host,
+    advertisedWorkspacePools === null ? {} : { advertisedWorkspacePools: advertised },
+  );
+  const retired = await Promise.all(
+    projection.retiredSlots.map((slot) => persistRetiredWorkspaceSlot(state.storage!, slot)),
+  );
+  const removed = await Promise.all(
+    projection.removedIds.map((id) => removeWorkspaceSlotFromDurableProjection(state.storage!, id)),
+  );
+  await Promise.all(
+    projection.slots.map(async (slot) => {
+      if (slot.status === "busy" && !slot.retired) return;
+      const connectionId = state.hostConnection.get(host.hostId);
+      if (connectionId && typeof state.storage!.putWorkspaceSlotFenced === "function") {
+        const expectedConnectionId = state.workspaceSlots.get(slot.id)?.connectionId;
+        if (
+          !(await state.storage!.putWorkspaceSlotFenced(
+            { ...slot },
+            connectionId,
+            expectedConnectionId,
+          ))
+        ) {
+          throw new Error("host connection changed while publishing workspace slots");
+        }
+      } else {
+        await state.storage!.putWorkspaceSlot({ ...slot });
+      }
+    }),
+  );
+  for (const slot of projection.slots) state.workspaceSlots.set(slot.id, slot);
+  for (const [index, slot] of retired.entries()) {
+    if (slot) state.workspaceSlots.set(slot.id, slot);
+    else state.workspaceSlots.delete(projection.retiredSlots[index]!.id);
+  }
+  for (const [index, slot] of removed.entries()) {
+    if (slot) state.workspaceSlots.set(slot.id, slot);
+    else state.workspaceSlots.delete(projection.removedIds[index]!);
+  }
 }
 
 function projectHostWorktrees(
@@ -84,6 +313,7 @@ export function putHostInventory(
     );
   }
   syncWorktreesFromHost(state, rec);
+  syncHostWorkspaceSlots(state, rec, null);
   return { ok: true, config: withoutDaemonLabelProvenance(rec) };
 }
 
@@ -101,6 +331,20 @@ function inventoryVersionConflict(): InventoryVersionConflict {
     conflict: true,
     error: "host inventory changed since it was read; re-read and retry",
   };
+}
+
+/**
+ * Compare paths using the spelling rules of the host platform they advertise.
+ * The control plane cannot resolve a host's symlinks, but it can still fence
+ * lexical aliases before replacing a leased slot identity. Windows paths are
+ * case-insensitive; POSIX paths are intentionally case-sensitive here.
+ */
+function workspacePathAliasKey(path: string): string {
+  const windowsPath = /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\");
+  const normalized = windowsPath ? win32.normalize(path) : posix.normalize(path);
+  const root = windowsPath ? /^[A-Za-z]:[\\/]$/.test(normalized) : normalized === "/";
+  const trimmed = root ? normalized : normalized.replace(/[\\/]+$/, "");
+  return windowsPath ? trimmed.toLowerCase() : trimmed;
 }
 
 /**
@@ -126,6 +370,41 @@ function prepareHostInventory(
     );
     if (unknownAccount) {
       return { ok: false, error: `unknown providerAccountId: ${unknownAccount.providerAccountId}` };
+    }
+    for (const attachment of parsed.workspacePools ?? []) {
+      if (!state.workspacePools.has(attachment.workspacePoolId)) {
+        return { ok: false, error: `unknown workspacePoolId: ${attachment.workspacePoolId}` };
+      }
+      for (const slot of attachment.slots) {
+        const projected = state.workspaceSlots.get(slot.id);
+        if (projected && projected.hostId !== hostId) {
+          return { ok: false, error: `workspace slot id already in use: ${slot.id}` };
+        }
+        if (
+          (projected?.status === "busy" || projected?.currentSessionId) &&
+          (projected.name !== slot.name ||
+            projected.path !== slot.path ||
+            projected.workspacePoolId !== attachment.workspacePoolId)
+        ) {
+          return {
+            ok: false,
+            error: `cannot change the name, path, or pool of busy workspace slot: ${slot.id}`,
+          };
+        }
+        const leasedPath = [...state.workspaceSlots.values()].find(
+          (candidate) =>
+            candidate.hostId === hostId &&
+            candidate.id !== slot.id &&
+            workspacePathAliasKey(candidate.path) === workspacePathAliasKey(slot.path) &&
+            (candidate.status === "busy" || candidate.currentSessionId != null),
+        );
+        if (leasedPath) {
+          return {
+            ok: false,
+            error: `cannot replace the id of busy workspace slot: ${leasedPath.id}`,
+          };
+        }
+      }
     }
     const collision = findWorktreeNameCollision(state, hostId, parsed);
     if (collision) return { ok: false, error: collision };
@@ -178,8 +457,14 @@ export async function putHostInventoryDurable(
   await Promise.all([
     listHostInventoriesDurable(state),
     listWorktreesDurable(state),
+    typeof state.storage.listWorkspaceSlots === "function"
+      ? listWorkspaceSlotsDurable(state)
+      : Promise.resolve(),
     typeof state.storage.listProviderAccounts === "function"
       ? listProviderAccountsDurable(state)
+      : Promise.resolve(),
+    typeof state.storage.listWorkspacePools === "function"
+      ? listWorkspacePoolsDurable(state)
       : Promise.resolve(),
   ]);
   const expectedVersion =
@@ -191,6 +476,7 @@ export async function putHostInventoryDurable(
     return { ok: false, error: "host inventory has too many catalog references" };
   }
   const projection = projectHostWorktrees(state, result.config);
+  const workspaceProjection = projectHostWorkspaceSlots(state, result.config);
   const stored = await state.storage.putHostInventory(
     { ...result.config },
     markers,
@@ -199,15 +485,43 @@ export async function putHostInventoryDurable(
   // Older storage doubles return void; only an explicit false means the conditional write lost.
   if (stored === false) return inventoryVersionConflict();
   const writeProjection = async (storage: DynamoPlaneStorage | undefined): Promise<void> => {
+    const writeSlot = async (slot: WorkspaceSlotRecord): Promise<void> => {
+      if (slot.status === "busy" && !slot.retired) return;
+      const connectionId = slot.connectionId;
+      if (connectionId && typeof storage!.putWorkspaceSlotFenced === "function") {
+        const expectedConnectionId = state.workspaceSlots.get(slot.id)?.connectionId;
+        if (
+          !(await storage!.putWorkspaceSlotFenced({ ...slot }, connectionId, expectedConnectionId))
+        ) {
+          throw new Error("host connection changed while publishing workspace slots");
+        }
+        return;
+      }
+      await storage!.putWorkspaceSlot({ ...slot });
+    };
     await Promise.all([
       ...projection.worktrees.map((worktree) => storage!.putWorktree({ ...worktree })),
       ...projection.removedIds.map((id) => storage!.deleteWorktree(id)),
+      ...workspaceProjection.slots.map((slot) => writeSlot(slot)),
+      ...workspaceProjection.retiredSlots.map(async (slot) => {
+        const retired = await persistRetiredWorkspaceSlot(storage!, slot);
+        if (retired) state.workspaceSlots.set(retired.id, retired);
+        else state.workspaceSlots.delete(slot.id);
+      }),
+      ...workspaceProjection.removedIds.map(async (id) => {
+        const slot = await removeWorkspaceSlotFromDurableProjection(storage!, id);
+        if (slot) state.workspaceSlots.set(slot.id, slot);
+        else state.workspaceSlots.delete(id);
+      }),
     ]);
   };
   state.hostInventoryRevision += 1;
   state.hostInventories.set(hostId, result.config);
   for (const worktree of projection.worktrees) state.worktrees.set(worktree.id, worktree);
   for (const id of projection.removedIds) state.worktrees.delete(id);
+  for (const slot of workspaceProjection.slots) state.workspaceSlots.set(slot.id, slot);
+  for (const slot of workspaceProjection.retiredSlots) state.workspaceSlots.set(slot.id, slot);
+  for (const id of workspaceProjection.removedIds) state.workspaceSlots.delete(id);
   if (options.awaitProjection === false) {
     // The inventory document is already committed. Exec-config callers intentionally retain
     // their committed-result response contract while the ordinary inventory route below waits.
@@ -267,6 +581,13 @@ export function deleteHostInventory(
   }
   const expected = expectedVersion ?? existing.version ?? 0;
   if ((existing.version ?? 0) !== expected) return inventoryVersionConflict();
+  if (
+    [...state.workspaceSlots.values()].some(
+      (slot) => slot.hostId === hostId && (slot.status === "busy" || slot.currentSessionId != null),
+    )
+  ) {
+    return { ok: false, error: "host has active workspace slots" };
+  }
   state.hostInventories.delete(hostId);
   state.hostInventoryRevision += 1;
   if (state.storage) {
@@ -278,6 +599,9 @@ export function deleteHostInventory(
     if (wt.hostId === hostId) {
       state.worktrees.delete(id);
     }
+  }
+  for (const [id, slot] of state.workspaceSlots) {
+    if (slot.hostId === hostId) state.workspaceSlots.delete(id);
   }
   return { ok: true };
 }
@@ -294,17 +618,49 @@ export async function deleteHostInventoryDurable(
     return { ok: false, error: "agent host config not found" };
   }
   const expected = expectedVersion ?? existing.version ?? 0;
+  if (typeof state.storage.listWorkspaceSlots === "function") {
+    await listWorkspaceSlotsDurable(state);
+  }
+  if (
+    [...state.workspaceSlots.values()].some(
+      (slot) => slot.hostId === hostId && (slot.status === "busy" || slot.currentSessionId != null),
+    )
+  ) {
+    return { ok: false, error: "host has active workspace slots" };
+  }
   await listWorktreesDurable(state);
   const worktreeIds = [...state.worktrees.values()]
     .filter((worktree) => worktree.hostId === hostId)
     .map((worktree) => worktree.id);
+  const workspaceSlotIds = [...state.workspaceSlots.values()]
+    .filter((slot) => slot.hostId === hostId)
+    .map((slot) => slot.id);
   const deleted = await state.storage.deleteHostInventory(hostId, expected);
   if (deleted === false) return inventoryVersionConflict();
+  const deleteSlot = (id: string): Promise<unknown> =>
+    typeof state.storage!.deleteWorkspaceSlotIfIdle === "function"
+      ? state.storage!.deleteWorkspaceSlotIfIdle(id)
+      : state.storage!.deleteWorkspaceSlot(id);
+  const slotDeletes = await Promise.all(
+    workspaceSlotIds.map(async (id) => ({ id, slotDeleted: await deleteSlot(id) })),
+  );
+  const deletedSlotIds = new Set(
+    slotDeletes.filter(({ slotDeleted }) => slotDeleted !== false).map(({ id }) => id),
+  );
   await Promise.all(worktreeIds.map((id) => state.storage!.deleteWorktree(id)));
   state.hostInventoryRevision += 1;
   state.hostInventories.delete(hostId);
   for (const [id, wt] of state.worktrees) {
     if (wt.hostId === hostId) state.worktrees.delete(id);
+  }
+  for (const [id, slot] of state.workspaceSlots) {
+    if (slot.hostId !== hostId) continue;
+    if (deletedSlotIds.has(id)) {
+      state.workspaceSlots.delete(id);
+    } else if (typeof state.storage.getWorkspaceSlot === "function") {
+      const latest = await state.storage.getWorkspaceSlot(id);
+      if (latest) state.workspaceSlots.set(id, { ...latest, online: false });
+    }
   }
   return { ok: true };
 }

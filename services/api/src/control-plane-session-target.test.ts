@@ -8,6 +8,7 @@ import {
   resolveSessionTargetRoute,
   resolveSessionTargetRouteAt,
   resolveSessionTargetRoutesAt,
+  resolveWorkspaceSessionTargets,
 } from "./control-plane-session-target.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 
@@ -387,6 +388,70 @@ describe("resolveSessionTargetArgv", () => {
         Date.parse(state.now()),
       ),
     ).toBeNull();
+  });
+
+  it("skips suppressed and missing targets for workspace routes", () => {
+    const state = createControlPlaneState({ now: () => "2026-01-01T00:00:00.000Z" });
+    state.commands.set("cmd-fallback", {
+      id: "cmd-fallback",
+      name: "fallback",
+      argv: ["fallback"],
+      appendPrompt: false,
+      providerId: null,
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    const routes = resolveWorkspaceSessionTargets(
+      state,
+      buildProviderCatalog(state),
+      session({
+        target: { commandId: "missing" },
+        fallbacks: [{ commandId: "cmd-fallback" }],
+        suppressedTargetIndexes: [1],
+      }),
+      {
+        id: "slot-1",
+        name: "slot-1",
+        hostId: "host-1",
+        workspacePoolId: "pool-1",
+        path: "/workspace/slot-1",
+        status: "idle",
+        online: true,
+      },
+    );
+    expect(routes).toEqual([]);
+    expect(
+      resolveWorkspaceSessionTargets(
+        state,
+        buildProviderCatalog(state),
+        session({ target: { commandId: "missing" }, fallbacks: [] }),
+        {
+          id: "slot-1",
+          name: "slot-1",
+          hostId: "host-1",
+          workspacePoolId: "pool-1",
+          path: "/workspace/slot-1",
+          status: "idle",
+          online: true,
+        },
+      ),
+    ).toEqual([]);
+    expect(
+      resolveWorkspaceSessionTargets(
+        state,
+        buildProviderCatalog(state),
+        session({ fallbacks: [undefined as never] }),
+        {
+          id: "slot-1",
+          name: "slot-1",
+          hostId: "host-1",
+          workspacePoolId: "pool-1",
+          path: "/workspace/slot-1",
+          status: "idle",
+          online: true,
+        },
+      ),
+    ).toEqual([]);
   });
 });
 

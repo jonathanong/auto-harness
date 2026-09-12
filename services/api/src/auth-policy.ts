@@ -47,6 +47,9 @@ export function requiredCapability(
   if (/^\/api\/v1\/hosts\/[^/]+\/(?:exec-config|update-config)$/.test(pathname)) {
     return write ? EXEC_CONFIG_CAPABILITY : "authenticated";
   }
+  if (/^\/api\/v1\/workspace-pools\/[^/]+\/exec-config$/.test(pathname)) {
+    return EXEC_CONFIG_CAPABILITY;
+  }
   if (
     pathname === "/api/v1/host-inventories" ||
     /^\/api\/v1\/hosts\/[^/]+\/inventory$/.test(pathname)
@@ -59,6 +62,9 @@ export function requiredCapability(
   if (matchesRoutePrefix(pathname, "/api/v1/provider-accounts")) {
     return write ? "providers:accounts" : "authenticated";
   }
+  if (matchesRoutePrefix(pathname, "/api/v1/workspace-pools")) {
+    return write ? EXEC_CONFIG_CAPABILITY : "authenticated";
+  }
   if (
     matchesRoutePrefix(pathname, "/api/v1/commands") ||
     matchesRoutePrefix(pathname, "/api/v1/providers") ||
@@ -70,6 +76,7 @@ export function requiredCapability(
     return write ? "schedules:write" : "authenticated";
   }
   if (write && /^\/api\/v1\/sessions\/[^/]+\/archive$/.test(pathname)) return "sessions:archive";
+  if (write && /^\/api\/v1\/sessions\/[^/]+\/children$/.test(pathname)) return "sessions:spawn";
   if (matchesRoutePrefix(pathname, "/api/v1/sessions") && write) return "sessions:write";
   if (!write) return "authenticated";
   if (pathname.startsWith("/api/v1/")) return null;
@@ -78,6 +85,7 @@ export function requiredCapability(
 
 const BOUND_KEY_HANDLER_DENIALS = new Set<Capability>([
   "sessions:write",
+  "sessions:spawn",
   "sessions:archive",
   "schedules:write",
 ]);
@@ -95,7 +103,7 @@ export function authorize(principal: Principal, method: string, pathname: string
 
 export function mayAccessRepository(
   principal: Principal | undefined,
-  repositoryId: string | undefined,
+  repositoryId: string | null | undefined,
 ): boolean {
   if (!principal?.allowedRepositoryIds) return true;
   // A repository-scoped principal against a resource whose repository we could not

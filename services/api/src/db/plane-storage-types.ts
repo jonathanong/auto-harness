@@ -100,7 +100,7 @@ export type ConnectionRecord = {
   /** Durable viewer subscriptions used across API Gateway Lambda invocations. */
   viewerSubscriptions?: Array<{
     sessionId: string;
-    repositoryId: string;
+    repositoryId: string | null;
     status: string;
     after?: string;
   }>;
@@ -110,7 +110,11 @@ export type ConnectionRecord = {
 
 export type ScheduleRecord = {
   id: string;
+  /** Empty only for workspace schedules; HTTP responses expose it as null. */
   repositoryId: string;
+  workspacePoolId?: string;
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
   principalId?: string;
   name: string;
   target: TargetRef;
@@ -200,6 +204,30 @@ export type RepositoryRecord = {
   updatedAt: string;
 };
 
+export type WorkspaceSetupProfile = {
+  id: string;
+  name: string;
+  script: string;
+};
+
+type WorkspaceSetupProfileSummary = Pick<WorkspaceSetupProfile, "id" | "name">;
+
+export type WorkspacePoolRecord = {
+  id: string;
+  name: string;
+  setupProfiles: WorkspaceSetupProfile[];
+  /** Denormalized script-free listing projection; absent on legacy rows. */
+  setupProfileSummaries?: WorkspaceSetupProfileSummary[];
+  defaultSetupProfileId?: string;
+  destroyWorkspaceAfter: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkspacePoolSummary = Omit<WorkspacePoolRecord, "setupProfiles"> & {
+  setupProfiles: WorkspaceSetupProfileSummary[];
+};
+
 /** The durable form of a repository-list query. Storage continuation keys stay opaque. */
 export type RepositoryPageQuery = {
   limit: number;
@@ -278,6 +306,10 @@ export type HostInventoryRecord = {
       providerAccountOverrides?: Record<string, ProviderAccountOverride>;
     }>;
   }>;
+  workspacePools?: Array<{
+    workspacePoolId: string;
+    slots: Array<{ id: string; name: string; path: string }>;
+  }>;
   providerAccounts: Array<{ providerAccountId: string; commandId?: string }>;
   /** Empty/absent means an older daemon supports no optional capabilities. */
   capabilities?: HostCapability[] | undefined;
@@ -291,14 +323,22 @@ export type HostInventoryRecord = {
 };
 
 export function sessionToItem(session: SessionRecord): Record<string, unknown> {
-  return {
-    ...session,
+  // DynamoDB GSI key attributes may not be empty strings. Workspace sessions
+  // intentionally have no repository, so omit the repository index key while
+  // retaining the empty internal value after hydration.
+  const { repositoryId, ...sessionWithoutRepository } = session;
+  const item: Record<string, unknown> = {
+    ...sessionWithoutRepository,
     statusShard: statusShardAttr(session.status, session.queueShard),
     createdOrder: createdOrderKey(session),
     queueOrder: queueOrderKey(session),
     priorityOrder: priorityOrderKey(session),
-    repositoryPriorityOrder: repositoryPriorityOrderKey(session.repositoryId, session),
   };
+  if (repositoryId) {
+    item.repositoryId = repositoryId;
+    item.repositoryPriorityOrder = repositoryPriorityOrderKey(repositoryId, session);
+  }
+  return item;
 }
 
 /** Remove the legacy label-named display snapshot while hydrating persisted records. */
@@ -321,7 +361,11 @@ export function itemToSession(item: Record<string, unknown>): SessionRecord {
     repositoryPriorityOrder: _rpo,
     ...rest
   } = item;
-  return normalizeTargetDisplayNames(rest) as SessionRecord;
+  const normalized = normalizeTargetDisplayNames(rest);
+  if (!("repositoryId" in normalized) && typeof normalized.workspacePoolId === "string") {
+    normalized.repositoryId = "";
+  }
+  return normalized as SessionRecord;
 }
 
 /** Drop leftover session retry attributes from the rejected D8 retry-counter design. */

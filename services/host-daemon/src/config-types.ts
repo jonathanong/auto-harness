@@ -26,6 +26,18 @@ export type RepositoryConfig = {
   providerAccountOverrides?: Record<string, ProviderAccountOverride>;
 };
 
+/** An operator-configured, non-git execution area on this host. */
+export type WorkspaceSlotConfig = {
+  id: string;
+  name: string;
+  path: string;
+};
+
+export type WorkspacePoolConfig = {
+  workspacePoolId: string;
+  slots: WorkspaceSlotConfig[];
+};
+
 /** A provider account attached to a host, with an optional command override. */
 type HostProviderAccountConfig = {
   providerAccountId: string;
@@ -41,6 +53,8 @@ export type DaemonConfig = {
   allowedRoots?: string[];
   requiredEnvironment?: string[];
   updateConfig?: HostUpdateConfig;
+  /** Host-local non-git workspaces. Their paths are executable configuration. */
+  workspacePools?: WorkspacePoolConfig[];
   repositories: RepositoryConfig[];
   providerAccounts: HostProviderAccountConfig[];
 };

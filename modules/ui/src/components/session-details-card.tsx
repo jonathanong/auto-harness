@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- repository/workspace location and lineage share one details card. */
 "use client";
 
 import type { ReactNode } from "react";
@@ -40,25 +41,37 @@ export function SessionDetailsCard({
             </dd>
           </div>
         </DetailGroup>
+        {s.parentSessionId || s.rootSessionId ? (
+          <DetailGroup title="Lineage">
+            {s.parentSessionId ? (
+              <div>
+                <dt className="text-xs uppercase text-muted-foreground">Parent session</dt>
+                <dd className="font-mono text-sm" data-pw="session-detail-parent-session">
+                  <LineageLink id={s.parentSessionId} hrefBase={"/sessions"} />
+                </dd>
+              </div>
+            ) : null}
+            {s.rootSessionId ? (
+              <div>
+                <dt className="text-xs uppercase text-muted-foreground">Root session</dt>
+                <dd className="font-mono text-sm" data-pw="session-detail-root-session">
+                  <LineageLink id={s.rootSessionId} hrefBase={"/sessions"} />
+                </dd>
+              </div>
+            ) : null}
+          </DetailGroup>
+        ) : null}
         <DetailGroup title="Where">
-          <div>
-            <dt className="text-xs uppercase text-muted-foreground">Repository</dt>
-            <IdValue id={s.repositoryId} hrefBase={repoHrefBase} />
-          </div>
-          <div>
-            <dt className="text-xs uppercase text-muted-foreground">Ref</dt>
-            <dd className="font-mono text-sm">{s.ref ?? "—"}</dd>
-          </div>
-          {s.hostId ? (
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Host</dt>
-              <IdValue id={s.hostId} hrefBase={hostHrefBase} />
-            </div>
-          ) : null}
-          <div>
-            <dt className="text-xs uppercase text-muted-foreground">Worktree</dt>
-            <WorktreeValue session={s} hrefBase={worktreeHrefBase} />
-          </div>
+          {s.type === "workspace" || s.workspacePoolId ? (
+            <WorkspaceWhere session={s} hostHrefBase={hostHrefBase} />
+          ) : (
+            <RepositoryWhere
+              session={s}
+              repoHrefBase={repoHrefBase}
+              hostHrefBase={hostHrefBase}
+              worktreeHrefBase={worktreeHrefBase}
+            />
+          )}
         </DetailGroup>
         <DetailGroup title="Route">
           <SessionRouteSummary session={s} />
@@ -81,6 +94,86 @@ export function SessionDetailsCard({
         {detailsExtra}
       </CardContent>
     </Card>
+  );
+}
+
+function RepositoryWhere({
+  session: s,
+  repoHrefBase,
+  hostHrefBase,
+  worktreeHrefBase,
+}: {
+  session: SessionSummary;
+  repoHrefBase?: string | undefined;
+  hostHrefBase?: string | undefined;
+  worktreeHrefBase?: string | undefined;
+}) {
+  return (
+    <>
+      <div>
+        <dt className="text-xs uppercase text-muted-foreground">Repository</dt>
+        <IdValue id={s.repositoryId} hrefBase={repoHrefBase} />
+      </div>
+      <div>
+        <dt className="text-xs uppercase text-muted-foreground">Ref</dt>
+        <dd className="font-mono text-sm">{s.ref ?? "—"}</dd>
+      </div>
+      {s.hostId ? (
+        <div>
+          <dt className="text-xs uppercase text-muted-foreground">Host</dt>
+          <IdValue id={s.hostId} hrefBase={hostHrefBase} />
+        </div>
+      ) : null}
+      <div>
+        <dt className="text-xs uppercase text-muted-foreground">Worktree</dt>
+        <WorktreeValue session={s} hrefBase={worktreeHrefBase} />
+      </div>
+    </>
+  );
+}
+
+function WorkspaceWhere({
+  session: s,
+  hostHrefBase,
+}: {
+  session: SessionSummary;
+  hostHrefBase?: string | undefined;
+}) {
+  return (
+    <>
+      <div>
+        <dt className="text-xs uppercase text-muted-foreground">Workspace pool</dt>
+        <dd className="font-mono text-sm" data-pw="session-detail-workspace-pool">
+          {s.workspacePoolId ?? "—"}
+        </dd>
+      </div>
+      <div>
+        <dt className="text-xs uppercase text-muted-foreground">Setup profile</dt>
+        <dd className="font-mono text-sm" data-pw="session-detail-setup-profile">
+          {s.setupProfileId ?? "Pool default"}
+        </dd>
+      </div>
+      {s.hostId ? (
+        <div>
+          <dt className="text-xs uppercase text-muted-foreground">Host</dt>
+          <IdValue id={s.hostId} hrefBase={hostHrefBase} />
+        </div>
+      ) : null}
+      <div>
+        <dt className="text-xs uppercase text-muted-foreground">Workspace slot</dt>
+        <dd className="font-mono text-sm" data-pw="session-detail-workspace-slot">
+          {s.workspaceSlotId ?? "—"}
+        </dd>
+      </div>
+    </>
+  );
+}
+
+function LineageLink({ id, hrefBase }: { id: string; hrefBase: string }) {
+  return (
+    <Link href={`${hrefBase}/${encodeURIComponent(id)}`} className="hover:underline">
+      {id}
+    </Link>
   );
 }
 

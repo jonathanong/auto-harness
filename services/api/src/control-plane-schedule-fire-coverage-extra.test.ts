@@ -66,6 +66,24 @@ describe("schedule fire residual coverage", () => {
     expect(current.schedules.get("nightly")?.nextRunAt).not.toBe(NOW);
   });
 
+  it("creates an ownerless local workspace schedule run without serializing absent optional fields", () => {
+    const current = state(
+      schedule({ workspacePoolId: "pool", repositoryId: "", destroyWorkspaceAfter: undefined }),
+    );
+    current.workspacePools.set("pool", {
+      id: "pool",
+      name: "pool",
+      setupProfiles: [],
+      destroyWorkspaceAfter: false,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    expect(tryClaimScheduleFire(current, "nightly", NOW, NOW)).toMatchObject({
+      type: "workspace",
+      destroyWorkspaceAfter: false,
+    });
+  });
+
   it("rejects missing, closed, and invalid durable schedule repositories", async () => {
     const missing = createControlPlaneState();
     await expect(
@@ -117,6 +135,25 @@ describe("schedule fire residual coverage", () => {
       ok: false,
       error: "repository admission is closed",
     });
+  });
+
+  it("does not fire a durable repository schedule after its repository was removed", async () => {
+    const current = state(schedule({ principalId: "principal" }));
+    current.repositories.clear();
+    await expect(tryClaimScheduleFireDurable(current, "nightly", NOW, NOW)).resolves.toBeNull();
+  });
+
+  it("leaves a pre-activation cursor untouched when the repository is not open", async () => {
+    const current = state(
+      schedule({ principalId: "principal", nextRunAt: "2026-01-01T00:01:00.000Z" }),
+      { skipScheduleBeforeActivationCutoff: async () => true },
+    );
+    const repository = current.repositories.get("repo")!;
+    repository.admissionState = "paused";
+    repository.activationCutoffAt = "2026-01-01T00:02:00.000Z";
+    await expect(
+      tryClaimScheduleFireDurable(current, "nightly", "2026-01-01T00:01:00.000Z", NOW),
+    ).resolves.toBeNull();
   });
 
   it("consumes durable cron occurrences rejected by the admission transaction", async () => {
@@ -171,6 +208,32 @@ describe("schedule fire residual coverage", () => {
       created: true,
     });
     expect(observedCutoff).toBe("2026-01-01T00:02:00.000Z");
+  });
+
+  it("materializes workspace schedule defaults into a durable claimed session", async () => {
+    const current = state(
+      schedule({
+        principalId: "principal",
+        workspacePoolId: "pool",
+        repositoryId: "",
+        destroyWorkspaceAfter: undefined,
+      }),
+      { tryClaimScheduleAndCreateSession: async () => ({ kind: "created" }) },
+    );
+    current.workspacePools.set("pool", {
+      id: "pool",
+      name: "pool",
+      setupProfiles: [],
+      destroyWorkspaceAfter: false,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    (current.storage as { getWorkspacePool: (id: string) => Promise<unknown> }).getWorkspacePool =
+      async (id) => current.workspacePools.get(id) ?? null;
+    await expect(tryClaimScheduleFireDurable(current, "nightly", NOW, NOW)).resolves.toMatchObject({
+      type: "workspace",
+      destroyWorkspaceAfter: false,
+    });
   });
 
   it("returns no durable cron work for a malformed evaluation timestamp", async () => {

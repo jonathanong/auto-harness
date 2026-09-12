@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- inventory route outcomes plus scoped PUT merge cases. */
 import { describe, expect, it } from "vitest";
 
+import { MAX_HOST_REGISTRATION_BYTES } from "@auto-harness/shared";
 import type { Principal } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import {
@@ -114,6 +115,21 @@ describe("host inventory route outcomes", () => {
 
     const handler = routeHandler(plane, "PUT", "/api/v1/hosts/host-1/inventory", scoped);
     expect(await invokeBadJson(handler, "PUT", "/api/v1/hosts/host-1/inventory")).toBe(400);
+  });
+
+  it("rejects an inventory whose daemon registration would exceed the frame limit", async () => {
+    const plane = new ControlPlane();
+    const response = await invoke(plane, "PUT", "/api/v1/hosts/oversized/inventory", {
+      workspacePools: [
+        {
+          workspacePoolId: "pool",
+          slots: [{ id: "slot", name: "slot", path: "x".repeat(MAX_HOST_REGISTRATION_BYTES) }],
+        },
+      ],
+      repositories: [],
+    });
+    expect(response).toMatchObject({ status: 400 });
+    expect(plane.getHostInventory("oversized")).toBeNull();
   });
 
   it("returns scoped writes, missing deletes, and false for unsupported methods", async () => {

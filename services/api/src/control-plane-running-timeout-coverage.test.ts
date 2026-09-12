@@ -1,8 +1,9 @@
 /* eslint-disable max-lines -- timeout coverage cases share one session fixture. */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { settleStorage } from "./control-plane-state.ts";
+import { createControlPlaneState, settleStorage } from "./control-plane-state.ts";
+import { reclaimReconnectDeadlines } from "./control-plane-reconnect.ts";
 import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import {
   RUNNING_TIMEOUT_NOW as NOW,
@@ -42,6 +43,137 @@ function scheduledRunning(over: Partial<SessionRecord> = {}): SessionRecord {
 }
 
 describe("running timeout residual coverage", () => {
+  it("preserves a disconnected workspace reconnect marker through durable timeout", async () => {
+    const plane = new ControlPlane({ now: () => NOW });
+    const reconnectDeadlineAt = new Date(Date.parse(NOW) + 30_000).toISOString();
+    const session = scheduledRunning({
+      id: "disconnected-workspace-timeout",
+      repositoryId: "",
+      workspacePoolId: "pool",
+      workspaceSlotId: "slot",
+      workspaceSlotLease: true,
+      mainCheckoutLease: undefined,
+      reconnectDeadlineAt,
+    });
+    plane.state.sessions.set(session.id, session);
+    let finished: Record<string, unknown> | undefined;
+    plane.state.storage = {
+      listAllSessions: async () => [session],
+      listLogs: async () => [],
+      putArchive: async () => undefined,
+      finishSession: async (opts: Record<string, unknown>) => {
+        finished = opts;
+        return true;
+      },
+    } as never;
+
+    await expect(
+      plane.enforceRunningTimeoutsDurable(Date.parse(NOW) + TIMEOUT_SECONDS * 1000),
+    ).resolves.toEqual([session.id]);
+    expect(finished).toMatchObject({
+      status: "timed_out",
+      workspaceSlotId: "slot",
+      preserveWorkspaceSlotLease: true,
+      preserveReconnectDeadlineAt: true,
+    });
+    expect(plane.getSession(session.id)).toMatchObject({
+      status: "timed_out",
+      workspaceSlotId: "slot",
+      reconnectDeadlineAt,
+    });
+  });
+
+  it("reclaims a timeout-preserved workspace when reconnect grace expires", async () => {
+    const reconnectDeadlineAt = new Date(Date.parse(NOW) + 30_000).toISOString();
+    const state = createControlPlaneState({ now: () => NOW });
+    const session = scheduledRunning({
+      id: "expired-workspace-timeout",
+      repositoryId: "",
+      workspacePoolId: "pool",
+      workspaceSlotId: "slot",
+      workspaceSlotLease: true,
+      mainCheckoutLease: undefined,
+      hostId: null,
+      timedOutHostId: "host",
+      reconnectDeadlineAt,
+      status: "timed_out",
+    });
+    state.sessions.set(session.id, session);
+    state.workspaceSlots.set("slot", {
+      id: "slot",
+      name: "slot",
+      path: "/workspace/slot",
+      hostId: "host",
+      workspacePoolId: "pool",
+      status: "busy",
+      online: false,
+      currentSessionId: session.id,
+    });
+
+    await expect(
+      reclaimReconnectDeadlines(state, Date.parse(reconnectDeadlineAt)),
+    ).resolves.toEqual([]);
+    expect(state.sessions.get(session.id)).toMatchObject({
+      status: "timed_out",
+      workspaceSlotId: null,
+      hostId: null,
+    });
+    expect(state.workspaceSlots.get("slot")).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+    });
+  });
+
+  it("atomically releases a durable timed-out workspace after reconnect grace", async () => {
+    const reconnectDeadlineAt = new Date(Date.parse(NOW) + 30_000).toISOString();
+    const state = createControlPlaneState({ now: () => NOW });
+    const session = scheduledRunning({
+      id: "durable-expired-workspace-timeout",
+      repositoryId: "",
+      workspacePoolId: "pool",
+      workspaceSlotId: "slot",
+      workspaceSlotLease: true,
+      mainCheckoutLease: undefined,
+      reconnectDeadlineAt,
+      status: "timed_out",
+    });
+    const slot = {
+      id: "slot",
+      name: "slot",
+      path: "/workspace/slot",
+      hostId: "host",
+      workspacePoolId: "pool",
+      status: "busy" as const,
+      online: false,
+      currentSessionId: session.id,
+    };
+    const finishSession = vi.fn(async () => true);
+    state.sessions.set(session.id, session);
+    state.storage = {
+      listAllSessions: async () => [session],
+      getWorkspaceSlot: async () => slot,
+      finishSession,
+      listLogs: async () => [],
+      putArchive: async () => undefined,
+    } as never;
+
+    await expect(
+      reclaimReconnectDeadlines(state, Date.parse(reconnectDeadlineAt)),
+    ).resolves.toEqual([]);
+    expect(finishSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "timed_out",
+        expectedStatus: "timed_out",
+        workspaceSlotId: "slot",
+        expectedReconnectDeadlineAt: reconnectDeadlineAt,
+      }),
+    );
+    expect(state.sessions.get(session.id)).toMatchObject({
+      status: "timed_out",
+      workspaceSlotId: null,
+    });
+  });
+
   it("skips queued, unacked, undated, and invalid running rows", async () => {
     const plane = new ControlPlane({ now: () => NOW });
     seedBaseCommand(plane);
@@ -81,6 +213,88 @@ describe("running timeout residual coverage", () => {
     expect(plane.getWorktree(worktreeId)?.status).toBe("busy");
     expect(plane.getSession(sessionId)?.worktreeId).toBeNull();
     expect(cancels).toEqual([`host:${sessionId}`]);
+  });
+
+  it("releases a timed-out local workspace slot so it is reusable", () => {
+    const plane = new ControlPlane({ now: () => NOW });
+    const session = scheduledRunning({
+      id: "workspace-timeout",
+      repositoryId: "",
+      workspacePoolId: "pool",
+      workspaceSlotId: "slot",
+      workspaceSlotLease: true,
+      mainCheckoutLease: undefined,
+    });
+    plane.state.sessions.set(session.id, session);
+    plane.state.workspaceSlots.set("slot", {
+      id: "slot",
+      name: "slot",
+      path: "/workspace/slot",
+      hostId: "host",
+      workspacePoolId: "pool",
+      status: "busy",
+      online: true,
+      currentSessionId: session.id,
+      errorMessage: "stale failure",
+    });
+
+    expect(plane.enforceRunningTimeouts(Date.parse(NOW) + TIMEOUT_SECONDS * 1000)).toEqual([
+      session.id,
+    ]);
+    expect(plane.getSession(session.id)).toMatchObject({
+      status: "timed_out",
+      workspaceSlotId: null,
+    });
+    expect(plane.state.workspaceSlots.get("slot")).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+    });
+    expect(plane.state.workspaceSlots.get("slot")).not.toHaveProperty("errorMessage");
+  });
+
+  it("does not release a slot owned by another session when recording a workspace timeout", () => {
+    const plane = new ControlPlane({ now: () => NOW });
+    const session = scheduledRunning({
+      id: "workspace-race",
+      repositoryId: "",
+      workspacePoolId: "pool",
+      workspaceSlotId: "slot",
+      workspaceSlotLease: true,
+      mainCheckoutLease: undefined,
+    });
+    plane.state.sessions.set(session.id, session);
+    plane.state.workspaceSlots.set("slot", {
+      id: "slot",
+      name: "slot",
+      path: "/workspace/slot",
+      hostId: "host",
+      workspacePoolId: "pool",
+      status: "busy",
+      online: true,
+      currentSessionId: "replacement",
+    });
+
+    expect(plane.enforceRunningTimeouts(Date.parse(NOW) + TIMEOUT_SECONDS * 1000)).toEqual([
+      session.id,
+    ]);
+    expect(plane.state.workspaceSlots.get("slot")).toMatchObject({
+      status: "busy",
+      currentSessionId: "replacement",
+    });
+    expect(plane.getSession(session.id)).toMatchObject({
+      status: "timed_out",
+      workspaceSlotId: null,
+    });
+  });
+
+  it("times out sessions without a workspace slot lease", () => {
+    const plane = new ControlPlane({ now: () => NOW });
+    const session = scheduledRunning({ id: "without-workspace", workspaceSlotId: null });
+    plane.state.sessions.set(session.id, session);
+    expect(plane.enforceRunningTimeouts(Date.parse(NOW) + TIMEOUT_SECONDS * 1000)).toEqual([
+      session.id,
+    ]);
+    expect(plane.getSession(session.id)).toMatchObject({ status: "timed_out" });
   });
 
   it("releases a scheduled main-checkout lease and a concurrency lock", async () => {

@@ -115,6 +115,7 @@ export function SessionLiveDetail({
           cloneEditHref={`/sessions/new?cloneFrom=${encodeURIComponent(session.id)}`}
           canCancel={canCancel}
           canResume={canResume}
+          sessionType={session.type}
           canClone={canClone}
           canArchive={canArchive}
           onArchiveSuccess={() => setArchiveRefresh((current) => current + 1)}

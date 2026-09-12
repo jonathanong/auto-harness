@@ -36,6 +36,20 @@ describe("host-inventory", () => {
     expect(inv.setupScript).toBe("source ~/.zshrc");
   });
 
+  it("deep-clones attached workspace pool slots through unrelated mutations", () => {
+    const seeded = {
+      repositories: [],
+      providerAccounts: [],
+      workspacePools: [
+        { workspacePoolId: "pool-1", slots: [{ id: "slot-1", name: "one", path: "/srv/one" }] },
+      ],
+    };
+    const next = updateHostSetupScript(seeded, "echo host");
+    expect(next.workspacePools).toEqual(seeded.workspacePools);
+    expect(next.workspacePools).not.toBe(seeded.workspacePools);
+    expect(next.workspacePools?.[0]?.slots).not.toBe(seeded.workspacePools[0].slots);
+  });
+
   it("clones a host-wide update config through unrelated mutations", () => {
     const seeded = updateHostSetupScript(
       {

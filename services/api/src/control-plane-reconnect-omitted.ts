@@ -7,6 +7,10 @@ import {
   releaseProviderAccountLease,
 } from "./control-plane-provider-account-leases.ts";
 import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
+import {
+  removeReleasedRetiredWorkspaceSlot,
+  removeReleasedRetiredWorkspaceSlotDurable,
+} from "./control-plane-workspace-slot-retirement.ts";
 
 /**
  * Requeue every worktree-owned session this host is not currently reporting as
@@ -78,6 +82,76 @@ async function requeueOmittedWorktreeSessions(
   }
 }
 
+/** Requeue an omitted workspace attempt and atomically release its exact slot. */
+async function requeueOmittedWorkspaceSessions(
+  state: ControlPlaneState,
+  hostId: string,
+  connectionId: string | undefined,
+  running: ReadonlySet<string>,
+  reason: string,
+  requeued: string[],
+  activeSessions: readonly import("./db/types.ts").SessionRecord[],
+): Promise<void> {
+  for (const session of activeSessions) {
+    if (session.status !== "running" || !session.workspaceSlotId || running.has(session.id)) {
+      continue;
+    }
+    const slot = state.storage
+      ? await state.storage.getWorkspaceSlot(session.workspaceSlotId)
+      : state.workspaceSlots.get(session.workspaceSlotId);
+    if (
+      !slot ||
+      slot.status !== "busy" ||
+      slot.currentSessionId !== session.id ||
+      slot.hostId !== hostId
+    ) {
+      continue;
+    }
+    if (!state.storage) {
+      releaseProviderAccountLease(state, session);
+      state.sessions.set(session.id, queueReconnectSession(session, reason));
+      const { errorMessage: _, ...cleanSlot } = slot;
+      state.workspaceSlots.set(slot.id, {
+        ...cleanSlot,
+        status: "idle",
+        currentSessionId: null,
+      });
+      removeReleasedRetiredWorkspaceSlot(state, slot.id);
+      state.pendingAcks.delete(session.id);
+      requeued.push(session.id);
+      continue;
+    }
+    if (!connectionId) continue;
+    const released = await state.storage.finishSession({
+      sessionId: session.id,
+      worktreeId: null,
+      workspaceSlotId: slot.id,
+      attemptId: session.attemptId!,
+      status: "queued",
+      expectedStatus: "running",
+      queueShard: session.queueShard,
+      errorMessage: reason,
+      fence: { hostId, connectionId },
+      ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+      ...providerAccountLeaseWriteOpts(session),
+      ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+    });
+    if (!released) continue;
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+    releaseProviderAccountLease(state, session);
+    state.sessions.set(session.id, queueReconnectSession(session, reason));
+    const { errorMessage: _, ...cleanSlot } = slot;
+    state.workspaceSlots.set(slot.id, {
+      ...cleanSlot,
+      status: "idle",
+      currentSessionId: null,
+    });
+    await removeReleasedRetiredWorkspaceSlotDurable(state, slot.id);
+    state.pendingAcks.delete(session.id);
+    requeued.push(session.id);
+  }
+}
+
 /**
  * Requeue every session (worktree- or main-checkout-owned) this host claims to
  * own server-side but does not include in `running`. `connectionId` must be
@@ -99,6 +173,15 @@ export async function reconcileHostOwnedSessions(
       : [...state.sessions.values()].filter((session) => session.hostId === hostId)
     : [...state.sessions.values()].filter((session) => session.hostId === hostId);
   await requeueOmittedWorktreeSessions(
+    state,
+    hostId,
+    connectionId,
+    running,
+    reason,
+    requeued,
+    activeSessions,
+  );
+  await requeueOmittedWorkspaceSessions(
     state,
     hostId,
     connectionId,
