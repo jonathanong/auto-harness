@@ -216,7 +216,15 @@ describe("createGitClient checkout and revParse", () => {
     ).resolves.toBeNull();
     expect(fetchEnvironment?.GIT_CONFIG_NOSYSTEM).toBe("1");
     expect(fetchEnvironment?.GIT_CONFIG_GLOBAL).toBe("/dev/null");
-    expect(fetchEnvironment).not.toHaveProperty("GIT_CONFIG_COUNT");
+    expect(fetchEnvironment).toMatchObject({
+      GIT_CONFIG_COUNT: "3",
+      GIT_CONFIG_KEY_0: "core.hooksPath",
+      GIT_CONFIG_KEY_1: "credential.helper",
+      GIT_CONFIG_KEY_2: "http.proxy",
+      GIT_CONFIG_VALUE_0: "/dev/null",
+      GIT_CONFIG_VALUE_1: "",
+      GIT_CONFIG_VALUE_2: "",
+    });
   });
 
   it("checkoutRef detaches at resolved sha", async () => {

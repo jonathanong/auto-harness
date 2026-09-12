@@ -53,7 +53,9 @@ function httpsUrl(value: string, context: string): string {
   if (parsed.protocol !== "https:" || parsed.username.length > 0 || parsed.password.length > 0) {
     throw new Error(`${context} must be an https URL`);
   }
-  return value;
+  // Git receives this exact string as a transport operand. Return WHATWG's canonical HTTPS form
+  // so backslash spellings cannot be interpreted by Git as scp-like SSH syntax.
+  return parsed.toString();
 }
 
 function assertRootOwnedPath(path: string, inspect: InspectPolicyPath): void {

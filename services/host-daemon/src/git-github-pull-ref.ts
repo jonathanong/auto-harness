@@ -31,14 +31,22 @@ export function gitObjectFormat(value: string): GitObjectFormat | undefined {
 }
 
 function isolatedFetchEnvironment(objectDirectory: string | undefined): NodeJS.ProcessEnv {
-  // Do not let system or user configuration rewrite the daemon-pinned URL. The temporary bare
-  // repository below is new for this operation, so it has no repository-local URL rewrites either.
+  // Do not let system, user, or scratch-repository settings run hooks or supply ambient transport
+  // credentials. The advertised SHA remains the immutable identity boundary if a same-UID session
+  // tampers with other mutable scratch-repository configuration between subprocesses.
   return {
     ...createChildEnv(),
     // A platform null device cannot be planted by a concurrent session, unlike a config file in
     // the same-UID temporary directory used for the isolated bare repository.
+    GIT_CONFIG_COUNT: "3",
     GIT_CONFIG_GLOBAL: nullGlobalGitConfigPath(),
+    GIT_CONFIG_KEY_0: "core.hooksPath",
+    GIT_CONFIG_KEY_1: "credential.helper",
+    GIT_CONFIG_KEY_2: "http.proxy",
     GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_VALUE_0: nullGlobalGitConfigPath(),
+    GIT_CONFIG_VALUE_1: "",
+    GIT_CONFIG_VALUE_2: "",
     GIT_NO_REPLACE_OBJECTS: "1",
     ...(objectDirectory === undefined
       ? {}

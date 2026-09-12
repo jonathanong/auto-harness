@@ -190,6 +190,13 @@ describe("GitHub pull-ref host policy", () => {
     }
   });
 
+  it("canonicalizes HTTPS URL spellings before Git receives the transport operand", () => {
+    const remoteUrl = String.raw`https:\\github.example\repository.git`;
+    expect(load(repositoryConfig({ remoteUrl })).get("/srv/repository")?.remoteUrl).toBe(
+      "https://github.example/repository.git",
+    );
+  });
+
   it("rejects symlinked, non-root-owned, and session-writable policy paths", () => {
     for (const [path, status, message] of [
       [configPath, { ...rootOwnedFile, isSymbolicLink: () => true }, "must not traverse symlinks"],
