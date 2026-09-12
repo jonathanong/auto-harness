@@ -220,7 +220,7 @@ export function createGitClient(
           ? await runGit(runner, cwd, ["rev-parse", "HEAD"], signal)
           : undefined;
         pullRequestFetch = isPullRequestRef
-          ? targetObjectFormat === undefined || !filtersAreAbsent
+          ? targetObjectFormat === undefined
             ? null
             : await fetchGitHubPullRequestRef(
                 runner,
@@ -256,7 +256,7 @@ export function createGitClient(
         if (resolved !== undefined && resolved.exitCode !== 0) {
           throw gitFailure(`Failed to resolve ref ${ref}`, resolved.stderr);
         }
-        sha = pullRequestFetch?.sha ?? resolved?.stdout.trim() ?? "";
+        sha = isPullRequestRef ? pullRequestFetch!.sha : resolved!.stdout.trim();
         let co = await checkoutDetached(runner, cwd, sha, signal, pullCheckoutEnvironment);
         if (co.exitCode !== 0 && co.stderr.includes("index.lock")) {
           if (await removeStaleIndexLock(runner, cwd, claimedCommonDir, signal)) {
