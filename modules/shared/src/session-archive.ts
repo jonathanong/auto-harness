@@ -14,4 +14,5 @@ export type SessionArchiveReadResponse =
       bodyBytes: number;
     }
   | { state: "incomplete"; reason: SessionArchiveIncompleteReason }
+  | { state: "expired" }
   | { state: "unavailable" };

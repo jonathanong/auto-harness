@@ -319,8 +319,11 @@ export class ControlPlaneSessionsService {
     return lifecycle.getArchive(this.state, sessionId);
   }
 
-  getArchiveDownloadDurable(sessionId: string): Promise<SessionArchiveReadResponse> {
-    return lifecycle.getArchiveDownloadDurable(this.state, sessionId);
+  getArchiveDownloadDurable(
+    sessionId: string,
+    terminalAt?: string,
+  ): Promise<SessionArchiveReadResponse> {
+    return lifecycle.getArchiveDownloadDurable(this.state, sessionId, terminalAt);
   }
 
   listArchives(): ArchiveMetadata[] {

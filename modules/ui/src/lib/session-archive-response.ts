@@ -11,7 +11,13 @@ export function isSessionArchiveReadResponse(value: unknown): value is SessionAr
     bodyBytes?: unknown;
     reason?: unknown;
   };
-  if (candidate.state === "dynamodb" || candidate.state === "unavailable") return true;
+  if (
+    candidate.state === "dynamodb" ||
+    candidate.state === "expired" ||
+    candidate.state === "unavailable"
+  ) {
+    return true;
+  }
   if (
     candidate.state === "incomplete" &&
     (candidate.reason === "content-length-mismatch" ||

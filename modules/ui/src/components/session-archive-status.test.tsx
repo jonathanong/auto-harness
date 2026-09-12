@@ -112,6 +112,17 @@ describe("SessionArchiveStatus", () => {
     view.unmount();
   });
 
+  it("shows an expired transcript as a warning without a download", async () => {
+    expect(isSessionArchiveReadResponse({ state: "expired" })).toBe(true);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({ state: "expired" })));
+    const view = mount(<SessionArchiveStatus sessionId="session" terminal={false} />);
+    await settle();
+    expect(field(view.container, "session-archive-state").textContent).toContain("expired");
+    expect(field(view.container, "session-archive-status").className).toContain("text-amber-800");
+    expect(view.container.querySelector('[data-pw="session-archive-download"]')).toBeNull();
+    view.unmount();
+  });
+
   it("refreshes when the owning detail view signals a successful archive action", async () => {
     const fetchMock = vi
       .fn()

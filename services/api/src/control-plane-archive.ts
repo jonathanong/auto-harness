@@ -2,6 +2,7 @@
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { ArchiveMetadata, ArchiveObject } from "./control-plane-types.ts";
 import type { SessionArchiveReadResponse } from "@auto-harness/shared";
+import { SESSION_LOGS_TTL_SECONDS } from "./db/dynamo.ts";
 
 async function rewriteWinningArchive(
   state: ControlPlaneState,
@@ -236,11 +237,24 @@ export function getArchive(state: ControlPlaneState, sessionId: string): Archive
 export async function getArchiveDownloadDurable(
   state: ControlPlaneState,
   sessionId: string,
+  terminalAt?: string,
 ): Promise<SessionArchiveReadResponse> {
   const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
   const metadata = state.storage ? await state.storage.getArchive(key) : state.archives.get(key);
   if (metadata) state.archives.set(key, metadata);
-  if (!metadata || metadata.status !== "complete") return { state: "dynamodb" };
+  if (!metadata || metadata.status !== "complete") {
+    const retentionAnchor = terminalAt ?? metadata?.updatedAt;
+    const retainedAtMs = retentionAnchor === undefined ? Number.NaN : Date.parse(retentionAnchor);
+    const nowMs = Date.parse(state.now());
+    if (
+      Number.isFinite(retainedAtMs) &&
+      Number.isFinite(nowMs) &&
+      nowMs >= retainedAtMs + SESSION_LOGS_TTL_SECONDS * 1_000
+    ) {
+      return { state: "expired" };
+    }
+    return { state: "dynamodb" };
+  }
   if (!metadata.objectStored || !state.archiveReader) return { state: "unavailable" };
   const result = await state.archiveReader.createDownload({
     key,

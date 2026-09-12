@@ -152,7 +152,11 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
         send(res, 200, { state: "dynamodb" });
       } else {
         res.setHeader("Cache-Control", "no-store");
-        send(res, 200, await plane.getArchiveDownloadDurable(archiveMatch[1]!));
+        send(
+          res,
+          200,
+          await plane.getArchiveDownloadDurable(archiveMatch[1]!, session.completedAt),
+        );
       }
     } catch {
       sendInternalError(res);
