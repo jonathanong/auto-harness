@@ -611,6 +611,21 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Target:
+      type: object
+      properties:
+        providerId: { type: string, minLength: 1 }
+        commandId: { type: string, minLength: 1 }
+      oneOf:
+        - required: [providerId]
+        - required: [commandId]
+      additionalProperties: false
     CustomWebhookConfig:
       type: object
       required: [repositoryId, target, timeout]
@@ -618,22 +633,8 @@ components:
       properties:
         secret: { type: string, minLength: 16, maxLength: 512, writeOnly: true }
         repositoryId: { type: string, minLength: 1 }
-        target:
-          oneOf:
-            - {
-                type: object,
-                required: [providerId],
-                properties: { providerId: { type: string } },
-                additionalProperties: false,
-              }
-            - {
-                type: object,
-                required: [commandId],
-                properties: { commandId: { type: string } },
-                additionalProperties: false,
-              }
-        fallbacks:
-          { type: array, maxItems: 90, items: { $ref: "#/components/schemas/CustomWebhookTarget" } }
+        target: { $ref: "#/components/schemas/Target" }
+        fallbacks: { type: array, maxItems: 90, items: { $ref: "#/components/schemas/Target" } }
         queueTtlSeconds: { type: number, minimum: 1 }
         timeout: { type: number, minimum: 1 }
         priority: { type: integer }
@@ -642,20 +643,6 @@ components:
           maxItems: 16
           items: { type: string, minLength: 1, maxLength: 64 }
         enabled: { type: boolean }
-    CustomWebhookTarget:
-      oneOf:
-        - {
-            type: object,
-            required: [providerId],
-            properties: { providerId: { type: string } },
-            additionalProperties: false,
-          }
-        - {
-            type: object,
-            required: [commandId],
-            properties: { commandId: { type: string } },
-            additionalProperties: false,
-          }
     CustomWebhookIntegration:
       allOf:
         - $ref: "#/components/schemas/CustomWebhookConfig"
@@ -697,21 +684,6 @@ components:
         accepted: { type: boolean, const: true }
         sessionId: { type: string }
         created: { type: boolean }
-    Error:
-      description: Error response
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-  schemas:
-    Target:
-      type: object
-      properties:
-        providerId: { type: string, minLength: 1 }
-        commandId: { type: string, minLength: 1 }
-      oneOf:
-        - required: [providerId]
-        - required: [commandId]
-      additionalProperties: false
     CreateSession:
       description: Repository-backed or host-scoped workspace session input. Raw setupScript is intentionally not accepted.
       oneOf:
