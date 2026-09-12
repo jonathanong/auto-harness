@@ -328,8 +328,9 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
    [costs.md](costs.md#sessionlogs-cost-control)).
 2. The foundation provides the encrypted, versioned bucket and a narrowly scoped
    archive-write policy (`s3:PutObject` only below `sessions/*`). REST and Cron receive the bucket
-   name and that write policy; REST alone also receives `s3:GetObject` below `sessions/*` for
-   authorized archive retrieval. The WebSocket worker receives neither archive access.
+   name and that write policy; REST alone also receives `s3:GetObject` and `s3:GetObjectVersion`
+   below `sessions/*` for authorized, version-pinned archive retrieval. The WebSocket worker
+   receives neither archive access.
    Terminal-session processing:
    - Query all SessionLogs for `sessionId`
    - Write the `sessions/{sessionId}/logs.jsonl` object and track pending/completed state
@@ -337,10 +338,12 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
      REST and Cron write the object from those workers; there is no separate archival Lambda.
      WebSocket terminal transitions persist pending archive metadata without S3 access; Cron
      retries the same idempotent key. Cron's archive policy does not grant `s3:GetObject`,
-     `s3:DeleteObject`, `s3:GetBucketLocation`, or bucket deletion.
+     `s3:GetObjectVersion`, `s3:DeleteObject`, `s3:GetBucketLocation`, or bucket deletion.
 3. REST `GET /sessions/:id/logs` serves recent DynamoDB rows with bounded query
    parameters and may retrieve an authorized archived transcript through its separately scoped
-   `s3:GetObject` grant.
+   `s3:GetObject`/`s3:GetObjectVersion` grants. It captures the archive's `HeadObject` version
+   and pins that exact `VersionId` in the presigned download, so a later write cannot change the
+   transcript the authorized request selected.
 
 ### Connections model
 
@@ -538,8 +541,9 @@ If a `session:assign` was in flight when drain started, the agent nacks or fails
 | Lifecycle     | Standard → IA @ 30d → Glacier @ 90d                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Public access | Blocked                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
-IAM: REST and Cron can `s3:PutObject` below `sessions/*`; REST alone can `s3:GetObject` below
-that same prefix for authorized transcript retrieval. WebSocket has neither grant.
+IAM: REST and Cron can `s3:PutObject` below `sessions/*`; REST alone can `s3:GetObject` and
+`s3:GetObjectVersion` below that same prefix for authorized version-pinned transcript retrieval.
+WebSocket has neither grant.
 
 The API archive boundary writes terminal logs to this key as JSONL when `ARCHIVE_BUCKET` is
 configured. It also retains the archive metadata row in DynamoDB. Uploads use SSE-S3 and reject
@@ -564,12 +568,12 @@ See [integrations.md](integrations.md).
 
 ## IAM (least privilege)
 
-| Role        | Permissions                                                                                                                                                                                     |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| REST Lambda | DynamoDB item/query/transact on app tables; Scan only on list/hydrate tables (not SessionLogs); archive `s3:PutObject` and `s3:GetObject`; integration KMS encrypt/decrypt; `ManageConnections` |
-| WS Lambda   | Same DynamoDB item/query/Scan split; `execute-api:ManageConnections`. No archive policy, no integration KMS                                                                                     |
-| Cron Lambda | Same DynamoDB split; archive `s3:PutObject`; integration KMS decrypt; `ManageConnections`                                                                                                       |
-| EventBridge | `lambda:InvokeFunction` on Cron only                                                                                                                                                            |
+| Role        | Permissions                                                                                                                                                                                                             |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REST Lambda | DynamoDB item/query/transact on app tables; Scan only on list/hydrate tables (not SessionLogs); archive `s3:PutObject`, `s3:GetObject`, and `s3:GetObjectVersion`; integration KMS encrypt/decrypt; `ManageConnections` |
+| WS Lambda   | Same DynamoDB item/query/Scan split; `execute-api:ManageConnections`. No archive policy, no integration KMS                                                                                                             |
+| Cron Lambda | Same DynamoDB split; archive `s3:PutObject`; integration KMS decrypt; `ManageConnections`                                                                                                                               |
+| EventBridge | `lambda:InvokeFunction` on Cron only                                                                                                                                                                                    |
 
 Shared DynamoDB grants include `TransactWriteItems` / `TransactGetItems`. Scan is omitted from
 SessionLogs, AuditLogs, RateLimits, ViewerTickets, HostLocks, ConcurrencyLocks, Integrations,

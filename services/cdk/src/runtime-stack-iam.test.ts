@@ -61,15 +61,19 @@ describe("runtime Lambda IAM split", () => {
     expect(rest).toContain("kms:Encrypt");
     expect(rest).toContain("kms:Decrypt");
     expect(rest).toContain("s3:GetObject");
+    expect(rest).toContain("s3:GetObjectVersion");
     expect(cron).toContain("kms:Decrypt");
     expect(cron).not.toContain("kms:Encrypt");
     expect(cron).not.toContain("s3:GetObject");
+    expect(cron).not.toContain("s3:GetObjectVersion");
     expect(websocket).not.toContain("kms:Encrypt");
     expect(websocket).not.toContain("s3:GetObject");
+    expect(websocket).not.toContain("s3:GetObjectVersion");
 
-    const archiveRead = policyDocuments(template, "index.rest").find(
-      (statement) => (statement as { Action?: unknown }).Action === "s3:GetObject",
-    ) as { Resource?: unknown } | undefined;
+    const archiveRead = policyDocuments(template, "index.rest").find((statement) => {
+      const action = (statement as { Action?: unknown }).Action;
+      return Array.isArray(action) && action.includes("s3:GetObjectVersion");
+    }) as { Resource?: unknown } | undefined;
     expect(JSON.stringify(archiveRead?.Resource)).toContain("sessions/*");
 
     const websocketFn = functionByHandler(template, "index.websocket");

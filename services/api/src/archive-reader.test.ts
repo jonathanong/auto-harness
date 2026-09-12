@@ -12,7 +12,8 @@ function reader(
     StorageClass?: string;
     Restore?: string;
     ArchiveStatus?: string;
-  } = { ContentLength: 12, ContentType: "application/x-ndjson" },
+    VersionId?: string;
+  } = { ContentLength: 12, ContentType: "application/x-ndjson", VersionId: "archive-v1" },
 ) {
   const send = vi.fn(async () => head);
   const sign = vi.fn(async () => "https://archive.example.test/signed");
@@ -47,6 +48,7 @@ describe("S3ArchiveReader", () => {
     expect(fixture.sign.mock.calls[0]![1].input).toEqual({
       Bucket: "archive-bucket",
       Key: "sessions/session-1/logs.jsonl",
+      VersionId: "archive-v1",
       ResponseContentDisposition: 'attachment; filename="session-logs.jsonl"',
       ResponseContentType: "application/x-ndjson",
     });
@@ -57,7 +59,11 @@ describe("S3ArchiveReader", () => {
   });
 
   it("allows a verified empty archive", async () => {
-    const fixture = reader({ ContentLength: 0, ContentType: "application/x-ndjson" });
+    const fixture = reader({
+      ContentLength: 0,
+      ContentType: "application/x-ndjson",
+      VersionId: "empty-v1",
+    });
     await expect(
       fixture.reader.createDownload({
         key: "sessions/empty/logs.jsonl",
@@ -72,6 +78,7 @@ describe("S3ArchiveReader", () => {
     ["non-canonical key", { key: "sessions/session-1/alternate.jsonl" }],
     ["length mismatch", { bodyBytes: 13 }],
     ["content type mismatch", { contentType: "text/plain" }],
+    ["length and content type mismatch", { bodyBytes: 13, contentType: "text/plain" }],
     ["invalid clock", { now: "invalid" }],
   ])("marks %s unavailable", async (_name, override) => {
     const fixture = reader();
@@ -83,7 +90,28 @@ describe("S3ArchiveReader", () => {
         now,
         ...override,
       }),
+    ).resolves.toEqual(
+      "bodyBytes" in override && "contentType" in override
+        ? { available: false, reason: "content-length-and-type-mismatch" }
+        : "bodyBytes" in override
+          ? { available: false, reason: "content-length-mismatch" }
+          : "contentType" in override
+            ? { available: false, reason: "content-type-mismatch" }
+            : { available: false },
+    );
+  });
+
+  it("does not sign an object when S3 does not provide a version id", async () => {
+    const fixture = reader({ ContentLength: 12, ContentType: "application/x-ndjson" });
+    await expect(
+      fixture.reader.createDownload({
+        key: "sessions/session-1/logs.jsonl",
+        contentType: "application/x-ndjson",
+        bodyBytes: 12,
+        now,
+      }),
     ).resolves.toEqual({ available: false });
+    expect(fixture.sign).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -111,6 +139,7 @@ describe("S3ArchiveReader", () => {
     const fixture = reader({
       ContentLength: 12,
       ContentType: "application/x-ndjson",
+      VersionId: "glacier-v1",
       StorageClass: "GLACIER",
       Restore: 'ongoing-request="false", expiry-date="Fri, 02 Jan 2026 00:00:00 GMT"',
     });

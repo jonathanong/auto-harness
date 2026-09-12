@@ -100,6 +100,18 @@ describe("SessionArchiveStatus", () => {
     view.unmount();
   });
 
+  it("shows an integrity-incomplete archive as a warning and never offers it for download", async () => {
+    const incomplete = { state: "incomplete", reason: "content-type-mismatch" } as const;
+    expect(isSessionArchiveReadResponse(incomplete)).toBe(true);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(incomplete)));
+    const view = mount(<SessionArchiveStatus sessionId="session" terminal={false} />);
+    await settle();
+    expect(field(view.container, "session-archive-state").textContent).toContain("integrity");
+    expect(field(view.container, "session-archive-status").className).toContain("text-amber-800");
+    expect(view.container.querySelector('[data-pw="session-archive-download"]')).toBeNull();
+    view.unmount();
+  });
+
   it("refreshes when the owning detail view signals a successful archive action", async () => {
     const fetchMock = vi
       .fn()

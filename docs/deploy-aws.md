@@ -527,14 +527,14 @@ stack survives its destroy phases — it never reports success on a partial resu
 The lifecycle script supplies the runtime stack's SSM parameter names. Secret
 values themselves are never CDK parameters or context.
 
-| Output                                                      | Consumer                                                                                                                                    |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TablePrefix`; `UsersTableName` through `CommandsTableName` | Current storage naming / future API configuration                                                                                           |
-| `ArchiveBucketName`, `ArchiveBucketArn`                     | Future archival runtime configuration                                                                                                       |
-| `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn`      | Runtime Lambda attachments: all three get the DynamoDB policy; REST and Cron get archive PutObject, while REST alone gets archive GetObject |
-| `IntegrationKeyArn`                                         | Foundation-owned integration encryption                                                                                                     |
-| `RestApiUrl`, `WebSocketUrl`                                | Debugging only — direct REST ingress is origin-protected; **not** a value to hand to a host daemon; see below                               |
-| `WebUrl`                                                    | Browser control-plane URL **and** the value to set as `HARNESS_API_URL` on every host daemon                                                |
+| Output                                                      | Consumer                                                                                                                                                     |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TablePrefix`; `UsersTableName` through `CommandsTableName` | Current storage naming / future API configuration                                                                                                            |
+| `ArchiveBucketName`, `ArchiveBucketArn`                     | Future archival runtime configuration                                                                                                                        |
+| `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn`      | Runtime Lambda attachments: all three get the DynamoDB policy; REST and Cron get archive PutObject, while REST alone gets archive GetObject/GetObjectVersion |
+| `IntegrationKeyArn`                                         | Foundation-owned integration encryption                                                                                                                      |
+| `RestApiUrl`, `WebSocketUrl`                                | Debugging only — direct REST ingress is origin-protected; **not** a value to hand to a host daemon; see below                                                |
+| `WebUrl`                                                    | Browser control-plane URL **and** the value to set as `HARNESS_API_URL` on every host daemon                                                                 |
 
 `RestApiUrl` and `WebSocketUrl` are two different hostnames — API Gateway v2 fixes
 `protocolType` at creation, so REST and WebSocket are necessarily separate APIs (see

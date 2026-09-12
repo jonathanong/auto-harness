@@ -1,5 +1,6 @@
 import { GetObjectCommand, HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import type { SessionArchiveIncompleteReason } from "@auto-harness/shared";
 
 const DOWNLOAD_EXPIRES_SECONDS = 5 * 60;
 const ARCHIVE_CONTENT_DISPOSITION = 'attachment; filename="session-logs.jsonl"';
@@ -11,6 +12,7 @@ type ArchiveS3Client = {
     StorageClass?: string;
     Restore?: string;
     ArchiveStatus?: string;
+    VersionId?: string;
   }>;
 };
 
@@ -22,7 +24,8 @@ type ArchiveSigner = (
 
 export type ArchiveReaderResult =
   | { available: true; downloadUrl: string; expiresAt: string }
-  | { available: false };
+  | { available: false }
+  | { available: false; reason: SessionArchiveIncompleteReason };
 
 export type ArchiveReader = {
   createDownload(input: {
@@ -65,14 +68,23 @@ export class S3ArchiveReader implements ArchiveReader {
       const head = await this.client.send(
         new HeadObjectCommand({ Bucket: this.bucket, Key: input.key }),
       );
-      if (
-        head.ContentLength !== input.bodyBytes ||
-        head.ContentType !== input.contentType ||
-        head.ArchiveStatus !== undefined ||
-        !isRestored(head.StorageClass, head.Restore)
-      ) {
+      const lengthMismatch = head.ContentLength !== input.bodyBytes;
+      const typeMismatch = head.ContentType !== input.contentType;
+      if (lengthMismatch || typeMismatch) {
+        return {
+          available: false,
+          reason:
+            lengthMismatch && typeMismatch
+              ? "content-length-and-type-mismatch"
+              : lengthMismatch
+                ? "content-length-mismatch"
+                : "content-type-mismatch",
+        };
+      }
+      if (head.ArchiveStatus !== undefined || !isRestored(head.StorageClass, head.Restore)) {
         return { available: false };
       }
+      if (!head.VersionId) return { available: false };
       const signingDate = new Date(input.now);
       if (Number.isNaN(signingDate.valueOf())) return { available: false };
       const downloadUrl = await this.signer(
@@ -82,6 +94,7 @@ export class S3ArchiveReader implements ArchiveReader {
           Key: input.key,
           ResponseContentDisposition: ARCHIVE_CONTENT_DISPOSITION,
           ResponseContentType: input.contentType,
+          VersionId: head.VersionId,
         }),
         { expiresIn: DOWNLOAD_EXPIRES_SECONDS, signingDate },
       );

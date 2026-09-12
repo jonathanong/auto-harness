@@ -258,6 +258,8 @@ performs a fresh `GET /api/v1/sessions/:id/archive` before each download so the 
 short-lived and reflects current availability. **Archived transcript is unavailable for retrieval**
 means archive metadata exists but the verified S3 object cannot currently be read. Refresh archive
 rechecks any state manually, and a successful Archive logs action triggers an immediate recheck.
+**Archived transcript failed integrity verification** means S3's version-pinned object length or
+content type differs from the verified DynamoDB metadata; it is withheld from download until repaired.
 
 **Behavior:**
 
@@ -268,19 +270,19 @@ rechecks any state manually, and a successful Archive logs action triggers an im
 
 **Terminal controls:**
 
-| Control      | Function                                                                                                                                                                       |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Search       | `Ctrl+F` to search within log output. Readable view shows `N of M`; raw terminal reports match / no match.                                                                     |
-| Pretty JSON  | Pretty-print JSONL records with 2-space indent (readable view, on by default).                                                                                                 |
-| Type filters | Show all records or restrict to message / thinking / tool / event / error / system / output. Numbering is stable.                                                              |
-| Line links   | Click a gutter number to copy a `#L<n>` URL and highlight that record.                                                                                                         |
-| Raw terminal | Replay the closed stream in xterm.js at the PTY's 120×40 grid.                                                                                                                 |
-| Copy         | Select text and copy. Right-click context menu.                                                                                                                                |
-| Scroll       | Scroll up to view history. Auto-scroll snaps to bottom when new output arrives (unless the user has scrolled up).                                                              |
-| Font size    | `Ctrl+`/`Ctrl-` to adjust                                                                                                                                                      |
-| Fullscreen   | Expand the viewer to fill the viewport                                                                                                                                         |
-| Download     | Download the raw log as a `.txt` file                                                                                                                                          |
-| Archive      | Show whether the recent transcript is still in DynamoDB, archived and retrievable, or unavailable; refresh status and download a fresh archived `.jsonl` transcript when ready |
+| Control      | Function                                                                                                                                                                                             |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Search       | `Ctrl+F` to search within log output. Readable view shows `N of M`; raw terminal reports match / no match.                                                                                           |
+| Pretty JSON  | Pretty-print JSONL records with 2-space indent (readable view, on by default).                                                                                                                       |
+| Type filters | Show all records or restrict to message / thinking / tool / event / error / system / output. Numbering is stable.                                                                                    |
+| Line links   | Click a gutter number to copy a `#L<n>` URL and highlight that record.                                                                                                                               |
+| Raw terminal | Replay the closed stream in xterm.js at the PTY's 120×40 grid.                                                                                                                                       |
+| Copy         | Select text and copy. Right-click context menu.                                                                                                                                                      |
+| Scroll       | Scroll up to view history. Auto-scroll snaps to bottom when new output arrives (unless the user has scrolled up).                                                                                    |
+| Font size    | `Ctrl+`/`Ctrl-` to adjust                                                                                                                                                                            |
+| Fullscreen   | Expand the viewer to fill the viewport                                                                                                                                                               |
+| Download     | Download the raw log as a `.txt` file                                                                                                                                                                |
+| Archive      | Show whether the recent transcript is still in DynamoDB, archived and retrievable, integrity-incomplete, or unavailable; refresh status and download a fresh archived `.jsonl` transcript when ready |
 
 **Status transitions** are displayed as system messages in the terminal:
 

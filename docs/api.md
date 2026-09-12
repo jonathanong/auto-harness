@@ -1106,12 +1106,19 @@ The response is one of:
 { "state": "unavailable" }
 ```
 
+```json
+{ "state": "incomplete", "reason": "content-length-mismatch" }
+```
+
 `dynamodb` means the transcript remains on the recent-log path or archival is still pending.
 `archived` means S3 metadata was verified against the durable archive record and `downloadUrl` is
-a fresh five-minute presigned attachment URL for `session-logs.jsonl`. `unavailable` means an
-archive record exists but the object cannot currently be retrieved, including a cold Glacier
-object that has not been restored. The API does not initiate restores. Clients must request a new
-URL immediately before each download and must not persist or log it.
+a fresh five-minute presigned attachment URL for `session-logs.jsonl`. `incomplete` means the
+version-pinned S3 object was found, but its content length or content type differs from the verified
+DynamoDB metadata; `reason` is `content-length-mismatch`, `content-type-mismatch`, or
+`content-length-and-type-mismatch`. `unavailable` means an archive record exists but the object
+cannot currently be retrieved, including a cold Glacier object that has not been restored. The API
+does not initiate restores. Clients must request a new URL immediately before each download and
+must not persist or log it.
 
 ---
 

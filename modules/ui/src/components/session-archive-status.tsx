@@ -26,6 +26,7 @@ async function fetchArchiveStatus(sessionId: string): Promise<SessionArchiveRead
 function stateCopy(state: SessionArchiveReadResponse["state"] | null): string {
   if (state === "dynamodb") return "Recent transcript — not archived";
   if (state === "archived") return "Archived transcript is ready to download.";
+  if (state === "incomplete") return "Archived transcript failed integrity verification.";
   if (state === "unavailable") return "Archived transcript is unavailable for retrieval.";
   return "Checking transcript archive status…";
 }
@@ -109,7 +110,7 @@ export function SessionArchiveStatus({
   const state = archive?.state ?? null;
   return (
     <div
-      className={`flex flex-wrap items-center gap-2 text-sm ${state === "unavailable" ? "text-amber-800" : ""}`}
+      className={`flex flex-wrap items-center gap-2 text-sm ${state === "unavailable" || state === "incomplete" ? "text-amber-800" : ""}`}
       data-pw="session-archive-status"
     >
       <span aria-live="polite" data-pw="session-archive-state">

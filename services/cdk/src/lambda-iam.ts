@@ -52,7 +52,7 @@ export function grantRuntimeLambdaAccess(input: {
   // through the authorized REST route. Keep GetObject off Cron and WebSocket.
   input.rest.addToRolePolicy(
     new iam.PolicyStatement({
-      actions: ["s3:GetObject"],
+      actions: ["s3:GetObject", "s3:GetObjectVersion"],
       resources: [input.foundation.archiveBucket.arnForObjects("sessions/*")],
     }),
   );

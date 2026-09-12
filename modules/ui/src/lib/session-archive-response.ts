@@ -9,8 +9,17 @@ export function isSessionArchiveReadResponse(value: unknown): value is SessionAr
     expiresAt?: unknown;
     contentType?: unknown;
     bodyBytes?: unknown;
+    reason?: unknown;
   };
   if (candidate.state === "dynamodb" || candidate.state === "unavailable") return true;
+  if (
+    candidate.state === "incomplete" &&
+    (candidate.reason === "content-length-mismatch" ||
+      candidate.reason === "content-type-mismatch" ||
+      candidate.reason === "content-length-and-type-mismatch")
+  ) {
+    return true;
+  }
   return (
     candidate.state === "archived" &&
     typeof candidate.downloadUrl === "string" &&

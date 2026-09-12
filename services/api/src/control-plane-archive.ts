@@ -248,14 +248,17 @@ export async function getArchiveDownloadDurable(
     bodyBytes: metadata.bodyBytes,
     now: state.now(),
   });
-  return result.available
-    ? {
-        state: "archived",
-        downloadUrl: result.downloadUrl,
-        expiresAt: result.expiresAt,
-        contentType: metadata.contentType,
-        bodyBytes: metadata.bodyBytes,
-      }
+  if (result.available) {
+    return {
+      state: "archived",
+      downloadUrl: result.downloadUrl,
+      expiresAt: result.expiresAt,
+      contentType: metadata.contentType,
+      bodyBytes: metadata.bodyBytes,
+    };
+  }
+  return "reason" in result
+    ? { state: "incomplete", reason: result.reason }
     : { state: "unavailable" };
 }
 

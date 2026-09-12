@@ -1,4 +1,9 @@
 /** Public availability contract for a session's durable terminal transcript. */
+export type SessionArchiveIncompleteReason =
+  | "content-length-mismatch"
+  | "content-type-mismatch"
+  | "content-length-and-type-mismatch";
+
 export type SessionArchiveReadResponse =
   | { state: "dynamodb" }
   | {
@@ -8,4 +13,5 @@ export type SessionArchiveReadResponse =
       contentType: string;
       bodyBytes: number;
     }
+  | { state: "incomplete"; reason: SessionArchiveIncompleteReason }
   | { state: "unavailable" };
