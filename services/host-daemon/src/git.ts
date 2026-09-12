@@ -1,8 +1,14 @@
+/* eslint-disable max-lines -- checkout preparation, exact ref resolution, and verification share one client. */
 import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import type { ProcessRunner } from "./executor.ts";
 import { gitFailure, refetchConfiguredRemotes, runGit } from "./git-commands.ts";
+import {
+  deleteGitHubPullRequestRef,
+  fetchGitHubPullRequestRef,
+  isGitHubPullRequestRef,
+} from "./git-github-pull-ref.ts";
 import {
   claimedLinkedWorktreeCommonDir,
   checkoutDetached,
@@ -101,15 +107,24 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       // as a pathspec instead of a revision ("Needed a single revision"), so this is
       // the git-native separator here rather than `--` (see `switch -- ref` below,
       // which does accept plain `--`).
-      const commitRef = `${ref}^{commit}`;
+      const isPullRequestRef = isGitHubPullRequestRef(ref);
+      const pullRequestRef = await fetchGitHubPullRequestRef(runner, cwd, ref, signal);
+      if (isPullRequestRef && pullRequestRef === null) {
+        throw new Error(`Failed to fetch GitHub pull-request ref ${ref}`);
+      }
+      let commitRef = `${pullRequestRef ?? ref}^{commit}`;
       let resolved = await runGit(
         runner,
         cwd,
         ["rev-parse", "--verify", "--end-of-options", commitRef],
         signal,
       );
-      if (resolved.exitCode !== 0) {
+      if (pullRequestRef) {
+        await deleteGitHubPullRequestRef(runner, cwd, pullRequestRef, ref, signal);
+      }
+      if (resolved.exitCode !== 0 && !isPullRequestRef) {
         await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
+        commitRef = `${ref}^{commit}`;
         resolved = await runGit(
           runner,
           cwd,
