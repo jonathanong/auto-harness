@@ -203,14 +203,17 @@ describe("isolated GitHub pull-ref fetch", () => {
 
     await deleteGitHubPullRequestRef(runner, cwd, "refs/worktree/auto-harness/pull-fetch/id", ref);
     expect(cleanupEnvironment).toMatchObject({
-      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_COUNT: "2",
       GIT_CONFIG_KEY_0: "core.hooksPath",
+      GIT_CONFIG_KEY_1: "core.fsmonitor",
       GIT_CONFIG_VALUE_0: "/dev/null",
+      GIT_CONFIG_VALUE_1: "false",
       GIT_NO_REPLACE_OBJECTS: "1",
     });
   });
 
-  it("disables repository hooks while creating the scratch ref", async () => {
+  it("disables fsmonitor while importing and creating the scratch ref", async () => {
+    let importEnvironment: NodeJS.ProcessEnv | undefined;
     let scratchRefEnvironment: NodeJS.ProcessEnv | undefined;
     const runner = scripted([
       advertised,
@@ -223,12 +226,17 @@ describe("isolated GitHub pull-ref fetch", () => {
     ]);
     const originalRun = runner.run.bind(runner);
     runner.run = async (options) => {
+      if (options.argv.slice(1).includes("unbundle")) importEnvironment = options.env;
       if (options.argv.slice(1).includes("update-ref")) scratchRefEnvironment = options.env;
       return originalRun(options);
     };
 
     await expect(fetchGitHubPullRequestRef(runner, cwd, ref, remoteUrl)).resolves.toMatchObject({
       sha: pullSha,
+    });
+    expect(importEnvironment).toMatchObject({
+      GIT_CONFIG_KEY_3: "core.fsmonitor",
+      GIT_CONFIG_VALUE_3: "false",
     });
     expect(scratchRefEnvironment).toMatchObject({
       GIT_CONFIG_KEY_0: "core.hooksPath",

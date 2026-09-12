@@ -57,6 +57,16 @@ function isMissingFile(error: unknown): boolean {
   );
 }
 
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if (isMissingFile(error)) return false;
+    throw error;
+  }
+}
+
 function isLinkedWorktreeGitDir(commonDir: string, gitDir: string): boolean {
   const pathFromCommonDir = relative(commonDir, gitDir);
   const parts = pathFromCommonDir.split(sep);
@@ -129,6 +139,46 @@ export async function claimedLinkedWorktreeCommonDir(
   return (await claimedLinkedWorktreeGitDir(cwd, commonDir)) === null ? null : commonDir;
 }
 
+export type ClaimedLinkedWorktree = Readonly<{
+  commonDir: string;
+  gitDir: string;
+}>;
+
+/**
+ * Return the validated administrative paths for a configured linked worktree.
+ * Callers may use these paths for direct filesystem checks only after this
+ * bidirectional common-dir/backlink validation succeeds.
+ */
+export async function claimedLinkedWorktree(
+  repoPath: string,
+  cwd: string,
+): Promise<ClaimedLinkedWorktree | null> {
+  const commonDir = await configuredCommonDir(repoPath);
+  if (commonDir === null) return null;
+  const gitDir = await claimedLinkedWorktreeGitDir(cwd, commonDir);
+  return gitDir === null ? null : { commonDir, gitDir };
+}
+
+/**
+ * Pull-ref checkout intentionally refuses to recover an interrupted operation
+ * through the mutable worktree Git configuration. Its isolated materializer
+ * discards ordinary index state, but cannot safely run merge/rebase abort
+ * porcelain that can materialize files before that boundary is established.
+ */
+export async function hasInterruptedWorktreeOperation(gitDir: string): Promise<boolean> {
+  for (const name of [
+    "rebase-merge",
+    "rebase-apply",
+    "MERGE_HEAD",
+    "CHERRY_PICK_HEAD",
+    "sequencer",
+    "REVERT_HEAD",
+  ]) {
+    if (await pathExists(resolve(gitDir, name))) return true;
+  }
+  return false;
+}
+
 export async function resetClaimedWorktree(
   runner: ProcessRunner,
   cwd: string,
@@ -147,24 +197,28 @@ export async function removeStaleIndexLock(
   cwd: string,
   expectedCommonDir: string,
   signal?: AbortSignal,
+  environment?: NodeJS.ProcessEnv,
 ): Promise<boolean> {
   const commonDirResult = await runGit(
     runner,
     cwd,
     ["rev-parse", "--path-format=absolute", "--git-common-dir"],
     signal,
+    environment,
   );
   const gitDirResult = await runGit(
     runner,
     cwd,
     ["rev-parse", "--path-format=absolute", "--git-dir"],
     signal,
+    environment,
   );
   const lockPathResult = await runGit(
     runner,
     cwd,
     ["rev-parse", "--path-format=absolute", "--git-path", "index.lock"],
     signal,
+    environment,
   );
   if (
     commonDirResult.exitCode !== 0 ||

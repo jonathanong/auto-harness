@@ -76,6 +76,28 @@ async function createTwoCommitWorktree(root: string): Promise<{
   return { repo, targetSha, worktree };
 }
 
+async function createPinnedPullHead(
+  root: string,
+  files: Readonly<Record<string, string>>,
+): Promise<{ remote: string; sha: string }> {
+  const remote = join(root, "remote.git");
+  const source = join(root, "source");
+  await git(root, ["init", "--bare", remote]);
+  mkdirSync(source);
+  await git(source, ["init"]);
+  await git(source, ["config", "user.email", "t@example.com"]);
+  await git(source, ["config", "user.name", "t"]);
+  for (const [path, contents] of Object.entries(files)) {
+    mkdirSync(dirname(join(source, path)), { recursive: true });
+    writeFileSync(join(source, path), contents);
+  }
+  await git(source, ["add", "."]);
+  await git(source, ["commit", "-m", "trusted pull head"]);
+  const sha = (await git(source, ["rev-parse", "HEAD"])).trim();
+  await git(source, ["push", remote, "HEAD:refs/pull/42/head"]);
+  return { remote, sha };
+}
+
 async function indexLockPath(worktree: string): Promise<string> {
   return (
     await git(worktree, ["rev-parse", "--path-format=absolute", "--git-path", "index.lock"])
@@ -179,43 +201,103 @@ describe("createGitClient real git", () => {
     ).resolves.toBe("");
   });
 
-  it("rejects a worktree-scoped filter before interrupted-worktree recovery can invoke it", async () => {
-    const root = mkdtempSync(join(tmpdir(), "ah-git-worktree-filter-"));
+  it("disables a prior session's fsmonitor before pull-ref checkout commands", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-pull-fsmonitor-"));
     roots.push(root);
-    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
-    await git(worktree, ["switch", "-c", "interrupted"]);
-    writeFileSync(join(worktree, "tracked.txt"), "conflicting session change\n");
-    await git(worktree, ["add", "tracked.txt"]);
-    await git(worktree, ["commit", "-m", "interrupted work"]);
-    await expect(git(worktree, ["merge", targetSha])).rejects.toThrow();
-    const mergeHead = (await git(worktree, ["rev-parse", "--git-path", "MERGE_HEAD"])).trim();
-    expect(existsSync(mergeHead)).toBe(true);
+    const { repo, worktree } = await createTwoCommitWorktree(root);
+    const { remote, sha } = await createPinnedPullHead(root, { "trusted.txt": "trusted\n" });
 
+    const fsmonitorLog = join(root, "fsmonitor.log");
+    const fsmonitor = join(root, "fsmonitor.sh");
+    writeFileSync(
+      fsmonitor,
+      `#!/bin/sh\nprintf 'invoked\\n' >> '${fsmonitorLog}'\nprintf 'token\\n'\n`,
+    );
+    chmodSync(fsmonitor, 0o700);
+    await git(repo, ["config", "core.fsmonitor", fsmonitor]);
+    writeFileSync(fsmonitorLog, "");
+
+    const client = createGitClient(
+      new SpawnProcessRunner(),
+      new Map([[resolvePath(repo), { remoteUrl: remote, transport: {} }]]),
+    );
+
+    await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: "refs/pull/42/head" });
+
+    await expect(client.revParse(worktree, "HEAD")).resolves.toBe(sha);
+    expect(readFileSync(join(worktree, "trusted.txt"), "utf8")).toBe("trusted\n");
+    expect(readFileSync(fsmonitorLog, "utf8")).toBe("");
+  });
+
+  it("materializes every trusted pull-ref path despite prior sparse settings", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-pull-sparse-"));
+    roots.push(root);
+    const { repo, worktree } = await createTwoCommitWorktree(root);
+    const { remote, sha } = await createPinnedPullHead(root, {
+      "included.txt": "included\n",
+      "omitted.txt": "omitted\n",
+    });
+    const commonDir = (await git(repo, ["rev-parse", "--git-common-dir"])).trim();
+    await git(repo, ["config", "core.sparseCheckout", "true"]);
+    writeFileSync(join(resolvePath(repo, commonDir), "info", "sparse-checkout"), "/included.txt\n");
+
+    const client = createGitClient(
+      new SpawnProcessRunner(),
+      new Map([[resolvePath(repo), { remoteUrl: remote, transport: {} }]]),
+    );
+    await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: "refs/pull/42/head" });
+
+    await expect(client.revParse(worktree, "HEAD")).resolves.toBe(sha);
+    expect(readFileSync(join(worktree, "included.txt"), "utf8")).toBe("included\n");
+    expect(readFileSync(join(worktree, "omitted.txt"), "utf8")).toBe("omitted\n");
+    // `read-tree` receives the real linked-worktree index explicitly. Check that its result and
+    // the detached HEAD agree, rather than only observing the materialized files.
+    await expect(git(worktree, ["show", ":omitted.txt"])).resolves.toBe("omitted\n");
+    await expect(git(worktree, ["status", "--porcelain"])).resolves.toBe("");
+  });
+
+  it("does not read filter settings added after a pull head is fetched", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-pull-filter-race-"));
+    roots.push(root);
+    const { repo, worktree } = await createTwoCommitWorktree(root);
+    const { remote, sha } = await createPinnedPullHead(root, { "race.txt": "trusted\n" });
     const filterLog = join(root, "filter.log");
     const filter = join(root, "filter.sh");
     writeFileSync(filter, `#!/bin/sh\nprintf 'invoked\\n' >> '${filterLog}'\ncat\n`);
     chmodSync(filter, 0o700);
-    await git(repo, ["config", "extensions.worktreeConfig", "true"]);
-    await git(worktree, ["config", "--worktree", "filter.attacker.clean", "cat"]);
-    await git(worktree, ["config", "--worktree", "filter.attacker.smudge", filter]);
-    writeFileSync(join(worktree, ".gitattributes"), "tracked.txt filter=attacker\n");
     writeFileSync(filterLog, "");
 
+    const processRunner = new SpawnProcessRunner();
+    let mutated = false;
+    const runner = {
+      async run(options: import("./executor.ts").RunProcessOptions) {
+        const result = await processRunner.run(options);
+        if (!mutated && options.argv.slice(1).includes("unbundle")) {
+          mutated = true;
+          await git(repo, ["config", "filter.attacker.clean", "cat"]);
+          await git(repo, ["config", "filter.attacker.smudge", filter]);
+          const commonDir = (await git(repo, ["rev-parse", "--git-common-dir"])).trim();
+          writeFileSync(
+            join(resolvePath(repo, commonDir), "info", "attributes"),
+            "race.txt filter=attacker\n",
+          );
+        }
+        return result;
+      },
+    };
     const client = createGitClient(
-      new SpawnProcessRunner(),
-      new Map([
-        [
-          resolvePath(repo),
-          { remoteUrl: "https://github.com/example/repository.git", transport: {} },
-        ],
-      ]),
+      runner,
+      new Map([[resolvePath(repo), { remoteUrl: remote, transport: {} }]]),
     );
-    await expect(
-      client.checkoutRef({ cwd: worktree, repoPath: repo, ref: "refs/pull/42/head" }),
-    ).rejects.toThrow("Configured pull-ref checkout has repository filters");
 
+    await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: "refs/pull/42/head" });
+
+    expect(mutated).toBe(true);
+    await expect(client.revParse(worktree, "HEAD")).resolves.toBe(sha);
+    expect(readFileSync(join(worktree, "race.txt"), "utf8")).toBe("trusted\n");
+    await expect(git(worktree, ["show", ":race.txt"])).resolves.toBe("trusted\n");
     expect(readFileSync(filterLog, "utf8")).toBe("");
-    expect(existsSync(mergeHead)).toBe(true);
+    await expect(git(worktree, ["status", "--porcelain"])).resolves.toBe("");
   });
 
   it("rejects a pull head with submodules without initializing its configured URL", async () => {

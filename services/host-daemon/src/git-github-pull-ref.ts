@@ -38,15 +38,19 @@ function isolatedFetchEnvironment(objectDirectory: string | undefined): NodeJS.P
     ...createChildEnv(),
     // A platform null device cannot be planted by a concurrent session, unlike a config file in
     // the same-UID temporary directory used for the isolated bare repository.
-    GIT_CONFIG_COUNT: "3",
+    GIT_CONFIG_COUNT: "4",
     GIT_CONFIG_GLOBAL: nullGlobalGitConfigPath(),
     GIT_CONFIG_KEY_0: "core.hooksPath",
     GIT_CONFIG_KEY_1: "credential.helper",
     GIT_CONFIG_KEY_2: "http.proxy",
+    // fsmonitor is an independent command-execution mechanism. Disable it for every pull-ref
+    // command, including configuration/identity probes that run before materialization.
+    GIT_CONFIG_KEY_3: "core.fsmonitor",
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_VALUE_0: nullGlobalGitConfigPath(),
     GIT_CONFIG_VALUE_1: "",
     GIT_CONFIG_VALUE_2: "",
+    GIT_CONFIG_VALUE_3: "false",
     GIT_NO_REPLACE_OBJECTS: "1",
     ...(objectDirectory === undefined
       ? {}
@@ -69,10 +73,35 @@ function gitAlternateObjectDirectory(path: string): string {
 function scratchRefEnvironment(): NodeJS.ProcessEnv {
   return {
     ...createChildEnv(),
-    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_COUNT: "2",
     GIT_CONFIG_KEY_0: "core.hooksPath",
+    GIT_CONFIG_KEY_1: "core.fsmonitor",
     GIT_CONFIG_VALUE_0: nullGlobalGitConfigPath(),
+    GIT_CONFIG_VALUE_1: "false",
     GIT_NO_REPLACE_OBJECTS: "1",
+  };
+}
+
+function isolatedMaterializationEnvironment(
+  temporaryRepository: string,
+  cwd: string,
+  objectDirectory: string,
+  indexPath: string,
+): NodeJS.ProcessEnv {
+  return {
+    ...isolatedFetchEnvironment(objectDirectory),
+    // The temporary Git directory has no shared local/worktree configuration or info/attributes.
+    // A target-tree attribute can name a filter, but its driver has no definition in this fresh
+    // repository. The exact object and real index are explicit operands, not discovered through
+    // the session-controlled checkout.
+    GIT_DIR: temporaryRepository,
+    GIT_WORK_TREE: cwd,
+    GIT_INDEX_FILE: indexPath,
+    GIT_CONFIG_COUNT: "6",
+    GIT_CONFIG_KEY_4: "core.sparseCheckout",
+    GIT_CONFIG_KEY_5: "core.bare",
+    GIT_CONFIG_VALUE_4: "false",
+    GIT_CONFIG_VALUE_5: "false",
   };
 }
 
@@ -274,10 +303,15 @@ export async function fetchGitHubPullRequestRef(
         environment,
       );
       if (bundled.exitCode !== 0) return null;
-      const imported = await runGit(runner, cwd, ["bundle", "unbundle", bundlePath], signal, {
-        ...createChildEnv(),
-        GIT_NO_REPLACE_OBJECTS: "1",
-      });
+      // This is the only transfer command that targets the claimed repository. It does not
+      // materialize a tree, but it must still disable fsmonitor before Git opens its index.
+      const imported = await runGit(
+        runner,
+        cwd,
+        ["bundle", "unbundle", bundlePath],
+        signal,
+        isolatedFetchEnvironment(undefined),
+      );
       if (imported.exitCode !== 0) return null;
       const recorded = await runGit(
         runner,
@@ -300,6 +334,44 @@ export async function fetchGitHubPullRequestRef(
       ref,
       scratchRefCreated,
     );
+  }
+}
+
+/**
+ * Materialize a fetched pull head using a fresh Git directory and the claimed
+ * worktree's real index. This deliberately never runs checkout/reset porcelain
+ * against the shared repository configuration, which a prior session can edit.
+ */
+export async function materializeGitHubPullRequestRef(
+  runner: ProcessRunner,
+  cwd: string,
+  sha: string,
+  objectDirectory: string,
+  indexPath: string,
+  objectFormat: GitObjectFormat,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), "auto-harness-pull-checkout-"));
+  const temporaryRepository = join(temporaryDirectory, "repository.git");
+  try {
+    const initialized = await runGit(
+      runner,
+      parse(temporaryDirectory).root,
+      ["init", "--bare", `--object-format=${objectFormat}`, temporaryRepository],
+      signal,
+      isolatedFetchEnvironment(objectDirectory),
+    );
+    if (initialized.exitCode !== 0) return false;
+    const materialized = await runGit(
+      runner,
+      cwd,
+      ["read-tree", "--reset", "-u", "--no-sparse-checkout", sha],
+      signal,
+      isolatedMaterializationEnvironment(temporaryRepository, cwd, objectDirectory, indexPath),
+    );
+    return materialized.exitCode === 0;
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
   }
 }
 

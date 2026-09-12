@@ -559,16 +559,25 @@ Pull-ref policy is currently unsupported on Windows: Auto Harness fails closed r
 on POSIX ownership checks that cannot prove equivalent native ACL immutability.
 
 A pull-head checkout fetches only that pinned URL in a fresh temporary bare repository with
-system/global URL-rewrite configuration disabled. Its object database reuses the claimed checkout's
-existing objects read-only for negotiation only when that checkout is neither shallow nor a
-partial/promisor clone; otherwise it fetches the complete pinned graph. The bundle excludes the
-current checkout commit when object reuse is safe, so routine PR fetches transfer only the missing
-graph. Replacement refs are disabled throughout fetch, resolution, checkout, connectivity checks,
-and reset. The imported commit is
-rooted in a fresh worktree-private scratch ref. That ref remains reachable through detached checkout
-and `HEAD` verification, then is deleted with its own bounded cleanup signal; it is never a shared
-predictable ref or `FETCH_HEAD`. Any missing policy, failed exact fetch, bundle import, ref
-resolution, checkout, verification, or cleanup fails the checkout closed and does not probe another
+system/global URL-rewrite configuration disabled, importing the complete pinned graph rather than
+reusing objects selected by the claimed checkout's local configuration. Replacement refs and
+filesystem monitors are disabled throughout fetch, import, materialization, verification, and
+cleanup. The imported commit is rooted in a fresh worktree-private scratch ref. That ref remains
+reachable through detached checkout and `HEAD` verification, then is deleted with its own bounded
+cleanup signal; it is never a shared predictable ref or `FETCH_HEAD`.
+
+The worktree materialization itself runs from a separate fresh Git directory that has no
+session-writable local/worktree configuration or `info/attributes`. It receives only the claimed
+worktree's validated index path, worktree path, and object directory, and disables sparse checkout
+before applying the exact fetched commit. A target tree can name a filter in `.gitattributes`, but
+the fresh Git directory has no session-configured filter driver or `info/attributes` to define it.
+Thus a prior or concurrent session cannot choose filter drivers, alter file bytes through
+attributes, omit paths through sparse patterns, or launch an fsmonitor during pull-head
+materialization. Pull heads fail closed if the claimed linked worktree has an interrupted merge,
+rebase, apply, cherry-pick, or revert operation, because recovery porcelain would have to read
+that mutable Git configuration.
+Any missing policy, interrupted state, failed exact fetch, bundle import, ref resolution,
+materialization, verification, or cleanup fails the checkout closed and does not probe another
 remote or use the generic recovery path.
 
 Ordinary ref checkouts sync configured URLs and force-check out already initialized submodules
