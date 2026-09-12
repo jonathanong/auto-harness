@@ -26,6 +26,8 @@ describe("CDK table catalog", () => {
       "SessionUsage",
       "SessionUsageKinds",
       "Integrations",
+      "SlackOAuthStates",
+      "SlackInboundEvents",
       "NotificationDeliveries",
       "WebhookDeliveries",
       "SessionCancelRedeliveries",
@@ -70,6 +72,22 @@ describe("CDK table catalog", () => {
     });
     expect(DYNAMO_TABLES.find((table) => table.name === "Integrations")).toMatchObject({
       partitionKey: { name: "id" },
+    });
+    expect(DYNAMO_TABLES.find((table) => table.name === "SlackOAuthStates")).toMatchObject({
+      partitionKey: { name: "stateHash" },
+      ttlAttribute: "expiresAt",
+    });
+    expect(DYNAMO_TABLES.find((table) => table.name === "SlackInboundEvents")).toMatchObject({
+      partitionKey: { name: "workspaceId" },
+      sortKey: { name: "eventId" },
+      ttlAttribute: "ttl",
+      gsis: [
+        {
+          name: "status-dueOrder",
+          partitionKey: { name: "status", type: "S" },
+          sortKey: { name: "dueOrder", type: "S" },
+        },
+      ],
     });
     expect(DYNAMO_TABLES.find((table) => table.name === "NotificationDeliveries")).toMatchObject({
       partitionKey: { name: "id" },

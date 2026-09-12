@@ -18,8 +18,8 @@ describe("AutoHarnessRuntimeStack", () => {
     });
     const template = Template.fromStack(runtime);
 
-    template.resourceCountIs("AWS::Lambda::Function", 3);
-    template.resourcePropertiesCountIs("AWS::Logs::LogGroup", { RetentionInDays: 14 }, 3);
+    template.resourceCountIs("AWS::Lambda::Function", 4);
+    template.resourcePropertiesCountIs("AWS::Logs::LogGroup", { RetentionInDays: 14 }, 4);
     // Each function must be wired to its own explicit logGroup: construct (see
     // functionLogGroup in runtime-stack.ts), not left to the deprecated logRetention path.
     // No Custom::LogRetention provider means the deprecated path is gone, not merely unused.
@@ -27,13 +27,16 @@ describe("AutoHarnessRuntimeStack", () => {
     template.resourcePropertiesCountIs(
       "AWS::Lambda::Function",
       { LoggingConfig: { LogGroup: Match.anyValue() } },
-      3,
+      4,
     );
     template.resourceCountIs("AWS::Events::Rule", 1);
     template.resourceCountIs("AWS::ApiGatewayV2::Api", 2);
     template.resourceCountIs("AWS::ApiGatewayV2::Route", 4);
     template.resourceCountIs("AWS::ApiGatewayV2::Stage", 2);
     template.resourceCountIs("AWS::KMS::Key", 0);
+    template.hasResourceProperties("AWS::SecretsManager::Secret", {
+      GenerateSecretString: Match.anyValue(),
+    });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
@@ -73,6 +76,7 @@ describe("AutoHarnessRuntimeStack", () => {
         Variables: Match.objectLike({
           ASSIGNMENT_FUNCTION_NAME: Match.anyValue(),
           HARNESS_HYDRATE_CATALOGS: "false",
+          HARNESS_SLACK_APP_SSM_PARAM: { Ref: "HarnessSlackAppSsmParam" },
           WS_API_ENDPOINT: Match.anyValue(),
         }),
       },
@@ -83,6 +87,18 @@ describe("AutoHarnessRuntimeStack", () => {
       { Environment: { Variables: Match.objectLike({ HARNESS_HYDRATE_CATALOGS: "false" }) } },
       1,
     );
+    template.hasResourceProperties("AWS::ApiGatewayV2::Authorizer", {
+      AuthorizerPayloadFormatVersion: "2.0",
+      AuthorizerResultTtlInSeconds: 0,
+      AuthorizerType: "REQUEST",
+      EnableSimpleResponses: true,
+      IdentitySource: ["$request.header.X-Auto-Harness-Ingress-Token"],
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      AuthorizationType: "CUSTOM",
+      AuthorizerId: Match.anyValue(),
+      RouteKey: "$default",
+    });
     template.resourcePropertiesCountIs(
       "AWS::ApiGatewayV2::Integration",
       {
@@ -99,6 +115,10 @@ describe("AutoHarnessRuntimeStack", () => {
       (fn) => fn.Properties?.Environment?.Variables?.HARNESS_DDB_PREFIX,
     );
     expect(functions).toHaveLength(3);
+    const rest = functions.find((fn) => fn.Properties?.Handler === "index.rest");
+    expect(
+      rest?.Properties?.Environment?.Variables?.HARNESS_CLOUDFRONT_INGRESS_TOKEN,
+    ).toBeUndefined();
     const archiveFunctions = functions.filter(
       (fn) => fn.Properties?.Environment?.Variables?.ARCHIVE_BUCKET,
     );
@@ -141,6 +161,7 @@ describe("AutoHarnessRuntimeStack", () => {
         "HarnessCursorSecretSsmParam",
         "HarnessSessionSecretSsmParam",
         "HarnessPublicBaseUrlSsmParam",
+        "HarnessSlackAppSsmParam",
       ]),
     );
     // These parameters hold an SSM parameter *name*, not a secret value — unlike the
@@ -154,6 +175,7 @@ describe("AutoHarnessRuntimeStack", () => {
       "HarnessSessionSecretSsmParam",
       "HarnessCursorSecretSsmParam",
       "HarnessPublicBaseUrlSsmParam",
+      "HarnessSlackAppSsmParam",
     ]) {
       expect(parameters[id]?.Type).toBe("String");
       expect(parameters[id]?.MinLength).toBeUndefined();

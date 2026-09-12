@@ -2,7 +2,8 @@ import { App, Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as lambda from "aws-cdk-lib/aws-lambda";
-import { describe, it } from "vitest";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import { describe, expect, it } from "vitest";
 
 import { AutoHarnessWebStack } from "./web-stack.ts";
 
@@ -10,7 +11,9 @@ describe("AutoHarnessWebStack", () => {
   it("hosts Next.js on Lambda behind one CloudFront distribution", () => {
     const app = new App();
     const repositoryStack = new Stack(app, "RepositoryStack");
+    const ingressSecret = new secretsmanager.Secret(repositoryStack, "IngressSecret");
     const stack = new AutoHarnessWebStack(app, "Web", {
+      cloudFrontIngressSecret: ingressSecret.secretValue,
       imageCode: lambda.DockerImageCode.fromEcr(new ecr.Repository(repositoryStack, "Repository")),
       restApiUrl: "https://rest.execute-api.us-west-2.amazonaws.com",
       websocketUrl: "wss://socket.execute-api.us-west-2.amazonaws.com/prod",
@@ -69,10 +72,12 @@ describe("AutoHarnessWebStack", () => {
           Match.objectLike({
             PathPattern: "/health",
             CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+            OriginRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac",
           }),
           Match.objectLike({
             PathPattern: "/api/*",
             CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+            OriginRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac",
           }),
           Match.objectLike({
             PathPattern: "/ws*",
@@ -83,13 +88,22 @@ describe("AutoHarnessWebStack", () => {
       }),
     });
     template.resourceCountIs("AWS::CloudFront::Function", 1);
+    template.hasResourceProperties("AWS::CloudFront::Function", {
+      FunctionCode: "function handler(event) { event.request.uri = '/'; return event.request; }",
+    });
+    const rendered = JSON.stringify(template.toJSON());
+    expect(rendered).toContain("x-auto-harness-ingress-token");
+    expect(rendered).toContain("{{resolve:secretsmanager:");
+    expect(rendered).not.toContain("x-auto-harness-viewer-ip");
     template.hasOutput("WebUrl", {});
   });
 
   it("sets optional web Sentry DSNs on the Next.js Lambda when configured", () => {
     const app = new App();
     const repositoryStack = new Stack(app, "RepositoryStack");
+    const ingressSecret = new secretsmanager.Secret(repositoryStack, "IngressSecret");
     const stack = new AutoHarnessWebStack(app, "Web", {
+      cloudFrontIngressSecret: ingressSecret.secretValue,
       imageCode: lambda.DockerImageCode.fromEcr(new ecr.Repository(repositoryStack, "Repository")),
       restApiUrl: "https://rest.execute-api.us-west-2.amazonaws.com",
       sentryDsnClient: "https://client@o1.ingest.sentry.io/1",

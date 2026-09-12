@@ -15,6 +15,7 @@ export const config = (overrides: Partial<DeploymentConfig> = {}): DeploymentCon
   removalPolicy: "destroy",
   runtimeStackName: "AutoHarness-review-Runtime",
   sessionSecretSsmParam: "/auto-harness/review/harness-session-secret",
+  slackAppSsmParam: "/auto-harness/review/slack-app",
   tablePrefix: "AutoHarness-review",
   webStackName: "AutoHarness-review-Web",
   ...overrides,

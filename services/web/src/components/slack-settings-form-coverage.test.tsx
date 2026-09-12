@@ -2,7 +2,7 @@
 /* eslint-disable max-lines -- save, delete, and unmount races share one form fixture. */
 
 import React, { act } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createApiFake,
@@ -67,6 +67,45 @@ describe("SlackSettingsForm", () => {
     );
     expect(field(view.container, "slack-delivery-state").textContent).toBe("Disabled");
     expect(field(view.container, "slack-delivery-warning").textContent).toContain("disabled");
+  });
+
+  it("updates OAuth settings with PATCH and keeps manual replacement visible", async () => {
+    const oauth = {
+      ...configured,
+      installationMethod: "oauth" as const,
+      inboundAvailable: true,
+      grantedScopes: ["chat:write", "app_mentions:read", "im:history"],
+    };
+    const fake = createApiFake(
+      json({ ...oauth, version: 2 }),
+      json({ ...oauth, version: 3 }),
+      json({ url: "https://slack.com/oauth/v2/authorize?state=test" }),
+    );
+    const assign = vi.spyOn(window.location, "assign").mockImplementation(() => undefined);
+    const view = mountForm(<SlackSettingsForm initial={oauth} />);
+    expect(field(view.container, "form-slack-settings")).toBeTruthy();
+    expect(field(view.container, "form-slack-manual-replace")).toBeTruthy();
+    setValue(field<HTMLInputElement>(view.container, "slack-default-channel"), "#ops");
+    submit(field(view.container, "form-slack-settings"));
+    await settle();
+    expect(fake.requests[0]?.[1]?.method).toBe("PATCH");
+    expect(String(fake.requests[0]?.[1]?.body)).not.toContain("botToken");
+    expect(JSON.parse(String(fake.requests[0]?.[1]?.body))).toMatchObject({ expectedVersion: 1 });
+
+    const manual = field<HTMLFormElement>(view.container, "form-slack-manual-replace");
+    setValue(
+      manual.querySelector<HTMLInputElement>('[data-pw="slack-bot-token"]')!,
+      "xoxb-1234567890-manual",
+    );
+    submit(manual);
+    await settle();
+    expect(fake.requests[1]?.[1]?.method).toBe("PUT");
+
+    press(field(view.container, "slack-reconnect"));
+    await settle();
+    expect(fake.requests[2]?.[0]).toBe("/api/v1/integrations/slack/oauth/start");
+    expect(assign).toHaveBeenCalledWith("https://slack.com/oauth/v2/authorize?state=test");
+    assign.mockRestore();
   });
 
   it("validates, creates, and surfaces save failures", async () => {

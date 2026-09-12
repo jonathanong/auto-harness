@@ -73,6 +73,7 @@ const runtime = new AutoHarnessRuntimeStack(
 );
 runtime.addStackDependency(stack);
 const web = new AutoHarnessWebStack(app, contextString(app, "webStackName") ?? "AutoHarnessWeb", {
+  cloudFrontIngressSecret: runtime.resources.cloudFrontIngressSecret,
   imageCode: lambda.DockerImageCode.fromImageAsset(
     fileURLToPath(new URL("../../..", import.meta.url)),
     { file: "services/web/Dockerfile.aws", platform: Platform.LINUX_ARM64 },

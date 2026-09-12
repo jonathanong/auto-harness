@@ -26,6 +26,8 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
   await clearSessionDrains(ctx);
   await clearByKey(ctx, ctx.tables.notificationDeliveries, "id");
   await clearByKey(ctx, ctx.tables.sessionCancelRedeliveries, "sessionId");
+  await clearByKey(ctx, ctx.tables.slackOAuthStates, "stateHash");
+  await clearByKeys(ctx, ctx.tables.slackInboundEvents, ["workspaceId", "eventId"]);
   for (const account of await listAuthAccounts(ctx)) {
     await deleteAuthAccount(ctx, account.id);
   }
@@ -211,6 +213,28 @@ async function clearByKey(ctx: PlaneStorageCtx, tableName: string, keyName: stri
     for (const item of result.Items ?? []) {
       await ctx.doc.send(
         new DeleteCommand({ TableName: tableName, Key: { [keyName]: item[keyName] } }),
+      );
+    }
+    startKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey !== undefined);
+}
+
+async function clearByKeys(
+  ctx: PlaneStorageCtx,
+  tableName: string,
+  keyNames: readonly string[],
+): Promise<void> {
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const result = await ctx.doc.send(
+      new ScanCommand({ TableName: tableName, ExclusiveStartKey: startKey }),
+    );
+    for (const item of result.Items ?? []) {
+      await ctx.doc.send(
+        new DeleteCommand({
+          TableName: tableName,
+          Key: Object.fromEntries(keyNames.map((name) => [name, item[name]])),
+        }),
       );
     }
     startKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;

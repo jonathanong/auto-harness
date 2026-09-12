@@ -1,4 +1,12 @@
-import { CfnOutput, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import {
+  CfnOutput,
+  Duration,
+  Fn,
+  RemovalPolicy,
+  SecretValue,
+  Stack,
+  type StackProps,
+} from "aws-cdk-lib";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as iam from "aws-cdk-lib/aws-iam";
@@ -7,6 +15,7 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
 
 type WebStackProps = StackProps & {
+  cloudFrontIngressSecret: SecretValue;
   imageCode: lambda.DockerImageCode;
   restApiUrl: string;
   sentryDsnClient?: string;
@@ -55,6 +64,14 @@ export class AutoHarnessWebStack extends Stack {
       ),
     });
     const webOrigin = origins.FunctionUrlOrigin.withOriginAccessControl(functionUrl);
+    // CloudFront overwrites a same-named viewer header before it reaches the
+    // origin. API Gateway's separate authorizer reads the corresponding secret
+    // from Secrets Manager, before the application Lambda runs.
+    const apiOrigin = new origins.HttpOrigin(apiDomain, {
+      customHeaders: {
+        "x-auto-harness-ingress-token": props.cloudFrontIngressSecret.unsafeUnwrap(),
+      },
+    });
     const uncached = {
       allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
       cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
@@ -76,11 +93,11 @@ export class AutoHarnessWebStack extends Stack {
         },
         "/health": {
           ...uncached,
-          origin: new origins.HttpOrigin(apiDomain),
+          origin: apiOrigin,
         },
         "/api/*": {
           ...uncached,
-          origin: new origins.HttpOrigin(apiDomain),
+          origin: apiOrigin,
         },
         "/ws*": {
           ...uncached,

@@ -172,6 +172,8 @@ export async function applyDeployment(
     `${config.runtimeStackName}:HarnessCursorSecretSsmParam=${config.cursorSecretSsmParam}`,
     "--parameters",
     `${config.runtimeStackName}:HarnessPublicBaseUrlSsmParam=${config.publicBaseUrlSsmParam}`,
+    "--parameters",
+    `${config.runtimeStackName}:HarnessSlackAppSsmParam=${config.slackAppSsmParam}`,
   ]);
 }
 
@@ -203,13 +205,16 @@ export async function smokeDeployment(
   config: DeploymentConfig,
   dependencies: DeploymentDependencies,
 ): Promise<void> {
-  const restApiUrl = await stackOutput(config, dependencies, config.runtimeStackName, "RestApiUrl");
-  const response = await dependencies.fetch(new URL("health", `${restApiUrl}/`));
-  if (!response.ok) throw new Error(`REST health check failed with HTTP ${response.status}`);
-  const body = (await response.json()) as { ok?: unknown };
-  if (body.ok !== true) throw new Error("REST health check returned an unexpected body");
-  dependencies.log(`REST health check passed: ${restApiUrl}`);
+  // The runtime API Gateway URL deliberately accepts only the CloudFront origin credential.
+  // Probe through the public distribution, as every browser and host daemon does, rather
+  // than teaching this lifecycle script a private ingress credential.
   const webUrl = await stackOutput(config, dependencies, config.webStackName, "WebUrl");
+  const response = await dependencies.fetch(new URL("health", `${webUrl}/`));
+  if (!response.ok)
+    throw new Error(`CloudFront API health check failed with HTTP ${response.status}`);
+  const body = (await response.json()) as { ok?: unknown };
+  if (body.ok !== true) throw new Error("CloudFront API health check returned an unexpected body");
+  dependencies.log(`CloudFront API health check passed: ${webUrl}`);
   const webResponse = await dependencies.fetch(new URL("login", `${webUrl}/`));
   if (!webResponse.ok) throw new Error(`web health check failed with HTTP ${webResponse.status}`);
   dependencies.log(`Web health check passed: ${webUrl}`);

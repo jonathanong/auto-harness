@@ -38,6 +38,7 @@ describe("bootstrap-secret SSM parameter name validation", () => {
       "HarnessSessionSecretSsmParam",
       "HarnessCursorSecretSsmParam",
       "HarnessPublicBaseUrlSsmParam",
+      "HarnessSlackAppSsmParam",
     ]) {
       const pattern = parameters[id]?.AllowedPattern;
       expect(pattern).toBeDefined();

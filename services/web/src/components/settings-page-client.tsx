@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { PublicSlackIntegration } from "@auto-harness/shared";
+import { showToast } from "@auto-harness/ui";
 
 import { SlackSettingsForm } from "./slack-settings-form.tsx";
 
@@ -13,6 +14,30 @@ type SettingsState =
 
 export function SettingsPageClient() {
   const [state, setState] = useState<SettingsState>({ kind: "loading" });
+
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    const result = query.get("slackOAuth");
+    const messages: Record<string, { message: string; variant?: "destructive" }> = {
+      success: { message: "Slack connected. Delivery and inbound events are ready to configure." },
+      error: {
+        message: "Slack could not complete the connection. Try again.",
+        variant: "destructive",
+      },
+    };
+    const status = result ? messages[result] : undefined;
+    if (status) {
+      showToast(status.message, {
+        ...(status.variant ? { variant: status.variant } : {}),
+        pw: "slack-oauth-status",
+      });
+    }
+    if (result !== null) {
+      query.delete("slackOAuth");
+      const next = query.toString();
+      window.history.replaceState({}, "", `${window.location.pathname}${next ? `?${next}` : ""}`);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;

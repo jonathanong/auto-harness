@@ -20,6 +20,8 @@ import type {
 } from "./db/plane-storage.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 import type { SlackIntegrationRecord } from "./slack-integration-types.ts";
+import type { SlackInboundEventRecord, SlackOAuthStateRecord } from "./slack-oauth-types.ts";
+import type { SlackIdentityClient, SlackOAuthClient } from "./slack-oauth-types.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import { hydrateFromStorage } from "./control-plane-hydrate.ts";
 import type {
@@ -75,8 +77,17 @@ export type ControlPlaneState = {
   commands: Map<string, CommandRecord>;
   /** Ciphertext-only cache; REST reads always refresh it from durable storage. */
   slackIntegration: SlackIntegrationRecord | undefined;
+  /** Local/test counterpart; deployed receipt always goes through DynamoDB. */
+  slackOAuthStates: Map<string, SlackOAuthStateRecord>;
+  slackInboundEvents: Map<string, SlackInboundEventRecord>;
   /** True when this process (or its deployed sibling cron) can run the Slack outbox. */
   slackOutboundEnabled: boolean;
+  /** OAuth signing credentials were injected into this REST runtime. */
+  slackInboundEnabled: boolean;
+  /** Bounded Slack boundary used only while a manual signing secret is configured. */
+  slackOAuthClient: SlackOAuthClient | undefined;
+  /** Bounded Slack boundary used to identify manually supplied bot tokens. */
+  slackIdentityClient: SlackIdentityClient | undefined;
   secretEncryptor: SecretEncryptor | undefined;
   /** Append-only audit records hydrated for local/in-memory reads. */
   auditLogs: Map<string, AuditLogRecord>;
@@ -164,7 +175,12 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     providerAccounts: new Map(),
     commands: new Map(),
     slackIntegration: undefined,
+    slackOAuthStates: new Map(),
+    slackInboundEvents: new Map(),
     slackOutboundEnabled: false,
+    slackInboundEnabled: false,
+    slackOAuthClient: options.slackOAuthClient,
+    slackIdentityClient: options.slackIdentityClient,
     secretEncryptor: options.secretEncryptor,
     auditLogs: new Map(),
     usageRecords: new Map(),

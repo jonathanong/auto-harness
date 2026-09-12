@@ -324,4 +324,36 @@ describe("Slack production runtime", () => {
     });
     expect(await worker!.runOnce()).toBe(true);
   });
+
+  it("drops a tracked session when storage no longer has its latest snapshot", async () => {
+    const store = new MemoryOutbox();
+    const session = sessionRecord("disappeared", "running");
+    let active = true;
+    const getSession = vi.fn(async () => null);
+    const storage = Object.assign(store, {
+      getSlackIntegration: async () => slackRecord(),
+      listSessionsByStatus: async (status: string) =>
+        status === "running" && active ? [session] : [],
+      getSession,
+      getRepository: async () => null,
+    });
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true, channel: "C123", ts: "3.0" }), { status: 200 }),
+    );
+    const worker = createSlackLifecycleWorker(
+      new ControlPlane({
+        storage: storage as never,
+        secretEncryptor: encryptor(),
+        publicBaseUrl: "https://ui.test",
+        now: () => now,
+      }),
+      { fetch: fetchImpl, worker: { now: () => now } },
+    );
+    expect(await worker!.runOnce()).toBe(true);
+    active = false;
+    expect(await worker!.runOnce()).toBe(true);
+    expect(getSession).toHaveBeenCalledWith("disappeared");
+    expect(fetchImpl).toHaveBeenCalled();
+  });
 });

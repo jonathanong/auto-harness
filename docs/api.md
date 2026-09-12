@@ -378,15 +378,22 @@ Slack configuration is the singleton `/integrations/slack`. Every method
 requires an unscoped **admin** account; operators, read-only users, and
 repository- or host-scoped admins receive `403`.
 
-`POST` creates and `PUT` replaces the configuration. Both require a complete
+`POST` creates and `PUT` replaces a manual configuration. Both require a complete
 body, including the `xoxb-…` bot token and a channel name (such as `#harness`)
 or Slack channel ID. `enabled`, notification toggles, and an optional signing
-secret are supported. `GET` returns no token, signing secret, or ciphertext:
-only `botTokenConfigured`, `signingSecretConfigured`, and `deliveryAvailable`
-flags. `DELETE` returns `204`. `deliveryAvailable` is `true` only when this
-environment can decrypt the bot token and run the outbound worker; otherwise
-the control plane reports configured-but-unavailable and does not imply that
-messages will be sent.
+secret are supported. `PATCH` updates only ordinary channel, enabled, and
+notification settings, requires the positive version read by the client, and never replaces
+credentials. `GET` returns no token,
+signing secret, or ciphertext: only redacted configured flags plus installation
+method, optional workspace/app/bot-user/scope metadata, `inboundAvailable`, and
+`deliveryAvailable`. Legacy records without an installation method are reported
+as manual. `DELETE` returns `204`. `deliveryAvailable` is true only when this
+environment can decrypt the bot token and run the outbound worker; otherwise the
+control plane reports configured-but-unavailable and does not imply that messages
+will be sent.
+The response also includes an opaque `installationId` when present; clients must retain and echo
+it as `expectedInstallationId` when starting an OAuth reconnect. It is an identity fence, not a
+credential.
 
 KMS encrypts the secret fields with `KMS_KEY_ID` and the stable
 `auto-harness/slack-integration` / `slack` encryption context before the
@@ -395,6 +402,24 @@ failure fails the write closed. Configuration writes use a durable version so a
 stale worker receives `409 CONFLICT`, rather than overwriting another worker.
 All create, update, delete, validation, and storage outcomes are audit events;
 the request body and secret values are never passed to audit metadata.
+
+OAuth is started with `POST /integrations/slack/oauth/start`, which accepts the
+current nonsecret settings, expected integration version, and the opaque
+`expectedInstallationId` returned by `GET` for an existing installation, then returns a Slack
+authorization URL. On reconnect, omitted `enabled` and `notifications` values inherit the
+current integration settings; first installs default them to enabled and the global notification
+defaults. The callback validates one-time state, exchanges the code,
+checks workspace/app identity and required scopes, then stores the encrypted token
+with compare-and-swap versioning. It redirects to `/settings?slackOAuth=success|error` with only a
+bounded success/error code. The settings index forwards the result to the Slack settings page.
+`POST /integrations/slack/events` verifies Slack's raw-body signature and durably
+deduplicates supported `app_mention` and `message.im` events as pending; it does not create
+sessions yet. OAuth verification uses the runtime app signing secret and does not probe delivery
+capability. A manual create or replacement with a signing secret performs a bounded `auth.test`
+for the bot token and persists its workspace and bot-user identity; if that check is unavailable
+or does not identify both values, outbound configuration remains valid but `inboundAvailable` is
+false. Accepted manual envelopes are fenced to the stored workspace and an
+`authorizations[].user_id`; OAuth envelopes are fenced to the stored workspace and app identity.
 
 Outbound session-thread delivery uses `chat.postMessage` / `chat.update` through
 the leased outbox. Session create/cancel/complete writers enqueue lifecycle rows
@@ -405,7 +430,8 @@ the deployed cron Lambda drains the same outbox. GET may decrypt the bot token
 as a capability probe for `deliveryAvailable`. Delivery is at-least-once across
 Lambda invocations.
 Retries use the existing attempt ceiling and dead-letter exhausted operations.
-This endpoint does not implement Slack OAuth or incoming event verification.
+Slack delivery is at-least-once across Lambda invocations. Rate-limit responses
+follow Slack's `Retry-After` guidance rather than a fixed pacing interval.
 
 ---
 

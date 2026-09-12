@@ -13,6 +13,11 @@ import type { SlackTransport } from "./slack-delivery-types.ts";
 import type { SlackLifecycleWorkerOptions } from "./slack-worker.ts";
 import type { WebhookDestinationSelector, WebhookTransport } from "./webhook-delivery-types.ts";
 import type { WebhookWorkerOptions } from "./webhook-worker.ts";
+import type {
+  SlackAppCredentials,
+  SlackIdentityClient,
+  SlackOAuthClient,
+} from "./slack-oauth-types.ts";
 
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
 const DEFAULT_PUBLIC_BASE_URL = "http://localhost:7421";
@@ -66,6 +71,14 @@ export type LocalServerOptions = {
    */
   slackTransport?: SlackTransport;
   slackWorker?: SlackLifecycleWorkerOptions;
+  /** OAuth app credentials, normally loaded from an environment-scoped SSM parameter. */
+  slackAppCredentials?: SlackAppCredentials;
+  /** Deployed-only public URL lookup for Slack OAuth; local apps use publicBaseUrl directly. */
+  resolveSlackOAuthPublicBaseUrl?: () => Promise<string | undefined>;
+  /** Injectable Slack OAuth HTTP boundary. */
+  slackOAuthClient?: SlackOAuthClient;
+  /** Injectable bounded identity lookup for manual Slack configuration. */
+  slackIdentityClient?: SlackIdentityClient;
   /** Secret-safe routing boundary. It returns only immutable configuration references. */
   webhookDestinationSelector?: WebhookDestinationSelector;
   /** Optional outbound boundary. Production supplies no implementation. */
@@ -108,6 +121,33 @@ export function readJson(req: IncomingMessage): Promise<unknown> {
       } catch (err) {
         reject(err);
       }
+    });
+    req.on("error", reject);
+  });
+}
+
+/** Reads unmodified bytes for signature schemes; callers choose a route-specific cap. */
+export function readRawBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let rejected = false;
+    req.on("data", (chunk: Buffer) => {
+      if (rejected) return;
+      size += chunk.length;
+      if (size > maxBytes) {
+        rejected = true;
+        // Keep the connection usable so callers can send the documented 413 response. The
+        // data listener remains installed until the request ends, but no further chunks are
+        // retained after the bounded prefix has been read.
+        req.resume();
+        reject(new Error("request body exceeds route limit"));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (!rejected) resolve(Buffer.concat(chunks));
     });
     req.on("error", reject);
   });

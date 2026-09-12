@@ -16,6 +16,12 @@ const publicConfig = {
   },
   botTokenConfigured: true,
   signingSecretConfigured: true,
+  installationMethod: "manual",
+  inboundAvailable: true,
+  workspaceId: "T01234567",
+  workspaceName: "Harness",
+  appId: "A01234567",
+  grantedScopes: ["chat:write"],
   deliveryAvailable: false,
   version: 1,
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -61,6 +67,9 @@ test.describe("control plane Slack settings", () => {
       "Messages are sent only when outbound delivery is available",
     );
     await expect(page.getByTestId("slack-delivery-state")).toHaveText("Not configured");
+    await expect(page.getByTestId("slack-connection-options")).toBeVisible();
+    await expect(page.getByTestId("slack-connect")).toBeVisible();
+    await expect(page.getByTestId("slack-manual-path")).toBeVisible();
     await expect(page.getByTestId("form-slack-create")).toBeVisible();
     await expect(page.getByTestId("slack-default-channel")).toHaveValue("#harness");
     await expect(page.getByTestId("slack-enabled")).toBeChecked();
@@ -111,6 +120,65 @@ test.describe("control plane Slack settings", () => {
     await expect(page.getByTestId("slack-settings-loading")).toHaveAttribute("aria-busy", "true");
     release!();
     await expect(page.getByTestId("page-settings")).toBeVisible();
+  });
+
+  test("keeps OAuth reconnect and ordinary settings separate", async ({ page }) => {
+    let startBody: Record<string, unknown> | undefined;
+    await page.route("**/api/v1/integrations/slack", (route) =>
+      route.fulfill({
+        status: 200,
+        json: {
+          ...publicConfig,
+          installationMethod: "oauth",
+          inboundAvailable: true,
+          grantedScopes: ["chat:write", "app_mentions:read", "im:history"],
+        },
+      }),
+    );
+    await page.route("**/api/v1/integrations/slack/oauth/start", async (route) => {
+      startBody = JSON.parse(route.request().postData() ?? "{}") as Record<string, unknown>;
+      await route.fulfill({
+        status: 201,
+        json: { url: "https://slack.com/oauth/v2/authorize?state=test" },
+      });
+    });
+    await page.route("https://slack.com/oauth/v2/authorize**", (route) =>
+      route.fulfill({ status: 200, contentType: "text/plain", body: "oauth" }),
+    );
+
+    await page.goto("/settings/slack");
+    await expect(page.getByTestId("slack-reconnect")).toBeVisible();
+    await expect(page.getByTestId("slack-installation-method-state")).toHaveText("OAuth");
+    await expect(page.getByTestId("slack-workspace-state")).toContainText("Harness");
+    await expect(page.getByTestId("slack-app-state")).toHaveText("A01234567");
+    await expect(page.getByTestId("slack-inbound-state")).toHaveText("Available");
+    await expect(page.getByTestId("slack-scopes-state")).toContainText("app_mentions:read");
+    await expect(page.getByTestId("form-slack-settings")).toBeVisible();
+    await expect(page.getByTestId("form-slack-manual-replace")).toBeVisible();
+    await expect(page.getByTestId("slack-bot-token")).toBeVisible();
+    await expect(page.getByTestId("slack-manual-submit")).toBeVisible();
+    await page.getByTestId("slack-bot-token").fill("not-a-token");
+    await page.getByTestId("slack-manual-submit").click();
+    await expect(page.getByTestId("slack-manual-error")).toContainText("xoxb-");
+    await page.getByTestId("slack-reconnect").click();
+    await expect
+      .poll(() => startBody)
+      .toMatchObject({
+        defaultChannel: "#harness",
+        expectedVersion: 1,
+      });
+  });
+
+  test("shows safe OAuth callback status and strips unknown values", async ({ page }) => {
+    await page.route("**/api/v1/integrations/slack", (route) =>
+      route.fulfill({ status: 404, json: { error: { code: "NOT_FOUND" } } }),
+    );
+    await page.goto("/settings?slackOAuth=success");
+    await expect(page.getByTestId("slack-oauth-status")).toContainText("Slack connected");
+    await expect(page).toHaveURL("/settings/slack");
+    await page.goto("/settings/slack?slackOAuth=unexpected");
+    await expect(page).toHaveURL("/settings/slack");
+    await expect(page.getByTestId("slack-oauth-status")).toHaveCount(0);
   });
 
   test("shows a permission error while preserving account settings navigation", async ({

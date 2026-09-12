@@ -51,9 +51,10 @@ cors: {
 ## Rate limiting
 
 REST uses fixed-window limits keyed by the authenticated actor (`kind:id`),
-with separate buckets for login, reads, mutations, scheduler calls, and host
-traffic. Defaults are login **10/minute**, reads **300/minute**, mutations and
-scheduler **60/minute**, and host REST traffic **600/minute**. WebSocket host
+with separate buckets for login, reads, mutations, scheduler calls, host
+traffic, and unauthenticated public ingress. Defaults are login **10/minute**,
+reads **300/minute**, mutations, scheduler, and public Slack ingress
+**60/minute**, and host REST traffic **600/minute**. WebSocket host
 traffic is limited independently to **100 messages/second per connection** so
 keepalives and batched logs do not consume a REST actor's budget. Health checks
 are intentionally exempt.
@@ -62,14 +63,27 @@ The local listener accepts these environment overrides (all values are positive
 integers): `HARNESS_RATE_LIMIT_WINDOW_SECONDS`,
 `HARNESS_RATE_LIMIT_LOGIN`, `HARNESS_RATE_LIMIT_READ`,
 `HARNESS_RATE_LIMIT_MUTATION`, `HARNESS_RATE_LIMIT_SCHEDULER`,
-`HARNESS_RATE_LIMIT_HOST`, `HARNESS_RATE_LIMIT_MAX_ENTRIES`, and
+`HARNESS_RATE_LIMIT_HOST`, `HARNESS_RATE_LIMIT_PUBLIC_INGRESS`,
+`HARNESS_RATE_LIMIT_MAX_ENTRIES`, and
 `HARNESS_WS_RATE_LIMIT_PER_SECOND`. Set `HARNESS_RATE_LIMIT_MODE=disabled` only
 for an isolated loopback test. The login bucket applies to `POST /auth/login`
 and to unauthenticated requests that fail credential checks. It is keyed by
 the peer socket address. Authenticated requests use only the actor
-read/mutation/scheduler/host buckets. A forwarded address is used only when
+read/mutation/scheduler/host buckets. Public Slack callbacks and events use the
+public-ingress bucket keyed by peer address before body parsing or storage. A
+forwarded address is used only when
 `HARNESS_TRUST_PROXY=true`; otherwise `X-Forwarded-For` is ignored because it
-is spoofable.
+is spoofable. In the AWS deployment, the `/api/*` and `/health` CloudFront
+behaviors add a generated origin-only credential that CloudFront overwrites if a
+viewer sends the same header. API Gateway validates that credential with a
+separate Lambda authorizer before the REST Lambda runs. Those behaviors also
+forward CloudFront's generated `CloudFront-Viewer-Address` (viewer address and
+source port); after the authorizer admits the request, the Lambda uses its IP as
+the rate-limit key. A direct API Gateway caller cannot reach that Lambda or
+choose a viewer address without the origin credential. The REST Lambda never
+receives the credential through its environment, and CloudFront Function source
+contains no credential. Local ingress has no authorizer and retains its explicit
+proxy-trust behavior.
 
 In memory-only mode, counters are bounded by `HARNESS_RATE_LIMIT_MAX_ENTRIES`
 and evict the oldest key when full. With DynamoDB-backed mode, each counter is

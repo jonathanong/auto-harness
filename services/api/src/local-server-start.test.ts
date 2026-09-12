@@ -124,4 +124,40 @@ describe("startLocalServer", () => {
       else process.env.HARNESS_WS_RATE_LIMIT_PER_SECOND = previous;
     }
   });
+
+  it("honors manual identity-client precedence without requiring OAuth credentials", async () => {
+    const explicit = { authTestBotToken: vi.fn() } as never;
+    const inherited = { authTestBotToken: vi.fn() } as never;
+    const firstPlane = new ControlPlane();
+    const first = await startLocalServer({
+      port: 17820 + Math.floor(Math.random() * 100),
+      useDynamo: false,
+      enableWs: false,
+      plane: firstPlane,
+      slackIdentityClient: explicit,
+    });
+    expect(first.plane.state.slackIdentityClient).toBe(explicit);
+    await first.close();
+
+    const secondPlane = new ControlPlane();
+    secondPlane.state.slackIdentityClient = inherited;
+    const second = await startLocalServer({
+      port: 17920 + Math.floor(Math.random() * 100),
+      useDynamo: false,
+      enableWs: false,
+      plane: secondPlane,
+    });
+    expect(second.plane.state.slackIdentityClient).toBe(inherited);
+    await second.close();
+
+    const third = await startLocalServer({
+      port: 18020 + Math.floor(Math.random() * 100),
+      useDynamo: false,
+      enableWs: false,
+      plane: new ControlPlane(),
+      slackOAuthClient: { exchangeCode: vi.fn(), revokeBotToken: vi.fn() } as never,
+    });
+    expect(third.plane.state.slackIdentityClient).toBeUndefined();
+    await third.close();
+  });
 });

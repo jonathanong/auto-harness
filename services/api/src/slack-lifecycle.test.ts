@@ -123,6 +123,19 @@ describe("Slack lifecycle planning", () => {
     expect(terminalOnly[0]).toMatchObject({ event: "session_failed", operation: "post-root" });
     expect(terminalOnly[0].text).toContain("Session failed");
 
+    const completedWithoutStart = planSlackLifecycle({
+      event: "session_completed",
+      session: { ...base, status: "completed" },
+      channel: "C123",
+      notifications: withoutCreated,
+      now: base.createdAt,
+    });
+    expect(completedWithoutStart).toHaveLength(1);
+    expect(completedWithoutStart[0]).toMatchObject({
+      event: "session_completed",
+      operation: "post-root",
+    });
+
     const startedThenTerminal = planSlackLifecycle({
       event: "session_completed",
       session: { ...base, status: "completed", startedAt: base.createdAt },

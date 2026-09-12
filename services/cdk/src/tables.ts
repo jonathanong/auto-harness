@@ -180,6 +180,24 @@ export const DYNAMO_TABLES: TableDef[] = [
     partitionKey: { name: "id", type: "S" },
   },
   {
+    name: "SlackOAuthStates",
+    partitionKey: { name: "stateHash", type: "S" },
+    ttlAttribute: "expiresAt",
+  },
+  {
+    name: "SlackInboundEvents",
+    partitionKey: { name: "workspaceId", type: "S" },
+    sortKey: { name: "eventId", type: "S" },
+    gsis: [
+      {
+        name: "status-dueOrder",
+        partitionKey: { name: "status", type: "S" },
+        sortKey: { name: "dueOrder", type: "S" },
+      },
+    ],
+    ttlAttribute: "ttl",
+  },
+  {
     name: "NotificationDeliveries",
     partitionKey: { name: "id", type: "S" },
     gsis: [

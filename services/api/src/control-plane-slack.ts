@@ -1,17 +1,21 @@
-import { SLACK_SECRET_ENCRYPTION_CONTEXT, type SecretEncryptor } from "./secret-crypto.ts";
+import { randomUUID } from "node:crypto";
+
 import {
-  DEFAULT_SLACK_NOTIFICATIONS,
   normalizeSlackNotifications,
-  SLACK_INTEGRATION_ID,
   toPublicSlackIntegration,
   type PublicSlackIntegration,
   type SlackIntegrationRecord,
   type SlackNotifications,
 } from "./slack-integration-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { isSlackBotToken, slackDeliveryAvailable } from "./slack-secrets.ts";
-
-type SlackSecretConfig = { botToken: string; signingSecret?: string };
+import { resolveSlackSigningSecret, slackDeliveryAvailable } from "./slack-secrets.ts";
+import {
+  makeManualSlackRecord,
+  validateSlackConfig,
+  validateSlackSettingsPatch,
+} from "./control-plane-slack-manual.ts";
+import { slackConfigConflict, slackConfigUnavailable } from "./control-plane-slack-failure.ts";
+import { resolveManualSlackIdentity } from "./control-plane-slack-manual-identity.ts";
 
 export type SlackConfigInput = {
   botToken: string;
@@ -22,7 +26,16 @@ export type SlackConfigInput = {
   notifications?: Partial<SlackNotifications>;
 };
 
-type SlackConfigFailure = { ok: false; error: string; conflict?: true; unavailable?: true };
+/** PATCH deliberately cannot replace either credential. */
+export type SlackSettingsPatch = {
+  /** Version read by the editor; prevents a stale form from replacing newer settings. */
+  expectedVersion: number;
+  defaultChannel?: string;
+  enabled?: boolean;
+  notifications?: Partial<SlackNotifications>;
+};
+
+export type SlackConfigFailure = { ok: false; error: string; conflict?: true; unavailable?: true };
 
 export function getSlackIntegration(
   state: ControlPlaneState,
@@ -47,23 +60,31 @@ export async function createSlackIntegrationDurable(
   state: ControlPlaneState,
   input: SlackConfigInput,
 ): Promise<{ ok: true; integration: PublicSlackIntegration } | SlackConfigFailure> {
-  const valid = validateInput(input);
+  const valid = validateSlackConfig(input);
   if (!valid.ok) return valid;
   const encryptor = state.secretEncryptor;
-  if (!encryptor) return unavailable();
+  if (!encryptor) return slackConfigUnavailable();
   const current = state.storage
     ? await state.storage.getSlackIntegration()
     : state.slackIntegration;
   if (current) return { ok: false, error: "Slack integration already exists", conflict: true };
   const at = state.now();
-  const record = await makeRecord(input, encryptor, at, 1, at);
+  const record = await makeManualSlackRecord(
+    input,
+    encryptor,
+    at,
+    1,
+    at,
+    undefined,
+    await resolveManualSlackIdentity(state, input),
+  );
   if (!state.storage) {
     state.slackIntegration = record;
     return { ok: true, integration: await publicIntegration(state, record) };
   }
   if (!(await state.storage.putSlackIntegration(record, null))) {
     await getSlackIntegrationDurable(state);
-    return conflict();
+    return slackConfigConflict();
   }
   state.slackIntegration = record;
   return { ok: true, integration: await publicIntegration(state, record) };
@@ -73,20 +94,22 @@ export async function updateSlackIntegrationDurable(
   state: ControlPlaneState,
   input: SlackConfigInput,
 ): Promise<{ ok: true; integration: PublicSlackIntegration } | SlackConfigFailure> {
-  const valid = validateInput(input);
+  const valid = validateSlackConfig(input);
   if (!valid.ok) return valid;
   const encryptor = state.secretEncryptor;
-  if (!encryptor) return unavailable();
+  if (!encryptor) return slackConfigUnavailable();
   const current = state.storage
     ? await state.storage.getSlackIntegration()
     : state.slackIntegration;
   if (!current) return { ok: false, error: "Slack integration not found" };
-  const record = await makeRecord(
+  const record = await makeManualSlackRecord(
     input,
     encryptor,
     current.createdAt,
     current.version + 1,
     state.now(),
+    current.installationId,
+    await resolveManualSlackIdentity(state, input),
   );
   if (!state.storage) {
     state.slackIntegration = record;
@@ -94,7 +117,49 @@ export async function updateSlackIntegrationDurable(
   }
   if (!(await state.storage.putSlackIntegration(record, current.version))) {
     await getSlackIntegrationDurable(state);
-    return conflict();
+    return slackConfigConflict();
+  }
+  state.slackIntegration = record;
+  return { ok: true, integration: await publicIntegration(state, record) };
+}
+
+export async function patchSlackIntegrationDurable(
+  state: ControlPlaneState,
+  input: SlackSettingsPatch,
+): Promise<{ ok: true; integration: PublicSlackIntegration } | SlackConfigFailure> {
+  const valid = validateSlackSettingsPatch(input);
+  if (!valid.ok) return valid;
+  const current = state.storage
+    ? await state.storage.getSlackIntegration()
+    : state.slackIntegration;
+  if (!current) return { ok: false, error: "Slack integration not found" };
+  if (current.version !== input.expectedVersion) {
+    state.slackIntegration = { ...current };
+    return slackConfigConflict();
+  }
+  const record: SlackIntegrationRecord = {
+    ...current,
+    ...(input.defaultChannel === undefined ? {} : { defaultChannel: input.defaultChannel }),
+    ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+    ...(input.notifications === undefined
+      ? {}
+      : {
+          notifications: normalizeSlackNotifications({
+            ...current.notifications,
+            ...input.notifications,
+          }),
+        }),
+    version: current.version + 1,
+    installationId: current.installationId ?? randomUUID(),
+    updatedAt: state.now(),
+  };
+  if (!state.storage) {
+    state.slackIntegration = record;
+    return { ok: true, integration: await publicIntegration(state, record) };
+  }
+  if (!(await state.storage.putSlackIntegration(record, input.expectedVersion))) {
+    await getSlackIntegrationDurable(state);
+    return slackConfigConflict();
   }
   state.slackIntegration = record;
   return { ok: true, integration: await publicIntegration(state, record) };
@@ -113,90 +178,23 @@ export async function deleteSlackIntegrationDurable(
   }
   if (!(await state.storage.deleteSlackIntegration(current.version))) {
     await getSlackIntegrationDurable(state);
-    return conflict();
+    return slackConfigConflict();
   }
   state.slackIntegration = undefined;
   return { ok: true };
 }
 
-function unavailable(): SlackConfigFailure {
-  return { ok: false, error: "Slack secret encryption is not configured", unavailable: true };
-}
-
-function conflict(): SlackConfigFailure {
-  return { ok: false, error: "Slack integration changed concurrently; retry", conflict: true };
-}
-
-async function makeRecord(
-  input: SlackConfigInput,
-  encryptor: SecretEncryptor,
-  createdAt: string,
-  version: number,
-  updatedAt: string,
-): Promise<SlackIntegrationRecord> {
-  const secretConfig: SlackSecretConfig = {
-    botToken: input.botToken,
-    ...(input.signingSecret ? { signingSecret: input.signingSecret } : {}),
-  };
-  return {
-    id: SLACK_INTEGRATION_ID,
-    type: "slack",
-    encryptedConfig: await encryptor.encrypt(
-      JSON.stringify(secretConfig),
-      SLACK_SECRET_ENCRYPTION_CONTEXT,
-    ),
-    defaultChannel: input.defaultChannel,
-    enabled: input.enabled ?? true,
-    notifications: normalizeSlackNotifications(input.notifications),
-    signingSecretConfigured: !!input.signingSecret,
-    version,
-    createdAt,
-    updatedAt,
-  };
-}
-
-function validateInput(input: SlackConfigInput): { ok: true } | SlackConfigFailure {
-  if (!isSlackBotToken(input.botToken)) {
-    return { ok: false, error: "botToken must be a Slack bot token" };
-  }
-  if (!isSlackChannel(input.defaultChannel)) {
-    return { ok: false, error: "defaultChannel must be a Slack channel name or channel ID" };
-  }
-  if (input.enabled !== undefined && typeof input.enabled !== "boolean") {
-    return { ok: false, error: "enabled must be a boolean" };
-  }
-  if (input.signingSecret !== undefined && !isSigningSecret(input.signingSecret)) {
-    return { ok: false, error: "signingSecret must be a Slack signing secret" };
-  }
-  if (input.notifications !== undefined) {
-    const expected = Object.keys(DEFAULT_SLACK_NOTIFICATIONS).toSorted();
-    const legacy = expected.filter((key) => key !== "onHostOffline");
-    const actual = Object.keys(input.notifications).toSorted();
-    if (
-      (!sameKeys(actual, expected) && !sameKeys(actual, legacy)) ||
-      !Object.values(input.notifications).every((value) => typeof value === "boolean")
-    ) {
-      return { ok: false, error: "notifications must contain only supported boolean event flags" };
-    }
-  }
-  return { ok: true };
-}
-
-function sameKeys(actual: string[], expected: string[]): boolean {
-  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
-}
-
-function isSlackChannel(value: string): boolean {
-  return /^#[a-z0-9][a-z0-9_-]{0,79}$/.test(value) || /^[CGD][A-Z0-9]{8,}$/.test(value);
-}
-
-function isSigningSecret(value: string): boolean {
-  return /^[a-fA-F0-9]{32,128}$/.test(value);
-}
-
-async function publicIntegration(
+export async function publicIntegration(
   state: ControlPlaneState,
   record: SlackIntegrationRecord,
 ): Promise<PublicSlackIntegration> {
-  return toPublicSlackIntegration(record, await slackDeliveryAvailable(state, record));
+  const inboundAvailable =
+    (record.installationMethod ?? "manual") === "oauth"
+      ? state.slackInboundEnabled
+      : Boolean(record.workspaceId && record.botUserId) &&
+        (await resolveSlackSigningSecret(state.secretEncryptor, record)) !== null;
+  return {
+    ...toPublicSlackIntegration(record, await slackDeliveryAvailable(state, record)),
+    inboundAvailable,
+  };
 }

@@ -1,6 +1,10 @@
+import { isIP } from "node:net";
 import { Readable } from "node:stream";
 
 type HeaderMap = Record<string, string | undefined>;
+
+/** CloudFront-generated address and source port, forwarded only on the protected API origin. */
+const CLOUDFRONT_VIEWER_ADDRESS_HEADER = "cloudfront-viewer-address";
 
 export type HttpApiEvent = {
   body?: string | null;
@@ -39,11 +43,28 @@ export function requestForLambdaEvent(event: HttpApiEvent): import("node:http").
   const request = Readable.from(body) as import("node:http").IncomingMessage;
   request.method = event.requestContext?.http?.method ?? "GET";
   request.url = `${event.rawPath ?? "/"}${event.rawQueryString ? `?${event.rawQueryString}` : ""}`;
-  request.headers = eventHeaders(event);
+  const headers = eventHeaders(event);
+  request.headers = headers;
+  // The HTTP API invokes this Lambda only after the ingress authorizer accepts
+  // CloudFront's secret origin header. CloudFront itself produces this header
+  // from the viewer connection, so a direct API Gateway caller cannot choose
+  // this key: it cannot reach this handler without that origin credential.
+  const sourceIp =
+    cloudFrontViewerIp(headers[CLOUDFRONT_VIEWER_ADDRESS_HEADER]) ??
+    event.requestContext?.http?.sourceIp ??
+    "0.0.0.0";
   Object.defineProperty(request, "socket", {
-    value: { remoteAddress: event.requestContext?.http?.sourceIp ?? "0.0.0.0" },
+    value: { remoteAddress: sourceIp },
   });
   return request;
+}
+
+function cloudFrontViewerIp(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const bracketed = /^\[([^\]]+)\]:\d+$/.exec(value);
+  if (bracketed && isIP(bracketed[1]!)) return bracketed[1];
+  const addressWithPort = /^(.*):\d+$/.exec(value);
+  return addressWithPort && isIP(addressWithPort[1]!) ? addressWithPort[1] : undefined;
 }
 
 export function createLambdaResponseCapture(): {

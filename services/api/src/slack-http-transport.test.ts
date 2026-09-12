@@ -151,6 +151,16 @@ describe("Slack HTTP transport", () => {
     await evicting.deliver({ ...request("post-root"), idempotencyKey: "b", text: "b" });
     await evicting.deliver({ ...request("post-root"), idempotencyKey: "a", text: "a" });
     expect(bounded).toHaveBeenCalledTimes(3);
+
+    const noCache = createSlackHttpTransport({
+      getBotToken: async () => token,
+      fetch: async () => jsonResponse({ ok: true, channel: "C123", ts: "no-cache" }),
+      cacheLimit: 0,
+    });
+    expect(await noCache.deliver(request())).toEqual({
+      channel: "C123",
+      messageTs: "no-cache",
+    });
   });
 
   it("uses the default Slack API and fetch, and fails closed on token or payload errors", async () => {
