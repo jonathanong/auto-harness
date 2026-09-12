@@ -119,6 +119,9 @@ export async function triggerScheduleDurable(
   ) {
     return { ok: false, error: "workspace pool not found" };
   }
+  if (!workspaceScheduleSetupProfileAvailable(state, schedule)) {
+    return { ok: false, error: "workspace setup profile not found" };
+  }
   const repository = schedule.repositoryId
     ? await getRepositoryDurable(state, schedule.repositoryId)
     : null;
@@ -352,6 +355,9 @@ export async function tryClaimScheduleFireDurable(
   ) {
     return null;
   }
+  if (!workspaceScheduleSetupProfileAvailable(state, schedule)) {
+    return null;
+  }
   const target = resolveScheduledTarget(state, schedule);
   if (!target.ok) {
     return null;
@@ -561,6 +567,15 @@ function createScheduledSession(state: ControlPlaneState, schedule: ScheduleReco
     scheduleId: schedule.id,
     ...(schedule.principalId ? { principalId: schedule.principalId } : {}),
   };
+}
+
+function workspaceScheduleSetupProfileAvailable(
+  state: ControlPlaneState,
+  schedule: ScheduleRecord,
+): boolean {
+  if (!schedule.workspacePoolId || !schedule.setupProfileId) return true;
+  const pool = state.workspacePools.get(schedule.workspacePoolId);
+  return Boolean(pool?.setupProfiles.some((profile) => profile.id === schedule.setupProfileId));
 }
 
 function resolveScheduledTarget(

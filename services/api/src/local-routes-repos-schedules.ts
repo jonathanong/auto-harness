@@ -807,10 +807,15 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           });
           return true;
         }
+        // A repository schedule can carry a branch ref.  Converting it to a
+        // workspace schedule deliberately drops that inherited repository-only
+        // field; an explicitly supplied ref still receives the normal
+        // workspace validation error below.
         const workspacePatch = {
           ...existing,
           ...body,
           repositoryId: body.repositoryId !== undefined ? body.repositoryId : existing.repositoryId,
+          ...(body.repositoryId === null && body.ref === undefined ? { ref: undefined } : {}),
         };
         const workspaceError = workspaceScheduleBodyInvalid(workspacePatch);
         if (workspaceError) {

@@ -145,6 +145,47 @@ describe("workspace sessions", () => {
     }
   });
 
+  it("quarantines a timed-out workspace slot when its late terminal report reports cleanup failure", async () => {
+    const { plane } = workspacePlane();
+    const session = createWorkspaceSession(plane);
+    await assignWorkspaceQueuedDurable(plane.state);
+    const current = plane.state.sessions.get(session.id)!;
+    current.status = "timed_out";
+    const finishCalls: Record<string, unknown>[] = [];
+    plane.state.storage = {
+      getSession: async () => current,
+      finishSession: async (opts: Record<string, unknown>) => {
+        finishCalls.push(opts);
+        return true;
+      },
+      putArchive: async () => undefined,
+    } as never;
+
+    await expect(
+      plane.handleHostMessageDurable({
+        type: "session:status",
+        sessionId: session.id,
+        worktreeId: null,
+        workspaceSlotId: "slot-1",
+        attemptId: "attempt-1",
+        status: "failed",
+        workspaceSlotError: "cleanup failed",
+      }),
+    ).resolves.toMatchObject({ ok: true, sessionStatusAcknowledged: { sessionId: session.id } });
+    expect(finishCalls).toEqual([
+      expect.objectContaining({
+        workspaceSlotId: "slot-1",
+        workspaceSlotError: "cleanup failed",
+        status: "timed_out",
+      }),
+    ]);
+    expect(plane.state.workspaceSlots.get("slot-1")).toMatchObject({
+      status: "error",
+      currentSessionId: null,
+      errorMessage: "cleanup failed",
+    });
+  });
+
   it("freezes trusted setup content at admission when the pool changes while queued", async () => {
     const { plane, messages } = workspacePlane();
     const session = createWorkspaceSession(plane);

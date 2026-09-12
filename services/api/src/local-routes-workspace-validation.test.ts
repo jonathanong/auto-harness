@@ -13,6 +13,7 @@ function workspaceRoutes() {
   expect(plane.createWorkspacePool({ name: "pool" }).ok).toBe(true);
   const { handler } = createLocalApp({ plane, rateLimitConfig: { enabled: false } });
   return {
+    plane,
     invoke: (method: string, path: string, body?: unknown) =>
       invokeHandler(handler, method, path, body),
   };
@@ -78,5 +79,34 @@ describe("workspace schedule route validation", () => {
       status: 403,
       json: { error: { message: "fleet:exec-config capability is required" } },
     });
+  });
+
+  it("drops an inherited repository ref when converting a schedule to a workspace", async () => {
+    const { invoke, plane } = workspaceRoutes();
+    expect(
+      plane.createRepository({
+        id: "repository-1",
+        name: "repository",
+        url: "https://example.test/repository.git",
+      }).ok,
+    ).toBe(true);
+    expect(
+      (
+        await invoke("POST", "/api/v1/schedules", {
+          ...schedule,
+          repositoryId: "repository-1",
+          workspacePoolId: undefined,
+          ref: "main",
+        })
+      ).status,
+    ).toBe(201);
+
+    expect(
+      await invoke("PATCH", "/api/v1/schedules/schedule-1", {
+        repositoryId: null,
+        workspacePoolId: "pool-1",
+      }),
+    ).toMatchObject({ status: 200, json: { repositoryId: null, workspacePoolId: "pool-1" } });
+    expect(plane.getSchedule("schedule-1")).not.toHaveProperty("ref");
   });
 });

@@ -76,6 +76,26 @@ export function prepareClonedSession(
   } else if (!source.workspacePoolId || !state.workspacePools.has(source.workspacePoolId)) {
     return { ok: false, error: "workspace pool not found", code: "VALIDATION_ERROR" };
   }
+  const workspacePool = source.workspacePoolId
+    ? state.workspacePools.get(source.workspacePoolId)
+    : undefined;
+  // A clone is admitted as a new workspace run. Preserve the source's
+  // already-approved setup content when it has one; legacy rows without that
+  // frozen content must still resolve their selected profile while the pool
+  // is available. Never let a removed profile silently become no setup.
+  let workspaceSetupScript: string | undefined;
+  if (source.workspacePoolId && source.setupProfileId) {
+    if (source.workspaceSetupScript !== undefined) {
+      workspaceSetupScript = source.workspaceSetupScript;
+    } else {
+      workspaceSetupScript = workspacePool?.setupProfiles.find(
+        (profile) => profile.id === source.setupProfileId,
+      )?.script;
+      if (workspaceSetupScript === undefined) {
+        return { ok: false, error: "workspace setup profile not found", code: "NOT_FOUND" };
+      }
+    }
+  }
   const overrideError = validateCloneOverrides({
     ...opts,
     prompt: opts.prompt ?? source.prompt,
@@ -92,6 +112,7 @@ export function prepareClonedSession(
     repositoryId: source.repositoryId,
     ...(source.workspacePoolId ? { workspacePoolId: source.workspacePoolId } : {}),
     ...(source.setupProfileId ? { setupProfileId: source.setupProfileId } : {}),
+    ...(workspaceSetupScript !== undefined ? { workspaceSetupScript } : {}),
     ...(source.workspacePoolId
       ? {
           destroyWorkspaceAfter:

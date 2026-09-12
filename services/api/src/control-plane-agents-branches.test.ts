@@ -41,6 +41,32 @@ function worktree(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function workspaceSession(overrides: Record<string, unknown> = {}) {
+  return session({
+    repositoryId: "",
+    workspacePoolId: "pool",
+    workspaceSlotId: "slot",
+    workspaceSlotLease: true,
+    worktreeId: null,
+    reconnectDeadlineAt: "later",
+    ...overrides,
+  });
+}
+
+function workspaceSlot(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "slot",
+    name: "slot",
+    path: "/workspace",
+    hostId: "h",
+    workspacePoolId: "pool",
+    status: "busy" as const,
+    online: false,
+    currentSessionId: "s",
+    ...overrides,
+  };
+}
+
 describe("agent registration branch boundaries", () => {
   it("rejects duplicate local running attempts", () => {
     const plane = new ControlPlane();
@@ -104,6 +130,63 @@ describe("agent registration branch boundaries", () => {
         runningSessions: ["s", "s"],
       }),
     ).toEqual({ ok: false, error: "duplicate running session s" });
+  });
+
+  it("accepts an exact local workspace ownership claim and confirms its reconnect", async () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "replacement" });
+    plane.state.sessions.set("s", workspaceSession());
+    plane.state.workspaceSlots.set("slot", workspaceSlot());
+
+    expect(
+      plane.registerHost({
+        hostId: "h",
+        worktrees: [],
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [{ id: "slot", name: "slot", path: "/workspace" }],
+          },
+        ],
+        commandProfiles: [],
+        runningSessions: ["s"],
+      }),
+    ).toEqual({ ok: true, connectionId: "replacement" });
+
+    await Promise.resolve();
+
+    expect(plane.state.sessions.get("s")).not.toHaveProperty("reconnectDeadlineAt");
+    expect(plane.state.workspaceSlots.get("slot")).toMatchObject({
+      currentSessionId: "s",
+      online: true,
+      connectionId: "replacement",
+    });
+  });
+
+  it("rejects every local workspace ownership mismatch", () => {
+    const cases = [
+      [workspaceSession({ status: "queued" }), workspaceSlot()],
+      [workspaceSession({ ackReceivedAt: undefined }), workspaceSlot()],
+      [workspaceSession({ hostId: "other" }), workspaceSlot()],
+      [workspaceSession({ workspaceSlotLease: false }), workspaceSlot()],
+      [workspaceSession(), null],
+      [workspaceSession(), workspaceSlot({ hostId: "other" })],
+      [workspaceSession(), workspaceSlot({ currentSessionId: "other" })],
+    ] as const;
+    for (const [record, slot] of cases) {
+      const plane = new ControlPlane();
+      plane.state.sessions.set("s", record);
+      if (slot) plane.state.workspaceSlots.set("slot", slot);
+
+      expect(
+        plane.registerHost({
+          hostId: "h",
+          worktrees: [],
+          workspacePools: [],
+          commandProfiles: [],
+          runningSessions: ["s"],
+        }),
+      ).toEqual({ ok: false, error: "running session s is not owned by host h" });
+    }
   });
 
   it("rejects every durable running-session ownership mismatch", async () => {

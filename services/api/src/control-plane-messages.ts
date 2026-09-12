@@ -885,6 +885,9 @@ async function applySessionStatusDurable(
       expectedStatus: "timed_out",
       queueShard: session.queueShard,
       completedAt: session.completedAt ?? state.now(),
+      ...(msg.workspaceSlotError !== undefined
+        ? { workspaceSlotError: msg.workspaceSlotError }
+        : {}),
     });
     if (!released) return { ok: true };
     const slot = state.workspaceSlots.get(slotId);

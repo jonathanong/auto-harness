@@ -311,6 +311,21 @@ function validateRunningSessions(
         return `running session ${sessionId} is not owned by host ${hostId}`;
       continue;
     }
+    if (session?.workspaceSlotId) {
+      const slot = state.workspaceSlots.get(session.workspaceSlotId);
+      if (
+        session.status !== "running" ||
+        !session.ackReceivedAt ||
+        session.hostId !== hostId ||
+        session.workspaceSlotLease !== true ||
+        !slot ||
+        slot.hostId !== hostId ||
+        slot.currentSessionId !== sessionId
+      ) {
+        return `running session ${sessionId} is not owned by host ${hostId}`;
+      }
+      continue;
+    }
     const worktree = session?.worktreeId ? state.worktrees.get(session.worktreeId) : undefined;
     if (
       !session ||
@@ -350,6 +365,21 @@ async function validateRunningSessionsDurable(
         lease.connectionId !== session.assignmentConnectionId
       )
         return `running session ${sessionId} is not owned by host ${hostId}`;
+      continue;
+    }
+    if (session?.workspaceSlotId) {
+      const slot = await state.storage!.getWorkspaceSlot(session.workspaceSlotId);
+      if (
+        session.status !== "running" ||
+        !session.ackReceivedAt ||
+        session.hostId !== hostId ||
+        session.workspaceSlotLease !== true ||
+        !slot ||
+        slot.hostId !== hostId ||
+        slot.currentSessionId !== sessionId
+      ) {
+        return `running session ${sessionId} is not owned by host ${hostId}`;
+      }
       continue;
     }
     const worktree = session?.worktreeId

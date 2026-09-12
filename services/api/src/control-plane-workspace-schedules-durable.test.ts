@@ -70,3 +70,50 @@ it("hydrates workspace pools for durable schedule transitions and retains worksp
     }),
   ).resolves.toEqual({ ok: false, error: "workspace pool not found" });
 });
+
+it("fails closed when a selected setup profile is removed before a durable fire", async () => {
+  for (const fire of ["manual", "cron"] as const) {
+    const plane = new ControlPlane({
+      now: () => "2026-01-01T00:00:00.000Z",
+      idFactory: () => "session",
+      scheduleIdFactory: () => "schedule",
+    });
+    seedBaseCommand(plane);
+    expect(
+      plane.createWorkspacePool({
+        id: "pool",
+        name: "workspace",
+        setupProfiles: [{ id: "setup", name: "Setup", script: "pnpm install" }],
+        defaultSetupProfileId: "setup",
+      }).ok,
+    ).toBe(true);
+    const schedule = putScheduleOrThrow(plane, {
+      repositoryId: null,
+      workspacePoolId: "pool",
+      setupProfileId: "setup",
+      name: "nightly",
+      target: { commandId: "cmd-base" },
+      cron: "* * * * *",
+      timeout: 30,
+      principalId: "principal",
+    });
+    const removedPool = { ...plane.state.workspacePools.get("pool")!, setupProfiles: [] };
+    setInMemoryScheduleStorage(plane.state, {
+      getWorkspacePool: async () => removedPool,
+    });
+    plane.state.workspacePools.clear();
+    const result =
+      fire === "manual"
+        ? await plane.triggerScheduleDurable(schedule.id, "2026-01-01T00:01:00.000Z")
+        : await plane.tryClaimScheduleFireDurable(
+            schedule.id,
+            schedule.nextRunAt,
+            "2026-01-01T00:01:00.000Z",
+          );
+    expect(result).toEqual(
+      fire === "manual" ? { ok: false, error: "workspace setup profile not found" } : null,
+    );
+    expect([...plane.state.sessions]).toHaveLength(0);
+    expect(plane.state.schedules.get(schedule.id)?.nextRunAt).toBe(schedule.nextRunAt);
+  }
+});
