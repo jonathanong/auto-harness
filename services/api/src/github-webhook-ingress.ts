@@ -75,7 +75,8 @@ export function parseGitHubWebhookIngress(input: {
     !nonEmptyString(binding.repositoryId) ||
     !isTarget(binding.target) ||
     !validFallbacks(binding.fallbacks) ||
-    !nonEmptyString(binding.defaultRef)
+    !nonEmptyString(binding.defaultRef) ||
+    !validAllowedLogins(binding.allowedLogins)
   ) {
     return ignored("invalid_payload");
   }
@@ -109,7 +110,7 @@ export function parseGitHubWebhookIngress(input: {
       target: copyTarget(binding.target),
       prompt,
       ref: thread.ref,
-      concurrencyId: `github-comment:${String(githubRepositoryId)}:${String(githubCommentId)}`,
+      concurrencyId: `github-comment:${input.event}:${String(githubRepositoryId)}:${String(githubCommentId)}`,
       source: "webhook",
       metadata: {
         githubEvent: input.event,
@@ -149,15 +150,25 @@ function nonEmptyString(value: unknown): value is string {
 function isTarget(value: unknown): value is TargetRef {
   const target = record(value);
   if (!target) return false;
-  const hasProvider = nonEmptyString(target.providerId);
-  const hasCommand = nonEmptyString(target.commandId);
-  return hasProvider !== hasCommand;
+  const hasProvider = target.providerId !== undefined;
+  const hasCommand = target.commandId !== undefined;
+  if (hasProvider === hasCommand) return false;
+  return hasProvider ? nonEmptyString(target.providerId) : nonEmptyString(target.commandId);
 }
 
 function validFallbacks(
   value: readonly TargetRef[] | undefined,
 ): value is readonly TargetRef[] | undefined {
   return value === undefined || (Array.isArray(value) && value.every(isTarget));
+}
+
+function validAllowedLogins(
+  value: readonly string[] | undefined,
+): value is readonly string[] | undefined {
+  return (
+    value === undefined ||
+    (Array.isArray(value) && value.every((login) => typeof login === "string"))
+  );
 }
 
 function copyTarget(target: TargetRef): TargetRef {

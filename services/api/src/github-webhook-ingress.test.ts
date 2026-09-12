@@ -54,7 +54,7 @@ describe("parseGitHubWebhookIngress", () => {
         target: { commandId: "codex" },
         prompt: " fix it",
         ref: "refs/heads/main",
-        concurrencyId: "github-comment:42:99",
+        concurrencyId: "github-comment:issue_comment:42:99",
         source: "webhook",
         metadata: {
           githubEvent: "issue_comment",
@@ -87,7 +87,7 @@ describe("parseGitHubWebhookIngress", () => {
       session: {
         prompt: "  preserve this leading space",
         ref: "refs/pull/18/head",
-        concurrencyId: "github-comment:42:100",
+        concurrencyId: "github-comment:issue_comment:42:100",
         metadata: { githubIssueNumber: 18, githubPullRequestNumber: 18 },
       },
     });
@@ -110,6 +110,7 @@ describe("parseGitHubWebhookIngress", () => {
       kind: "accepted",
       session: {
         ref: "refs/pull/19/head",
+        concurrencyId: "github-comment:pull_request_review_comment:42:101",
         metadata: {
           githubEvent: "pull_request_review_comment",
           githubIssueNumber: 19,
@@ -117,6 +118,27 @@ describe("parseGitHubWebhookIngress", () => {
           githubAuthorLogin: "Trusted-Contributor",
         },
       },
+    });
+  });
+
+  it("keeps issue and review comment concurrency namespaces distinct", () => {
+    const issue = ingress(
+      "issue_comment",
+      issueComment({ comment: { ...issueComment().comment } }),
+    );
+    const review = ingress("pull_request_review_comment", {
+      action: "created",
+      repository: { id: 42 },
+      pull_request: { number: 17 },
+      comment: { ...issueComment().comment },
+    });
+    expect(issue).toMatchObject({
+      kind: "accepted",
+      session: { concurrencyId: "github-comment:issue_comment:42:99" },
+    });
+    expect(review).toMatchObject({
+      kind: "accepted",
+      session: { concurrencyId: "github-comment:pull_request_review_comment:42:99" },
     });
   });
 

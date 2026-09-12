@@ -56,6 +56,14 @@ function hardReset(sha: string) {
   return { match: ["reset", "--hard", sha], exitCode: 0 };
 }
 
+function capturesOrigin(url = "https://github.com/example/repository.git") {
+  return { match: ["remote", "get-url", "--", "origin"], exitCode: 0, stdout: `${url}\n` };
+}
+
+function noSymbolicScratchRef(destination: string) {
+  return { match: ["symbolic-ref", "--quiet", "--", destination], exitCode: 1 };
+}
+
 const checkoutRoot = mkdtempSync(join(tmpdir(), "ah-git-checkout-unit-"));
 const checkoutRepo = join(checkoutRoot, "repo");
 const checkoutCwd = join(checkoutRoot, "wt");
@@ -118,24 +126,27 @@ describe("createGitClient checkout and revParse", () => {
 
   it("checkoutRef fetches an exact GitHub pull-request ref without shared FETCH_HEAD", async () => {
     const ref = "refs/pull/123/head";
+    const remoteUrl = "https://github.com/example/repository.git";
     const destination = `refs/auto-harness/pull-fetch/${createHash("sha256")
       .update(checkoutCwd)
       .digest("hex")}`;
     const git = createGitClient(
       scripted([
         ...resetsPriorState(),
+        capturesOrigin(remoteUrl),
+        noSymbolicScratchRef(destination),
         {
           match: [
             "fetch",
             "--no-write-fetch-head",
             "--no-tags",
-            "origin",
+            remoteUrl,
             `+${ref}:${destination}`,
           ],
           exitCode: 0,
         },
         resolvesCommit(destination, "pr-sha"),
-        { match: ["update-ref", "-d", destination], exitCode: 0 },
+        { match: ["update-ref", "--no-deref", "-d", destination], exitCode: 0 },
         { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
         hardReset("pr-sha"),
         syncsSubmodules(),
@@ -150,6 +161,113 @@ describe("createGitClient checkout and revParse", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("uses the origin URL captured before an untrusted session can mutate repository config", async () => {
+    const ref = "refs/pull/124/head";
+    const remoteUrl = "https://github.com/example/repository.git";
+    const mutatedUrl = "https://attacker.example/other.git";
+    const destination = `refs/auto-harness/pull-fetch/${createHash("sha256")
+      .update(checkoutCwd)
+      .digest("hex")}`;
+    const git = createGitClient(
+      scripted([
+        { match: ["rev-parse", "--is-inside-work-tree"], exitCode: 0, stdout: "true\n" },
+        capturesOrigin(remoteUrl),
+        // If checkoutRef re-reads mutable config, this response would replace the pinned URL and
+        // make the expected fetch below fail.
+        capturesOrigin(mutatedUrl),
+        ...resetsPriorState(),
+        noSymbolicScratchRef(destination),
+        {
+          match: [
+            "fetch",
+            "--no-write-fetch-head",
+            "--no-tags",
+            remoteUrl,
+            `+${ref}:${destination}`,
+          ],
+          exitCode: 0,
+        },
+        resolvesCommit(destination, "pinned-pr-sha"),
+        { match: ["update-ref", "--no-deref", "-d", destination], exitCode: 0 },
+        { match: ["switch", "--discard-changes", "--detach", "pinned-pr-sha"], exitCode: 0 },
+        hardReset("pinned-pr-sha"),
+        syncsSubmodules(),
+        updatesSubmodules(),
+        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pinned-pr-sha\n" },
+        { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
+      ]),
+    );
+
+    await git.ensureRepo(checkoutRepo);
+    await expect(
+      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a preexisting symbolic scratch ref before fetching", async () => {
+    const ref = "refs/pull/125/head";
+    const destination = `refs/auto-harness/pull-fetch/${createHash("sha256")
+      .update(checkoutCwd)
+      .digest("hex")}`;
+    const checkout = createGitClient(
+      scripted([
+        ...resetsPriorState(),
+        capturesOrigin(),
+        {
+          match: ["symbolic-ref", "--quiet", "--", destination],
+          exitCode: 0,
+          stdout: "refs/heads/main\n",
+        },
+      ]),
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
+
+    await expect(checkout).rejects.toThrow("Refusing symbolic GitHub pull-request scratch ref");
+  });
+
+  it("fails closed when scratch-ref inspection fails", async () => {
+    const ref = "refs/pull/126/head";
+    const destination = `refs/auto-harness/pull-fetch/${createHash("sha256")
+      .update(checkoutCwd)
+      .digest("hex")}`;
+    const checkout = createGitClient(
+      scripted([
+        ...resetsPriorState(),
+        capturesOrigin(),
+        {
+          match: ["symbolic-ref", "--quiet", "--", destination],
+          exitCode: 128,
+          stderr: "ref inspection failed",
+        },
+      ]),
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
+
+    await expect(checkout).rejects.toThrow("Failed to inspect GitHub pull-request scratch ref");
+  });
+
+  it("fails closed when no immutable origin URL is available", async () => {
+    const ref = "refs/pull/127/head";
+    const checkout = createGitClient(
+      scripted([
+        ...resetsPriorState(),
+        { match: ["remote", "get-url", "--", "origin"], exitCode: 1 },
+      ]),
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
+
+    await expect(checkout).rejects.toThrow("Failed to fetch GitHub pull-request ref");
+  });
+
+  it("fails closed when the captured origin URL is empty", async () => {
+    const ref = "refs/pull/128/head";
+    const checkout = createGitClient(
+      scripted([
+        ...resetsPriorState(),
+        { match: ["remote", "get-url", "--", "origin"], exitCode: 0 },
+      ]),
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
+
+    await expect(checkout).rejects.toThrow("Failed to fetch GitHub pull-request ref");
+  });
+
   it("checkoutRef fails closed instead of probing an untrusted fallback remote", async () => {
     const ref = "refs/pull/7/head";
     const destination = `refs/auto-harness/pull-fetch/${createHash("sha256")
@@ -158,12 +276,14 @@ describe("createGitClient checkout and revParse", () => {
     const git = createGitClient(
       scripted([
         ...resetsPriorState(),
+        capturesOrigin(),
+        noSymbolicScratchRef(destination),
         {
           match: [
             "fetch",
             "--no-write-fetch-head",
             "--no-tags",
-            "origin",
+            "https://github.com/example/repository.git",
             `+${ref}:${destination}`,
           ],
           exitCode: 1,
@@ -184,12 +304,14 @@ describe("createGitClient checkout and revParse", () => {
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
+        capturesOrigin(),
+        noSymbolicScratchRef(destination),
         {
           match: [
             "fetch",
             "--no-write-fetch-head",
             "--no-tags",
-            "origin",
+            "https://github.com/example/repository.git",
             `+${ref}:${destination}`,
           ],
           exitCode: 1,
@@ -210,18 +332,20 @@ describe("createGitClient checkout and revParse", () => {
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
+        capturesOrigin(),
+        noSymbolicScratchRef(destination),
         {
           match: [
             "fetch",
             "--no-write-fetch-head",
             "--no-tags",
-            "origin",
+            "https://github.com/example/repository.git",
             `+${ref}:${destination}`,
           ],
           exitCode: 0,
         },
         resolvesCommit(destination, "pr-sha"),
-        { match: ["update-ref", "-d", destination], exitCode: 1 },
+        { match: ["update-ref", "--no-deref", "-d", destination], exitCode: 1 },
       ]),
     ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
 

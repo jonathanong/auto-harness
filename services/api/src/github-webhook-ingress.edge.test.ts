@@ -44,7 +44,12 @@ describe("parseGitHubWebhookIngress edge cases", () => {
     const malformedBindings = [
       { ...binding, target: null },
       { ...binding, target: { providerId: "codex-provider", commandId: "codex" } },
+      { ...binding, target: { providerId: "", commandId: "codex" } },
+      { ...binding, target: { providerId: 42, commandId: "codex" } },
       { ...binding, fallbacks: [{ providerId: "" }] },
+      { ...binding, allowedLogins: "trusted-contributor" },
+      { ...binding, allowedLogins: { login: "trusted-contributor" } },
+      { ...binding, allowedLogins: ["trusted-contributor", 42] },
     ] as unknown as readonly GitHubWebhookRepositoryBinding[];
     const cases: ReadonlyArray<{
       event: string;

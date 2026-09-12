@@ -55,12 +55,33 @@ async function listedWorktreePaths(output: string, repoPath: string): Promise<Se
 }
 
 export function createGitClient(runner: ProcessRunner): GitClient {
+  const pinnedOriginUrls = new Map<string, string>();
+
+  async function captureOrigin(path: string): Promise<string | undefined> {
+    const key = await canonicalPath(path);
+    const existing = pinnedOriginUrls.get(key);
+    if (existing !== undefined) return existing;
+    try {
+      const configured = await runGit(runner, path, ["remote", "get-url", "--", "origin"]);
+      if (configured.exitCode !== 0) return undefined;
+      const remoteUrl = configured.stdout.trim();
+      if (remoteUrl.length === 0) return undefined;
+      pinnedOriginUrls.set(key, remoteUrl);
+      return remoteUrl;
+    } catch {
+      // Repositories without an origin remain valid for ordinary local-ref checkouts. A
+      // GitHub pull-ref checkout fails closed later when no immutable origin was captured.
+      return undefined;
+    }
+  }
+
   return {
     async ensureRepo(path: string) {
       const probe = await runGit(runner, path, ["rev-parse", "--is-inside-work-tree"]);
       if (probe.exitCode !== 0) {
         throw new Error(`Not a git repository: ${path}`);
       }
+      await captureOrigin(path);
     },
 
     async ensureWorktree({ repoPath, worktreePath, branch }) {
@@ -108,7 +129,9 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       // the git-native separator here rather than `--` (see `switch -- ref` below,
       // which does accept plain `--`).
       const isPullRequestRef = isGitHubPullRequestRef(ref);
-      const pullRequestRef = await fetchGitHubPullRequestRef(runner, cwd, ref, signal);
+      const pullRequestRef = isPullRequestRef
+        ? await fetchGitHubPullRequestRef(runner, cwd, ref, await captureOrigin(repoPath), signal)
+        : null;
       if (isPullRequestRef && pullRequestRef === null) {
         throw new Error(`Failed to fetch GitHub pull-request ref ${ref}`);
       }
