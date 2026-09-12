@@ -8,8 +8,14 @@ export function sessionStatusReason(errorCode?: string | null): string | null {
   if (errorCode === "usage_limit") return "Usage limit";
   if (errorCode === "queue_expired") return "Queue expired";
   if (errorCode === "checkout_fetch_failed") return "Checkout fetch failed";
-  if (errorCode === "host_lost") return "Host lost before launch";
+  if (errorCode === "host_lost") return "Host lost";
   return null;
+}
+
+/** A retry's host-loss checkpoint is known to precede command launch. */
+export function sessionInfrastructureRetryReason(errorCode?: string | null): string | null {
+  if (errorCode === "host_lost") return "Host lost before launch";
+  return sessionStatusReason(errorCode);
 }
 
 /** Friendly labels for the bounded infrastructure failures exposed by the public session API. */
@@ -25,7 +31,8 @@ function infrastructureRetryCopy(
   lastInfrastructureErrorCode?: string | null,
 ): string | null {
   if (!infrastructureRetryCount || infrastructureRetryCount < 1) return null;
-  const reason = sessionStatusReason(lastInfrastructureErrorCode) ?? "an infrastructure failure";
+  const reason =
+    sessionInfrastructureRetryReason(lastInfrastructureErrorCode) ?? "an infrastructure failure";
   return `Automatic retry ${infrastructureRetryCount} of 1 in progress after ${reason}.`;
 }
 

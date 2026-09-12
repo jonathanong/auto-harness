@@ -605,6 +605,7 @@ export async function createLambdaRuntime(
                 message.type === "host:register",
                 authenticated.protocolVersion ?? 0,
               );
+        const sessionCommandStartAcknowledged = result.sessionCommandStartAcknowledged;
         if (result.ok && message.type === "host:register") {
           trackDelivery(message.hostId, {
             type: "host:registered",
@@ -636,6 +637,22 @@ export async function createLambdaRuntime(
               type: "session:acknowledged",
               sessionId: result.sessionAcknowledged,
               attemptId: message.attemptId,
+            }).catch(() => undefined),
+          );
+        } else if (
+          message.type === "session:command-start" &&
+          sessionCommandStartAcknowledged?.sessionId === message.sessionId
+        ) {
+          // Command-start authorization is the durable fence that permits the
+          // daemon to spawn its primary CLI. Deliver the confirmation on the
+          // exact connection that submitted the command-start frame: a warm
+          // Lambda can miss the in-process hostConnection cache, and a stale
+          // cache entry would otherwise authorize a different socket.
+          track(
+            postToConnection(created.plane, management, authenticated.hostId, connectionId, {
+              type: "session:command-start-acknowledged",
+              sessionId: sessionCommandStartAcknowledged.sessionId,
+              attemptId: sessionCommandStartAcknowledged.attemptId,
             }).catch(() => undefined),
           );
         } else if (result.sessionStatusAcknowledged && message.type === "session:status") {

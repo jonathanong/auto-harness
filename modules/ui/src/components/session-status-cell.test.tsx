@@ -5,6 +5,7 @@ import {
   SESSION_QUEUED_WAIT_COPY,
   SessionStatusCell,
   SessionStatusDetail,
+  sessionInfrastructureRetryReason,
   sessionErrorLabel,
   sessionStatusReason,
 } from "./session-status-cell.tsx";
@@ -14,7 +15,8 @@ describe("SessionStatusCell", () => {
     expect(sessionStatusReason("usage_limit")).toBe("Usage limit");
     expect(sessionStatusReason("queue_expired")).toBe("Queue expired");
     expect(sessionStatusReason("checkout_fetch_failed")).toBe("Checkout fetch failed");
-    expect(sessionStatusReason("host_lost")).toBe("Host lost before launch");
+    expect(sessionStatusReason("host_lost")).toBe("Host lost");
+    expect(sessionInfrastructureRetryReason("host_lost")).toBe("Host lost before launch");
     expect(sessionErrorLabel("checkout_fetch_failed")).toBe("Checkout fetch failed");
     expect(sessionErrorLabel("unknown_failure")).toBe("unknown_failure");
     expect(sessionStatusReason("setup_failed")).toBeNull();
@@ -126,6 +128,6 @@ describe("SessionStatusCell", () => {
       renderToStaticMarkup(
         <SessionStatusCell status="failed" errorCode="host_lost" sessionId="lost" />,
       ),
-    ).toContain("Host lost before launch");
+    ).toContain("Host lost");
   });
 });

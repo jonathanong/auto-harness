@@ -8,7 +8,7 @@ import { SessionDetailTiming } from "./session-detail-timing.tsx";
 import type { SessionSummary } from "./session-detail-types.ts";
 import { SessionQueueDeadline } from "./session-queue-deadline.tsx";
 import { SessionRouteSummary } from "./session-route-summary.tsx";
-import { sessionErrorLabel } from "./session-status-cell.tsx";
+import { sessionInfrastructureRetryReason } from "./session-status-cell.tsx";
 import { SessionTimeoutDetail } from "./session-timeout-progress.tsx";
 
 export function SessionDetailsCard({
@@ -52,7 +52,7 @@ export function SessionDetailsCard({
                 <div>
                   <dt className="text-xs uppercase text-muted-foreground">Last retry reason</dt>
                   <dd className="text-sm" data-pw="session-detail-infrastructure-retry-reason">
-                    {sessionErrorLabel(s.lastInfrastructureErrorCode)}
+                    {sessionInfrastructureRetryReason(s.lastInfrastructureErrorCode)}
                   </dd>
                 </div>
               ) : null}

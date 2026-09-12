@@ -212,8 +212,12 @@ async function runProcessAndFinish(
   const spawnEnv = priorContextPath
     ? { ...commandEnv, HARNESS_PRIOR_CONTEXT_FILE: priorContextPath }
     : commandEnv;
-  const finish = (outcome: Parameters<typeof finishClaimedSession>[5]) =>
-    finishClaimedSession(
+  const finish = async (outcome: Parameters<typeof finishClaimedSession>[5]) => {
+    // Terminal hooks run as part of finishClaimedSession. Do not expose the previous
+    // session's transcript to a hook, which is neither the assigned CLI nor part of
+    // its child environment.
+    await removePriorContextFile(priorContextPath);
+    return await finishClaimedSession(
       processRunner,
       streamer,
       logs,
@@ -224,6 +228,7 @@ async function runProcessAndFinish(
       baseline,
       true,
     );
+  };
   const executeAuthorized = async (): Promise<SessionRunResult> => {
     try {
       const authorized = (await authorizeCommandStart?.(assign, signal)) ?? !signal?.aborted;

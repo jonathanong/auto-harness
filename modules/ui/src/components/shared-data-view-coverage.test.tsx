@@ -105,7 +105,7 @@ describe("shared data display composites", () => {
       ),
     ).toContain("Automatic retry 1 of 1");
     expect(render(<SessionExecutionSummary status="failed" errorCode="host_lost" />)).toContain(
-      "Host lost before launch",
+      "Host lost",
     );
     expect(render(<SessionExecutionSummary status="completed" />)).not.toContain(
       "session-detail-error",

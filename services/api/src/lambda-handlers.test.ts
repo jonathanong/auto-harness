@@ -55,6 +55,13 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       }
       return true;
     },
+    async authorizePrimaryCommandStart(input: Record<string, unknown>) {
+      const sessionId = String(input.sessionId);
+      const session = sessions.get(sessionId);
+      if (!session || session.primaryCommandStartState !== "pending") return false;
+      sessions.set(sessionId, { ...session, primaryCommandStartState: "authorized" });
+      return true;
+    },
     async cancelQueuedSession(input: Record<string, unknown>) {
       const sessionId = String(input.sessionId);
       const session = sessions.get(sessionId);
@@ -1161,6 +1168,54 @@ describe("Lambda runtime adapters", () => {
       type: "session:acknowledged",
       sessionId: "session-ack-stale-cache",
       attemptId: "attempt-stale-cache",
+    });
+  });
+
+  it("delivers session:command-start-acknowledged on the inbound connection after a host cache miss", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    fixture.plane.state.hostConnection.delete("host-1");
+    fixture.management.send.mockClear();
+    fixture.sessions.set("session-command-start-cache-miss", {
+      id: "session-command-start-cache-miss",
+      repositoryId: "repository-1",
+      prompt: "test",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetDisplayNames: ["cmd"],
+      queueTtlSeconds: 3600,
+      queueExpiresAt: "2026-08-13T00:00:00.000Z",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      status: "running",
+      queueShard: 0,
+      createdAt: "2026-08-12T00:00:00.000Z",
+      hostId: "host-1",
+      worktreeId: null,
+      attemptId: "attempt-command-start-cache-miss",
+      primaryCommandStartState: "pending",
+    });
+
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "session:command-start",
+          sessionId: "session-command-start-cache-miss",
+          worktreeId: null,
+          attemptId: "attempt-command-start-cache-miss",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+
+    expect(fixture.management.send.mock.calls[0]?.[0].input.ConnectionId).toBe("gateway-1");
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({
+      type: "session:command-start-acknowledged",
+      sessionId: "session-command-start-cache-miss",
+      attemptId: "attempt-command-start-cache-miss",
     });
   });
 
