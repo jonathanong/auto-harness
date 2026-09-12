@@ -535,4 +535,62 @@ describe("reconnect reconciliation", () => {
     expect(await reconcileHostRunningSessions(local.state, "h", ["local"])).toEqual([]);
     expect(local.state.worktrees.get("lw")?.connectionId).toBeUndefined();
   });
+
+  it("skips a scheduled deadline that cannot be reclaimed without its assignment", async () => {
+    const plane = new ControlPlane();
+    const scheduled = {
+      ...durableRunning("missing-assignment", "unused"),
+      mainCheckoutLease: true,
+      worktreeId: undefined,
+    };
+    delete scheduled.assignmentConnectionId;
+    plane.state.storage = {
+      listAllSessions: async () => [scheduled],
+      getWorktree: async (id: string) => {
+        expect(id).toBe("");
+        return null;
+      },
+    } as never;
+    await expect(reclaimReconnectDeadlines(plane.state, Date.now())).resolves.toEqual([]);
+  });
+
+  it("finishes durable terminal loss with optional fence fields omitted", async () => {
+    const plane = new ControlPlane();
+    const terminal = {
+      ...durableRunning("terminal-no-options", "wt"),
+      primaryCommandStartState: "authorized" as const,
+      concurrencyId: "concurrency",
+    };
+    const worktree = durableWorktree("wt", terminal.id);
+    let finishOptions: Record<string, unknown> | undefined;
+    plane.state.storage = {
+      listAllSessions: async () => [terminal],
+      getWorktree: async () => worktree,
+      getHostLock: async () => null,
+      finishSession: async (options: Record<string, unknown>) => {
+        finishOptions = options;
+        return true;
+      },
+    } as never;
+    expect(await reclaimReconnectDeadlines(plane.state, Date.now())).toEqual([]);
+    expect(finishOptions).toMatchObject({ concurrencyId: "concurrency" });
+    expect(finishOptions).not.toHaveProperty("expectedConnectionId");
+    expect(finishOptions).not.toHaveProperty("fence");
+    expect(plane.state.sessions.get(terminal.id)).toMatchObject({ status: "failed" });
+  });
+
+  it("skips durable terminal loss when the finish operation is unavailable", async () => {
+    const plane = new ControlPlane();
+    const terminal = {
+      ...durableRunning("terminal-no-finish", "wt"),
+      primaryCommandStartState: "authorized" as const,
+    };
+    plane.state.storage = {
+      listAllSessions: async () => [terminal],
+      getWorktree: async () => durableWorktree("wt", terminal.id),
+      getHostLock: async () => null,
+    } as never;
+    await expect(reclaimReconnectDeadlines(plane.state, Date.now())).resolves.toEqual([]);
+    expect(plane.state.sessions.has(terminal.id)).toBe(false);
+  });
 });

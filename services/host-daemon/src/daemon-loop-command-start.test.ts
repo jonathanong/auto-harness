@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- command-start authorization timing cases share one daemon fixture. */
 import { describe, expect, it } from "vitest";
 
 import type { HostToServerMessage, HostWireMessage, SessionAssign } from "@auto-harness/shared";
@@ -6,11 +7,20 @@ import { DaemonLoop, type DaemonTransport } from "./daemon-loop.ts";
 
 class ProtocolTransport implements DaemonTransport {
   readonly sent: HostToServerMessage[] = [];
+  deferCommandStarts = false;
+  private readonly commandStartResolves: Array<() => void> = [];
   private messageHandler: ((message: HostWireMessage) => void) | undefined;
   private registrationHandler: ((protocolVersion?: number) => void) | undefined;
 
   async send(message: HostToServerMessage): Promise<void> {
     this.sent.push(message);
+    if (this.deferCommandStarts && message.type === "session:command-start") {
+      await new Promise<void>((resolve) => this.commandStartResolves.push(resolve));
+    }
+  }
+
+  resolveCommandStarts(): void {
+    for (const resolve of this.commandStartResolves.splice(0)) resolve();
   }
 
   onMessage(handler: (message: HostWireMessage) => void): void {
@@ -45,9 +55,17 @@ const assign: SessionAssign = {
 function authorize(loop: DaemonLoop, signal = new AbortController().signal): Promise<boolean> {
   return (
     loop as unknown as {
-      authorizeCommandStart(assign: SessionAssign, signal: AbortSignal): Promise<boolean>;
+      authorizeCommandStart(assign: SessionAssign, signal?: AbortSignal): Promise<boolean>;
     }
   ).authorizeCommandStart(assign, signal);
+}
+
+function authorizeWithoutSignal(loop: DaemonLoop): Promise<boolean> {
+  return (
+    loop as unknown as {
+      authorizeCommandStart(assign: SessionAssign, signal?: AbortSignal): Promise<boolean>;
+    }
+  ).authorizeCommandStart(assign);
 }
 
 async function startedLoop(transport: ProtocolTransport): Promise<DaemonLoop> {
@@ -181,10 +199,53 @@ describe("DaemonLoop command-start authorization", () => {
     const loop = await startedLoop(transport);
     try {
       transport.negotiate(2);
-      await expect(authorize(loop)).resolves.toBe(true);
+      await expect(authorizeWithoutSignal(loop)).resolves.toBe(true);
       expect(transport.sent.some((message) => message.type === "session:command-start")).toBe(
         false,
       );
+    } finally {
+      loop.stop();
+    }
+  });
+
+  it("allows legacy callers without a cancellation signal and refuses an already-aborted v3 launch", async () => {
+    const transport = new ProtocolTransport();
+    const loop = await startedLoop(transport);
+    try {
+      await expect(authorize(loop)).resolves.toBe(true);
+      transport.negotiate(3);
+      await expect(authorize(loop, AbortSignal.abort())).resolves.toBe(false);
+      expect(transport.sent.some((message) => message.type === "session:command-start")).toBe(
+        false,
+      );
+    } finally {
+      loop.stop();
+    }
+  });
+
+  it("does not enqueue a duplicate command-start while the first send is still pending", async () => {
+    const transport = new ProtocolTransport();
+    transport.deferCommandStarts = true;
+    const loop = await startedLoop(transport);
+    try {
+      transport.negotiate(3);
+      const pending = authorize(loop);
+      expect(
+        transport.sent.filter((message) => message.type === "session:command-start"),
+      ).toHaveLength(1);
+
+      transport.negotiate(3);
+      expect(
+        transport.sent.filter((message) => message.type === "session:command-start"),
+      ).toHaveLength(1);
+
+      transport.resolveCommandStarts();
+      transport.deliver({
+        type: "session:command-start-acknowledged",
+        sessionId: assign.sessionId,
+        attemptId: assign.attemptId,
+      });
+      await expect(pending).resolves.toBe(true);
     } finally {
       loop.stop();
     }

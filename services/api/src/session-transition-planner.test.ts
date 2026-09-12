@@ -192,6 +192,21 @@ describe("session-transition planner", () => {
     expect(types({ type: "command_start", worktreeId: "wt", attemptId: "stale" })).toEqual([
       "ignore",
     ]);
+    expect(
+      planSessionTransition(
+        session({ primaryCommandStartState: undefined }),
+        { type: "command_start", worktreeId: "wt", attemptId: "attempt" },
+        ctx(),
+      ),
+    ).toEqual({
+      effects: [{ type: "reject", error: "command start is not enabled for this assignment" }],
+    });
+    expect(
+      types(
+        { type: "infrastructure_failure", code: "host_lost" },
+        session({ status: "completed" }),
+      ),
+    ).toEqual(["ignore"]);
   });
 
   it("usage_limit with no fallback stays queued until the original deadline", () => {

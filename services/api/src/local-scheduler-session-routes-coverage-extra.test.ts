@@ -105,6 +105,53 @@ describe("scheduler and session route residual coverage", () => {
     expect(response.status).toBe(404);
   });
 
+  it("hides a session message when its host identity is missing", async () => {
+    const { plane } = app();
+    plane.state.sessions.set("session", {
+      id: "session",
+      repositoryId: "repo",
+      status: "running",
+      hostId: undefined,
+    } as never);
+    const response = await invokeHostRoute(
+      plane,
+      "/api/v1/host/messages",
+      { type: "session:ack", sessionId: "session", worktreeId: null, attemptId: "attempt" },
+      {
+        id: "agent",
+        kind: "service-account",
+        role: "agent",
+        boundHostId: "host",
+      },
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("requires the WebSocket command-start authorization fence", async () => {
+    const { plane } = app();
+    plane.state.sessions.set("session", {
+      id: "session",
+      repositoryId: "repo",
+      status: "running",
+      hostId: "host",
+    } as never);
+    const response = await invokeHostRoute(
+      plane,
+      "/api/v1/host/messages",
+      {
+        type: "session:command-start",
+        sessionId: "session",
+        worktreeId: null,
+        attemptId: "attempt",
+      },
+      { id: "agent", kind: "service-account", role: "agent", boundHostId: "host" },
+    );
+    expect(response).toMatchObject({
+      status: 410,
+      json: { error: { code: "HOST_MESSAGE_WEBSOCKET_REQUIRED" } },
+    });
+  });
+
   it("maps an authoritative clone read failure", async () => {
     const { plane, invoke } = app();
     plane.getSessionDurable = async () => {

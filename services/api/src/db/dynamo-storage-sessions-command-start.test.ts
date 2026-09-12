@@ -75,4 +75,48 @@ describe("DynamoDB Local primary command-start authorization", () => {
       }),
     ).toBe(false);
   });
+
+  it("authorizes without a host fence and propagates unexpected storage failures", async () => {
+    await putSession(ctx, {
+      id: "unfenced-session",
+      repositoryId: "repo",
+      prompt: "run",
+      target: { commandId: "command" },
+      fallbacks: [],
+      targetDisplayNames: ["command"],
+      queueTtlSeconds: 60,
+      queueExpiresAt: "2026-01-01T01:00:00.000Z",
+      timeout: 60,
+      priority: 0,
+      requiredLabels: [],
+      status: "running",
+      queueShard: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      hostId: "host",
+      worktreeId: "worktree",
+      attemptId: "attempt",
+      primaryCommandStartState: "pending",
+    });
+
+    expect(
+      await authorizePrimaryCommandStart(ctx, {
+        sessionId: "unfenced-session",
+        worktreeId: "worktree",
+        attemptId: "attempt",
+      }),
+    ).toBe(true);
+
+    const storageError = new Error("storage unavailable");
+    const failingCtx = {
+      ...ctx,
+      doc: { send: async () => Promise.reject(storageError) },
+    } as unknown as PlaneStorageCtx;
+    await expect(
+      authorizePrimaryCommandStart(failingCtx, {
+        sessionId: "unfenced-session",
+        worktreeId: "worktree",
+        attemptId: "attempt",
+      }),
+    ).rejects.toBe(storageError);
+  });
 });

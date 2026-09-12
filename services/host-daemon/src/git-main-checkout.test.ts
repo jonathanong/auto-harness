@@ -131,6 +131,28 @@ describe("createGitClient main checkout", () => {
     expect((fetchError as Error).message).not.toContain("secret-token");
   });
 
+  it.each([
+    ["primitive", "network unavailable", "network unavailable"],
+    ["Error", new Error("network error"), "network error"],
+  ])("brands a thrown %s while fetching a missing branch", async (_kind, thrown, detail) => {
+    const base = scripted([
+      { match: ["check-ref-format", "--branch", "feature"], exitCode: 0 },
+      { match: ["status", "--porcelain"], exitCode: 0 },
+      { match: ["show-ref", "--verify", "--quiet", "refs/heads/feature"], exitCode: 1 },
+      { match: ["switch", "--", "feature"], exitCode: 1 },
+    ]);
+    const runner = {
+      async run(options: Parameters<typeof base.run>[0]) {
+        if (options.argv[1] === "fetch") throw thrown;
+        return await base.run(options);
+      },
+    };
+
+    await expect(
+      createGitClient(runner).prepareMainCheckout({ cwd: "/repo", ref: "feature" }),
+    ).rejects.toThrow(`Failed to fetch branch feature: ${detail}`);
+  });
+
   it("rejects symbolic HEAD mismatches and failed retries", async () => {
     const mismatch = createGitClient(
       scripted([

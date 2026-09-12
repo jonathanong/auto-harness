@@ -21,6 +21,7 @@ describe("SessionStatusCell", () => {
     expect(sessionErrorLabel("usage_limit")).toBe("Usage limit");
     expect(sessionErrorLabel("queue_expired")).toBe("Queue expired");
     expect(sessionErrorLabel("unknown_failure")).toBe("unknown_failure");
+    expect(sessionErrorLabel(null)).toBeNull();
     expect(sessionStatusReason("setup_failed")).toBeNull();
     expect(sessionStatusReason(null)).toBeNull();
   });

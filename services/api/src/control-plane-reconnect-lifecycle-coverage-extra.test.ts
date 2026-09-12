@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { reclaimStaleHosts } from "./control-plane-lifecycle.ts";
+import { finishHostLostSession } from "./control-plane-infrastructure-retry.ts";
 import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
 import { reclaimScheduledReconnect } from "./control-plane-reconnect-scheduled.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
@@ -51,6 +52,14 @@ function worktree(over: Partial<WorktreeRecord> = {}): WorktreeRecord {
 }
 
 describe("reconnect and lifecycle residual coverage", () => {
+  it("records retry exhaustion when finishing a previously retried host loss", () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const row = session("exhausted", { infrastructureRetryCount: 1 });
+    const finished = finishHostLostSession(state, row);
+    expect(finished).toMatchObject({ status: "failed", errorCode: "host_lost" });
+    expect(finished.infrastructureRetryCount).toBe(1);
+  });
+
   it("reports an unacknowledged stale session once", () => {
     const state = createControlPlaneState({ heartbeatStaleMs: 1, now: () => NOW });
     state.connections.set("connection", {

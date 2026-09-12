@@ -89,6 +89,28 @@ describe("SessionRunner cancellation", () => {
     expect(released).toBe(true);
   });
 
+  it("reports timeout and releases the main claim when claiming outlives its deadline", async () => {
+    let released = false;
+    const runner = new SessionRunner({
+      worktrees: {
+        acquireMain: async () => true,
+        mainClaim: async () => {
+          await new Promise<void>((resolve) => setTimeout(resolve, 20));
+          throw new Error("main checkout was unavailable");
+        },
+        releaseMain: () => {
+          released = true;
+        },
+      } as unknown as WorktreeManager,
+      processRunner: cancellableRunner("main"),
+    });
+
+    await expect(
+      runner.run(baseAssign({ worktreeId: null, sessionType: "scheduled", timeout: 0.001 })),
+    ).resolves.toMatchObject({ status: "timed_out", exitCode: null });
+    expect(released).toBe(true);
+  });
+
   it("preserves cancellation when an interrupted checkout rejects", async () => {
     const controller = new AbortController();
     const runner = new SessionRunner({

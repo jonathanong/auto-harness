@@ -13,6 +13,7 @@ import {
 } from "./control-plane-durable-read-runtime.ts";
 import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read-catalog.ts";
 import { refreshAssignmentCommandsDurable } from "./control-plane-durable-read-catalog.ts";
+import { refreshAssignmentCommandsDurable as refreshAssignmentCommandsDirect } from "./control-plane-assignment-command-refresh.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { ControlPlaneBase } from "./control-plane-facade.ts";
 import { ControlPlaneSessionsService } from "./control-plane-sessions-service.ts";
@@ -275,6 +276,37 @@ describe("durable runtime read-through", () => {
     expect([...refreshed]).toEqual(
       expect.arrayContaining(["cmd-host", "cmd-repository", "cmd-worktree", "cmd-default"]),
     );
+  });
+
+  it("evicts unrefreshed hosts and skips unrelated repositories and absent defaults", async () => {
+    const state = createControlPlaneState({ storage: {} as never });
+    state.worktrees.set("first", { ...worktree, id: "first", hostId: "first-host" });
+    state.worktrees.set("second", { ...worktree, id: "second", hostId: "second-host" });
+    state.hostInventories.set("second-host", {
+      hostId: "second-host",
+      repositories: [],
+      providerAccounts: [],
+    });
+    state.storage = {
+      getHostInventory: async (hostId: string) =>
+        hostId === "first-host"
+          ? {
+              hostId,
+              repositories: [
+                { id: "unrelated", path: "/other", worktrees: [] },
+                { id: "repository", path: "/repo", worktrees: [] },
+              ],
+              providerAccounts: [],
+            }
+          : null,
+      getProvider: async () => ({ id: "provider", defaultCommandId: undefined }),
+      getCommand: async () => null,
+    } as never;
+    const refreshed = await refreshAssignmentCommandsDirect(state, [
+      { ...session, target: { providerId: "provider" } },
+    ]);
+    expect(refreshed).toEqual(new Set());
+    expect(state.hostInventories.has("second-host")).toBe(false);
   });
 
   it("reads the base durable session facade from storage", async () => {

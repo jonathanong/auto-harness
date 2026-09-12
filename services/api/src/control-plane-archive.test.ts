@@ -354,6 +354,44 @@ describe("archive retry state", () => {
     await expect(retryPendingArchives(state)).resolves.toBe(0);
   });
 
+  it("preserves a newer local claim when a stale upload fails", async () => {
+    const key = "sessions/local-fenced/logs.jsonl";
+    const state = createControlPlaneState({
+      now: () => "2026-01-01T00:00:00.000Z",
+      archiveWriter: {
+        putArchive: async () => {
+          state.archives.set(key, {
+            key,
+            contentType: "application/x-ndjson",
+            bodyBytes: 0,
+            status: "pending",
+            objectStored: false,
+            retryState: "pending",
+            retryOrder: "new-claim",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          });
+          throw new Error("stale upload failed");
+        },
+      },
+    });
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "pending",
+      retryOrder: "old-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    await expect(retryPendingArchives(state)).resolves.toBe(0);
+    expect(state.archives.get(key)).toMatchObject({
+      retryState: "pending",
+      retryOrder: "new-claim",
+    });
+  });
+
   it("does not rewrite a newer pending generation when a stale upload loses its fence", async () => {
     let releaseUpload!: () => void;
     const uploaded: string[] = [];

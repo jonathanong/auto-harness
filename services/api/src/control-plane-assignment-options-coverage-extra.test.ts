@@ -101,6 +101,43 @@ describe("assignment optional-field coverage", () => {
     expect(assignQueued(providerState())).toHaveLength(1);
   });
 
+  it("fails safely as legacy when the host connection disappears after route planning", () => {
+    const probe = providerState();
+    for (const [connectionId, connection] of probe.connections) {
+      probe.connections.set(connectionId, { ...connection, protocolVersion: 99 });
+    }
+    let reads = 0;
+    const probeGet = probe.hostConnection.get.bind(probe.hostConnection);
+    probe.hostConnection.get = (hostId) => {
+      reads += 1;
+      return probeGet(hostId);
+    };
+    expect(assignQueued(probe)).toHaveLength(1);
+
+    const statesAfterOneLostRead: string[] = [];
+    for (let lostRead = 1; lostRead <= reads; lostRead += 1) {
+      const state = providerState();
+      for (const [connectionId, connection] of state.connections) {
+        state.connections.set(connectionId, { ...connection, protocolVersion: 99 });
+      }
+      let currentRead = 0;
+      const get = state.hostConnection.get.bind(state.hostConnection);
+      state.hostConnection.get = (hostId) => {
+        currentRead += 1;
+        return currentRead === lostRead ? undefined : get(hostId);
+      };
+      if (assignQueued(state).length === 1) {
+        statesAfterOneLostRead.push(state.sessions.get("s")!.primaryCommandStartState!);
+      }
+    }
+
+    // Losing the connection at assignment must not retain a protocol-3 pending
+    // launch gate, while losing it only for prior-context capability lookup does
+    // not change the negotiated command-start state.
+    expect(statesAfterOneLostRead).toContain("authorized");
+    expect(statesAfterOneLostRead).toContain("pending");
+  });
+
   it("backfills queue order before reading the durable assignment queue", async () => {
     const state = providerState();
     let backfills = 0;

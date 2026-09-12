@@ -126,4 +126,36 @@ describe("claimed session PTY output", () => {
     expect(outcome).toMatchObject({ status: "cancelled" });
     expect(commandRuns).toBe(0);
   });
+
+  it("reports timeout when command-start authorization observes an expired abort", async () => {
+    let commandRuns = 0;
+    const logs = [];
+    const outcome = await runClaimedSession(
+      {
+        async run() {
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+      new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
+      logs,
+      baseAssign(),
+      claimed,
+      AbortSignal.abort(),
+      () => true,
+      () => 1_000,
+      {
+        async run() {
+          commandRuns += 1;
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+      process.env,
+      undefined,
+      undefined,
+      async () => false,
+    );
+
+    expect(outcome).toMatchObject({ status: "timed_out", exitCode: null });
+    expect(commandRuns).toBe(0);
+  });
 });

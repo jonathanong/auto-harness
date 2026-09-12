@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- scheduled reconnect branch cases share one durable state fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
@@ -181,5 +182,107 @@ describe("scheduled reconnect branch coverage", () => {
       hostId: "host",
       connectionId: "old",
     });
+  });
+
+  it("does not requeue acknowledged scheduled work after authorization", async () => {
+    const omitted = state();
+    const row = session({
+      primaryCommandStartState: "authorized",
+      concurrencyId: "nightly",
+    });
+    let releaseOptions: Record<string, unknown> | undefined;
+    omitted.storage = {
+      listActiveSessionsByHost: async () => [row],
+      releaseMainCheckoutSession: async (options: Record<string, unknown>) => {
+        releaseOptions = options;
+        return true;
+      },
+    } as never;
+    const requeued: string[] = [];
+    await requeueOmittedScheduled(omitted, "host", new Set(), requeued);
+    expect(requeued).toEqual([]);
+    expect(releaseOptions).toMatchObject({
+      status: "failed",
+      reason: "host lost after command authorization or retry exhaustion",
+      errorCode: "host_lost",
+      concurrencyId: "nightly",
+    });
+    expect(omitted.sessions.get("s")).toMatchObject({ status: "failed" });
+  });
+
+  it("reclaims a durable scheduled terminal loss with its completion fence", async () => {
+    const current = state();
+    const row = session({
+      primaryCommandStartState: "authorized",
+      concurrencyId: "nightly",
+    });
+    const options: Record<string, unknown>[] = [];
+    current.storage = {
+      releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
+        options.push(input);
+        return true;
+      },
+    } as never;
+    const requeued: string[] = [];
+    expect(await reclaimScheduledReconnect(current, row, requeued)).toBe(true);
+    expect(requeued).toEqual([]);
+    expect(options[0]).toMatchObject({
+      status: "failed",
+      reason: "host lost after command authorization or retry exhaustion",
+      errorCode: "host_lost",
+      concurrencyId: "nightly",
+    });
+    expect(current.sessions.get("s")).toMatchObject({ status: "failed" });
+  });
+
+  it("covers non-terminal scheduled release options and terminal defaults", async () => {
+    const normal = state();
+    const normalRow = session({ ackReceivedAt: undefined, concurrencyId: undefined });
+    const normalOptions: Record<string, unknown>[] = [];
+    normal.storage = {
+      releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
+        normalOptions.push(input);
+        return true;
+      },
+    } as never;
+    const normalRequeued: string[] = [];
+    expect(await reclaimScheduledReconnect(normal, normalRow, normalRequeued)).toBe(true);
+    expect(normalRequeued).toEqual(["s"]);
+    expect(normalOptions[0]).toMatchObject({
+      status: "queued",
+      reason: "daemon reconnect deadline exceeded; requeued",
+    });
+
+    const terminal = state();
+    const terminalRow = session({
+      primaryCommandStartState: "authorized",
+      concurrencyId: undefined,
+    });
+    const terminalOptions: Record<string, unknown>[] = [];
+    terminal.storage = {
+      releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
+        terminalOptions.push(input);
+        return true;
+      },
+    } as never;
+    const terminalRequeued: string[] = [];
+    expect(await reclaimScheduledReconnect(terminal, terminalRow, terminalRequeued)).toBe(true);
+    expect(terminalRequeued).toEqual([]);
+    expect(terminalOptions[0]).not.toHaveProperty("concurrencyId");
+  });
+
+  it("omits concurrency metadata for an acknowledged scheduled terminal omission", async () => {
+    const omitted = state();
+    const row = session({ primaryCommandStartState: "authorized", concurrencyId: undefined });
+    let releaseOptions: Record<string, unknown> | undefined;
+    omitted.storage = {
+      listActiveSessionsByHost: async () => [row],
+      releaseMainCheckoutSession: async (options: Record<string, unknown>) => {
+        releaseOptions = options;
+        return true;
+      },
+    } as never;
+    await requeueOmittedScheduled(omitted, "host", new Set(), []);
+    expect(releaseOptions).not.toHaveProperty("concurrencyId");
   });
 });

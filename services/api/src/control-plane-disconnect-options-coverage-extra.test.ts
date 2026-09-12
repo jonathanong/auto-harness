@@ -470,4 +470,90 @@ describe("disconnect durable fallback coverage", () => {
     expect(state.sessions.get("s")).toEqual(session);
     expect(state.worktrees.get("w")).toEqual(worktree);
   });
+
+  it("covers terminal reconnect races with and without durable finish support", async () => {
+    const worktree: WorktreeRecord = {
+      id: "w",
+      name: "w",
+      hostId: "host",
+      repositoryId: "repo",
+      path: "/repo/w",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "s",
+      connectionId: "connection",
+    };
+    const session: SessionRecord = {
+      id: "s",
+      repositoryId: "repo",
+      prompt: "run",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetDisplayNames: ["cmd"],
+      queueTtlSeconds: 3600,
+      queueExpiresAt: "2026-01-01T01:00:00.000Z",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "running",
+      queueShard: 0,
+      createdAt: NOW,
+      hostId: "host",
+      worktreeId: "w",
+      attemptId: "attempt",
+      ackReceivedAt: NOW,
+      primaryCommandStartState: "authorized",
+      assignmentConnectionId: "connection",
+    };
+
+    const noFinish = createControlPlaneState({ now: () => NOW });
+    noFinish.storage = {
+      listWorktreesByHost: async () => [worktree],
+      getSession: async () => session,
+      markReconnectPending: async () => false,
+      getWorktree: async () => worktree,
+    } as never;
+    await expect(
+      offlineHostAndRequeueDurableImpl(noFinish, "host", "connection", "offline", () => []),
+    ).resolves.toEqual([]);
+
+    const losing = createControlPlaneState({ now: () => NOW });
+    const losingCalls: Record<string, unknown>[] = [];
+    losing.storage = {
+      listWorktreesByHost: async () => [worktree],
+      getSession: async () => session,
+      markReconnectPending: async () => false,
+      getWorktree: async () => worktree,
+      finishSession: async (options: Record<string, unknown>) => {
+        losingCalls.push(options);
+        return false;
+      },
+    } as never;
+    await expect(
+      offlineHostAndRequeueDurableImpl(losing, "host", "connection", "offline", () => []),
+    ).resolves.toEqual([]);
+    expect(losingCalls[0]).not.toHaveProperty("concurrencyId");
+
+    const finished = createControlPlaneState({ now: () => NOW });
+    const finishedSession = { ...session, concurrencyId: "nightly" };
+    const finishedCalls: Record<string, unknown>[] = [];
+    finished.storage = {
+      listWorktreesByHost: async () => [worktree],
+      getSession: async () => finishedSession,
+      markReconnectPending: async () => false,
+      getWorktree: async () => worktree,
+      finishSession: async (options: Record<string, unknown>) => {
+        finishedCalls.push(options);
+        return true;
+      },
+    } as never;
+    await expect(
+      offlineHostAndRequeueDurableImpl(finished, "host", "connection", "offline", () => []),
+    ).resolves.toEqual([]);
+    expect(finishedCalls[0]).toMatchObject({ concurrencyId: "nightly" });
+    expect(finished.sessions.get("s")).toMatchObject({ status: "failed" });
+    expect(finished.worktrees.get("w")).toMatchObject({ status: "idle", online: false });
+  });
 });
