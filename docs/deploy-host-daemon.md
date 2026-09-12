@@ -381,6 +381,10 @@ Create a mode-`0600` config file outside the checkout, then set its absolute pat
 `HARNESS_GITHUB_APP_CONFIG` in `host-daemon.env` (do not add `GH_TOKEN` to
 `HARNESS_CHILD_ENV_ALLOWLIST`):
 
+When migrating a mapped repository from an ambient `GH_TOKEN` or `GITHUB_TOKEN`, also remove that
+name from the host or repository `requiredEnvironment` list. App-backed credentials are minted only
+after assignment and therefore are not advertised as ambient host environment capabilities.
+
 ```json
 {
   "appId": "123456",

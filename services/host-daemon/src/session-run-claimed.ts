@@ -400,6 +400,29 @@ async function runProcessAndFinish(
         GIT_COMMITTER_EMAIL: githubBotEmail(githubApp!),
       }
     : sessionEnv;
+  // Terminal hooks implement repository-scoped completion/escalation policy (including GitHub
+  // issue creation), so they receive the same short-lived App identity as the assigned command.
+  // Early finish paths before successful minting continue to receive only the scrubbed environment.
+  const authenticatedTerminalEnvironment = installationToken
+    ? {
+        ...terminalEnvironment,
+        GH_TOKEN: installationToken.token,
+        GIT_AUTHOR_NAME: githubApp!.botLogin,
+        GIT_AUTHOR_EMAIL: githubBotEmail(githubApp!),
+        GIT_COMMITTER_NAME: githubApp!.botLogin,
+        GIT_COMMITTER_EMAIL: githubBotEmail(githubApp!),
+        HARNESS_CHILD_ENV_ALLOWLIST: [
+          terminalEnvironment.HARNESS_CHILD_ENV_ALLOWLIST,
+          "GH_TOKEN",
+          "GIT_AUTHOR_NAME",
+          "GIT_AUTHOR_EMAIL",
+          "GIT_COMMITTER_NAME",
+          "GIT_COMMITTER_EMAIL",
+        ]
+          .filter(Boolean)
+          .join(","),
+      }
+    : terminalEnvironment;
   const spawnEnv = priorContextPath
     ? { ...authenticatedEnv, HARNESS_PRIOR_CONTEXT_FILE: priorContextPath }
     : authenticatedEnv;
@@ -412,6 +435,9 @@ async function runProcessAndFinish(
   const effectiveCommandRunner = installationToken
     ? new SecretRedactingProcessRunner(commandRunner, installationToken.token)
     : commandRunner;
+  const effectiveTerminalRunner = installationToken
+    ? new SecretRedactingProcessRunner(processRunner, installationToken.token)
+    : processRunner;
   let result: ProcessResult;
   try {
     result = await effectiveCommandRunner.run({
@@ -449,13 +475,13 @@ async function runProcessAndFinish(
 
   const finish = (outcome: Parameters<typeof finishClaimedSession>[5]) =>
     finishClaimedSession(
-      processRunner,
+      effectiveTerminalRunner,
       streamer,
       logs,
       assign,
       claimed,
       outcome,
-      terminalEnvironment,
+      authenticatedTerminalEnvironment,
       baseline,
       true,
     );

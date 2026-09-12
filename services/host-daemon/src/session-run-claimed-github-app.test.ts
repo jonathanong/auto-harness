@@ -222,9 +222,11 @@ describe("claimed session GitHub App credentials", () => {
       "GITHUB_ENTERPRISE_TOKEN",
     ]) {
       expect(setupEnv?.[key]).toBeUndefined();
-      expect(hookEnv?.[key]).toBeUndefined();
+      if (key !== "GH_TOKEN") expect(hookEnv?.[key]).toBeUndefined();
     }
     expect(commandEnv?.GH_TOKEN).toBe("ghs_exact-token");
+    expect(hookEnv?.GH_TOKEN).toBe("ghs_exact-token");
+    expect(hookEnv?.GIT_AUTHOR_NAME).toBe("auto-harness[bot]");
     expect(commandEnv?.GITHUB_TOKEN).toBeUndefined();
     expect(commandEnv?.GH_ENTERPRISE_TOKEN).toBeUndefined();
     expect(commandEnv?.GITHUB_ENTERPRISE_TOKEN).toBeUndefined();
