@@ -9,6 +9,7 @@ import { DaemonLoop } from "./daemon-loop.ts";
 import { startLivenessLog } from "./liveness-log.ts";
 import { RepeatedLogSuppressor } from "./repeated-log-suppressor.ts";
 import { loadExecutionProfiles } from "./execution-profiles.ts";
+import { loadGitHubAppConfig } from "./github-app.ts";
 import {
   confirmDaemonUpdateBoot,
   notifySystemdReady,
@@ -279,12 +280,14 @@ async function connectDaemon(
     // ws-transport.ts. Sharing the one option keeps both guards in sync.
     registrationTimeoutMs,
   });
+  const githubApp = loadGitHubAppConfig(options.childEnvSource ?? process.env);
   const loop = new DaemonLoop({
     config: options.config,
     transport,
     onLog: log,
     ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
     executionProfiles: loadExecutionProfiles(options.childEnvSource ?? process.env),
+    ...(githubApp ? { githubApp } : {}),
     ...(options.runtime ? { runtime: options.runtime } : {}),
   });
   await loop.start();

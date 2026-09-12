@@ -13,6 +13,7 @@ import {
 } from "./session-outcome.ts";
 import { runClaimedSession } from "./session-run-claimed.ts";
 import type { PriorContextIdentity } from "./prior-context-file.ts";
+import type { GitHubAppConfig } from "./github-app.ts";
 import type { WorktreeManager } from "./worktree-manager.ts";
 import { WorkspaceManager, type ClaimedWorkspace } from "./workspace-manager.ts";
 
@@ -32,8 +33,11 @@ export type SessionRunnerDeps = {
   executionProfiles?: ExecutionProfiles;
   /** Used only to fetch `assign.priorContext`; never forwarded to the CLI. */
   identity?: PriorContextIdentity;
+  /** Optional host-local GitHub App credential source. */
+  githubApp?: GitHubAppConfig;
   onLog?: (chunk: SessionLogChunk) => void;
   now?: () => string;
+  nowMs?: () => number;
 };
 
 type SessionRunOptions = {
@@ -209,6 +213,8 @@ export class SessionRunner {
           this.deps.executionProfiles,
           this.deps.identity,
           baseline,
+          this.deps.githubApp,
+          this.deps.nowMs,
         );
       } catch (error) {
         const errorMessage = thrownMessage(error);

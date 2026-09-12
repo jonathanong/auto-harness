@@ -100,10 +100,13 @@ export function preparePersistedEnv(opts: {
   }
   contents = updatePersistedDaemonEnv(contents, opts.env);
   const errors = validatePersistedEnvFile(contents);
-  // Keep an existing valid service file intact when a new relative profile
-  // path is rejected. Callers already avoid writes on errors, and returning
-  // the original contents makes that no-write guarantee explicit to them.
-  if (errors.includes("HARNESS_EXECUTION_PROFILES")) {
+  // Keep an existing valid service file intact when a new relative secret
+  // configuration path is rejected. Callers already avoid writes on errors,
+  // and returning the original contents makes that no-write guarantee explicit.
+  if (
+    errors.includes("HARNESS_EXECUTION_PROFILES") ||
+    errors.includes("HARNESS_GITHUB_APP_CONFIG")
+  ) {
     return { contents: opts.existing ?? "", errors };
   }
   return { contents, errors };

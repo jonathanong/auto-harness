@@ -21,6 +21,15 @@ import {
   writePriorContextFile,
   type PriorContextIdentity,
 } from "./prior-context-file.ts";
+import {
+  GITHUB_APP_TOKEN_MARGIN_MS,
+  githubBotEmail,
+  mintInstallationToken,
+  type GitHubAppConfig,
+  type InstallationToken,
+} from "./github-app.ts";
+import { runGit } from "./git-commands.ts";
+import { SecretRedactingProcessRunner } from "./secret-redacting-runner.ts";
 
 const SESSION_CREDENTIAL_REDACTION = "[session credential redacted]";
 // A single character (or other tiny suffix) can naturally occur in ordinary
@@ -123,6 +132,8 @@ export async function runClaimedSession(
   identity?: PriorContextIdentity,
   /** HEAD captured after checkout and before setup; used for post-session facts. */
   baseline?: string,
+  githubApp?: GitHubAppConfig,
+  nowMs: () => number = Date.now,
 ): Promise<SessionRunResult> {
   try {
     await claimed.currentExecutionTarget?.();
@@ -226,6 +237,8 @@ export async function runClaimedSession(
     executionProfiles,
     identity,
     baseline,
+    githubApp,
+    nowMs,
   );
 }
 
@@ -244,6 +257,8 @@ async function runProcessAndFinish(
   executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
   identity?: PriorContextIdentity,
   baseline?: string,
+  githubApp?: GitHubAppConfig,
+  nowMs: () => number = Date.now,
 ): Promise<SessionRunResult> {
   streamer.write(
     "system",
@@ -304,16 +319,89 @@ async function runProcessAndFinish(
           HARNESS_SESSION_API_KEY: assign.sessionApiKey,
         }
       : commandEnv;
-  const spawnEnv = priorContextPath
-    ? { ...sessionEnv, HARNESS_PRIOR_CONTEXT_FILE: priorContextPath }
+  let installationToken: InstallationToken | undefined;
+  if (githubApp?.repositories.has(assign.repositoryId)) {
+    try {
+      installationToken = await mintInstallationToken(
+        githubApp,
+        assign.repositoryId,
+        signal,
+        fetch,
+        nowMs,
+      );
+      if (
+        !installationToken ||
+        installationToken.expiresAtMs - nowMs() <= GITHUB_APP_TOKEN_MARGIN_MS
+      ) {
+        throw new Error("GitHub App token expires too soon to run a session");
+      }
+      const configuredName = await runGit(
+        processRunner,
+        claimed.cwd,
+        ["config", "--local", "user.name", githubApp.botLogin],
+        signal,
+      );
+      const configuredEmail = await runGit(
+        processRunner,
+        claimed.cwd,
+        ["config", "--local", "user.email", githubBotEmail(githubApp)],
+        signal,
+      );
+      if (configuredName.exitCode !== 0 || configuredEmail.exitCode !== 0) {
+        throw new Error("GitHub App commit identity could not be configured");
+      }
+    } catch {
+      await removePriorContextFile(priorContextPath);
+      return await finishClaimedSession(
+        processRunner,
+        streamer,
+        logs,
+        assign,
+        claimed,
+        {
+          status: "failed",
+          exitCode: null,
+          errorCode: "setup_failed",
+          errorMessage: "GitHub App credential provisioning failed",
+        },
+        environment,
+      );
+    }
+  }
+  // The daemon's host credential must never reach an agent command. Give the
+  // primary command only its one-attempt child-session credential instead;
+  // setup, checkout, and terminal hooks retain their existing environment.
+  const sessionEnv =
+    identity && assign.sessionApiKey
+      ? {
+          ...commandEnv,
+          HARNESS_API_URL: httpBaseFromApiUrl(identity.apiUrl),
+          HARNESS_SESSION_ID: assign.sessionId,
+          HARNESS_SESSION_API_KEY: assign.sessionApiKey,
+        }
+      : commandEnv;
+  const authenticatedEnv = installationToken
+    ? { ...sessionEnv, GH_TOKEN: installationToken.token }
     : sessionEnv;
+  const spawnEnv = priorContextPath
+    ? { ...authenticatedEnv, HARNESS_PRIOR_CONTEXT_FILE: priorContextPath }
+    : authenticatedEnv;
+  const timeoutMs = installationToken
+    ? Math.min(
+        remainingMs(),
+        Math.max(1, installationToken.expiresAtMs - nowMs() - GITHUB_APP_TOKEN_MARGIN_MS),
+      )
+    : remainingMs();
+  const effectiveCommandRunner = installationToken
+    ? new SecretRedactingProcessRunner(commandRunner, installationToken.token)
+    : commandRunner;
   let result: ProcessResult;
   try {
-    result = await commandRunner.run({
+    result = await effectiveCommandRunner.run({
       argv,
       cwd: claimed.cwd,
       env: spawnEnv,
-      timeoutMs: remainingMs(),
+      timeoutMs,
       ...(signal ? { signal } : {}),
       onChunk: (c) => {
         const redacted = credentialRedactor.push(c.stream, c.data);
