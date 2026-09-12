@@ -341,9 +341,9 @@ describe("finishClaimedSession", () => {
         if (mode === "null") return null;
         if (mode === "hook") {
           return {
-            cwd: "/bin",
-            repository: { terminalHookScript: "/bin/true" },
-            allowedRoots: ["/bin"],
+            cwd: process.cwd(),
+            repository: { terminalHookScript: "AGENTS.md" },
+            allowedRoots: [process.cwd()],
           };
         }
         return { cwd: "/repo/wt-1", repository: {} };
@@ -377,8 +377,8 @@ describe("finishClaimedSession", () => {
     await result.settleDeferredTerminalHook?.(true);
     expect(runner.run).toHaveBeenCalledWith(
       expect.objectContaining({
-        argv: ["/bin/sh", "/bin/true"],
-        cwd: "/bin",
+        argv: ["/bin/sh", `${process.cwd()}/AGENTS.md`],
+        cwd: process.cwd(),
         env: expect.objectContaining({
           HARNESS_ERROR_CODE: "checkout_fetch_failed",
           HARNESS_REF: "feature/test",
