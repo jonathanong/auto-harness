@@ -25,6 +25,34 @@ type NormalizedCustomWebhookConfigInput = CustomWebhookConfigInput & {
   queueTtlSeconds: number;
 };
 
+const inMemoryCustomWebhookMutationTails = new WeakMap<
+  ControlPlaneState,
+  Map<string, Promise<void>>
+>();
+
+async function withInMemoryCustomWebhookMutation<T>(
+  state: ControlPlaneState,
+  id: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  if (state.storage) return operation();
+  const tails = inMemoryCustomWebhookMutationTails.get(state) ?? new Map<string, Promise<void>>();
+  inMemoryCustomWebhookMutationTails.set(state, tails);
+  const previous = tails.get(id) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  tails.set(id, current);
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (tails.get(id) === current) tails.delete(id);
+  }
+}
+
 export async function getCustomWebhookIntegration(
   state: ControlPlaneState,
   id: string,
@@ -56,29 +84,31 @@ export async function createCustomWebhookIntegration(
   if (!valid.ok) return valid;
   const normalizedInput = valid.input;
   if (!state.secretEncryptor) return unavailable();
-  return withCustomWebhookReferenceFence(state, normalizedInput, async (markers) => {
-    const references = await validateConfiguredReferences(state, normalizedInput);
-    if (!references.ok) return references;
-    const current = state.storage
-      ? await state.storage.getCustomWebhookIntegration(normalizedInput.id)
-      : state.customWebhookIntegrations.get(normalizedInput.id);
-    if (current)
-      return {
-        ok: false as const,
-        error: "custom webhook integration already exists",
-        conflict: true as const,
-      };
-    const now = state.now();
-    const record = await makeRecord(state, normalizedInput, now, 1, now, randomUUID());
-    if (
-      state.storage &&
-      !(await state.storage.putCustomWebhookIntegration(record, null, markers))
-    ) {
-      return conflict();
-    }
-    state.customWebhookIntegrations.set(normalizedInput.id, record);
-    return { ok: true, integration: toPublicCustomWebhookIntegration(record) };
-  });
+  return withInMemoryCustomWebhookMutation(state, normalizedInput.id, () =>
+    withCustomWebhookReferenceFence(state, normalizedInput, async (markers) => {
+      const references = await validateConfiguredReferences(state, normalizedInput);
+      if (!references.ok) return references;
+      const current = state.storage
+        ? await state.storage.getCustomWebhookIntegration(normalizedInput.id)
+        : state.customWebhookIntegrations.get(normalizedInput.id);
+      if (current)
+        return {
+          ok: false as const,
+          error: "custom webhook integration already exists",
+          conflict: true as const,
+        };
+      const now = state.now();
+      const record = await makeRecord(state, normalizedInput, now, 1, now, randomUUID());
+      if (
+        state.storage &&
+        !(await state.storage.putCustomWebhookIntegration(record, null, markers))
+      ) {
+        return conflict();
+      }
+      state.customWebhookIntegrations.set(normalizedInput.id, record);
+      return { ok: true, integration: toPublicCustomWebhookIntegration(record) };
+    }),
+  );
 }
 
 export async function updateCustomWebhookIntegration(
@@ -91,43 +121,45 @@ export async function updateCustomWebhookIntegration(
   if (!valid.ok) return valid;
   const normalizedInput = valid.input;
   if (!state.secretEncryptor) return unavailable();
-  return withCustomWebhookReferenceFence(state, normalizedInput, async (markers) => {
-    const references = await validateConfiguredReferences(state, normalizedInput);
-    if (!references.ok) return references;
-    const current = state.storage
-      ? await state.storage.getCustomWebhookIntegration(normalizedInput.id)
-      : state.customWebhookIntegrations.get(normalizedInput.id);
-    if (!current) return { ok: false, error: "custom webhook integration not found" };
-    if (
-      (expectedVersion !== undefined && current.version !== expectedVersion) ||
-      (expectedGeneration === null
-        ? current.generation !== undefined
-        : expectedGeneration !== undefined && current.generation !== expectedGeneration)
-    )
-      return conflict();
-    const record = await makeRecord(
-      state,
-      normalizedInput,
-      current.createdAt,
-      current.version + 1,
-      state.now(),
-      current.generation ?? randomUUID(),
-      normalizedInput.secret === undefined ? current.encryptedSecret : undefined,
-    );
-    if (
-      state.storage &&
-      !(await state.storage.putCustomWebhookIntegration(
-        record,
-        current.version,
-        markers,
-        current.generation ?? null,
-      ))
-    ) {
-      return conflict();
-    }
-    state.customWebhookIntegrations.set(normalizedInput.id, record);
-    return { ok: true, integration: toPublicCustomWebhookIntegration(record) };
-  });
+  return withInMemoryCustomWebhookMutation(state, normalizedInput.id, () =>
+    withCustomWebhookReferenceFence(state, normalizedInput, async (markers) => {
+      const references = await validateConfiguredReferences(state, normalizedInput);
+      if (!references.ok) return references;
+      const current = state.storage
+        ? await state.storage.getCustomWebhookIntegration(normalizedInput.id)
+        : state.customWebhookIntegrations.get(normalizedInput.id);
+      if (!current) return { ok: false, error: "custom webhook integration not found" };
+      if (
+        (expectedVersion !== undefined && current.version !== expectedVersion) ||
+        (expectedGeneration === null
+          ? current.generation !== undefined
+          : expectedGeneration !== undefined && current.generation !== expectedGeneration)
+      )
+        return conflict();
+      const record = await makeRecord(
+        state,
+        normalizedInput,
+        current.createdAt,
+        current.version + 1,
+        state.now(),
+        current.generation ?? randomUUID(),
+        normalizedInput.secret === undefined ? current.encryptedSecret : undefined,
+      );
+      if (
+        state.storage &&
+        !(await state.storage.putCustomWebhookIntegration(
+          record,
+          current.version,
+          markers,
+          current.generation ?? null,
+        ))
+      ) {
+        return conflict();
+      }
+      state.customWebhookIntegrations.set(normalizedInput.id, record);
+      return { ok: true, integration: toPublicCustomWebhookIntegration(record) };
+    }),
+  );
 }
 
 export async function deleteCustomWebhookIntegration(
@@ -136,29 +168,31 @@ export async function deleteCustomWebhookIntegration(
   expectedVersion?: number,
   expectedGeneration?: string | null,
 ): Promise<{ ok: true } | Failure> {
-  const current = state.storage
-    ? await state.storage.getCustomWebhookIntegration(id)
-    : state.customWebhookIntegrations.get(id);
-  if (!current) return { ok: false, error: "custom webhook integration not found" };
-  if (
-    (expectedVersion !== undefined && current.version !== expectedVersion) ||
-    (expectedGeneration === null
-      ? current.generation !== undefined
-      : expectedGeneration !== undefined && current.generation !== expectedGeneration)
-  )
-    return conflict();
-  if (
-    state.storage &&
-    !(await state.storage.deleteCustomWebhookIntegration(
-      id,
-      current.version,
-      current.generation ?? null,
-    ))
-  ) {
-    return conflict();
-  }
-  state.customWebhookIntegrations.delete(id);
-  return { ok: true };
+  return withInMemoryCustomWebhookMutation(state, id, async () => {
+    const current = state.storage
+      ? await state.storage.getCustomWebhookIntegration(id)
+      : state.customWebhookIntegrations.get(id);
+    if (!current) return { ok: false, error: "custom webhook integration not found" };
+    if (
+      (expectedVersion !== undefined && current.version !== expectedVersion) ||
+      (expectedGeneration === null
+        ? current.generation !== undefined
+        : expectedGeneration !== undefined && current.generation !== expectedGeneration)
+    )
+      return conflict();
+    if (
+      state.storage &&
+      !(await state.storage.deleteCustomWebhookIntegration(
+        id,
+        current.version,
+        current.generation ?? null,
+      ))
+    ) {
+      return conflict();
+    }
+    state.customWebhookIntegrations.delete(id);
+    return { ok: true };
+  });
 }
 
 export async function decryptCustomWebhookSecret(

@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- lifecycle branch coverage shares focused fixtures. */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { decryptCustomWebhookSecret } from "./control-plane-custom-webhooks.ts";
@@ -32,6 +32,14 @@ function config(overrides: Record<string, unknown> = {}) {
     timeout: 60,
     ...overrides,
   } as never;
+}
+
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 describe("custom webhook integration lifecycle", () => {
@@ -131,6 +139,52 @@ describe("custom webhook integration lifecycle", () => {
       "invalid",
     );
     expect(created.ok).toBe(true);
+  });
+
+  it("serializes concurrent in-memory creates before asynchronous encryption", async () => {
+    const encryptionStarted = deferred<void>();
+    const releaseEncryption = deferred<void>();
+    const value = plane(
+      encryptor({
+        encrypt: vi.fn(async (plaintext) => {
+          encryptionStarted.resolve();
+          await releaseEncryption.promise;
+          return `cipher:${Buffer.from(plaintext).toString("base64")}`;
+        }),
+      }),
+    );
+    const first = value.createCustomWebhookIntegration(config({ secret: "a".repeat(32) }));
+    await encryptionStarted.promise;
+    const second = value.createCustomWebhookIntegration(config({ secret: "b".repeat(32) }));
+    await Promise.resolve();
+    expect(value.state.customWebhookIntegrations.size).toBe(0);
+    releaseEncryption.resolve();
+    await expect(first).resolves.toMatchObject({ ok: true });
+    await expect(second).resolves.toMatchObject({ ok: false, conflict: true });
+  });
+
+  it("serializes concurrent in-memory updates before asynchronous encryption", async () => {
+    const value = plane();
+    await expect(value.createCustomWebhookIntegration(config())).resolves.toMatchObject({
+      ok: true,
+    });
+    const encryptionStarted = deferred<void>();
+    const releaseEncryption = deferred<void>();
+    value.state.secretEncryptor = encryptor({
+      encrypt: vi.fn(async (plaintext) => {
+        encryptionStarted.resolve();
+        await releaseEncryption.promise;
+        return `cipher:${Buffer.from(plaintext).toString("base64")}`;
+      }),
+    });
+    const first = value.updateCustomWebhookIntegration(config({ secret: "a".repeat(32) }), 1);
+    await encryptionStarted.promise;
+    const second = value.updateCustomWebhookIntegration(config({ secret: "b".repeat(32) }), 1);
+    await Promise.resolve();
+    expect((await value.getCustomWebhookIntegration("deploy"))?.version).toBe(1);
+    releaseEncryption.resolve();
+    await expect(first).resolves.toMatchObject({ ok: true });
+    await expect(second).resolves.toMatchObject({ ok: false, conflict: true });
   });
 
   it("validates both provider and command fallback references", async () => {
