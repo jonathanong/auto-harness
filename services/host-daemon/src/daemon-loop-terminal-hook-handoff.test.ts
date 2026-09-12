@@ -1,7 +1,6 @@
+/* eslint-disable max-lines -- terminal handoff recovery variants share one fixture. */
 import { describe, expect, it, vi } from "vitest";
-
 import type { HostToServerMessage } from "@auto-harness/shared";
-
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
 import {
   flushMacrotask,
@@ -9,7 +8,6 @@ import {
   pendingTerminalStatusOf,
   terminalStatusFixture,
 } from "../test-helpers/daemon-loop-test-helpers.ts";
-
 async function waitFor(predicate: () => boolean): Promise<void> {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     if (predicate()) return;
@@ -17,9 +15,8 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   }
   throw new Error("condition did not become true");
 }
-
 describe("DaemonLoop terminal-hook handoff", () => {
-  it("runs a v5 handoff once and retries its completion until acknowledged", async () => {
+  it("runs a v7 handoff once and retries its completion until acknowledged", async () => {
     const { config, cleanup } = await makeRepo();
     try {
       const sent: HostToServerMessage[] = [];
@@ -34,7 +31,7 @@ describe("DaemonLoop terminal-hook handoff", () => {
       (loop as unknown as { processRunner: { run: typeof run } }).processRunner = {
         run,
       };
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 5 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver({
         type: "session:terminal-hook",
         handoffId: "handoff",
@@ -42,9 +39,9 @@ describe("DaemonLoop terminal-hook handoff", () => {
         repositoryId: "demo",
         worktreeId: "wt-1",
         status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
         errorCode: "host_lost",
       });
-
       await waitFor(
         () =>
           sent.filter((message) => message.type === "session:terminal-hook-complete").length === 1,
@@ -53,6 +50,7 @@ describe("DaemonLoop terminal-hook handoff", () => {
         type: "session:terminal-hook-complete",
         sessionId: "lost",
         handoffId: "handoff",
+        result: { summary: "Session failed", summarySource: "harness" },
       });
       const hookCalls = run.mock.calls.filter(([options]) => options.argv[0] === "/bin/sh");
       expect(hookCalls).toHaveLength(1);
@@ -71,7 +69,6 @@ describe("DaemonLoop terminal-hook handoff", () => {
         () =>
           sent.filter((message) => message.type === "session:terminal-hook-complete").length === 2,
       );
-
       transport.deliver({
         type: "session:terminal-hook-acknowledged",
         sessionId: "lost",
@@ -87,7 +84,6 @@ describe("DaemonLoop terminal-hook handoff", () => {
       cleanup();
     }
   });
-
   it("settles a same-process terminal owner without running the replacement hook twice", async () => {
     const { config, cleanup } = await makeRepo();
     try {
@@ -97,7 +93,7 @@ describe("DaemonLoop terminal-hook handoff", () => {
       });
       const loop = new DaemonLoop({ config, transport });
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       const dispositions: boolean[] = [];
       pendingTerminalStatusOf(loop).set("lost\\0attempt", {
         message: { ...terminalStatusFixture, sessionId: "lost", attemptId: "attempt" },
@@ -117,6 +113,7 @@ describe("DaemonLoop terminal-hook handoff", () => {
         repositoryId: "demo",
         worktreeId: "wt-1",
         status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
         errorCode: "host_lost",
       });
       await waitFor(() =>
@@ -157,7 +154,7 @@ describe("DaemonLoop terminal-hook handoff", () => {
       });
       const loop = new DaemonLoop({ config, transport });
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 5 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       let finishHook!: (result: { exitCode: number }) => void;
       const hookStarted = vi.fn();
       (
@@ -184,10 +181,11 @@ describe("DaemonLoop terminal-hook handoff", () => {
         repositoryId: "demo",
         worktreeId: "wt-1",
         status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
         errorCode: "host_lost",
       });
       await waitFor(() => hookStarted.mock.calls.length === 1);
-      // The v5 registration is enough for handoff admission. Use legacy
+      // The v7 registration is enough for handoff admission. Use legacy
       // assignment acknowledgement here to isolate the physical-target fence.
       (loop as unknown as { serverProtocolVersion: number }).serverProtocolVersion = 0;
       transport.deliver({

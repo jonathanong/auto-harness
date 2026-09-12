@@ -46,7 +46,7 @@ function state() {
     lastHeartbeatAt: NOW,
     repositoryIds: ["repo"],
     capabilities: [],
-    protocolVersion: 5,
+    protocolVersion: 7,
   });
   return current;
 }

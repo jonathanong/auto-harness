@@ -12,7 +12,7 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 }
 
 describe("DaemonLoop terminal-hook handoff limits", () => {
-  it("expires an unacknowledged handoff at the server-aligned retention window", async () => {
+  it("expires an unacknowledged handoff at its control-plane deadline", async () => {
     const { config, cleanup } = await makeRepo();
     try {
       const logs: string[] = [];
@@ -21,10 +21,9 @@ describe("DaemonLoop terminal-hook handoff limits", () => {
         config,
         transport,
         onLog: (line) => logs.push(line),
-        pendingTerminalHookHandoffMaxAgeMs: -1,
       });
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 5 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver({
         type: "session:terminal-hook",
         handoffId: "old",
@@ -32,6 +31,7 @@ describe("DaemonLoop terminal-hook handoff limits", () => {
         repositoryId: "demo",
         worktreeId: "wt-1",
         status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
         errorCode: "host_lost",
       });
       await waitFor(
@@ -39,6 +39,10 @@ describe("DaemonLoop terminal-hook handoff limits", () => {
           (loop as unknown as { pendingTerminalHookHandoffs: Map<string, unknown> })
             .pendingTerminalHookHandoffs.size === 1,
       );
+      const pending = loop as unknown as {
+        pendingTerminalHookHandoffs: Map<string, { expiresAtMs: number }>;
+      };
+      pending.pendingTerminalHookHandoffs.get("old")!.expiresAtMs = Date.now();
       await loop.keepalive();
       expect(
         (loop as unknown as { pendingTerminalHookHandoffs: Map<string, unknown> })
@@ -63,7 +67,7 @@ describe("DaemonLoop terminal-hook handoff limits", () => {
         pendingTerminalHookHandoffMaxCount: 0,
       });
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 5 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver({
         type: "session:terminal-hook",
         handoffId: "full",
@@ -71,6 +75,7 @@ describe("DaemonLoop terminal-hook handoff limits", () => {
         repositoryId: "demo",
         worktreeId: "wt-1",
         status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
         errorCode: "host_lost",
       });
       await flushMacrotask();
@@ -85,13 +90,58 @@ describe("DaemonLoop terminal-hook handoff limits", () => {
     }
   });
 
+  it("does not start an expired handoff and bounds a late hook to its absolute deadline", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      const run = vi.fn(async () => ({ exitCode: 0 }));
+      (loop as unknown as { processRunner: { run: typeof run } }).processRunner = { run };
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
+      transport.deliver({
+        type: "session:terminal-hook",
+        handoffId: "expired",
+        sessionId: "expired",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+        expiresAt: new Date(Date.now() - 1).toISOString(),
+      });
+      await flushMacrotask();
+      expect(run).not.toHaveBeenCalled();
+      expect(
+        (loop as unknown as { pendingTerminalHookHandoffs: Map<string, unknown> })
+          .pendingTerminalHookHandoffs.size,
+      ).toBe(0);
+
+      const deadlineMs = Date.now() + 500;
+      transport.deliver({
+        type: "session:terminal-hook",
+        handoffId: "late",
+        sessionId: "late",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+        expiresAt: new Date(deadlineMs).toISOString(),
+      });
+      await waitFor(() => run.mock.calls.some(([options]) => options.argv[0] === "/bin/sh"));
+      const hook = run.mock.calls.find(([options]) => options.argv[0] === "/bin/sh")?.[0];
+      expect(hook?.timeoutMs).toBeGreaterThan(0);
+      expect(hook?.timeoutMs).toBeLessThanOrEqual(500);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("counts an active handoff against assignment capacity on another target", async () => {
     const { config, cleanup } = await makeRepo();
     try {
       const transport = createLoopbackTransport({ sendToServer: () => undefined });
       const loop = new DaemonLoop({ config, transport });
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 5 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       let finishHook!: (result: { exitCode: number }) => void;
       (
         loop as unknown as { processRunner: { run(): Promise<{ exitCode: number }> } }
@@ -114,6 +164,7 @@ describe("DaemonLoop terminal-hook handoff limits", () => {
         repositoryId: "demo",
         worktreeId: "wt-1",
         status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
         errorCode: "host_lost",
       });
       await waitFor(() => finishHook !== undefined);

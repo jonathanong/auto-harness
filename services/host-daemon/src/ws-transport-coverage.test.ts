@@ -90,6 +90,7 @@ describe("WebSocket transport residual runtime branches", () => {
         repositoryId: "repository-1",
         worktreeId: null,
         status: "failed",
+        expiresAt: "2026-01-02T00:00:00.000Z",
         errorCode: "host_lost",
         ref: "main",
         metadata: { source: "recovery" },

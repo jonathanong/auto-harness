@@ -1,5 +1,8 @@
 /* eslint-disable max-lines -- handoff delivery, settlement, and expiry share one lifecycle boundary. */
-import { TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION, type HostWireMessage } from "@auto-harness/shared";
+import {
+  TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION,
+  type HostWireMessage,
+} from "@auto-harness/shared";
 
 import { queueSessionArchive } from "./control-plane-archive.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -61,7 +64,7 @@ export async function pendingTerminalHookHandoffs(
       (connectionId === undefined
         ? 0
         : (state.connections.get(connectionId)?.protocolVersion ?? 0))) <
-    TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION
+    TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
   ) {
     return [];
   }
@@ -98,6 +101,7 @@ export async function pendingTerminalHookHandoffs(
       repositoryId: handoff.repositoryId,
       worktreeId: handoff.worktreeId,
       status: handoff.status,
+      expiresAt: handoff.expiresAt,
       ...(handoff.errorCode !== undefined ? { errorCode: handoff.errorCode } : {}),
       ...(handoff.ref !== undefined ? { ref: handoff.ref } : {}),
       ...(handoff.metadata !== undefined ? { metadata: handoff.metadata } : {}),

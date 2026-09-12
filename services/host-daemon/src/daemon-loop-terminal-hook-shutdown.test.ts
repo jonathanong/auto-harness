@@ -41,7 +41,7 @@ describe("DaemonLoop terminal-hook shutdown", () => {
           });
         },
       };
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 5 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver({
         type: "session:terminal-hook",
         handoffId: "shutdown-handoff",
@@ -49,6 +49,7 @@ describe("DaemonLoop terminal-hook shutdown", () => {
         repositoryId: "demo",
         worktreeId: "wt-1",
         status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
         errorCode: "host_lost",
       });
       await waitFor(() => hookStarted.mock.calls.length === 1);

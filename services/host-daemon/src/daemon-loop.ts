@@ -5,7 +5,7 @@ import {
   DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
   KEEPALIVE_ACK_PROTOCOL_VERSION,
   SESSION_RESULT_PROTOCOL_VERSION,
-  TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION,
+  TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION,
   thrownMessage,
   type HostRuntimeReport,
   type HostToServerMessage,
@@ -78,7 +78,7 @@ export type DaemonLoopOptions = {
   pendingStatusMaxCount?: number;
   /** Retry at most this many pending terminal statuses per keepalive tick. */
   statusRetriesPerTick?: number;
-  /** Drop an unacknowledged host-loss hook completion after the server's 24h retention window. */
+  /** Legacy v6 deferred-result completions have no absolute handoff expiry. */
   pendingTerminalHookHandoffMaxAgeMs?: number;
   /** Bound replacement-hook completion retention while the server is unreachable. */
   pendingTerminalHookHandoffMaxCount?: number;
@@ -152,9 +152,17 @@ type PendingCommandStart = {
   sending: boolean;
 };
 
+/** A v6 status acknowledgement can synthesize a local completion before its v7 handoff arrives. */
+type PendingTerminalHookHandoffMessage = Omit<
+  Extract<HostWireMessage, { type: "session:terminal-hook" }>,
+  "expiresAt"
+> & { expiresAt?: string };
+
 type PendingTerminalHookHandoff = {
-  message: Extract<HostWireMessage, { type: "session:terminal-hook" }>;
-  firstAttemptedAtMs: number;
+  message: PendingTerminalHookHandoffMessage;
+  expiresAtMs?: number;
+  /** Retained solely for legacy v6 deferred-result completions. */
+  firstAttemptedAtMs?: number;
   complete: boolean;
   executing: boolean;
   sending: boolean;
@@ -1010,15 +1018,17 @@ export class DaemonLoop {
   }
 
   /**
-   * A v5 peer assigns this only after a prior daemon died. It deliberately
+   * A v7 peer assigns this only after a prior daemon died. It deliberately
    * reuses the current inventory and root policy; the control plane never
-   * sends executable paths. Completion is retained and retried until the
-   * durable fenced acknowledgement arrives.
+   * sends executable paths. Its absolute control-plane deadline bounds both
+   * hook execution and completion retry.
    */
   private async handleTerminalHookHandoff(
     msg: Extract<HostWireMessage, { type: "session:terminal-hook" }>,
   ): Promise<void> {
-    if (this.serverProtocolVersion < TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION) return;
+    if (this.serverProtocolVersion < TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION) return;
+    const expiresAtMs = Date.parse(msg.expiresAt ?? "");
+    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) return;
     const existing = this.pendingTerminalHookHandoffs.get(msg.handoffId);
     if (existing) {
       if (existing.complete) this.sendTerminalHookHandoffCompletion(existing);
@@ -1034,7 +1044,7 @@ export class DaemonLoop {
     }
     const pending: PendingTerminalHookHandoff = {
       message: msg,
-      firstAttemptedAtMs: Date.now(),
+      expiresAtMs,
       complete: false,
       executing: false,
       sending: false,
@@ -1083,6 +1093,8 @@ export class DaemonLoop {
   }
 
   private async runTerminalHookHandoff(pending: PendingTerminalHookHandoff): Promise<void> {
+    const expiresAtMs = pending.expiresAtMs;
+    if (expiresAtMs === undefined) return;
     const msg = pending.message;
     const targetKey =
       msg.worktreeId === null
@@ -1096,6 +1108,7 @@ export class DaemonLoop {
     this.worktreeAssignmentTails.set(targetKey, targetWork);
     try {
       if (previousTargetWork) await previousTargetWork.catch(() => undefined);
+      if (Date.now() >= expiresAtMs) return;
       if (msg.worktreeId === null) {
         if (!(await this.worktrees.acquireMain(msg.repositoryId))) {
           throw new Error(`main checkout unavailable for terminal hook ${msg.sessionId}`);
@@ -1104,6 +1117,7 @@ export class DaemonLoop {
           const result = await this.runTerminalHookForClaim(
             msg,
             await this.worktrees.mainClaim(msg.repositoryId),
+            expiresAtMs,
           );
           if (result) pending.result = result;
         } finally {
@@ -1112,7 +1126,7 @@ export class DaemonLoop {
       } else {
         const claim = await this.worktrees.claim(msg.repositoryId, msg.worktreeId);
         try {
-          const result = await this.runTerminalHookForClaim(msg, claim);
+          const result = await this.runTerminalHookForClaim(msg, claim, expiresAtMs);
           if (result) pending.result = result;
         } finally {
           this.worktrees.release(msg.worktreeId);
@@ -1134,13 +1148,16 @@ export class DaemonLoop {
   }
 
   private async runTerminalHookForClaim(
-    msg: Extract<HostWireMessage, { type: "session:terminal-hook" }>,
+    msg: PendingTerminalHookHandoffMessage,
     claim: ClaimedWorktree,
+    expiresAtMs: number,
   ): Promise<import("@auto-harness/shared").SessionResult | undefined> {
     const current = await claim.currentHookTarget();
     const scriptPath = current?.repository.terminalHookScript;
     if (!current) return undefined;
     if (scriptPath) {
+      const remainingMs = expiresAtMs - Date.now();
+      if (remainingMs <= 0) return undefined;
       await runTerminalHook(this.processRunner, {
         scriptPath,
         cwd: current.cwd,
@@ -1148,6 +1165,7 @@ export class DaemonLoop {
         status: msg.status,
         worktreePath: current.cwd,
         childEnvSource: this.childEnvSource,
+        timeoutMs: Math.min(60_000, remainingMs),
         ...(current.allowedRoots?.length ? { allowedRoots: current.allowedRoots } : {}),
         ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
         ...(msg.ref !== undefined ? { ref: msg.ref } : {}),
@@ -1209,11 +1227,18 @@ export class DaemonLoop {
 
   private expirePendingTerminalHookHandoffs(nowMs: number): void {
     for (const [handoffId, pending] of this.pendingTerminalHookHandoffs) {
-      if (nowMs - pending.firstAttemptedAtMs <= this.pendingTerminalHookHandoffMaxAgeMs) continue;
+      if (
+        pending.expiresAtMs === undefined
+          ? nowMs - (pending.firstAttemptedAtMs ?? nowMs) <= this.pendingTerminalHookHandoffMaxAgeMs
+          : nowMs < pending.expiresAtMs
+      )
+        continue;
       this.pendingTerminalHookHandoffs.delete(handoffId);
       this.onLog?.(
         `terminal hook handoff completion expired for ${pending.message.sessionId} ` +
-          `after ${String(this.pendingTerminalHookHandoffMaxAgeMs)}ms`,
+          (pending.expiresAtMs === undefined
+            ? `after ${String(this.pendingTerminalHookHandoffMaxAgeMs)}ms`
+            : "at the control-plane expiry"),
       );
     }
   }

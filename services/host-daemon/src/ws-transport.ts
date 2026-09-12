@@ -354,9 +354,12 @@ export function createWsTransport(options: Options): DaemonTransport & {
               "handoffId" in message &&
               "repositoryId" in message &&
               "worktreeId" in message &&
+              "expiresAt" in message &&
               boundedWireText(message.handoffId) &&
               boundedWireText(message.sessionId) &&
               boundedWireText(message.repositoryId) &&
+              typeof message.expiresAt === "string" &&
+              Number.isFinite(Date.parse(message.expiresAt)) &&
               (message.worktreeId === null || boundedWireText(message.worktreeId)) &&
               isTerminalSessionStatus(message.status) &&
               (message.errorCode === undefined || isSessionErrorCode(message.errorCode)) &&

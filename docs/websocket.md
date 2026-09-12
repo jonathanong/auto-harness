@@ -121,11 +121,11 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
 
 ### Server → agent
 
-| Type                                 | Payload                                                                                             | Purpose                                                                                                                                        |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `host:draining`                      | `hostId`                                                                                            | Durable acknowledgement that the matching `host:status { draining: true }` request committed; the daemon may now finish its graceful shutdown. |
-| `session:terminal-hook`              | `sessionId`, `handoffId`, `repositoryId`, `worktreeId`, `status`, `errorCode?`, `ref?`, `metadata?` | A durable terminal-hook handoff. The daemon resolves its live local policy, never a server-provided script path.                               |
-| `session:terminal-hook-acknowledged` | `sessionId`, `handoffId`                                                                            | Durable settlement of the v5 handoff; the daemon can stop retrying completion.                                                                 |
+| Type                                 | Payload                                                                                                          | Purpose                                                                                                                                                                                                                                 |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `host:draining`                      | `hostId`                                                                                                         | Durable acknowledgement that the matching `host:status { draining: true }` request committed; the daemon may now finish its graceful shutdown.                                                                                          |
+| `session:terminal-hook`              | `sessionId`, `handoffId`, `repositoryId`, `worktreeId`, `status`, `expiresAt`, `errorCode?`, `ref?`, `metadata?` | A durable terminal-hook handoff. The daemon resolves its live local policy, never a server-provided script path. `expiresAt` is the control-plane-owned absolute deadline; the daemon neither starts nor retries the handoff beyond it. |
+| `session:terminal-hook-acknowledged` | `sessionId`, `handoffId`                                                                                         | Durable settlement of the v5 handoff; the daemon can stop retrying completion.                                                                                                                                                          |
 
 **Draining (auto-update):** agent sends `host:status { draining: true }` and waits for `host:draining` before it stops accepting new `session:assign`. The request is authenticated by the bound WebSocket identity and fenced to that connection epoch; a stale socket cannot drain a replacement. A reconnect while the request is pending registers with `draining: true`, preserving exclusion until shutdown completes. The agent then finishes in-flight sessions **without killing CLIs**, disconnects, and restarts. A fresh process registers without `draining` and restores capacity. See [host-daemon.md — Auto-update](host-daemon.md#auto-update-graceful-restart).
 
@@ -170,7 +170,9 @@ lines are not dropped (including after session-wide stdout/stderr caps) and flus
 coalesced stdout/stderr ahead of themselves so a terminal `session:status` cannot
 overtake logs.
 
-Modern daemons advertise `protocolVersion` (currently `6`) and `runningAttempts: [{ sessionId, attemptId }]`.
+Modern daemons advertise `protocolVersion` (currently `7`) and `runningAttempts: [{ sessionId, attemptId }]`.
+Version `7` adds the absolute control-plane expiry to terminal-hook handoffs; only a v7 daemon may
+receive one, and it bounds hook execution and completion retry to that deadline.
 Version `6` adds the deferred checkout-failure result handoff: terminal disposition is persisted
 before the daemon runs its retained hook, and archival waits for the post-hook result completion.
 Version `5` adds the durable terminal-hook handoff used when final `host_lost` recovery transfers

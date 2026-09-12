@@ -61,6 +61,7 @@ function terminalHandoff(sessionId: string, worktreeId: string | null) {
     repositoryId: "demo",
     worktreeId,
     status: "failed" as const,
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
   };
 }
 
@@ -506,8 +507,9 @@ describe("DaemonLoop coverage guards", () => {
         repositoryId: "demo",
         worktreeId: "wt-1",
         status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
       });
-      internals.serverProtocolVersion = 6;
+      internals.serverProtocolVersion = 7;
       pending.set("constructed\0attempt", {
         message: {
           ...terminalStatusFixture,
@@ -603,6 +605,7 @@ describe("DaemonLoop coverage guards", () => {
         repositoryId: "demo",
         worktreeId: "wt-1",
         status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
       });
       internals.pendingTerminalHookHandoffs.set("incomplete-handoff", { complete: false });
       await internals.handleServerMessage({
@@ -612,6 +615,7 @@ describe("DaemonLoop coverage guards", () => {
         repositoryId: "demo",
         worktreeId: "wt-1",
         status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
       });
 
       pending.set("reconciled\0attempt", {
@@ -628,6 +632,7 @@ describe("DaemonLoop coverage guards", () => {
         repositoryId: "demo",
         worktreeId: "wt-1",
         status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
       });
       expect(sent).toContainEqual(
         expect.objectContaining({ handoffId: "reconciled-handoff", result }),
@@ -695,7 +700,8 @@ describe("DaemonLoop coverage guards", () => {
       const internals = loop as unknown as {
         runTerminalHookHandoff(pending: {
           message: Extract<HostWireMessage, { type: "session:terminal-hook" }>;
-          firstAttemptedAtMs: number;
+          expiresAtMs?: number;
+          firstAttemptedAtMs?: number;
           complete: boolean;
           executing: boolean;
           sending: boolean;
@@ -737,7 +743,7 @@ describe("DaemonLoop coverage guards", () => {
       ).runTerminalHookForClaim = async () => undefined;
       const failedPredecessor = {
         message: terminalHandoff("rejected-predecessor", "wt-1"),
-        firstAttemptedAtMs: Date.now(),
+        expiresAtMs: Date.now() + 60_000,
         complete: false,
         executing: false,
         sending: false,
@@ -752,7 +758,7 @@ describe("DaemonLoop coverage guards", () => {
       });
       const mainPending = {
         message: terminalHandoff("main-result", null),
-        firstAttemptedAtMs: Date.now(),
+        expiresAtMs: Date.now() + 60_000,
         complete: false,
         executing: false,
         sending: false,
@@ -760,7 +766,7 @@ describe("DaemonLoop coverage guards", () => {
       await internals.runTerminalHookHandoff(mainPending);
       const worktreePending = {
         message: terminalHandoff("worktree-result", "wt-1"),
-        firstAttemptedAtMs: Date.now(),
+        expiresAtMs: Date.now() + 60_000,
         complete: false,
         executing: false,
         sending: false,
@@ -771,7 +777,7 @@ describe("DaemonLoop coverage guards", () => {
       ).runTerminalHookForClaim = async () => undefined;
       const emptyResultPending = {
         message: terminalHandoff("empty-result", null),
-        firstAttemptedAtMs: Date.now(),
+        expiresAtMs: Date.now() + 60_000,
         complete: false,
         executing: false,
         sending: false,

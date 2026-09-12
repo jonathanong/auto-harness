@@ -64,12 +64,13 @@ describe("terminal hook handoff coverage", () => {
     await expect(pendingTerminalHookHandoffs(state, "host")).resolves.toEqual([]);
     await expect(
       pendingTerminalHookHandoffs(state, "host", {
-        protocolVersion: 5,
+        protocolVersion: 7,
         sessionIds: ["missing", "session"],
       }),
     ).resolves.toEqual([
       expect.objectContaining({
         handoffId: "handoff",
+        expiresAt: "2026-01-02T00:00:00.000Z",
         ref: "refs/heads/main",
         metadata: { source: "test" },
       }),
@@ -85,13 +86,13 @@ describe("terminal hook handoff coverage", () => {
 
     await expect(
       pendingTerminalHookHandoffs(state, "host", {
-        protocolVersion: 5,
+        protocolVersion: 7,
         sessionIds: ["missing", session.id],
       }),
     ).resolves.toHaveLength(1);
     expect(getSession).toHaveBeenCalledTimes(2);
     await expect(
-      pendingTerminalHookHandoffs(state, "host", { protocolVersion: 5 }),
+      pendingTerminalHookHandoffs(state, "host", { protocolVersion: 7 }),
     ).resolves.toHaveLength(1);
     expect(listActiveSessionsByHost).toHaveBeenCalledWith("host");
   });
@@ -102,7 +103,7 @@ describe("terminal hook handoff coverage", () => {
     delete session.terminalHookHandoff!.errorCode;
     state.sessions.set(session.id, session);
     await expect(
-      pendingTerminalHookHandoffs(state, "host", { protocolVersion: 5 }),
+      pendingTerminalHookHandoffs(state, "host", { protocolVersion: 7 }),
     ).resolves.toEqual([]);
     expect(state.sessions.get(session.id)?.terminalHookHandoffExpiredAt).toBe(
       "2026-01-02T00:00:00.000Z",
@@ -116,7 +117,7 @@ describe("terminal hook handoff coverage", () => {
     delete deliverable.terminalHookHandoff!.errorCode;
     current.sessions.set(deliverable.id, deliverable);
     await expect(
-      pendingTerminalHookHandoffs(current, "host", { protocolVersion: 5 }),
+      pendingTerminalHookHandoffs(current, "host", { protocolVersion: 7 }),
     ).resolves.toEqual([expect.not.objectContaining({ errorCode: expect.anything() })]);
   });
 

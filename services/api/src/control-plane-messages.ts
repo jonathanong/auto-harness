@@ -4,7 +4,7 @@ import {
   isTerminalSessionStatus,
   normalizeSessionResult,
   SESSION_RESULT_PROTOCOL_VERSION,
-  TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION,
+  TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION,
   DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
   type HostToServerMessage,
 } from "@auto-harness/shared";
@@ -567,7 +567,8 @@ export function handleHostMessage(
         ...(msg.draining ? { draining: true } : {}),
       });
       if (!r.ok) return { ok: false, error: r.error };
-      for (const session of (msg.protocolVersion ?? 0) >= TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION
+      for (const session of (msg.protocolVersion ?? 0) >=
+      TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
         ? state.sessions.values()
         : []) {
         const handoff = session.terminalHookHandoff;
@@ -579,6 +580,7 @@ export function handleHostMessage(
           repositoryId: handoff.repositoryId,
           worktreeId: handoff.worktreeId,
           status: handoff.status,
+          expiresAt: handoff.expiresAt,
           ...(handoff.errorCode !== undefined ? { errorCode: handoff.errorCode } : {}),
           ...(handoff.ref !== undefined ? { ref: handoff.ref } : {}),
           ...(handoff.metadata !== undefined ? { metadata: handoff.metadata } : {}),

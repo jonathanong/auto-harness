@@ -18,6 +18,8 @@ export type TerminalHookHandoffMessage = {
   repositoryId: string;
   worktreeId: string | null;
   status: Extract<SessionStatus, "completed" | "failed" | "cancelled" | "timed_out">;
+  /** Control-plane-owned deadline for the handoff and its completion retry. */
+  expiresAt: string;
   errorCode?: SessionErrorCode;
   ref?: string;
   metadata?: Record<string, unknown>;

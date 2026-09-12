@@ -113,7 +113,7 @@ describe("keepalive-driven session reconciliation", () => {
   it("returns a terminal-hook handoff created by keepalive reconciliation", async () => {
     const state = createControlPlaneState({ now: () => NOW, idFactory: () => "handoff" });
     seedConnectedHost(state);
-    state.connections.set("c", { ...state.connections.get("c")!, protocolVersion: 6 });
+    state.connections.set("c", { ...state.connections.get("c")!, protocolVersion: 7 });
     const session = {
       ...runningSessionFixture(),
       ackReceivedAt: NOW,

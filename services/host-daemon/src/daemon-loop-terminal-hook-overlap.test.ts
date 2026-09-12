@@ -28,7 +28,7 @@ describe("DaemonLoop terminal-hook overlap", () => {
       });
       const loop = new DaemonLoop({ config, transport });
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       const dispositions: boolean[] = [];
       let hookStarted!: () => void;
       const started = new Promise<void>((resolve) => {
@@ -71,6 +71,7 @@ describe("DaemonLoop terminal-hook overlap", () => {
         repositoryId: "demo",
         worktreeId: "wt-1",
         status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
         errorCode: "checkout_fetch_failed",
       });
       await flushMacrotask();

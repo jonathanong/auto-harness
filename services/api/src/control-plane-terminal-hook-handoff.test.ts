@@ -52,8 +52,8 @@ function connectedState(protocolVersion: number, now = NOW) {
 }
 
 describe("terminal hook handoff", () => {
-  it("delivers only to a v5 replacement and clears its active index after settlement", async () => {
-    const state = connectedState(5);
+  it("delivers only to a v7 replacement with the durable absolute expiry", async () => {
+    const state = connectedState(7);
     const finished = finishHostLostSession(state, running());
     state.sessions.set(finished.id, finished);
     state.worktrees.set("worktree", {
@@ -69,6 +69,7 @@ describe("terminal hook handoff", () => {
         type: "session:terminal-hook",
         handoffId: "handoff",
         worktreeId: "worktree",
+        expiresAt: "2026-01-02T00:00:00.000Z",
         errorCode: "host_lost",
       }),
     ]);
@@ -91,7 +92,7 @@ describe("terminal hook handoff", () => {
   });
 
   it("keeps a main-checkout lease reserved through handoff, then releases it locally", async () => {
-    const state = connectedState(5);
+    const state = connectedState(7);
     const finished = finishHostLostSession(state, {
       ...running(),
       worktreeId: null,
@@ -118,8 +119,8 @@ describe("terminal hook handoff", () => {
     expect(state.sessions.get("session")).not.toHaveProperty("mainCheckoutLease");
   });
 
-  it("withholds a handoff from v4 and expires it before a later v5 registration", async () => {
-    const state = connectedState(4, "2026-01-02T00:00:00.001Z");
+  it("withholds a handoff from v6 and expires it before a later v7 registration", async () => {
+    const state = connectedState(6, "2026-01-02T00:00:00.001Z");
     const finished = finishHostLostSession(
       createControlPlaneState({ now: () => NOW, idFactory: () => "handoff" }),
       running(),
@@ -134,7 +135,7 @@ describe("terminal hook handoff", () => {
     } as never);
 
     await expect(pendingTerminalHookHandoffs(state, "host")).resolves.toEqual([]);
-    state.connections.get("connection")!.protocolVersion = 5;
+    state.connections.get("connection")!.protocolVersion = 7;
     await expect(pendingTerminalHookHandoffs(state, "host")).resolves.toEqual([]);
     expect(state.sessions.get("session")?.terminalHookHandoffExpiredAt).toBe(
       "2026-01-02T00:00:00.000Z",
@@ -146,7 +147,7 @@ describe("terminal hook handoff", () => {
   });
 
   it("fences settlement to the replacement connection and acknowledges an idempotent duplicate", async () => {
-    const state = connectedState(5);
+    const state = connectedState(7);
     const finished = finishHostLostSession(state, running());
     state.sessions.set(finished.id, finished);
     let settled = 0;

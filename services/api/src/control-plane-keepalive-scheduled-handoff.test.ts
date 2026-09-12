@@ -27,7 +27,7 @@ describe("keepalive-driven scheduled handoff reconciliation", () => {
   it("returns terminal-hook handoffs from local and durable reconciliation", async () => {
     const local = createControlPlaneState({ now: () => NOW, idFactory: () => "local-handoff" });
     seedConnectedHost(local);
-    local.connections.set("c", { ...local.connections.get("c")!, protocolVersion: 6 });
+    local.connections.set("c", { ...local.connections.get("c")!, protocolVersion: 7 });
     local.sessions.set("s", scheduledSession());
     local.mainCheckoutLeases.set("h\0repo", { sessionId: "s", connectionId: "c" });
 
@@ -49,7 +49,7 @@ describe("keepalive-driven scheduled handoff reconciliation", () => {
       idFactory: () => "durable-handoff",
     });
     seedConnectedHost(durable);
-    durable.connections.set("c", { ...durable.connections.get("c")!, protocolVersion: 6 });
+    durable.connections.set("c", { ...durable.connections.get("c")!, protocolVersion: 7 });
     const original = scheduledSession();
     let persisted = original;
     durable.storage = {
@@ -77,7 +77,7 @@ describe("keepalive-driven scheduled handoff reconciliation", () => {
         "c",
         false,
         false,
-        6,
+        7,
       ),
     ).resolves.toMatchObject({
       terminalHookHandoffs: [

@@ -25,7 +25,7 @@ describe("DaemonLoop main-checkout terminal-hook handoffs", () => {
       await loop.start();
       const run = vi.fn(async () => ({ exitCode: 0 }));
       (loop as unknown as { processRunner: { run: typeof run } }).processRunner = { run };
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 5 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver({
         type: "session:terminal-hook",
         handoffId: "main-handoff",
@@ -33,6 +33,7 @@ describe("DaemonLoop main-checkout terminal-hook handoffs", () => {
         repositoryId: "demo",
         worktreeId: null,
         status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
         errorCode: "host_lost",
       });
       await waitFor(() =>
@@ -62,7 +63,7 @@ describe("DaemonLoop main-checkout terminal-hook handoffs", () => {
       const worktrees = (loop as unknown as { worktrees: { acquireMain(): Promise<boolean> } })
         .worktrees;
       worktrees.acquireMain = async () => false;
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 5 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver({
         type: "session:terminal-hook",
         handoffId: "unavailable-main",
@@ -70,6 +71,7 @@ describe("DaemonLoop main-checkout terminal-hook handoffs", () => {
         repositoryId: "demo",
         worktreeId: null,
         status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
         errorCode: "host_lost",
       });
       await waitFor(() =>
