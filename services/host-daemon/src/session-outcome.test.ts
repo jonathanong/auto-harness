@@ -362,6 +362,8 @@ describe("finishClaimedSession", () => {
         errorCode: "checkout_fetch_failed",
         deferTerminalHook: true,
       },
+      process.env,
+      "baseline",
     );
 
     // A retry disposition can discard the hook without another probe; a
@@ -376,8 +378,9 @@ describe("finishClaimedSession", () => {
     mode = "hook";
     const postHookResult = await result.settleDeferredTerminalHook?.(true);
     expect(postHookResult).toEqual({
-      summary: "Session failed",
+      summary: "Session failed; 0 files changed",
       summarySource: "harness",
+      filesChanged: [],
     });
     expect(runner.run).toHaveBeenCalledWith(
       expect.objectContaining({

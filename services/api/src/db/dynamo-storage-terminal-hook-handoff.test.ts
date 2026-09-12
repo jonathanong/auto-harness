@@ -1,4 +1,6 @@
+/* eslint-disable max-lines -- terminal handoff transaction cases share one Dynamo fixture. */
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
@@ -171,6 +173,153 @@ describe("DynamoDB Local terminal hook handoffs", () => {
         sessionId: "expire-handoff",
         handoffId: handoff.handoffId,
         expiresAt: handoff.expiresAt,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("releases retained main-checkout leases on settlement and unfenced expiry", async () => {
+    async function seedMainCheckout(
+      sessionId: string,
+      hostId: string,
+      connectionId: string,
+      handoffId: string,
+    ) {
+      const repositoryId = `${sessionId}-repo`;
+      const terminalHookHandoff = {
+        ...handoff,
+        handoffId,
+        hostId,
+        repositoryId,
+        mainCheckoutLease: true as const,
+      };
+      await ctx.doc.send(
+        new PutCommand({
+          TableName: tables.hostLocks,
+          Item: {
+            hostId,
+            connectionId,
+            mainCheckoutLeases: {
+              [repositoryId]: { sessionId, connectionId },
+            },
+          },
+        }),
+      );
+      await putSession(ctx, {
+        ...base,
+        id: sessionId,
+        repositoryId,
+        status: "failed",
+        worktreeId: null,
+        hostId,
+        attemptId: `${sessionId}-attempt`,
+        assignmentConnectionId: connectionId,
+        assignmentSentAt: base.createdAt,
+        ackReceivedAt: base.createdAt,
+        reconnectDeadlineAt: base.createdAt,
+        mainCheckoutLease: true,
+        activeHostId: hostId,
+        activeHostOrder: `${base.createdAt}#${sessionId}`,
+        terminalHookHandoff,
+      });
+      return { repositoryId, terminalHookHandoff };
+    }
+
+    const settled = await seedMainCheckout(
+      "settled-main",
+      "settled-main-host",
+      "settled-main-connection",
+      "settled-main-handoff",
+    );
+    await expect(
+      storage.settleTerminalHookHandoff({
+        sessionId: "settled-main",
+        handoffId: settled.terminalHookHandoff.handoffId,
+        hostId: settled.terminalHookHandoff.hostId,
+        connectionId: "settled-main-connection",
+        mainCheckoutRepositoryId: settled.repositoryId,
+      }),
+    ).resolves.toBe(true);
+    await expect(getSession(ctx, "settled-main")).resolves.not.toHaveProperty("mainCheckoutLease");
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({ TableName: tables.hostLocks, Key: { hostId: "settled-main-host" } }),
+        )
+      ).Item?.mainCheckoutLeases,
+    ).toEqual({});
+
+    const expired = await seedMainCheckout(
+      "expired-main",
+      "expired-main-host",
+      "expired-main-connection",
+      "expired-main-handoff",
+    );
+    await expect(
+      storage.expireTerminalHookHandoff({
+        sessionId: "expired-main",
+        handoffId: expired.terminalHookHandoff.handoffId,
+        expiresAt: expired.terminalHookHandoff.expiresAt,
+        hostId: expired.terminalHookHandoff.hostId,
+        mainCheckoutRepositoryId: expired.repositoryId,
+      }),
+    ).resolves.toBe(true);
+    await expect(getSession(ctx, "expired-main")).resolves.not.toHaveProperty("mainCheckoutLease");
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({ TableName: tables.hostLocks, Key: { hostId: "expired-main-host" } }),
+        )
+      ).Item?.mainCheckoutLeases,
+    ).toEqual({});
+
+    const fencedExpiry = await seedMainCheckout(
+      "fenced-expired-main",
+      "fenced-expired-main-host",
+      "fenced-expired-main-connection",
+      "fenced-expired-main-handoff",
+    );
+    await expect(
+      storage.expireTerminalHookHandoff({
+        sessionId: "fenced-expired-main",
+        handoffId: fencedExpiry.terminalHookHandoff.handoffId,
+        expiresAt: fencedExpiry.terminalHookHandoff.expiresAt,
+        hostId: fencedExpiry.terminalHookHandoff.hostId,
+        connectionId: "fenced-expired-main-connection",
+        mainCheckoutRepositoryId: fencedExpiry.repositoryId,
+      }),
+    ).resolves.toBe(true);
+
+    await putSession(ctx, {
+      ...base,
+      id: "host-fenced-expiry",
+      status: "failed",
+      worktreeId: null,
+      hostId: "expiry-host",
+      terminalHookHandoff: {
+        ...handoff,
+        handoffId: "host-fenced-expiry-handoff",
+        hostId: "expiry-host",
+      },
+    });
+    await expect(
+      storage.expireTerminalHookHandoff({
+        sessionId: "host-fenced-expiry",
+        handoffId: "host-fenced-expiry-handoff",
+        expiresAt: handoff.expiresAt,
+        hostId: "expiry-host",
+        connectionId: "missing-host-lock",
+      }),
+    ).resolves.toBe(false);
+
+    await expect(
+      new DynamoPlaneStorageBase(ctx.doc, {
+        ...tables,
+        sessions: "missing-sessions",
+      }).settleTerminalHookHandoff({
+        sessionId: "settled-main",
+        handoffId: settled.terminalHookHandoff.handoffId,
+        hostId: settled.terminalHookHandoff.hostId,
+        connectionId: "settled-main-connection",
       }),
     ).rejects.toThrow();
   });

@@ -3,14 +3,17 @@ import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import type { HostWireMessage } from "@auto-harness/shared";
+import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
 import {
   createAcknowledgingLoopbackTransport,
+  flushMacrotask,
   makeRepo,
+  pendingTerminalStatusOf,
+  terminalStatusFixture,
 } from "../test-helpers/daemon-loop-test-helpers.ts";
 import { SpawnProcessRunner, type ProcessRunner } from "./executor.ts";
 
@@ -44,6 +47,31 @@ function assign(sessionId: string): Extract<HostWireMessage, { type: "session:as
     repositoryId: "demo",
     prompt: "hello",
     resolvedArgv: ["printf", "%s", "hello"],
+    timeout: 30,
+    worktreeId: "wt-1",
+    assignedAt: new Date().toISOString(),
+  };
+}
+
+function terminalHandoff(sessionId: string, worktreeId: string | null) {
+  return {
+    type: "session:terminal-hook" as const,
+    handoffId: `${sessionId}-handoff`,
+    sessionId,
+    repositoryId: "demo",
+    worktreeId,
+    status: "failed" as const,
+  };
+}
+
+function coverageAssignment(sessionId: string) {
+  return {
+    type: "session:assign" as const,
+    sessionId,
+    attemptId: `attempt-${sessionId}`,
+    repositoryId: "demo",
+    prompt: "hello",
+    resolvedArgv: ["true"],
     timeout: 30,
     worktreeId: "wt-1",
     assignedAt: new Date().toISOString(),
@@ -338,6 +366,643 @@ describe("DaemonLoop coverage guards", () => {
       await pending;
       expect(internals.inflight.get(key)).toBe(replacement);
       releaseCommand?.();
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("covers deferred cleanup failures and target-fence races", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const lines: string[] = [];
+      const transport = createLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        onLog: (line) => lines.push(line),
+        pendingStatusMaxAgeMs: 0,
+      });
+      await loop.start();
+      const internals = loop as unknown as {
+        handleServerMessage(message: HostWireMessage): Promise<void>;
+        retryPendingTerminalStatuses(): void;
+        waitForTargetFence(targetWork: Promise<void>, signal: AbortSignal): Promise<boolean>;
+        prepareForShutdown(): void;
+        pendingTerminalStatus: Map<string, unknown>;
+      };
+      const pending = pendingTerminalStatusOf(loop);
+      const prepareError = new Error("prepare hook failed");
+      pending.set("prepare\0attempt", {
+        message: { ...terminalStatusFixture, sessionId: "prepare", attemptId: "attempt" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async () => {
+          throw prepareError;
+        },
+      } as never);
+      internals.prepareForShutdown();
+      await flushMacrotask();
+      expect(lines).toContain("deferred terminal hook failed for prepare: prepare hook failed");
+
+      // stop() normally calls prepareForShutdown first. Replace that lifecycle
+      // seam so its independent cleanup branch is exercised as well.
+      const stopError = new Error("stop hook failed");
+      pending.set("stop\0attempt", {
+        message: { ...terminalStatusFixture, sessionId: "stop", attemptId: "attempt" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async () => {
+          throw stopError;
+        },
+      } as never);
+      (loop as unknown as { prepareForShutdown: () => void }).prepareForShutdown = () => undefined;
+      loop.stop();
+      await flushMacrotask();
+      expect(lines).toContain("deferred terminal hook failed for stop: stop hook failed");
+
+      const aborted = new AbortController();
+      aborted.abort();
+      await expect(
+        internals.waitForTargetFence(new Promise<void>(() => undefined), aborted.signal),
+      ).resolves.toBe(false);
+
+      let reads = 0;
+      const racingSignal = {
+        get aborted() {
+          reads += 1;
+          return reads > 1;
+        },
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      } as unknown as AbortSignal;
+      await expect(
+        internals.waitForTargetFence(new Promise<void>(() => undefined), racingSignal),
+      ).resolves.toBe(false);
+      await expect(
+        internals.waitForTargetFence(
+          Promise.reject(new Error("prior target failed")),
+          new AbortController().signal,
+        ),
+      ).resolves.toBe(true);
+
+      // Exercise both expiry cleanup branches, including a primitive rejection.
+      const deferredResolve = vi.fn();
+      const ordinaryResolve = vi.fn();
+      pending.set("expired-deferred\0attempt", {
+        message: { ...terminalStatusFixture, sessionId: "expired-deferred", attemptId: "attempt" },
+        firstAttemptedAtMs: Date.now() - 1,
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async () => {
+          throw "expired primitive";
+        },
+        resolveDeferredDisposition: deferredResolve,
+      } as never);
+      pending.set("expired-ordinary\0attempt", {
+        message: { ...terminalStatusFixture, sessionId: "expired-ordinary", attemptId: "attempt" },
+        firstAttemptedAtMs: Date.now() - 1,
+        sending: false,
+        controller: new AbortController(),
+        resolveDeferredDisposition: ordinaryResolve,
+      } as never);
+      internals.retryPendingTerminalStatuses();
+      await flushMacrotask();
+      expect(deferredResolve).toHaveBeenCalledOnce();
+      expect(ordinaryResolve).toHaveBeenCalledOnce();
+      expect(lines).toContain(
+        "deferred terminal hook failed for expired-deferred: expired primitive",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("covers terminal status handoff construction, reuse, and reconciliation", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const sent: HostToServerMessage[] = [];
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => void sent.push(message),
+      });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      const internals = loop as unknown as {
+        handleServerMessage(message: HostWireMessage): Promise<void>;
+        serverProtocolVersion: number;
+        pendingTerminalHookHandoffs: Map<string, { complete: boolean; result?: unknown }>;
+        reconcilePendingTerminalStatusForHandoff(sessionId: string): Promise<unknown>;
+      };
+      const pending = pendingTerminalStatusOf(loop);
+      const result = { summary: "hook result", summarySource: "harness" as const };
+      internals.serverProtocolVersion = 4;
+      await internals.handleServerMessage({
+        type: "session:terminal-hook",
+        handoffId: "old-protocol",
+        sessionId: "old-protocol",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+      });
+      internals.serverProtocolVersion = 6;
+      pending.set("constructed\0attempt", {
+        message: {
+          ...terminalStatusFixture,
+          sessionId: "constructed",
+          attemptId: "attempt",
+          errorCode: "checkout_fetch_failed",
+        },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async () => result,
+      } as never);
+      await internals.handleServerMessage({
+        type: "session:status-acknowledged",
+        sessionId: "constructed",
+        attemptId: "attempt",
+        retryAccepted: false,
+        terminalHookHandoffId: "constructed-handoff",
+      });
+      expect(sent).toContainEqual({
+        type: "session:terminal-hook-complete",
+        sessionId: "constructed",
+        handoffId: "constructed-handoff",
+        result,
+      });
+
+      pending.set("constructed-empty\0attempt", {
+        message: { ...terminalStatusFixture, sessionId: "constructed-empty", attemptId: "attempt" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async () => undefined,
+      } as never);
+      await internals.handleServerMessage({
+        type: "session:status-acknowledged",
+        sessionId: "constructed-empty",
+        attemptId: "attempt",
+        retryAccepted: false,
+        terminalHookHandoffId: "constructed-empty-handoff",
+      });
+
+      internals.pendingTerminalHookHandoffs.set("existing-handoff", {
+        message: terminalHandoff("existing", "wt-1"),
+        firstAttemptedAtMs: Date.now(),
+        complete: true,
+        sending: false,
+        result: undefined,
+      });
+      pending.set("existing\0attempt", {
+        message: { ...terminalStatusFixture, sessionId: "existing", attemptId: "attempt" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async () => {
+          pending.delete("existing\0attempt");
+          return result;
+        },
+      } as never);
+      await internals.handleServerMessage({
+        type: "session:status-acknowledged",
+        sessionId: "existing",
+        attemptId: "attempt",
+        retryAccepted: false,
+        terminalHookHandoffId: "existing-handoff",
+      });
+      expect(internals.pendingTerminalHookHandoffs.get("existing-handoff")?.result).toEqual(result);
+
+      internals.pendingTerminalHookHandoffs.set("existing-empty-handoff", {
+        message: terminalHandoff("existing-empty", "wt-1"),
+        firstAttemptedAtMs: Date.now(),
+        complete: true,
+        sending: false,
+      });
+      pending.set("existing-empty\0attempt", {
+        message: { ...terminalStatusFixture, sessionId: "existing-empty", attemptId: "attempt" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async () => undefined,
+      } as never);
+      await internals.handleServerMessage({
+        type: "session:status-acknowledged",
+        sessionId: "existing-empty",
+        attemptId: "attempt",
+        retryAccepted: false,
+        terminalHookHandoffId: "existing-empty-handoff",
+      });
+
+      await internals.handleServerMessage({
+        type: "session:terminal-hook",
+        handoffId: "existing-handoff",
+        sessionId: "existing",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+      });
+      internals.pendingTerminalHookHandoffs.set("incomplete-handoff", { complete: false });
+      await internals.handleServerMessage({
+        type: "session:terminal-hook",
+        handoffId: "incomplete-handoff",
+        sessionId: "incomplete",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+      });
+
+      pending.set("reconciled\0attempt", {
+        message: { ...terminalStatusFixture, sessionId: "reconciled", attemptId: "attempt" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async () => result,
+      } as never);
+      await internals.handleServerMessage({
+        type: "session:terminal-hook",
+        handoffId: "reconciled-handoff",
+        sessionId: "reconciled",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+      });
+      expect(sent).toContainEqual(
+        expect.objectContaining({ handoffId: "reconciled-handoff", result }),
+      );
+      pending.set("reconciled-empty\0attempt", {
+        message: { ...terminalStatusFixture, sessionId: "reconciled-empty", attemptId: "attempt" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        resolveDeferredDisposition: vi.fn(),
+      } as never);
+      await internals.handleServerMessage({
+        type: "session:terminal-hook",
+        handoffId: "reconciled-empty-handoff",
+        sessionId: "reconciled-empty",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+      });
+
+      await internals.handleServerMessage({
+        type: "session:status-acknowledged",
+        sessionId: "unknown",
+        attemptId: "missing",
+      });
+
+      const ordinaryResolve = vi.fn();
+      pending.set("ordinary\0attempt", {
+        message: { ...terminalStatusFixture, sessionId: "ordinary", attemptId: "attempt" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        resolveDeferredDisposition: ordinaryResolve,
+      } as never);
+      await expect(internals.reconcilePendingTerminalStatusForHandoff("ordinary")).resolves.toEqual(
+        {
+          matched: true,
+        },
+      );
+      expect(ordinaryResolve).toHaveBeenCalledOnce();
+      await expect(internals.reconcilePendingTerminalStatusForHandoff("absent")).resolves.toEqual({
+        matched: false,
+      });
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("covers handoff target claims, result forwarding, and completion retry failures", async () => {
+    const { config, cleanup, root } = await makeRepo();
+    try {
+      let failCompletion = false;
+      const lines: string[] = [];
+      const sent: HostToServerMessage[] = [];
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => {
+          if (message.type === "session:terminal-hook-complete" && failCompletion)
+            throw new Error("completion offline");
+          sent.push(message);
+        },
+      });
+      const loop = new DaemonLoop({ config, transport, onLog: (line) => lines.push(line) });
+      await loop.start();
+      const internals = loop as unknown as {
+        runTerminalHookHandoff(pending: {
+          message: Extract<HostWireMessage, { type: "session:terminal-hook" }>;
+          firstAttemptedAtMs: number;
+          complete: boolean;
+          executing: boolean;
+          sending: boolean;
+          result?: unknown;
+        }): Promise<void>;
+        runTerminalHookForClaim(
+          message: Extract<HostWireMessage, { type: "session:terminal-hook" }>,
+          claim: { currentHookTarget: () => Promise<unknown> },
+        ): Promise<unknown>;
+        retryPendingTerminalHookHandoffs(): void;
+        pendingTerminalHookHandoffs: Map<string, { complete: boolean; sending: boolean }>;
+        worktreeAssignmentTails: Map<string, Promise<void>>;
+        worktrees: unknown;
+        processRunner: unknown;
+      };
+      const releaseMain = vi.fn();
+      const releaseWorktree = vi.fn();
+      const claim = {
+        currentHookTarget: async () => ({
+          cwd: config.repositories[0]!.path,
+          repository: config.repositories[0]!,
+          allowedRoots: [root],
+        }),
+      };
+      internals.worktrees = {
+        acquireMain: async () => true,
+        mainClaim: async () => claim,
+        releaseMain,
+        claim: async () => claim,
+        release: releaseWorktree,
+      };
+      // A rejected predecessor is still a completed target fence.
+      internals.worktreeAssignmentTails.set(
+        "worktree\0demo\0wt-1",
+        Promise.reject(new Error("previous target failed")),
+      );
+      (
+        loop as unknown as { runTerminalHookForClaim: () => Promise<undefined> }
+      ).runTerminalHookForClaim = async () => undefined;
+      const failedPredecessor = {
+        message: terminalHandoff("rejected-predecessor", "wt-1"),
+        firstAttemptedAtMs: Date.now(),
+        complete: false,
+        executing: false,
+        sending: false,
+      };
+      await internals.runTerminalHookHandoff(failedPredecessor);
+
+      (
+        loop as unknown as { runTerminalHookForClaim: () => Promise<unknown> }
+      ).runTerminalHookForClaim = async () => ({
+        summary: "main result",
+        summarySource: "harness" as const,
+      });
+      const mainPending = {
+        message: terminalHandoff("main-result", null),
+        firstAttemptedAtMs: Date.now(),
+        complete: false,
+        executing: false,
+        sending: false,
+      };
+      await internals.runTerminalHookHandoff(mainPending);
+      const worktreePending = {
+        message: terminalHandoff("worktree-result", "wt-1"),
+        firstAttemptedAtMs: Date.now(),
+        complete: false,
+        executing: false,
+        sending: false,
+      };
+      await internals.runTerminalHookHandoff(worktreePending);
+      (
+        loop as unknown as { runTerminalHookForClaim: () => Promise<undefined> }
+      ).runTerminalHookForClaim = async () => undefined;
+      const emptyResultPending = {
+        message: terminalHandoff("empty-result", null),
+        firstAttemptedAtMs: Date.now(),
+        complete: false,
+        executing: false,
+        sending: false,
+      };
+      await internals.runTerminalHookHandoff(emptyResultPending);
+      expect(mainPending.result).toEqual({ summary: "main result", summarySource: "harness" });
+      expect(worktreePending.result).toEqual({ summary: "main result", summarySource: "harness" });
+      expect(releaseMain).toHaveBeenCalledWith("demo");
+      expect(releaseWorktree).toHaveBeenCalledWith("wt-1");
+
+      (
+        loop as unknown as { runTerminalHookForClaim: typeof internals.runTerminalHookForClaim }
+      ).runTerminalHookForClaim = (
+        DaemonLoop.prototype as unknown as {
+          runTerminalHookForClaim: typeof internals.runTerminalHookForClaim;
+        }
+      ).runTerminalHookForClaim.bind(loop);
+      const noCurrent = await internals.runTerminalHookForClaim(
+        terminalHandoff("no-current", "wt-1"),
+        {
+          currentHookTarget: async () => null,
+        },
+      );
+      expect(noCurrent).toBeUndefined();
+      const noScriptRepository = { ...config.repositories[0]! };
+      delete noScriptRepository.terminalHookScript;
+      const noScriptResult = await internals.runTerminalHookForClaim(
+        terminalHandoff("no-script", "wt-1"),
+        {
+          currentHookTarget: async () => ({
+            cwd: config.repositories[0]!.path,
+            repository: noScriptRepository,
+          }),
+        },
+      );
+      expect(noScriptResult).toMatchObject({ summarySource: "harness" });
+      const hookRuns: string[][] = [];
+      internals.processRunner = {
+        run: async (options: {
+          argv: string[];
+          onChunk?: (chunk: { stream: string; data: string }) => void;
+        }) => {
+          hookRuns.push(options.argv);
+          if (options.argv[0] !== "/bin/sh")
+            options.onChunk?.({ stream: "stdout", data: "main\n" });
+          return {
+            exitCode: options.argv[0] === "/bin/sh" ? 0 : 1,
+            timedOut: false,
+            signal: null,
+          };
+        },
+      };
+      const actualResult = await internals.runTerminalHookForClaim(
+        {
+          ...terminalHandoff("actual-hook", "wt-1"),
+          errorCode: "host_lost",
+          ref: "refs/heads/main",
+          metadata: { source: "test" },
+        },
+        claim,
+      );
+      expect(actualResult).toMatchObject({ summary: "Session failed", summarySource: "harness" });
+      expect(hookRuns[0]?.[0]).toBe("/bin/sh");
+      expect(hookRuns[0]?.[1]).toContain("hook.sh");
+      await internals.runTerminalHookForClaim(
+        { ...terminalHandoff("actual-no-error", "wt-1"), ref: "refs/heads/main" },
+        claim,
+      );
+
+      const retryable = {
+        message: terminalHandoff("retryable", "wt-1"),
+        firstAttemptedAtMs: Date.now(),
+        complete: true,
+        sending: false,
+      };
+      internals.pendingTerminalHookHandoffs.set("retryable-handoff", retryable);
+      internals.retryPendingTerminalHookHandoffs();
+      failCompletion = true;
+      const failed = {
+        message: terminalHandoff("failed-completion", "wt-1"),
+        firstAttemptedAtMs: Date.now(),
+        complete: true,
+        sending: false,
+      };
+      internals.pendingTerminalHookHandoffs.set("failed-completion-handoff", failed);
+      // A second retry attempts the now-failing completion write.
+      internals.retryPendingTerminalHookHandoffs();
+      await flushMacrotask();
+      internals.pendingTerminalHookHandoffs.set("incomplete-handoff", {
+        message: terminalHandoff("incomplete-retry", "wt-1"),
+        firstAttemptedAtMs: Date.now(),
+        complete: false,
+        executing: true,
+        sending: false,
+      });
+      internals.retryPendingTerminalHookHandoffs();
+      expect(lines).toContain(
+        "terminal hook handoff completion send failed for failed-completion: completion offline",
+      );
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("covers assignment authorization cancellation and shutdown terminal conversion", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      let acknowledge = false;
+      let abortAssignment: (() => void) | undefined;
+      const sent: HostToServerMessage[] = [];
+      let transport!: ReturnType<typeof createLoopbackTransport>;
+      transport = createLoopbackTransport({
+        sendToServer: (message) => {
+          sent.push(message);
+          if (acknowledge && message.type === "session:ack") {
+            transport.deliver({
+              type: "session:acknowledged",
+              sessionId: message.sessionId,
+              attemptId: message.attemptId,
+            });
+            if (message.sessionId === "aborted-before-run") {
+              abortAssignment?.();
+            }
+          }
+        },
+      });
+      const loop = new DaemonLoop({ config, transport, ackConfirmationMs: 0 });
+      await loop.start();
+      const internals = loop as unknown as {
+        serverProtocolVersion: number;
+        runner: unknown;
+        inflight: Map<string, { controller: AbortController }>;
+        pendingTerminalStatus: Map<string, unknown>;
+        handleAssign(message: Extract<HostWireMessage, { type: "session:assign" }>): Promise<void>;
+        acknowledgeAssignment(
+          message: Extract<HostWireMessage, { type: "session:assign" }>,
+          signal: AbortSignal,
+        ): Promise<boolean>;
+        runAssign(
+          message: Extract<HostWireMessage, { type: "session:assign" }>,
+          signal: AbortSignal,
+        ): Promise<void>;
+        settleDeferredOnCompletion: boolean;
+        supportsSessionResult: boolean;
+      };
+      abortAssignment = () =>
+        internals.inflight
+          .get("aborted-before-run\0attempt-aborted-before-run")
+          ?.controller.abort();
+      internals.serverProtocolVersion = 4;
+      await internals.handleAssign(coverageAssignment("ack-timeout"));
+      expect(sent).toContainEqual(
+        expect.objectContaining({ type: "session:ack", sessionId: "ack-timeout" }),
+      );
+
+      internals.serverProtocolVersion = 0;
+      let releaseSuperseded!: () => void;
+      const superseded = new Promise<void>((resolve) => {
+        releaseSuperseded = resolve;
+      });
+      internals.pendingTerminalStatus.set("replacement\0old", {
+        message: { ...terminalStatusFixture, sessionId: "replacement", attemptId: "old" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async () => await superseded,
+      });
+      const replacement = internals.handleAssign(coverageAssignment("replacement"));
+      for (let i = 0; i < 20 && !internals.inflight.has("replacement\0attempt-replacement"); i += 1)
+        await flushMacrotask();
+      internals.inflight.get("replacement\0attempt-replacement")?.controller.abort();
+      await replacement;
+      releaseSuperseded();
+
+      acknowledge = true;
+      internals.runner = {
+        run: async () => ({ status: "completed", exitCode: 0, logs: [] }),
+      };
+      await internals.handleAssign(coverageAssignment("normal"));
+      expect(sent).toContainEqual(
+        expect.objectContaining({ type: "session:status", sessionId: "normal" }),
+      );
+      await internals.handleAssign(coverageAssignment("aborted-before-run"));
+      expect(
+        sent.filter(
+          (message) =>
+            message.type === "session:status" && message.sessionId === "aborted-before-run",
+        ),
+      ).toHaveLength(0);
+      (
+        loop as unknown as {
+          acknowledgeAssignment: typeof internals.acknowledgeAssignment;
+        }
+      ).acknowledgeAssignment = async (message) => {
+        internals.inflight.get(`${message.sessionId}\0${message.attemptId}`)?.controller.abort();
+        return true;
+      };
+      await internals.handleAssign(coverageAssignment("aborted-after-ack"));
+
+      internals.serverProtocolVersion = 6;
+      internals.settleDeferredOnCompletion = true;
+      internals.supportsSessionResult = true;
+      let returnResult = true;
+      internals.runner = {
+        run: async () => ({
+          status: "failed",
+          exitCode: null,
+          logs: [],
+          errorCode: returnResult ? "checkout_fetch_failed" : "setup_failed",
+          settleDeferredTerminalHook: async () => {
+            if (returnResult)
+              return { summary: "shutdown result", summarySource: "harness" as const };
+            throw "shutdown primitive";
+          },
+        }),
+      };
+      await internals.runAssign(
+        coverageAssignment("shutdown-result"),
+        new AbortController().signal,
+      );
+      returnResult = false;
+      await internals.runAssign(coverageAssignment("shutdown-error"), new AbortController().signal);
+      expect(sent).toContainEqual(
+        expect.objectContaining({
+          type: "session:status",
+          sessionId: "shutdown-result",
+          errorCode: "setup_failed",
+          result: { summary: "shutdown result", summarySource: "harness" },
+        }),
+      );
       loop.stop();
     } finally {
       cleanup();

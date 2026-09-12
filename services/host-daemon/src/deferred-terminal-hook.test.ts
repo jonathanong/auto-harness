@@ -1,8 +1,33 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { retainClaimForDeferredTerminalHook } from "./deferred-terminal-hook.ts";
+import {
+  createDeferredTerminalHookSettlement,
+  retainClaimForDeferredTerminalHook,
+} from "./deferred-terminal-hook.ts";
 
 describe("retainClaimForDeferredTerminalHook", () => {
+  it("collects a result without a configured hook, baseline, or child environment", async () => {
+    const run = vi.fn(async () => ({ exitCode: 1, timedOut: false, signal: null }));
+    const settle = createDeferredTerminalHookSettlement({
+      processRunner: { run },
+      streamer: { write: vi.fn() } as never,
+      assign: { sessionId: "session" } as never,
+      claimed: {
+        currentHookTarget: async () => ({ cwd: process.cwd(), repository: {} }),
+      },
+      status: "failed",
+      errorCode: undefined,
+      childEnvSource: process.env,
+      environmentIsChild: true,
+    });
+
+    await expect(settle(true)).resolves.toEqual({
+      summary: "Session failed",
+      summarySource: "harness",
+    });
+    expect(run).toHaveBeenCalled();
+  });
+
   it("returns the post-hook result before releasing the retained checkout", async () => {
     const release = vi.fn();
     const settle = vi.fn(async () => ({

@@ -292,6 +292,30 @@ describe("startDaemon runtime wiring", () => {
     }
   });
 
+  it("does not record a send timestamp when keepalive only refreshes registration", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const keepalive = vi.spyOn(DaemonLoop.prototype, "keepalive").mockResolvedValue(false);
+    const harness = await acceptingServer();
+    const lines: string[] = [];
+    const config = emptyDaemonConfig({
+      hostId: "host-keepalive-refresh",
+      apiUrl: `ws://127.0.0.1:${harness.port}/ws`,
+    });
+    const daemon = await startDaemon({ config, log: (line) => lines.push(line) });
+    try {
+      await vi.advanceTimersByTimeAsync(20_000);
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(keepalive).toHaveBeenCalled();
+      expect(
+        lines.some((line) => line.startsWith("daemon liveness:") && line.includes("none yet")),
+      ).toBe(true);
+    } finally {
+      keepalive.mockRestore();
+      daemon.loop.stop();
+      await harness.close();
+    }
+  });
+
   it("keeps the legacy install root when host update config moves its staging root", async () => {
     const harness = await acceptingServer();
     const { config, cleanup } = await makeRepo();
