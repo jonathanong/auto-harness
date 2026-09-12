@@ -146,6 +146,41 @@ describe("session command credential", () => {
     );
   });
 
+  it("redacts a credential prefix that continues across chunks and then diverges", async () => {
+    cwd = await mkdtemp(join(tmpdir(), "session-credential-divergent-prefix-"));
+    const credential = "hns_session_ephemeral";
+    const commandRunner: ProcessRunner = {
+      async run(options) {
+        options.onChunk?.({ stream: "stdout", data: "hns_" });
+        options.onChunk?.({ stream: "stdout", data: "session_" });
+        options.onChunk?.({ stream: "stdout", data: "not-a-credential" });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const logs: Array<{ content: string }> = [];
+    await runClaimedSession(
+      commandRunner,
+      new LogStreamer("sess-divergent", "attempt-1", (chunk) => logs.push(chunk)),
+      logs as never,
+      baseAssign({ sessionApiKey: credential }),
+      {
+        repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
+        worktree: { id: "wt-1", name: "wt", path: cwd, labels: [] },
+        cwd,
+      },
+      undefined,
+      () => false,
+      () => 1_000,
+      commandRunner,
+      process.env,
+      undefined,
+      { apiUrl: "http://127.0.0.1:7420", apiKey: "host-secret" },
+    );
+    const transcript = logs.map((chunk) => chunk.content).join("");
+    expect(transcript).not.toContain("hns_session_");
+    expect(transcript).toContain("[session credential redacted]not-a-credential");
+  });
+
   it("does not reconstruct a credential whose final character overlaps its prefix", async () => {
     cwd = await mkdtemp(join(tmpdir(), "session-credential-overlap-"));
     const credential = `hns_session_${"a".repeat(42)}h`;
