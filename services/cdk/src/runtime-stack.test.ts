@@ -1,4 +1,8 @@
 /* eslint-disable max-lines -- one synthesized runtime template covers REST, WebSocket, and cron. */
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { isAbsolute, join, sep } from "node:path";
+
 import { App } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
@@ -7,6 +11,34 @@ import { AutoHarnessFoundationStack } from "./foundation-stack.ts";
 import { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
 
 describe("AutoHarnessRuntimeStack", () => {
+  it("keeps the S3 presigner resolvable inside every synthesized Lambda asset", () => {
+    const app = new App();
+    const foundation = new AutoHarnessFoundationStack(app, "Foundation", {
+      tablePrefix: "ReviewRuntime",
+    });
+    const runtime = new AutoHarnessRuntimeStack(app, "Runtime", {
+      foundation: foundation.resources,
+      tablePrefix: "ReviewRuntime",
+    });
+    const assembly = app.synth();
+    const manifest = JSON.parse(
+      readFileSync(join(assembly.directory, `${runtime.artifactId}.assets.json`), "utf8"),
+    ) as { files?: Record<string, { source?: { path?: string } }> };
+    const assets = Object.values(manifest.files ?? {})
+      .map((asset) => asset.source?.path)
+      .filter((path): path is string => path !== undefined)
+      .map((path) => ({ path: isAbsolute(path) ? path : join(assembly.directory, path) }))
+      .filter((asset) => existsSync(join(asset.path, "index.js")));
+
+    expect(assets).not.toHaveLength(0);
+    for (const asset of assets) {
+      const resolved = createRequire(join(asset.path, "index.js")).resolve(
+        "@aws-sdk/s3-request-presigner",
+      );
+      expect(resolved.startsWith(`${asset.path}${sep}node_modules${sep}`)).toBe(true);
+    }
+  });
+
   it("synthesizes bounded REST, WebSocket, and scheduled Lambda infrastructure", () => {
     const app = new App();
     const foundation = new AutoHarnessFoundationStack(app, "Foundation", {

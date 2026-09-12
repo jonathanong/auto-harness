@@ -2,7 +2,9 @@
 export type SessionArchiveIncompleteReason =
   | "content-length-mismatch"
   | "content-type-mismatch"
-  | "content-length-and-type-mismatch";
+  | "content-length-and-type-mismatch"
+  | "version-id-missing"
+  | "version-id-mismatch";
 
 export type SessionArchiveReadResponse =
   | { state: "dynamodb" }

@@ -32,6 +32,7 @@ describe("S3ArchiveReader", () => {
         key: "sessions/session-1/logs.jsonl",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
+        versionId: "archive-v1",
         now,
       }),
     ).resolves.toEqual({
@@ -43,6 +44,7 @@ describe("S3ArchiveReader", () => {
     expect(fixture.send.mock.calls[0]![0].input).toEqual({
       Bucket: "archive-bucket",
       Key: "sessions/session-1/logs.jsonl",
+      VersionId: "archive-v1",
     });
     expect(fixture.sign.mock.calls[0]![1]).toBeInstanceOf(GetObjectCommand);
     expect(fixture.sign.mock.calls[0]![1].input).toEqual({
@@ -69,6 +71,7 @@ describe("S3ArchiveReader", () => {
         key: "sessions/empty/logs.jsonl",
         contentType: "application/x-ndjson",
         bodyBytes: 0,
+        versionId: "empty-v1",
         now,
       }),
     ).resolves.toMatchObject({ available: true });
@@ -87,6 +90,7 @@ describe("S3ArchiveReader", () => {
         key: "sessions/session-1/logs.jsonl",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
+        versionId: "archive-v1",
         now,
         ...override,
       }),
@@ -108,9 +112,24 @@ describe("S3ArchiveReader", () => {
         key: "sessions/session-1/logs.jsonl",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
+        versionId: "archive-v1",
         now,
       }),
-    ).resolves.toEqual({ available: false });
+    ).resolves.toEqual({ available: false, reason: "version-id-missing" });
+    expect(fixture.sign).not.toHaveBeenCalled();
+  });
+
+  it("does not sign when the headed version differs from metadata", async () => {
+    const fixture = reader({ VersionId: "different-v1" });
+    await expect(
+      fixture.reader.createDownload({
+        key: "sessions/session-1/logs.jsonl",
+        contentType: "application/x-ndjson",
+        bodyBytes: 12,
+        versionId: "archive-v1",
+        now,
+      }),
+    ).resolves.toEqual({ available: false, reason: "version-id-mismatch" });
     expect(fixture.sign).not.toHaveBeenCalled();
   });
 
@@ -122,6 +141,7 @@ describe("S3ArchiveReader", () => {
     const fixture = reader({
       ContentLength: 12,
       ContentType: "application/x-ndjson",
+      VersionId: "archive-v1",
       ...cold,
     });
     await expect(
@@ -129,6 +149,7 @@ describe("S3ArchiveReader", () => {
         key: "sessions/session-1/logs.jsonl",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
+        versionId: "archive-v1",
         now,
       }),
     ).resolves.toEqual({ available: false });
@@ -148,6 +169,7 @@ describe("S3ArchiveReader", () => {
         key: "sessions/session-1/logs.jsonl",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
+        versionId: "glacier-v1",
         now,
       }),
     ).resolves.toMatchObject({ available: true });
@@ -163,6 +185,7 @@ describe("S3ArchiveReader", () => {
         key: "sessions/session-1/logs.jsonl",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
+        versionId: "archive-v1",
         now,
       }),
     ).resolves.toEqual({ available: false });
@@ -174,6 +197,7 @@ describe("S3ArchiveReader", () => {
         key: "sessions/session-1/logs.jsonl",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
+        versionId: "archive-v1",
         now,
       }),
     ).resolves.toEqual({ available: false });

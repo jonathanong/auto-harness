@@ -32,6 +32,7 @@ export type ArchiveReader = {
     key: string;
     contentType: string;
     bodyBytes: number;
+    versionId: string;
     now: string;
   }): Promise<ArchiveReaderResult>;
 };
@@ -61,13 +62,18 @@ export class S3ArchiveReader implements ArchiveReader {
     key: string;
     contentType: string;
     bodyBytes: number;
+    versionId: string;
     now: string;
   }): Promise<ArchiveReaderResult> {
     if (!/^sessions\/[^/]+\/logs\.jsonl$/.test(input.key)) return { available: false };
     try {
       const head = await this.client.send(
-        new HeadObjectCommand({ Bucket: this.bucket, Key: input.key }),
+        new HeadObjectCommand({ Bucket: this.bucket, Key: input.key, VersionId: input.versionId }),
       );
+      if (!head.VersionId) return { available: false, reason: "version-id-missing" };
+      if (head.VersionId !== input.versionId) {
+        return { available: false, reason: "version-id-mismatch" };
+      }
       const lengthMismatch = head.ContentLength !== input.bodyBytes;
       const typeMismatch = head.ContentType !== input.contentType;
       if (lengthMismatch || typeMismatch) {
@@ -84,7 +90,6 @@ export class S3ArchiveReader implements ArchiveReader {
       if (head.ArchiveStatus !== undefined || !isRestored(head.StorageClass, head.Restore)) {
         return { available: false };
       }
-      if (!head.VersionId) return { available: false };
       const signingDate = new Date(input.now);
       if (Number.isNaN(signingDate.valueOf())) return { available: false };
       const downloadUrl = await this.signer(
@@ -94,7 +99,7 @@ export class S3ArchiveReader implements ArchiveReader {
           Key: input.key,
           ResponseContentDisposition: ARCHIVE_CONTENT_DISPOSITION,
           ResponseContentType: input.contentType,
-          VersionId: head.VersionId,
+          VersionId: input.versionId,
         }),
         { expiresIn: DOWNLOAD_EXPIRES_SECONDS, signingDate },
       );

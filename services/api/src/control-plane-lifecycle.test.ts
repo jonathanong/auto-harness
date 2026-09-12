@@ -207,7 +207,12 @@ describe("ControlPlane lifecycle", () => {
   it("archives JSONL logs to durable metadata and the configured object writer", async () => {
     const uploaded: Array<{ key: string; body: string; contentType: string }> = [];
     const plane = new ControlPlane({
-      archiveWriter: { putArchive: async (object) => void uploaded.push(object) },
+      archiveWriter: {
+        putArchive: async (object) => {
+          uploaded.push(object);
+          return { versionId: "archive-v1" };
+        },
+      },
       idFactory: () => "sess-1",
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
@@ -250,6 +255,7 @@ describe("ControlPlane lifecycle", () => {
     await plane.settleStorage();
     expect(plane.getArchive("sess-1")).toMatchObject({
       bodyBytes: expect.any(Number),
+      versionId: "archive-v1",
       status: "complete",
       objectStored: true,
     });

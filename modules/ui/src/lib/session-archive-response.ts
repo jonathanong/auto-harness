@@ -22,7 +22,9 @@ export function isSessionArchiveReadResponse(value: unknown): value is SessionAr
     candidate.state === "incomplete" &&
     (candidate.reason === "content-length-mismatch" ||
       candidate.reason === "content-type-mismatch" ||
-      candidate.reason === "content-length-and-type-mismatch")
+      candidate.reason === "content-length-and-type-mismatch" ||
+      candidate.reason === "version-id-missing" ||
+      candidate.reason === "version-id-mismatch")
   ) {
     return true;
   }

@@ -258,8 +258,9 @@ performs a fresh `GET /api/v1/sessions/:id/archive` before each download so the 
 short-lived and reflects current availability. **Archived transcript is unavailable for retrieval**
 means archive metadata exists but the verified S3 object cannot currently be read. Refresh archive
 rechecks any state manually, and a successful Archive logs action triggers an immediate recheck.
-**Archived transcript failed integrity verification** means S3's version-pinned object length or
-content type differs from the verified DynamoDB metadata; it is withheld from download until repaired.
+**Archived transcript failed integrity verification** means S3's version-pinned object identity,
+length, or content type differs from the verified DynamoDB metadata; it is withheld from download
+until repaired.
 **Transcript expired before archival completed** means the terminal session's seven-day recent-log
 retention elapsed before a durable archive became retrievable.
 Queued and running sessions always remain in the recent/not-archived state, even if stale complete

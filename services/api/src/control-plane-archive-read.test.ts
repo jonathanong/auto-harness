@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 
@@ -30,14 +30,15 @@ describe("durable archive reads", () => {
   it("exposes an integrity-incomplete transcript without signing it", async () => {
     const plane = new ControlPlane({
       archiveReader: {
-        createDownload: async () => ({
-          available: false,
-          reason: "content-length-mismatch",
-        }),
+        createDownload: async ({ versionId }) => {
+          expect(versionId).toBe("archive-v1");
+          return { available: false, reason: "content-length-mismatch" };
+        },
       },
     });
     plane.state.archives.set("sessions/session/logs.jsonl", {
       key: "sessions/session/logs.jsonl",
+      versionId: "archive-v1",
       contentType: "application/x-ndjson",
       bodyBytes: 42,
       status: "complete",
@@ -49,5 +50,24 @@ describe("durable archive reads", () => {
       state: "incomplete",
       reason: "content-length-mismatch",
     });
+  });
+
+  it("withholds legacy complete rows that have no persisted S3 version", async () => {
+    const createDownload = vi.fn();
+    const plane = new ControlPlane({ archiveReader: { createDownload } });
+    plane.state.archives.set("sessions/session/logs.jsonl", {
+      key: "sessions/session/logs.jsonl",
+      contentType: "application/x-ndjson",
+      bodyBytes: 42,
+      status: "complete",
+      objectStored: true,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    await expect(plane.getArchiveDownloadDurable("session")).resolves.toEqual({
+      state: "incomplete",
+      reason: "version-id-missing",
+    });
+    expect(createDownload).not.toHaveBeenCalled();
   });
 });

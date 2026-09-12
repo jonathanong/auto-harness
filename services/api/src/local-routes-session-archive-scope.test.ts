@@ -5,11 +5,8 @@ import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
-function admins(): string {
-  return Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(
-    "base64url",
-  );
-}
+const admins = () =>
+  Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString("base64url");
 
 /**
  * The archive route resolved its session from the process cache, so the scope check
@@ -150,6 +147,7 @@ describe("GET /api/v1/sessions/:id/archive", () => {
     const { plane, invoke, own, downloads } = await harness();
     plane.state.archives.set(`sessions/${own.id}/logs.jsonl`, {
       key: `sessions/${own.id}/logs.jsonl`,
+      versionId: "archive-v1",
       objectKey: "sessions/another-session/logs.jsonl",
       contentType: "application/x-ndjson",
       bodyBytes: 42,
@@ -181,6 +179,7 @@ describe("GET /api/v1/sessions/:id/archive", () => {
     });
     plane.state.archives.set(`sessions/${own.id}/logs.jsonl`, {
       key: `sessions/${own.id}/logs.jsonl`,
+      versionId: "archive-v1",
       contentType: "application/x-ndjson",
       bodyBytes: 42,
       status: "complete",
@@ -207,6 +206,7 @@ describe("GET /api/v1/sessions/:id/archive", () => {
     plane.state.sessions.set(own.id, { ...record, hostId: "host-b" });
     plane.state.archives.set(`sessions/${own.id}/logs.jsonl`, {
       key: `sessions/${own.id}/logs.jsonl`,
+      versionId: "archive-v1",
       contentType: "application/x-ndjson",
       bodyBytes: 42,
       status: "complete",

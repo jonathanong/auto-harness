@@ -49,6 +49,8 @@ export type ArchiveObject = {
 export type ArchiveMetadata = {
   key: string;
   objectKey?: string;
+  /** S3's immutable object version returned by PutObject. */
+  versionId?: string;
   contentType: string;
   bodyBytes: number;
   status: "pending" | "complete";

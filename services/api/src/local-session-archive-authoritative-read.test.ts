@@ -29,6 +29,7 @@ describe("durable session archive reads", () => {
     await writer.state.storage!.createSession({ ...persistedSession, status: "completed" });
     await writer.state.storage!.putArchive({
       key: "sessions/session/logs.jsonl",
+      versionId: "archive-v1",
       contentType: "application/x-ndjson",
       bodyBytes: 17,
       status: "complete",
@@ -91,6 +92,7 @@ describe("durable session archive reads", () => {
       plane.state.sessions.set(session.id, { ...session, status });
       plane.state.archives.set(`sessions/${session.id}/logs.jsonl`, {
         key: `sessions/${session.id}/logs.jsonl`,
+        versionId: "archive-v1",
         contentType: "application/x-ndjson",
         bodyBytes: 0,
         status: "complete",

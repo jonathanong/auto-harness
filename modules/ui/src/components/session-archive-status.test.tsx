@@ -101,7 +101,7 @@ describe("SessionArchiveStatus", () => {
   });
 
   it("shows an integrity-incomplete archive as a warning and never offers it for download", async () => {
-    const incomplete = { state: "incomplete", reason: "content-type-mismatch" } as const;
+    const incomplete = { state: "incomplete", reason: "version-id-mismatch" } as const;
     expect(isSessionArchiveReadResponse(incomplete)).toBe(true);
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(incomplete)));
     const view = mount(<SessionArchiveStatus sessionId="session" terminal={false} />);

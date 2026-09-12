@@ -339,11 +339,11 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
      WebSocket terminal transitions persist pending archive metadata without S3 access; Cron
      retries the same idempotent key. Cron's archive policy does not grant `s3:GetObject`,
      `s3:GetObjectVersion`, `s3:DeleteObject`, `s3:GetBucketLocation`, or bucket deletion.
-3. REST `GET /sessions/:id/logs` serves recent DynamoDB rows with bounded query
-   parameters and may retrieve an authorized archived transcript through its separately scoped
-   `s3:GetObject`/`s3:GetObjectVersion` grants. It captures the archive's `HeadObject` version
-   and pins that exact `VersionId` in the presigned download, so a later write cannot change the
-   transcript the authorized request selected.
+3. REST `GET /sessions/:id/logs` serves recent DynamoDB rows with bounded query parameters.
+   REST `GET /sessions/:id/archive` retrieves an authorized archived transcript through its
+   separately scoped `s3:GetObject`/`s3:GetObjectVersion` grants. The upload's `PutObject`
+   `VersionId` is persisted with archive metadata; REST heads, verifies, and signs that exact
+   immutable version, so a later write cannot change the transcript the authorized request selected.
 
 ### Connections model
 

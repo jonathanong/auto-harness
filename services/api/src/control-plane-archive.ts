@@ -2,6 +2,7 @@
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { ArchiveMetadata, ArchiveObject } from "./control-plane-types.ts";
 import type { SessionArchiveReadResponse } from "@auto-harness/shared";
+import type { ArchiveWriteResult } from "./archive-writer.ts";
 import { SESSION_LOGS_TTL_SECONDS } from "./db/dynamo.ts";
 
 async function rewriteWinningArchive(
@@ -13,9 +14,23 @@ async function rewriteWinningArchive(
     state.storage && typeof state.storage.getArchive === "function"
       ? await state.storage.getArchive(key)
       : state.archives.get(key);
-  if (!current || current.status !== "complete" || !current.objectStored) return;
+  if (!current || current.status !== "complete" || !current.objectStored || current.versionId)
+    return;
   const body = await archiveBody(state, sessionId);
-  await state.archiveWriter?.putArchive({ key, body, contentType: current.contentType });
+  const result = await state.archiveWriter?.putArchive({
+    key,
+    body,
+    contentType: current.contentType,
+  });
+  if (!result || !("versionId" in result)) return;
+  const repaired = {
+    ...current,
+    bodyBytes: Buffer.byteLength(body),
+    updatedAt: state.now(),
+    versionId: result.versionId,
+  };
+  if (state.storage) await state.storage.putArchive(repaired);
+  state.archives.set(key, repaired);
 }
 
 export async function archiveSessionLogs(
@@ -75,7 +90,8 @@ export async function archiveSessionLogs(
     state.archives.set(object.key, complete);
     return object;
   }
-  await state.archiveWriter.putArchive(object);
+  const writeResult = await state.archiveWriter.putArchive(object);
+  const versionId = archiveVersionId(writeResult);
   const storedMetadata = { ...pending };
   delete storedMetadata.retryState;
   delete storedMetadata.retryOrder;
@@ -84,6 +100,7 @@ export async function archiveSessionLogs(
     status: "complete",
     objectStored: state.archiveWriter !== undefined,
     updatedAt: state.now(),
+    ...(versionId ? { versionId } : {}),
     ...(state.archiveWriter
       ? {}
       : { retryState: "pending" as const, retryOrder: `${state.now()}#${key}` }),
@@ -106,6 +123,12 @@ export async function archiveSessionLogs(
     state.archives.set(object.key, complete);
   }
   return object;
+}
+
+function archiveVersionId(result: ArchiveWriteResult | void | undefined): string | undefined {
+  return result && typeof result.versionId === "string" && result.versionId.length > 0
+    ? result.versionId
+    : undefined;
 }
 
 async function archiveBody(state: ControlPlaneState, sessionId: string): Promise<string> {
@@ -256,10 +279,12 @@ export async function getArchiveDownloadDurable(
     return { state: "dynamodb" };
   }
   if (!metadata.objectStored || !state.archiveReader) return { state: "unavailable" };
+  if (!metadata.versionId) return { state: "incomplete", reason: "version-id-missing" };
   const result = await state.archiveReader.createDownload({
     key,
     contentType: metadata.contentType,
     bodyBytes: metadata.bodyBytes,
+    versionId: metadata.versionId,
     now: state.now(),
   });
   if (result.available) {

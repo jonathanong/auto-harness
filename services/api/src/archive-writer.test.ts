@@ -7,14 +7,21 @@ describe("S3ArchiveWriter", () => {
   it("uploads only the bounded private session archive contract", async () => {
     const commands: unknown[] = [];
     const writer = new S3ArchiveWriter(
-      { send: async (command) => commands.push(command) },
+      {
+        send: async (command) => {
+          commands.push(command);
+          return { VersionId: "archive-v1" };
+        },
+      },
       "private-archives",
     );
-    await writer.putArchive({
-      key: "sessions/session-1/logs.jsonl",
-      body: '{"timestamp":"2026-01-01T00:00:00.000Z","stream":"stdout","content":"ok"}\n',
-      contentType: "application/x-ndjson",
-    });
+    await expect(
+      writer.putArchive({
+        key: "sessions/session-1/logs.jsonl",
+        body: '{"timestamp":"2026-01-01T00:00:00.000Z","stream":"stdout","content":"ok"}\n',
+        contentType: "application/x-ndjson",
+      }),
+    ).resolves.toEqual({ versionId: "archive-v1" });
     expect(commands).toHaveLength(1);
     expect((commands[0] as { input: Record<string, unknown> }).input).toEqual({
       Body: expect.any(String),
@@ -42,6 +49,17 @@ describe("S3ArchiveWriter", () => {
     expect(
       configuredArchiveWriter("private-archives", { send: async () => undefined }),
     ).toBeInstanceOf(S3ArchiveWriter);
+  });
+
+  it("rejects an upload response without an immutable version", async () => {
+    const writer = new S3ArchiveWriter({ send: async () => ({}) }, "private-archives");
+    await expect(
+      writer.putArchive({
+        key: "sessions/session/logs.jsonl",
+        body: "",
+        contentType: "text/plain",
+      }),
+    ).rejects.toThrow("did not return a version id");
   });
 
   it("rejects a custom prefix when an object writer is configured", () => {
