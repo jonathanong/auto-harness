@@ -207,6 +207,96 @@ describe("claimed session GitHub App credentials", () => {
     expect(logs.map((chunk) => chunk.content).join("")).not.toContain("ghs_exact-token");
   });
 
+  it("does not duplicate injected identity names already in the hook allowlist", async () => {
+    installTokenFetch();
+    let hookEnv: NodeJS.ProcessEnv | undefined;
+    const systemRunner: ProcessRunner = {
+      async run(options) {
+        if (options.argv[0] === "/bin/sh" && options.argv[1] === "/hook.sh") {
+          hookEnv = options.env;
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        return { exitCode: 1, timedOut: false, signal: null };
+      },
+    };
+    const logs = [];
+    await expect(
+      runClaimedSession(
+        systemRunner,
+        new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
+        logs,
+        baseAssign({ setupScript: "setup" }),
+        {
+          ...claimed,
+          currentHookTarget: async () => ({
+            cwd: claimed.cwd,
+            repository: { terminalHookScript: "/hook.sh" },
+          }),
+        },
+        undefined,
+        () => false,
+        () => 4_000_000,
+        systemRunner,
+        {
+          PATH: process.env.PATH,
+          GIT_AUTHOR_NAME: "existing-author",
+          HARNESS_CHILD_ENV_ALLOWLIST: "GIT_AUTHOR_NAME",
+        },
+        undefined,
+        undefined,
+        app(),
+        () => now,
+      ),
+    ).resolves.toMatchObject({ status: "failed", errorCode: "setup_failed", exitCode: 1 });
+    expect(hookEnv?.GH_TOKEN).toBe("ghs_exact-token");
+    expect(hookEnv?.GIT_AUTHOR_NAME).toBe("auto-harness[bot]");
+  });
+
+  it("keeps the scoped token when setup execution rejects", async () => {
+    installTokenFetch();
+    let hookEnv: NodeJS.ProcessEnv | undefined;
+    const systemRunner: ProcessRunner = {
+      async run(options) {
+        if (options.argv[0] === "/bin/sh" && options.argv[1] === "/hook.sh") {
+          hookEnv = options.env;
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        throw new Error("setup could not spawn");
+      },
+    };
+    const logs = [];
+    const result = await runClaimedSession(
+      systemRunner,
+      new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
+      logs,
+      baseAssign({ setupScript: "setup" }),
+      {
+        ...claimed,
+        currentHookTarget: async () => ({
+          cwd: claimed.cwd,
+          repository: { terminalHookScript: "/hook.sh" },
+        }),
+      },
+      undefined,
+      () => false,
+      () => 4_000_000,
+      systemRunner,
+      { PATH: process.env.PATH },
+      undefined,
+      undefined,
+      app(),
+      () => now,
+    );
+
+    expect(result).toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      errorMessage: "setup could not spawn",
+    });
+    expect(hookEnv?.GH_TOKEN).toBe("ghs_exact-token");
+    expect(logs.map((chunk) => chunk.content).join("")).not.toContain("ghs_exact-token");
+  });
+
   it.each([
     { timeout: false, status: "cancelled" },
     { timeout: true, status: "timed_out" },

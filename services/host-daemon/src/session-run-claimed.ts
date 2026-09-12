@@ -115,6 +115,19 @@ function withInstallationToken(
   githubApp: GitHubAppConfig,
   installationToken: InstallationToken,
 ): NodeJS.ProcessEnv {
+  const allowlist = (environment.HARNESS_CHILD_ENV_ALLOWLIST ?? "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
+  for (const name of [
+    "GH_TOKEN",
+    "GIT_AUTHOR_NAME",
+    "GIT_AUTHOR_EMAIL",
+    "GIT_COMMITTER_NAME",
+    "GIT_COMMITTER_EMAIL",
+  ]) {
+    if (!allowlist.some((existing) => existing.toUpperCase() === name)) allowlist.push(name);
+  }
   return {
     ...environment,
     GH_TOKEN: installationToken.token,
@@ -122,16 +135,7 @@ function withInstallationToken(
     GIT_AUTHOR_EMAIL: githubBotEmail(githubApp),
     GIT_COMMITTER_NAME: githubApp.botLogin,
     GIT_COMMITTER_EMAIL: githubBotEmail(githubApp),
-    HARNESS_CHILD_ENV_ALLOWLIST: [
-      environment.HARNESS_CHILD_ENV_ALLOWLIST,
-      "GH_TOKEN",
-      "GIT_AUTHOR_NAME",
-      "GIT_AUTHOR_EMAIL",
-      "GIT_COMMITTER_NAME",
-      "GIT_COMMITTER_EMAIL",
-    ]
-      .filter(Boolean)
-      .join(","),
+    HARNESS_CHILD_ENV_ALLOWLIST: allowlist.join(","),
   };
 }
 
@@ -232,20 +236,40 @@ export async function runClaimedSession(
       true,
     );
   }
-  const setup = await runSetupIfNeeded(
-    processRunner,
-    streamer,
-    logs,
-    assign,
-    claimed,
-    signal,
-    timedOut,
-    remainingMs,
-    sessionChildEnv,
-    baseline,
-    effectiveTerminalRunner,
-    authenticatedTerminalEnvironment,
-  );
+  let setup: Awaited<ReturnType<typeof runSetupIfNeeded>>;
+  try {
+    setup = await runSetupIfNeeded(
+      processRunner,
+      streamer,
+      logs,
+      assign,
+      claimed,
+      signal,
+      timedOut,
+      remainingMs,
+      sessionChildEnv,
+      baseline,
+      effectiveTerminalRunner,
+      authenticatedTerminalEnvironment,
+    );
+  } catch (error) {
+    return await finishClaimedSession(
+      effectiveTerminalRunner,
+      streamer,
+      logs,
+      assign,
+      claimed,
+      {
+        status: "failed",
+        exitCode: null,
+        errorCode: "setup_failed",
+        errorMessage: thrownMessage(error),
+      },
+      authenticatedTerminalEnvironment,
+      baseline,
+      true,
+    );
+  }
   if (setup.failure) return setup.failure;
 
   try {
