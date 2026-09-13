@@ -551,7 +551,8 @@ modified tracked files. The force checkout does not broadly clean untracked
 paths. Before checkout, it aborts interrupted merge, rebase, apply, cherry-pick,
 and revert operations and clears tracked-file `assume-unchanged` and `skip-worktree`
 flags. It first inspects index flags with `git ls-files -v -z`, preserves the raw path bytes
-from stdout (stderr stays UTF-8), and clears only flagged paths through `git update-index -z --stdin`,
+from stdout (stderr stays UTF-8 and is decoded across chunk boundaries), and clears only flagged
+paths through `git update-index -z --stdin`,
 avoiding index updates proportional to every tracked file. The resolved commit
 is then hard-reset so hidden tracked changes cannot survive. The session transcript reports the
 ref-checkout phase before this work begins; if the session deadline expires there, the terminal
