@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- captured vs empty processing expiry needs generation-bound cases. */
 import { describe, expect, it, vi } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
