@@ -95,6 +95,7 @@ describe("durable archive expiry reads", () => {
           objectStored: false,
           retryState: "processing",
           retryOrder: "claim",
+          capturedRetryOrder: "claim",
           updatedAt: "2026-01-01T00:00:00.000Z",
         }),
         queryLogs,
@@ -131,6 +132,7 @@ describe("durable archive expiry reads", () => {
             objectStored: false,
             retryState: "processing",
             retryOrder: "claim",
+            capturedRetryOrder: "claim",
             updatedAt: "2026-01-01T00:00:00.000Z",
           })
           .mockResolvedValueOnce({

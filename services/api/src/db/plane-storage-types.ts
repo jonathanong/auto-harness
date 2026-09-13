@@ -244,6 +244,8 @@ export type ArchiveMetadata = {
   /** Internal GSI fields; present on every not-yet-stored archive. */
   retryState?: "pending" | "processing";
   retryOrder?: string;
+  /** Retry generation that recorded captured transcript bytes before the object PUT. */
+  capturedRetryOrder?: string;
 };
 
 export type RepositoryRecord = {

@@ -102,6 +102,7 @@ describe("archive writer with real DynamoDB Local", () => {
       objectStored: false,
       retryState: "processing",
       retryOrder: "claimed-order",
+      capturedRetryOrder: "claimed-order",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
 

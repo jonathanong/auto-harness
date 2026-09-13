@@ -329,7 +329,7 @@ describe("archive retry state", () => {
           retryOrder: "claim-order",
           updatedAt: "2026-01-01T00:00:00.000Z",
         }),
-        listLogs: async () => [],
+        listLogs: async () => [{ timestamp: "1", stream: "stdout", content: "durable" }],
         completeArchiveRetry,
       } as never,
     });
@@ -379,12 +379,7 @@ describe("archive retry state", () => {
       retryOrder: "claim-order",
     });
     expect(order).toEqual(["capture", "object"]);
-    expect(recordArchiveRetryCapture).toHaveBeenCalledWith(
-      key,
-      "claim-order",
-      expect.any(Number),
-      expect.any(String),
-    );
+    expect(recordArchiveRetryCapture).toHaveBeenCalledWith(key, "claim-order", expect.any(Number));
   });
 
   it("does not upload when a processing claim loses the capture fence", async () => {
@@ -405,6 +400,35 @@ describe("archive retry state", () => {
     expect(uploaded).toBe(0);
   });
 
+  it("does not upload an empty retry after logs are gone", async () => {
+    let uploaded = 0;
+    const expireArchive = vi.fn(async () => true);
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+      storage: {
+        getArchive: async () => ({
+          key: "sessions/empty-retry/logs.jsonl",
+          contentType: "application/x-ndjson",
+          bodyBytes: 0,
+          status: "pending",
+          objectStored: false,
+          retryState: "processing",
+          retryOrder: "claim-order",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        }),
+        listLogs: async () => [],
+        expireArchive,
+        completeArchiveRetry: async () => true,
+      } as never,
+    });
+    await retrySessionArchiveIfNeeded(state, "empty-retry", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(uploaded).toBe(0);
+    expect(expireArchive).toHaveBeenCalledOnce();
+  });
+
   it("writes a durable pending marker when an in-memory claim has storage but no retry fence", async () => {
     const putArchive = vi.fn(async () => undefined);
     const key = "sessions/storage-claim/logs.jsonl";
@@ -421,7 +445,7 @@ describe("archive retry state", () => {
           retryOrder: "claim-order",
           updatedAt: "2026-01-01T00:00:00.000Z",
         }),
-        listLogs: async () => [],
+        listLogs: async () => [{ timestamp: "1", stream: "stdout", content: "claim" }],
         putArchive,
       } as never,
     });
@@ -457,7 +481,7 @@ describe("archive retry state", () => {
         claimArchiveRetry: async () => true,
         releaseArchiveRetry,
         getArchive: async () => null,
-        listLogs: async () => [],
+        listLogs: async () => [{ timestamp: "1", stream: "stdout", content: "retry" }],
       } as never,
     });
     await expect(retryPendingArchives(state)).resolves.toBe(0);
@@ -492,7 +516,7 @@ describe("archive retry state", () => {
           throw new Error("release failed");
         },
         getArchive: async () => null,
-        listLogs: async () => [],
+        listLogs: async () => [{ timestamp: "1", stream: "stdout", content: "retry" }],
       } as never,
     });
     await expect(retryPendingArchives(state)).resolves.toBe(0);

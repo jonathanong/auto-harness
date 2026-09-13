@@ -1493,7 +1493,8 @@ export async function claimArchiveRetry(
       new UpdateCommand({
         TableName: ctx.tables.archives,
         Key: { key },
-        UpdateExpression: "SET retryState = :processing, retryOrder = :claimed",
+        UpdateExpression:
+          "SET retryState = :processing, retryOrder = :claimed REMOVE capturedRetryOrder",
         ConditionExpression:
           "objectStored = :false AND retryState = :expectedState AND retryOrder = :expected AND (attribute_not_exists(#status) OR #status <> :expired)",
         ExpressionAttributeNames: { "#status": "status" },
@@ -1520,14 +1521,13 @@ export async function recordArchiveRetryCapture(
   key: string,
   retryOrder: string,
   bodyBytes: number,
-  updatedAt: string,
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
       new UpdateCommand({
         TableName: ctx.tables.archives,
         Key: { key },
-        UpdateExpression: "SET bodyBytes = :bodyBytes, updatedAt = :updatedAt",
+        UpdateExpression: "SET bodyBytes = :bodyBytes, capturedRetryOrder = :expected",
         ConditionExpression:
           "objectStored = :false AND retryState = :processing AND retryOrder = :expected AND (attribute_not_exists(#status) OR #status <> :expired)",
         ExpressionAttributeNames: { "#status": "status" },
@@ -1536,7 +1536,6 @@ export async function recordArchiveRetryCapture(
           ":processing": "processing",
           ":expected": retryOrder,
           ":bodyBytes": bodyBytes,
-          ":updatedAt": updatedAt,
           ":expired": "expired",
         },
       }),
@@ -1560,7 +1559,8 @@ export async function releaseArchiveRetry(
       new UpdateCommand({
         TableName: ctx.tables.archives,
         Key: { key },
-        UpdateExpression: "SET retryState = :pending, retryOrder = :retryOrder",
+        UpdateExpression:
+          "SET retryState = :pending, retryOrder = :retryOrder REMOVE capturedRetryOrder",
         ConditionExpression:
           "objectStored = :false AND retryState = :processing AND retryOrder = :claimed AND (attribute_not_exists(#status) OR #status <> :expired)",
         ExpressionAttributeNames: { "#status": "status" },
@@ -1677,7 +1677,7 @@ export async function completeArchiveRetry(
           "SET contentType = :contentType, bodyBytes = :bodyBytes, #status = :complete, objectStored = :true, updatedAt = :updatedAt" +
           (archive.objectKey ? ", objectKey = :objectKey" : "") +
           (archive.versionId ? ", versionId = :versionId" : "") +
-          " REMOVE retryState, retryOrder",
+          " REMOVE retryState, retryOrder, capturedRetryOrder",
         ConditionExpression:
           "objectStored = :false AND retryState = :processing AND retryOrder = :expected AND (attribute_not_exists(#status) OR #status <> :expired)",
         ExpressionAttributeNames: { "#status": "status" },
@@ -1715,9 +1715,9 @@ export async function expireArchive(
         TableName: ctx.tables.archives,
         Key: { key },
         UpdateExpression:
-          "SET #status = :expired, updatedAt = :updatedAt REMOVE retryState, retryOrder",
+          "SET #status = :expired, updatedAt = :updatedAt REMOVE retryState, retryOrder, capturedRetryOrder",
         ConditionExpression:
-          "#status = :expired OR (objectStored = :false AND (attribute_not_exists(#status) OR #status = :pending) AND (attribute_not_exists(retryState) OR retryState <> :processing OR attribute_not_exists(bodyBytes) OR bodyBytes = :zero))",
+          "#status = :expired OR (objectStored = :false AND (attribute_not_exists(#status) OR #status = :pending) AND (attribute_not_exists(retryState) OR retryState <> :processing OR attribute_not_exists(bodyBytes) OR bodyBytes = :zero OR attribute_not_exists(capturedRetryOrder) OR capturedRetryOrder <> retryOrder))",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
           ":expired": "expired",
