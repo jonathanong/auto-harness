@@ -383,6 +383,14 @@ async function runProcessAndFinish(
   const terminalEnvironment = isolatedGitHubConfigDir
     ? withIsolatedGitHubConfigDir(scrubbedTerminalEnvironment, isolatedGitHubConfigDir)
     : scrubbedTerminalEnvironment;
+  // Minting already succeeded in runClaimedSession. Profile failure still runs
+  // the repository terminal hook, which needs the same scoped App identity.
+  const authenticatedTerminalEnvironment = installationToken
+    ? withInstallationToken(terminalEnvironment, githubApp!, installationToken)
+    : terminalEnvironment;
+  const effectiveTerminalRunner = installationToken
+    ? new SecretRedactingProcessRunner(processRunner, installationToken.token)
+    : processRunner;
   const capturePolicy =
     commandRunner.outputStreams === "merged" && assign.resumeRefCapture
       ? { ...assign.resumeRefCapture, stream: "either" as const }
@@ -392,7 +400,7 @@ async function runProcessAndFinish(
   const profile = resolveExecutionProfile(executionProfiles, assign.providerAccountId);
   if (assign.providerAccountId && (!profile || !executionProfileReady(profile))) {
     return await finishClaimedSession(
-      processRunner,
+      effectiveTerminalRunner,
       streamer,
       logs,
       assign,
@@ -403,9 +411,11 @@ async function runProcessAndFinish(
         errorMessage: `execution profile unavailable for ${assign.providerAccountId}`,
         ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       },
-      terminalEnvironment,
+      authenticatedTerminalEnvironment,
       baseline,
       true,
+      githubApp,
+      nowMs,
     );
   }
   const commandEnv = profile
@@ -446,10 +456,6 @@ async function runProcessAndFinish(
   const authenticatedEnv = installationToken
     ? withInstallationToken(sessionEnv, githubApp!, installationToken)
     : sessionEnv;
-  // Terminal hooks use the same short-lived App identity as the assigned command.
-  const authenticatedTerminalEnvironment = installationToken
-    ? withInstallationToken(terminalEnvironment, githubApp!, installationToken)
-    : terminalEnvironment;
   const spawnEnv = priorContextPath
     ? { ...authenticatedEnv, HARNESS_PRIOR_CONTEXT_FILE: priorContextPath }
     : authenticatedEnv;
@@ -462,9 +468,6 @@ async function runProcessAndFinish(
   const effectiveCommandRunner = installationToken
     ? new SecretRedactingProcessRunner(commandRunner, installationToken.token)
     : commandRunner;
-  const effectiveTerminalRunner = installationToken
-    ? new SecretRedactingProcessRunner(processRunner, installationToken.token)
-    : processRunner;
   const finish = async (outcome: Parameters<typeof finishClaimedSession>[5]) => {
     // Terminal hooks run as part of finishClaimedSession. Do not expose the previous
     // session's transcript to a hook, which is neither the assigned CLI nor part of
