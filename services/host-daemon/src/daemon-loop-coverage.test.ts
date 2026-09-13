@@ -682,8 +682,20 @@ describe("DaemonLoop coverage guards", () => {
       });
 
       const ordinaryResolve = vi.fn();
+      const ordinaryResult = {
+        summary: "buffered ordinary",
+        summarySource: "harness" as const,
+        branch: "feat/ordinary",
+        filesChanged: ["README"],
+        pullRequestUrl: "https://github.com/example/repo/pull/1",
+      };
       pending.set("ordinary\0attempt", {
-        message: { ...terminalStatusFixture, sessionId: "ordinary", attemptId: "attempt" },
+        message: {
+          ...terminalStatusFixture,
+          sessionId: "ordinary",
+          attemptId: "attempt",
+          result: ordinaryResult,
+        },
         firstAttemptedAtMs: Date.now(),
         sending: false,
         controller: new AbortController(),
@@ -693,6 +705,7 @@ describe("DaemonLoop coverage guards", () => {
         internals.reconcilePendingTerminalStatusForHandoff("ordinary", Date.now() + 60_000),
       ).resolves.toEqual({
         matched: true,
+        result: ordinaryResult,
       });
       expect(ordinaryResolve).toHaveBeenCalledOnce();
       await expect(
