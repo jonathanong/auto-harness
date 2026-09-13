@@ -38,6 +38,14 @@ function mirrorExpired(state: ControlPlaneState, key: string, current: ArchiveMe
   state.archives.set(key, expiredArchiveMetadata(current, state.now()));
 }
 
+function isCapturedCurrentRetry(metadata: ArchiveMetadata): boolean {
+  return (
+    metadata.retryState === "processing" &&
+    metadata.bodyBytes > 0 &&
+    metadata.capturedRetryOrder === metadata.retryOrder
+  );
+}
+
 /** Persist a terminal expired fence, or report that a complete winner already exists. */
 export async function persistExpiredArchive(
   state: ControlPlaneState,
@@ -49,11 +57,7 @@ export async function persistExpiredArchive(
     mirrorExpired(state, key, metadata);
     return "expired";
   }
-  if (
-    metadata.retryState === "processing" &&
-    metadata.bodyBytes > 0 &&
-    metadata.capturedRetryOrder === metadata.retryOrder
-  ) {
+  if (isCapturedCurrentRetry(metadata)) {
     const storage = state.storage;
     if (storage) {
       const latest = await storage.getArchive(key);
@@ -84,6 +88,7 @@ export async function persistExpiredArchive(
   }
   const current = state.archives.get(key) ?? metadata;
   if (current.status === "complete") return "complete";
+  if (isCapturedCurrentRetry(current)) return "pending";
   mirrorExpired(state, key, current);
   return "expired";
 }

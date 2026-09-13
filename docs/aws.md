@@ -338,8 +338,10 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
      cannot later serialize an empty log set and mark the archive complete. Read-time expiry does
      not preempt an in-flight `processing` retry claim that already recorded captured transcript
      bytes for the current retry generation, so that worker can still complete the upload.
-     Empty processing claims, reclaimed generations that no longer own the capture marker,
-     and unclaimed pending rows with confirmed absent logs still expire.
+     Memory-only expiry consults the live in-memory row before writing the expired fence, so a
+     stale pending GET snapshot cannot expire that claim. Empty processing claims, reclaimed
+     generations that no longer own the capture marker, and unclaimed pending rows with confirmed
+     absent logs still expire.
      First-time archives persist pending metadata before the PUT so Cron can retry the same key.
      A complete, stored, version-pinned archive keeps that metadata until a replacement object
      version is committed; a failed replacement leaves the prior complete row downloadable. A

@@ -205,6 +205,23 @@ describe("archive expire persistence", () => {
     expect(memory.archives.get(processing.key)).toBeUndefined();
   });
 
+  it("does not expire a live captured claim from a stale pending snapshot", async () => {
+    const processing: ArchiveMetadata = {
+      ...pending,
+      retryState: "processing",
+      bodyBytes: 42,
+      capturedRetryOrder: pending.retryOrder,
+    };
+    const memory = createControlPlaneState({ now: () => "now" });
+    memory.archives.set(processing.key, processing);
+    await expect(persistExpiredArchive(memory, pending.key, pending)).resolves.toBe("pending");
+    expect(memory.archives.get(processing.key)).toMatchObject({
+      status: "pending",
+      retryState: "processing",
+      bodyBytes: 42,
+    });
+  });
+
   it("expires a processing claim whose capture belongs to a prior retry generation", async () => {
     const expireArchive = vi.fn(async () => true);
     const stale: ArchiveMetadata = {

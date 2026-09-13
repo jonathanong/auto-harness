@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- stale-snapshot memory expiry shares the durable expire cases. */
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -108,6 +109,41 @@ describe("durable archive expiry reads", () => {
     });
     expect(queryLogs).toHaveBeenCalledOnce();
     expect(expireArchive).not.toHaveBeenCalled();
+  });
+
+  it("does not expire a live captured claim after a stale pending GET snapshot", async () => {
+    const plane = new ControlPlane({ now: () => "2026-01-08T00:00:00.000Z" });
+    const key = "sessions/session/logs.jsonl";
+    const pending = {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending" as const,
+      objectStored: false,
+      retryState: "pending" as const,
+      retryOrder: "claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    plane.state.archives.set(key, pending);
+    const originalGet = plane.state.logs.get.bind(plane.state.logs);
+    plane.state.logs.get = ((sessionId: string) => {
+      plane.state.archives.set(key, {
+        ...pending,
+        retryState: "processing",
+        bodyBytes: 42,
+        capturedRetryOrder: pending.retryOrder,
+      });
+      return originalGet(sessionId);
+    }) as typeof plane.state.logs.get;
+
+    await expect(
+      plane.getArchiveDownloadDurable("session", "2026-01-01T00:00:00.000Z"),
+    ).resolves.toEqual({ state: "dynamodb" });
+    expect(plane.state.archives.get(key)).toMatchObject({
+      status: "pending",
+      retryState: "processing",
+      bodyBytes: 42,
+    });
   });
 
   it("does not report expired when a concurrent complete wins the durable fence", async () => {
