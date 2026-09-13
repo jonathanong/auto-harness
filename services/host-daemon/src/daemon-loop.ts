@@ -1271,8 +1271,7 @@ export class DaemonLoop {
    */
   private pendingOccupiesAssignmentCapacity(entry: InflightSession): boolean {
     const pending = this.pendingTerminalStatus.get(inflightKey(entry.sessionId, entry.attemptId));
-    if (!pending) return true;
-    return pending.settlement !== undefined || pending.settlementResult !== undefined;
+    return !pending || pending.settlement !== undefined;
   }
 
   private activeAssignmentCount(): number {

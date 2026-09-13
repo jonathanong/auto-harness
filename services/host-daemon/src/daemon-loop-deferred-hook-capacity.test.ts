@@ -98,6 +98,9 @@ describe("DaemonLoop deferred terminal-hook assignment capacity", () => {
         retryAccepted: false,
       });
       await waitFor(() => finishHook !== undefined);
+      expect(
+        (loop as unknown as { hasSpareExecutionCapacity(): boolean }).hasSpareExecutionCapacity(),
+      ).toBe(false);
 
       transport.deliver(assignment("other-session", "wt-2"));
       await flushMacrotask();
