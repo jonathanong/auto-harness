@@ -120,7 +120,14 @@ paths:
             name: x-github-delivery,
             in: header,
             required: true,
-            schema: { type: string, minLength: 1, maxLength: 128 },
+            schema:
+              {
+                type: string,
+                minLength: 1,
+                maxLength: 128,
+                pattern: "^[A-Za-z0-9._:-]{1,128}$",
+                description: Same character class and length as runtime GitHub delivery-ID validation.,
+              },
           }
         - {
             name: x-hub-signature-256,

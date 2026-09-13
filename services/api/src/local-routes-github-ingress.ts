@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { decryptGitHubIngressSecret } from "./control-plane-github-ingress.ts";
+import { isGitHubDeliveryId } from "./github-delivery-id.ts";
 import { parseGitHubWebhookIngress } from "./github-webhook-ingress.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { readRawBody, send, sendInternalError, type RouteCtx } from "./local-http.ts";
@@ -32,7 +33,11 @@ export async function handleGitHubIngressRoute(ctx: RouteCtx): Promise<boolean> 
     }
     const event = ctx.req.headers["x-github-event"];
     const delivery = ctx.req.headers["x-github-delivery"];
-    if (typeof event !== "string" || typeof delivery !== "string" || !safeDelivery(delivery)) {
+    if (
+      typeof event !== "string" ||
+      typeof delivery !== "string" ||
+      !isGitHubDeliveryId(delivery)
+    ) {
       return respondAudited(
         ctx,
         "failed",
@@ -120,10 +125,6 @@ export async function handleGitHubIngressRoute(ctx: RouteCtx): Promise<boolean> 
     sendInternalError(ctx.res);
   }
   return true;
-}
-
-function safeDelivery(value: string): boolean {
-  return /^[A-Za-z0-9._:-]{1,128}$/.test(value);
 }
 
 function bindingExecution(
