@@ -32,6 +32,34 @@ const GITHUB_TOKEN_ENV_NAMES = new Set([
   "GITHUB_ENTERPRISE_TOKEN",
 ]);
 
+const GITHUB_IDENTITY_ENV_NAMES = [
+  "GH_TOKEN",
+  "GIT_AUTHOR_NAME",
+  "GIT_AUTHOR_EMAIL",
+  "GIT_COMMITTER_NAME",
+  "GIT_COMMITTER_EMAIL",
+];
+
+function withCanonicalIdentityAllowlist(allowlist: string[]): string[] {
+  const identity = new Set(GITHUB_IDENTITY_ENV_NAMES);
+  const seen = new Set<string>();
+  const next: string[] = [];
+  for (const existing of allowlist) {
+    const canonical = existing.toUpperCase();
+    if (!identity.has(canonical)) {
+      next.push(existing);
+      continue;
+    }
+    if (seen.has(canonical)) continue;
+    seen.add(canonical);
+    next.push(canonical);
+  }
+  for (const name of GITHUB_IDENTITY_ENV_NAMES) {
+    if (!seen.has(name)) next.push(name);
+  }
+  return next;
+}
+
 /** Remove ambient GitHub credentials before a mapped App session can run any repository hook. */
 export function withoutAmbientGitHubTokens(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const scoped = { ...environment };
@@ -72,19 +100,12 @@ export function withInstallationToken(
   githubApp: GitHubAppConfig,
   installationToken: InstallationToken,
 ): NodeJS.ProcessEnv {
-  const allowlist = (environment.HARNESS_CHILD_ENV_ALLOWLIST ?? "")
-    .split(",")
-    .map((name) => name.trim())
-    .filter(Boolean);
-  for (const name of [
-    "GH_TOKEN",
-    "GIT_AUTHOR_NAME",
-    "GIT_AUTHOR_EMAIL",
-    "GIT_COMMITTER_NAME",
-    "GIT_COMMITTER_EMAIL",
-  ]) {
-    if (!allowlist.some((existing) => existing.toUpperCase() === name)) allowlist.push(name);
-  }
+  const allowlist = withCanonicalIdentityAllowlist(
+    (environment.HARNESS_CHILD_ENV_ALLOWLIST ?? "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean),
+  );
   return {
     ...environment,
     GH_TOKEN: installationToken.token,
