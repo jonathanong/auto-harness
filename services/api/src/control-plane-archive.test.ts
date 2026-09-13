@@ -404,6 +404,7 @@ describe("archive retry state", () => {
     let uploaded = 0;
     const expireArchive = vi.fn(async () => true);
     const state = createControlPlaneState({
+      now: () => "2026-01-08T00:00:00.000Z",
       archiveWriter: { putArchive: async () => void (uploaded += 1) },
       storage: {
         getArchive: async () => ({
@@ -417,6 +418,7 @@ describe("archive retry state", () => {
           updatedAt: "2026-01-01T00:00:00.000Z",
         }),
         listLogs: async () => [],
+        queryLogs: async () => [],
         expireArchive,
         completeArchiveRetry: async () => true,
       } as never,
@@ -427,6 +429,37 @@ describe("archive retry state", () => {
     });
     expect(uploaded).toBe(0);
     expect(expireArchive).toHaveBeenCalledOnce();
+  });
+
+  it("stores a valid empty retry before retention expires", async () => {
+    const completeArchiveRetry = vi.fn(async () => true);
+    const expireArchive = vi.fn(async () => true);
+    const state = createControlPlaneState({
+      now: () => "2026-01-01T00:01:00.000Z",
+      archiveWriter: { putArchive: async () => undefined },
+      storage: {
+        getArchive: async () => ({
+          key: "sessions/empty-valid/logs.jsonl",
+          contentType: "application/x-ndjson",
+          bodyBytes: 0,
+          status: "pending",
+          objectStored: false,
+          retryState: "processing",
+          retryOrder: "claim-order",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        }),
+        listLogs: async () => [],
+        queryLogs: async () => [],
+        expireArchive,
+        completeArchiveRetry,
+      } as never,
+    });
+    await retrySessionArchiveIfNeeded(state, "empty-valid", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(completeArchiveRetry).toHaveBeenCalledOnce();
+    expect(expireArchive).not.toHaveBeenCalled();
   });
 
   it("writes a durable pending marker when an in-memory claim has storage but no retry fence", async () => {

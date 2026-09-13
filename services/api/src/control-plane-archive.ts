@@ -120,12 +120,18 @@ export async function archiveSessionLogs(
     };
   }
   if (ownedRetry && pending.bodyBytes === 0 && state.storage && !replacement) {
-    await persistExpiredArchive(state, object.key, {
-      ...pending,
-      retryState: "processing",
-      retryOrder: ownedRetry.retryOrder,
-    });
-    return object;
+    const existing = await state.storage.getArchive(object.key);
+    if (
+      archiveRetentionElapsed(state.now(), [existing?.updatedAt]) &&
+      !(await recentLogsRemain(state, sessionId))
+    ) {
+      await persistExpiredArchive(state, object.key, {
+        ...pending,
+        retryState: "processing",
+        retryOrder: ownedRetry.retryOrder,
+      });
+      return object;
+    }
   }
   if (ownedRetry && pending.bodyBytes > 0) {
     const claimed = state.archives.get(object.key);
