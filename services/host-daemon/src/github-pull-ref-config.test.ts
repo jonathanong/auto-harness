@@ -115,7 +115,7 @@ describe("GitHub pull-ref host policy", () => {
       remoteUrl: "https://github.example/repository.git",
       transport: {
         credentialHelper: "/usr/bin/git-credential-manager-core",
-        httpProxy: "https://proxy.example",
+        httpProxy: "https://proxy.example/",
         sslCAInfo: "/etc/ssl/private-ca.pem",
       },
     });
@@ -156,7 +156,7 @@ describe("GitHub pull-ref host policy", () => {
         { credentialHelper: "manager-core" },
         { credentialHelper: "/usr/bin/git-credential-manager-core" },
       ],
-      [{ httpProxy: "https://proxy.example" }, { httpProxy: "https://proxy.example" }],
+      [{ httpProxy: "https://proxy.example" }, { httpProxy: "https://proxy.example/" }],
       [{ sslCAInfo: "/etc/ssl/private-ca.pem" }, { sslCAInfo: "/etc/ssl/private-ca.pem" }],
       [{}, {}],
     ] as const) {
@@ -425,6 +425,16 @@ describe("GitHub pull-ref host policy", () => {
     expect(load(repositoryConfig({ remoteUrl })).get("/srv/repository")?.remoteUrl).toBe(
       "https://github.example/repository.git",
     );
+  });
+
+  it("canonicalizes httpProxy spellings before Git receives the transport operand", () => {
+    const httpProxy = String.raw`https:\\proxy.example`;
+    const configs = load(repositoryConfig({ transport: { httpProxy } }));
+    expect(configs.get("/srv/repository")?.transport.httpProxy).toBe("https://proxy.example/");
+    expect(["-c", `http.proxy=${configs.get("/srv/repository")?.transport.httpProxy}`]).toEqual([
+      "-c",
+      "http.proxy=https://proxy.example/",
+    ]);
   });
 
   it("rejects symlinked, non-root-owned, and session-writable policy paths", () => {
