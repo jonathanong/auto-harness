@@ -670,7 +670,18 @@ export class DaemonLoop {
     this.resolveDrainConfirmation = undefined;
     this.drainConfirmation = undefined;
     resolve?.();
+    this.rearmPendingTerminalStatusSends();
     await this.register();
+    this.retryPendingTerminalStatuses();
+  }
+
+  /** Fresh controllers so keepalive/register retries are not stuck on a drain abort. */
+  private rearmPendingTerminalStatusSends(): void {
+    for (const pending of this.pendingTerminalStatus.values()) {
+      if (!pending.controller.signal.aborted) continue;
+      pending.controller = new AbortController();
+      pending.sending = false;
+    }
   }
 
   stop(): void {
