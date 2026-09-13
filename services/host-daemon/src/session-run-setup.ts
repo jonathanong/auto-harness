@@ -11,7 +11,7 @@ import { runSetupScript } from "./setup-script.ts";
 import {
   mergeSetupCacheInputs,
   resolveSetupCacheState,
-  writeStoredSetupFingerprint,
+  writeStoredSetupCache,
 } from "./setup-script-cache.ts";
 
 export type { ClaimedWorktree } from "./worktree-manager.ts";
@@ -57,10 +57,11 @@ export async function runSetupIfNeeded(
       claimed.hostSetupCacheInputs,
       claimed.worktree.setupCacheInputs ?? claimed.repository.setupCacheInputs,
     ),
+    signal,
   });
   if (cache.skip) {
     streamer.write("system", "Setup unchanged; skipping.");
-    return { environment, failure: null };
+    return { environment: cache.environment, failure: null };
   }
 
   const finish = (outcome: Parameters<typeof finishClaimedSession>[5]) =>
@@ -148,12 +149,20 @@ export async function runSetupIfNeeded(
   }
   streamer.write("system", "Setup complete.");
   if (setupCacheDir && cache.fingerprintToStore) {
-    await writeStoredSetupFingerprint(
-      setupCacheDir,
-      claimed.worktree.id,
-      claimed.cwd,
-      cache.fingerprintToStore,
-    );
+    try {
+      await writeStoredSetupCache(
+        setupCacheDir,
+        claimed.worktree.id,
+        claimed.cwd,
+        cache.fingerprintToStore,
+        environment,
+      );
+    } catch {
+      streamer.write(
+        "system",
+        "Setup succeeded, but the setup cache could not be stored; the next fresh session will re-run setup.",
+      );
+    }
   }
 
   return { environment, failure: null };

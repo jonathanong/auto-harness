@@ -92,6 +92,7 @@ export async function applyDaemonInventory(
   workspaces?: WorkspaceManager,
 ): Promise<void> {
   const previousSetupScript = config.setupScript;
+  const previousSetupCacheInputs = config.setupCacheInputs;
   const previousAllowedRoots = config.allowedRoots;
   const previousRepositories = config.repositories;
   const previousWorkspacePools = config.workspacePools;
@@ -107,6 +108,8 @@ export async function applyDaemonInventory(
     await register(next);
     if (next.setupScript === undefined) delete config.setupScript;
     else config.setupScript = next.setupScript;
+    if (next.setupCacheInputs === undefined) delete config.setupCacheInputs;
+    else config.setupCacheInputs = next.setupCacheInputs;
     if (next.allowedRoots === undefined) delete config.allowedRoots;
     else config.allowedRoots = next.allowedRoots;
     config.repositories = next.repositories;
@@ -121,6 +124,8 @@ export async function applyDaemonInventory(
   } catch (err) {
     if (previousSetupScript === undefined) delete config.setupScript;
     else config.setupScript = previousSetupScript;
+    if (previousSetupCacheInputs === undefined) delete config.setupCacheInputs;
+    else config.setupCacheInputs = previousSetupCacheInputs;
     if (previousAllowedRoots === undefined) delete config.allowedRoots;
     else config.allowedRoots = previousAllowedRoots;
     config.repositories = previousRepositories;

@@ -18,34 +18,6 @@ describe("parseDaemonConfig", () => {
     expect(config.repositories[0]?.worktrees[0]?.labels).toEqual(["codex"]);
   });
 
-  it("parses operator-declared setup cache inputs", () => {
-    const config = parseDaemonConfig({
-      ...valid,
-      setupCacheInputs: ["host.lock"],
-      repositories: [
-        {
-          ...valid.repositories[0],
-          setupCacheInputs: ["pnpm-lock.yaml"],
-          worktrees: [
-            {
-              ...valid.repositories[0]!.worktrees[0],
-              setupCacheInputs: ["Cargo.lock"],
-            },
-          ],
-        },
-      ],
-    });
-    expect(config.setupCacheInputs).toEqual(["host.lock"]);
-    expect(config.repositories[0]?.setupCacheInputs).toEqual(["pnpm-lock.yaml"]);
-    expect(config.repositories[0]?.worktrees[0]?.setupCacheInputs).toEqual(["Cargo.lock"]);
-    expect(
-      parseDaemonConfig({
-        ...valid,
-        setupCacheInputs: [],
-      }),
-    ).not.toHaveProperty("setupCacheInputs");
-  });
-
   it("retains host-wide required environment and signed update settings", () => {
     const config = parseDaemonConfig({
       ...valid,

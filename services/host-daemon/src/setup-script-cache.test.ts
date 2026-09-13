@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,8 +8,10 @@ import {
   fingerprintSetup,
   mergeSetupCacheInputs,
   readDeclaredSetupFiles,
-  readStoredSetupFingerprint,
-  writeStoredSetupFingerprint,
+  readStoredSetupCache,
+  sanitizeCapturedSetupEnvironment,
+  setupCacheFileName,
+  writeStoredSetupCache,
 } from "./setup-script-cache.ts";
 
 describe("setup script fingerprint", () => {
@@ -57,12 +59,34 @@ describe("setup script fingerprint", () => {
     expect(await readDeclaredSetupFiles(cwd, ["pnpm-lock.yaml"])).toBeUndefined();
   });
 
-  it("persists fingerprints outside the checkout", async () => {
+  it("persists fingerprint and environment outside the checkout", async () => {
     const cacheDir = await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-dir-"));
     const cwd = await mkdir(join(cacheDir, "checkout"), { recursive: true });
-    await writeStoredSetupFingerprint(cacheDir, "wt-1", cwd, "abc");
-    expect(await readStoredSetupFingerprint(cacheDir, "wt-1", cwd)).toBe("abc");
+    await writeStoredSetupCache(cacheDir, "wt-1", cwd, "abc", {
+      SETUP_TOKEN: "from-setup",
+      HARNESS_API_KEY: "secret",
+      UNSET: undefined,
+    });
+    expect(await readStoredSetupCache(cacheDir, "wt-1", cwd)).toEqual({
+      fingerprint: "abc",
+      environment: { SETUP_TOKEN: "from-setup" },
+    });
+    const sidecar = join(cacheDir, setupCacheFileName("wt-1", cwd));
+    expect((await stat(sidecar)).mode & 0o777).toBe(0o600);
+    expect(await readFile(sidecar, "utf8")).not.toContain("secret");
     expect(await readFile(join(cwd, "abc"), "utf8").catch(() => "missing")).toBe("missing");
+    expect(sanitizeCapturedSetupEnvironment(["nope"])).toBeUndefined();
+    expect(sanitizeCapturedSetupEnvironment(null)).toBeUndefined();
+    expect(sanitizeCapturedSetupEnvironment({ HARNESS_X: "y", OK: "z", n: 1 })).toEqual({
+      OK: "z",
+    });
+    expect(await readStoredSetupCache(cacheDir, "wt-1", join(cwd, "missing"))).toBeUndefined();
+    await writeFile(sidecar, JSON.stringify(["abc"]));
+    expect(await readStoredSetupCache(cacheDir, "wt-1", cwd)).toBeUndefined();
+    await writeFile(sidecar, JSON.stringify({ fingerprint: "", environment: {} }));
+    expect(await readStoredSetupCache(cacheDir, "wt-1", cwd)).toBeUndefined();
+    await writeFile(sidecar, JSON.stringify({ fingerprint: 1, environment: {} }));
+    expect(await readStoredSetupCache(cacheDir, "wt-1", cwd)).toBeUndefined();
   });
 
   it("merges host extras ahead of a scoped override without inventing paths", () => {

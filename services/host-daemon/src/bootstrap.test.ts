@@ -111,6 +111,12 @@ describe("fetchHostInventory", () => {
         updateConfig: { enabled: true, pollMs: 60_000 },
       }),
     ).not.toBe(inventoryFingerprint(empty));
+    expect(inventoryFingerprint({ ...empty, setupCacheInputs: ["pnpm-lock.yaml"] })).not.toBe(
+      inventoryFingerprint(empty),
+    );
+    expect(inventoryFingerprint({ ...empty, setupCacheInputs: ["pnpm-lock.yaml"] })).not.toBe(
+      inventoryFingerprint({ ...empty, setupCacheInputs: ["Cargo.lock"] }),
+    );
   });
 
   it("handles empty error bodies", async () => {

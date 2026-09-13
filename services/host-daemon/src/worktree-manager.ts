@@ -190,6 +190,15 @@ export class WorktreeManager {
                 currentRepository.terminalHookScript,
               ) ||
               !sameOptionalString(claimedWorktree.setupScript, currentWorktree.setupScript) ||
+              !sameStrings(claimedHostSetupCacheInputs, this.config.setupCacheInputs ?? []) ||
+              !sameStrings(
+                claimedRepository.setupCacheInputs ?? [],
+                currentRepository.setupCacheInputs ?? [],
+              ) ||
+              !sameStrings(
+                claimedWorktree.setupCacheInputs ?? [],
+                currentWorktree.setupCacheInputs ?? [],
+              ) ||
               !sameStrings(claimedAllowedRoots, roots)
             ) {
               throw new Error("host inventory changed after this checkout was claimed");
