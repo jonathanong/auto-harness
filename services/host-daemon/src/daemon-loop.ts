@@ -270,6 +270,8 @@ export class DaemonLoop {
   private readonly pendingTerminalHookHandoffs = new Map<string, PendingTerminalHookHandoff>();
   /** Recovery hooks share the daemon's bounded execution capacity with CLI sessions. */
   private activeTerminalHookHandoffs = 0;
+  /** Woken after a hook or executing assignment releases a shared execution slot. */
+  private readonly executionCapacityWaiters = new Set<() => void>();
   private readonly pendingCommandStarts = new Map<string, PendingCommandStart>();
   private readonly pendingStatusMaxAgeMs: number;
   private readonly pendingStatusMaxCount: number;
@@ -834,6 +836,72 @@ export class DaemonLoop {
     });
   }
 
+  private hasSpareExecutionCapacity(): boolean {
+    return (
+      this.executingAssignmentCount() + this.activeTerminalHookHandoffs <
+      this.executionProfiles.maxConcurrentAssignments
+    );
+  }
+
+  private notifyExecutionCapacityWaiters(): void {
+    const waiters = [...this.executionCapacityWaiters];
+    this.executionCapacityWaiters.clear();
+    for (const wake of waiters) wake();
+  }
+
+  /**
+   * Start queued recovery hooks first, then wake parked assignments. Handoffs
+   * keep bounded capacity priority; assignments recheck before starting.
+   */
+  private scheduleQueuedExecution(): void {
+    this.startPendingTerminalHookHandoffs();
+    this.notifyExecutionCapacityWaiters();
+  }
+
+  /**
+   * Wait until an executing hook or assignment may have released a slot.
+   * Register before rechecking so a release between the caller's last count
+   * and this wait cannot drop the wakeup.
+   */
+  private waitForExecutionCapacityChange(signal: AbortSignal): Promise<boolean> {
+    if (signal.aborted) return Promise.resolve(false);
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (available: boolean) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", aborted);
+        this.executionCapacityWaiters.delete(wake);
+        resolve(available);
+      };
+      const aborted = () => finish(false);
+      const wake = () => finish(true);
+      this.executionCapacityWaiters.add(wake);
+      signal.addEventListener("abort", aborted, { once: true });
+      if (signal.aborted) aborted();
+      else if (this.hasSpareExecutionCapacity()) finish(true);
+    });
+  }
+
+  /**
+   * Claim one execution slot after ack/target waits. A parked assignment is
+   * excluded from `executingAssignmentCount()`, so a handoff on another
+   * target can occupy the bound in the meantime.
+   */
+  private async acquireExecutionSlot(
+    entry: InflightSession,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    while (!signal.aborted) {
+      if (this.hasSpareExecutionCapacity()) {
+        entry.executing = true;
+        return true;
+      }
+      if (!(await this.waitForExecutionCapacityChange(signal))) return false;
+    }
+    return false;
+  }
+
   private inflightFor(sessionId: string, attemptId: string | undefined): InflightSession[] {
     if (attemptId) {
       const current = this.inflight.get(inflightKey(sessionId, attemptId));
@@ -1217,7 +1285,7 @@ export class DaemonLoop {
       pending.executing = false;
       pending.work = undefined;
       this.activeTerminalHookHandoffs -= 1;
-      this.startPendingTerminalHookHandoffs();
+      this.scheduleQueuedExecution();
     });
     pending.work = work;
     void work;
@@ -1461,7 +1529,7 @@ export class DaemonLoop {
     for (const pending of this.pendingTerminalHookHandoffs.values()) {
       if (pending.complete) this.sendTerminalHookHandoffCompletion(pending);
     }
-    this.startPendingTerminalHookHandoffs();
+    this.scheduleQueuedExecution();
   }
 
   private startPendingTerminalHookHandoffs(): void {
@@ -1694,8 +1762,10 @@ export class DaemonLoop {
           !(await this.acknowledgeAssignment(msg, controller.signal))
         )
           return;
-        if (!controller.signal.aborted) {
-          entry.executing = true;
+        if (
+          !controller.signal.aborted &&
+          (await this.acquireExecutionSlot(entry, controller.signal))
+        ) {
           await this.runAssign(msg, controller.signal);
         }
       } finally {
@@ -1720,7 +1790,7 @@ export class DaemonLoop {
       await work;
     } finally {
       if (this.inflight.get(key) === entry) this.inflight.delete(key);
-      this.startPendingTerminalHookHandoffs();
+      this.scheduleQueuedExecution();
     }
   }
 

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- fail-closed settlement, protocol, and duplicate-ack cases share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
@@ -179,5 +180,102 @@ describe("terminal hook fail-closed result settlement", () => {
       summarySource: "harness",
     });
     expect(results).toEqual([{ summary: "first", summarySource: "harness" }]);
+  });
+
+  it("uses input.protocolVersion for a harness fallback when the connection cache is empty", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    state.hostConnection.set("host", "connection");
+    state.sessions.set("session", failedHandoff());
+    expect(state.connections.size).toBe(0);
+    await expect(
+      settleTerminalHookHandoff(state, {
+        sessionId: "session",
+        handoffId: "handoff",
+        hostId: "host",
+        connectionId: "connection",
+        protocolVersion: 6,
+      }),
+    ).resolves.toBe(true);
+    expect(state.sessions.get("session")?.result).toEqual({
+      summary: "Session failed",
+      summarySource: "harness",
+    });
+  });
+
+  it("forwards durable input protocol into settlement even with an empty connection cache", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    state.hostConnection.set("host", "connection");
+    state.sessions.set("session", failedHandoff());
+    expect(state.connections.size).toBe(0);
+    state.storage = {
+      getSession: async () => state.sessions.get("session") ?? null,
+      getHostLock: async () => "connection",
+      settleTerminalHookHandoff: async (input: { result?: unknown }) => {
+        const current = state.sessions.get("session")!;
+        if (input.result && current.result === undefined) current.result = input.result as never;
+        delete current.terminalHookHandoff;
+        current.terminalHookHandoffSettled = { handoffId: "handoff", hostId: "host" };
+        return true;
+      },
+    } as never;
+    await expect(
+      handleHostMessageDurable(
+        state,
+        { type: "session:terminal-hook-complete", sessionId: "session", handoffId: "handoff" },
+        "connection",
+        false,
+        false,
+        6,
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    expect(state.sessions.get("session")?.result).toEqual({
+      summary: "Session failed",
+      summarySource: "harness",
+    });
+  });
+
+  it("acknowledges a duplicate local completion after the first settlement", async () => {
+    const state = connectedState(6);
+    const acknowledged: unknown[] = [];
+    state.onHostMessage = (hostId, message) => {
+      acknowledged.push({ hostId, message });
+    };
+    state.sessions.set("session", failedHandoff());
+    expect(
+      handleHostMessage(
+        state,
+        { type: "session:terminal-hook-complete", sessionId: "session", handoffId: "handoff" },
+        "connection",
+      ),
+    ).toEqual({ ok: true });
+    await Promise.resolve();
+    expect(acknowledged).toEqual([
+      {
+        hostId: "host",
+        message: {
+          type: "session:terminal-hook-acknowledged",
+          sessionId: "session",
+          handoffId: "handoff",
+        },
+      },
+    ]);
+    acknowledged.length = 0;
+    expect(
+      handleHostMessage(
+        state,
+        { type: "session:terminal-hook-complete", sessionId: "session", handoffId: "handoff" },
+        "connection",
+      ),
+    ).toEqual({ ok: true });
+    expect(acknowledged).toEqual([
+      {
+        hostId: "host",
+        message: {
+          type: "session:terminal-hook-acknowledged",
+          sessionId: "session",
+          handoffId: "handoff",
+        },
+      },
+    ]);
   });
 });

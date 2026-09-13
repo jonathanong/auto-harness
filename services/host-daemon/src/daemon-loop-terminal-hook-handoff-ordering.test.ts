@@ -271,6 +271,178 @@ describe("DaemonLoop terminal-hook handoff ordering", () => {
     }
   });
 
+  it("does not start a parked assignment until an executing handoff on another target releases capacity", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createLoopbackTransport({
+        sendToServer: () => undefined,
+      });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        executionProfiles: { maxConcurrentAssignments: 1, profiles: new Map() },
+      });
+      await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
+      const assignmentStarted = vi.fn();
+      (loop as unknown as { runAssign(): Promise<void> }).runAssign = async () => {
+        assignmentStarted();
+      };
+      let finishHook!: (result: { exitCode: number }) => void;
+      const hookStarted = vi.fn();
+      (
+        loop as unknown as { processRunner: { run(): Promise<{ exitCode: number }> } }
+      ).processRunner = {
+        run: (options: { argv: string[] }) => {
+          if (options.argv[0] === "/bin/sh") {
+            hookStarted();
+            return new Promise((resolve) => {
+              finishHook = resolve;
+            });
+          }
+          return Promise.resolve({ exitCode: 0 });
+        },
+      };
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "parked",
+        attemptId: "attempt-parked",
+        sessionType: "scheduled",
+        repositoryId: "demo",
+        prompt: "parked",
+        resolvedArgv: ["true"],
+        timeout: 30,
+        worktreeId: null,
+        assignedAt: new Date().toISOString(),
+      });
+      await waitFor(() =>
+        [
+          ...(
+            loop as unknown as { inflight: Map<string, { executing: boolean }> }
+          ).inflight.values(),
+        ].some((entry) => !entry.executing),
+      );
+      expect(assignmentStarted).not.toHaveBeenCalled();
+
+      transport.deliver({
+        type: "session:terminal-hook",
+        handoffId: "other-target",
+        sessionId: "lost",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        errorCode: "host_lost",
+      });
+      await waitFor(() => hookStarted.mock.calls.length === 1);
+
+      transport.deliver({
+        type: "session:acknowledged",
+        sessionId: "parked",
+        attemptId: "attempt-parked",
+      });
+      for (let attempt = 0; attempt < 10; attempt += 1) await flushMacrotask();
+      expect(assignmentStarted).not.toHaveBeenCalled();
+
+      finishHook({ exitCode: 0 });
+      await waitFor(() => assignmentStarted.mock.calls.length === 1);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("aborts a capacity wait without starting the parked assignment", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createLoopbackTransport({
+        sendToServer: () => undefined,
+      });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        executionProfiles: { maxConcurrentAssignments: 1, profiles: new Map() },
+      });
+      await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
+      const assignmentStarted = vi.fn();
+      (loop as unknown as { runAssign(): Promise<void> }).runAssign = async () => {
+        assignmentStarted();
+      };
+      let finishHook!: (result: { exitCode: number }) => void;
+      (
+        loop as unknown as { processRunner: { run(): Promise<{ exitCode: number }> } }
+      ).processRunner = {
+        run: (options: { argv: string[] }) => {
+          if (options.argv[0] === "/bin/sh") {
+            return new Promise((resolve) => {
+              finishHook = resolve;
+            });
+          }
+          return Promise.resolve({ exitCode: 0 });
+        },
+      };
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "parked",
+        attemptId: "attempt-parked",
+        sessionType: "scheduled",
+        repositoryId: "demo",
+        prompt: "parked",
+        resolvedArgv: ["true"],
+        timeout: 30,
+        worktreeId: null,
+        assignedAt: new Date().toISOString(),
+      });
+      await waitFor(
+        () => (loop as unknown as { inflight: Map<string, unknown> }).inflight.size === 1,
+      );
+      transport.deliver({
+        type: "session:terminal-hook",
+        handoffId: "other-target",
+        sessionId: "lost",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        errorCode: "host_lost",
+      });
+      await waitFor(
+        () =>
+          (loop as unknown as { activeTerminalHookHandoffs: number }).activeTerminalHookHandoffs ===
+          1,
+      );
+      transport.deliver({
+        type: "session:acknowledged",
+        sessionId: "parked",
+        attemptId: "attempt-parked",
+      });
+      await waitFor(
+        () =>
+          (loop as unknown as { executionCapacityWaiters: Set<unknown> }).executionCapacityWaiters
+            .size === 1,
+      );
+      transport.deliver({
+        type: "session:cancel",
+        sessionId: "parked",
+        attemptId: "attempt-parked",
+      });
+      await waitFor(
+        () => (loop as unknown as { inflight: Map<string, unknown> }).inflight.size === 0,
+      );
+      finishHook({ exitCode: 0 });
+      await waitFor(
+        () =>
+          (loop as unknown as { activeTerminalHookHandoffs: number }).activeTerminalHookHandoffs ===
+          0,
+      );
+      expect(assignmentStarted).not.toHaveBeenCalled();
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("sends a harness fallback when checkout revalidation, hook, or result probe fail closed", async () => {
     const { config, cleanup } = await makeRepo();
     try {

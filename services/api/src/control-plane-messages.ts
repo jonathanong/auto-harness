@@ -674,9 +674,17 @@ export function handleHostMessage(
       const session = state.sessions.get(msg.sessionId);
       const handoff = session?.terminalHookHandoff;
       if (!handoff) {
-        return session?.terminalHookHandoffSettled?.handoffId === msg.handoffId
-          ? { ok: true }
-          : { ok: false, error: "terminal hook handoff not found" };
+        const settledHandoff = session?.terminalHookHandoffSettled;
+        if (settledHandoff?.handoffId !== msg.handoffId) {
+          return { ok: false, error: "terminal hook handoff not found" };
+        }
+        // A lost first acknowledgement must still stop the daemon retry loop.
+        state.onHostMessage?.(settledHandoff.hostId, {
+          type: "session:terminal-hook-acknowledged",
+          sessionId: msg.sessionId,
+          handoffId: msg.handoffId,
+        });
+        return { ok: true };
       }
       const completedResult =
         msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
@@ -1107,6 +1115,7 @@ export async function handleHostMessageDurable(
       handoffId: msg.handoffId,
       hostId: handoff.hostId,
       ...(fence?.connectionId ? { connectionId: fence.connectionId } : {}),
+      ...(sourceProtocolVersion !== undefined ? { protocolVersion: sourceProtocolVersion } : {}),
       ...(completedResult ? { result: completedResult } : {}),
     });
     return settled

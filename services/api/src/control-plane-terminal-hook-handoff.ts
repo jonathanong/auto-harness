@@ -141,6 +141,9 @@ export async function settleTerminalHookHandoff(
     );
   }
   const archive = pendingArchiveIntent(state, input.sessionId);
+  // Durable AWS invocations pass the authenticated socket protocol via
+  // `input.protocolVersion`. The process connection cache is not a fallback
+  // on that path: a warm Lambda may not have seen the original register.
   const protocolVersion =
     input.protocolVersion ??
     (input.connectionId === undefined
