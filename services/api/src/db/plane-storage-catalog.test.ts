@@ -32,6 +32,7 @@ import {
   expireArchive,
   listPendingArchives,
   releaseArchiveRetry,
+  replaceCompleteArchive,
 } from "./plane-storage-catalog.ts";
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import type { PlaneStorageCtx, ScheduleRecord } from "./plane-storage-types.ts";
@@ -250,6 +251,87 @@ describe("archive retry storage", () => {
       "archive retry unavailable",
     );
   });
+
+  it("replaces a complete archive only while the previous generation still wins", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const ctx = archiveCtx(send);
+    const complete = {
+      ...archive,
+      status: "complete" as const,
+      objectStored: true,
+      versionId: "archive-v2",
+      objectKey: "archives/session.jsonl",
+    };
+
+    await expect(
+      replaceCompleteArchive(ctx, complete, {
+        versionId: "archive-v1",
+        updatedAt: archive.updatedAt,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      replaceCompleteArchive(
+        ctx,
+        {
+          key: archive.key,
+          contentType: archive.contentType,
+          bodyBytes: archive.bodyBytes,
+          status: "complete",
+          objectStored: true,
+          updatedAt: archive.updatedAt,
+          versionId: "archive-v3",
+        },
+        { updatedAt: archive.updatedAt },
+      ),
+    ).resolves.toBe(true);
+
+    expect(send.mock.calls[0]?.[0]).toMatchObject({
+      input: {
+        ConditionExpression:
+          "#status = :complete AND objectStored = :true AND versionId = :expectedVersionId",
+        ExpressionAttributeValues: expect.objectContaining({
+          ":expectedVersionId": "archive-v1",
+          ":true": true,
+        }),
+        Item: expect.objectContaining({
+          versionId: "archive-v2",
+          objectKey: "archives/session.jsonl",
+          objectStored: true,
+        }),
+      },
+    });
+    expect(send.mock.calls[1]?.[0]).toMatchObject({
+      input: {
+        ConditionExpression:
+          "#status = :complete AND objectStored = :true AND attribute_not_exists(versionId) AND updatedAt = :expectedUpdatedAt",
+        ExpressionAttributeValues: expect.objectContaining({
+          ":expectedUpdatedAt": archive.updatedAt,
+        }),
+      },
+    });
+    expect(send.mock.calls[1]?.[0].input.Item).not.toHaveProperty("objectKey");
+  });
+
+  it("returns false when another complete archive generation already won", async () => {
+    const send = vi.fn().mockRejectedValue({ name: "ConditionalCheckFailedException" });
+    await expect(
+      replaceCompleteArchive(
+        archiveCtx(send),
+        { ...archive, status: "complete", objectStored: true },
+        { versionId: "archive-v1", updatedAt: archive.updatedAt },
+      ),
+    ).resolves.toBe(false);
+  });
+
+  it("propagates non-conditional complete archive replacement failures", async () => {
+    await expect(
+      replaceCompleteArchive(
+        archiveCtx(vi.fn().mockRejectedValue(new Error("archive replace unavailable"))),
+        { ...archive, status: "complete", objectStored: true },
+        { versionId: "archive-v1", updatedAt: archive.updatedAt },
+      ),
+    ).rejects.toThrow("archive replace unavailable");
+  });
 });
 
 describe("archive and assignment base-storage delegators", () => {
@@ -311,6 +393,12 @@ describe("archive and assignment base-storage delegators", () => {
     await expect(storage.expireArchive(archive.key, "2026-01-08T00:00:00.000Z")).resolves.toBe(
       true,
     );
+    await expect(
+      storage.replaceCompleteArchive(
+        { ...archive, status: "complete", objectStored: true, versionId: "archive-v2" },
+        { versionId: "archive-v1", updatedAt: archive.updatedAt },
+      ),
+    ).resolves.toBe(true);
     expect(send).toHaveBeenCalled();
   });
 });

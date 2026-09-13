@@ -4,6 +4,12 @@ import type { ArchiveMetadata, ArchiveObject } from "./control-plane-types.ts";
 import type { SessionArchiveReadResponse } from "@auto-harness/shared";
 import type { ArchiveWriteResult } from "./archive-writer.ts";
 import { persistExpiredArchive, archiveRetentionElapsed } from "./control-plane-archive-expire.ts";
+import {
+  archiveGeneration,
+  isCompleteStoredArchive,
+  publishCompleteArchiveReplacement,
+  readArchiveMetadata,
+} from "./control-plane-archive-replace.ts";
 
 async function rewriteWinningArchive(
   state: ControlPlaneState,
@@ -14,23 +20,23 @@ async function rewriteWinningArchive(
     state.storage && typeof state.storage.getArchive === "function"
       ? await state.storage.getArchive(key)
       : state.archives.get(key);
-  if (!current || current.status !== "complete" || !current.objectStored || current.versionId)
-    return;
+  if (!isCompleteStoredArchive(current) || current.versionId) return;
+  const expected = archiveGeneration(current);
   const body = await archiveBody(state, sessionId);
   const result = await state.archiveWriter?.putArchive({
     key,
     body,
     contentType: current.contentType,
   });
-  if (!result || !("versionId" in result)) return;
+  const versionId = archiveVersionId(result);
+  if (!versionId) return;
   const repaired = {
     ...current,
     bodyBytes: Buffer.byteLength(body),
     updatedAt: state.now(),
-    versionId: result.versionId,
+    versionId,
   };
-  if (state.storage) await state.storage.putArchive(repaired);
-  state.archives.set(key, repaired);
+  await publishCompleteArchiveReplacement(state, repaired, expected);
 }
 
 export async function archiveSessionLogs(
@@ -44,6 +50,12 @@ export async function archiveSessionLogs(
   // Cron, which owns the archive writer, reads the durable session logs later.  In particular,
   // do not materialize a potentially huge transcript in the short-lived WS invocation.
   if (!state.archiveWriter && deferBody) {
+    if (!retryClaim) {
+      const current = await readArchiveMetadata(state, key);
+      if (isCompleteStoredArchive(current)) {
+        return { key, body: "", contentType: current.contentType };
+      }
+    }
     const pending: ArchiveMetadata = {
       key,
       contentType: "application/x-ndjson",
@@ -67,6 +79,8 @@ export async function archiveSessionLogs(
     body,
     contentType: "application/x-ndjson",
   };
+  const current = retryClaim ? null : await readArchiveMetadata(state, key);
+  const replacement = isCompleteStoredArchive(current) ? archiveGeneration(current) : null;
   const pending: ArchiveMetadata = {
     key,
     contentType: object.contentType,
@@ -77,9 +91,12 @@ export async function archiveSessionLogs(
     retryState: retryClaim?.retryState ?? "pending",
     retryOrder: retryClaim?.retryOrder ?? `${state.now()}#${key}`,
   };
-  if (state.storage && !retryClaim) await state.storage.putArchive(pending);
-  if (!retryClaim) state.archives.set(object.key, pending);
+  if (!replacement) {
+    if (state.storage && !retryClaim) await state.storage.putArchive(pending);
+    if (!retryClaim) state.archives.set(object.key, pending);
+  }
   if (!state.archiveWriter) {
+    if (replacement) return object;
     const complete: ArchiveMetadata = {
       ...pending,
       status: "complete",
@@ -92,6 +109,24 @@ export async function archiveSessionLogs(
   }
   const writeResult = await state.archiveWriter.putArchive(object);
   const versionId = archiveVersionId(writeResult);
+  if (replacement) {
+    if (versionId) {
+      await publishCompleteArchiveReplacement(
+        state,
+        {
+          key,
+          contentType: object.contentType,
+          bodyBytes: Buffer.byteLength(object.body),
+          status: "complete",
+          objectStored: true,
+          updatedAt: state.now(),
+          versionId,
+        },
+        replacement,
+      );
+    }
+    return object;
+  }
   const storedMetadata = { ...pending };
   delete storedMetadata.retryState;
   delete storedMetadata.retryOrder;
@@ -113,11 +148,11 @@ export async function archiveSessionLogs(
   } else if (retryClaim) {
     // In-memory mode has no conditional write primitive, so apply the same fence locally.
     // A newer claim may have replaced this row while the object upload was in flight.
-    const current = state.archives.get(object.key);
+    const claimed = state.archives.get(object.key);
     if (
-      current?.status !== "expired" &&
-      current?.retryState === "processing" &&
-      current.retryOrder === retryClaim.retryOrder
+      claimed?.status !== "expired" &&
+      claimed?.retryState === "processing" &&
+      claimed.retryOrder === retryClaim.retryOrder
     ) {
       if (state.storage) await state.storage.putArchive(complete);
       state.archives.set(object.key, complete);

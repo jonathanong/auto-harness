@@ -1240,6 +1240,13 @@ export class DynamoPlaneStorageBase {
     return catalog.expireArchive(this.ctx, key, updatedAt);
   }
 
+  replaceCompleteArchive(
+    archive: ArchiveMetadata,
+    expected: { versionId?: string; updatedAt: string },
+  ): Promise<boolean> {
+    return catalog.replaceCompleteArchive(this.ctx, archive, expected);
+  }
+
   /** Returns false when `expectedVersion` no longer matches the stored document. */
   putHostInventory(
     rec: HostInventoryRecord,

@@ -1547,6 +1547,47 @@ export async function releaseArchiveRetry(
   }
 }
 
+/** Replace a complete stored archive only while the previous generation still wins. */
+export async function replaceCompleteArchive(
+  ctx: PlaneStorageCtx,
+  archive: ArchiveMetadata,
+  expected: { versionId?: string; updatedAt: string },
+): Promise<boolean> {
+  const item: ArchiveMetadata = {
+    key: archive.key,
+    contentType: archive.contentType,
+    bodyBytes: archive.bodyBytes,
+    status: "complete",
+    objectStored: true,
+    updatedAt: archive.updatedAt,
+    ...(archive.objectKey ? { objectKey: archive.objectKey } : {}),
+    ...(archive.versionId ? { versionId: archive.versionId } : {}),
+  };
+  try {
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: ctx.tables.archives,
+        Item: item,
+        ConditionExpression: expected.versionId
+          ? "#status = :complete AND objectStored = :true AND versionId = :expectedVersionId"
+          : "#status = :complete AND objectStored = :true AND attribute_not_exists(versionId) AND updatedAt = :expectedUpdatedAt",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":complete": "complete",
+          ":true": true,
+          ...(expected.versionId
+            ? { ":expectedVersionId": expected.versionId }
+            : { ":expectedUpdatedAt": expected.updatedAt }),
+        },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
+  }
+}
+
 /** Complete an upload only while the worker still owns the retry fence. */
 export async function completeArchiveRetry(
   ctx: PlaneStorageCtx,
