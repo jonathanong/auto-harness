@@ -394,6 +394,27 @@ describe("runGit executable resolution", () => {
     expect(result.stdout).toBe(listed);
   });
 
+  it("keeps UTF-8 Git diagnostics when stdout capture is latin1", async () => {
+    const result = await runGit(
+      {
+        async run(options) {
+          options.onChunk({ stream: "stderr", data: "fatal: café token=UPDATESECRET" });
+          return { exitCode: 1, timedOut: false, signal: null };
+        },
+      },
+      "/repo",
+      ["ls-files", "-v", "-z"],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { stdoutEncoding: "latin1" },
+    );
+    expect(result.stderr).toContain("café");
+    expect(result.stderr).toContain("token=[redacted]");
+    expect(result.stderr).not.toContain("UPDATESECRET");
+  });
+
   it("fails closed when structured Git stdout exceeds its total capture bound", async () => {
     await expect(
       runGit(

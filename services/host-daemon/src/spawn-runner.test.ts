@@ -108,6 +108,29 @@ describe("SpawnProcessRunner", () => {
     expect(Buffer.from(chunks.join(""), "latin1")).toEqual(Buffer.from([0xc3, 0xa9, 0x00]));
   });
 
+  it("keeps preserved stderr as UTF-8 when stdout uses latin1", async () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const result = await new SpawnProcessRunner().run({
+      argv: [
+        process.execPath,
+        "-e",
+        "process.stdout.write(Buffer.from([0xff])); process.stderr.write('café')",
+      ],
+      cwd: process.cwd(),
+      timeoutMs: 5_000,
+      preserveOutputChunks: true,
+      outputEncoding: "latin1",
+      onChunk: (chunk) => {
+        if (chunk.stream === "stdout") stdout.push(chunk.data);
+        else stderr.push(chunk.data);
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(Buffer.from(stdout.join(""), "latin1")).toEqual(Buffer.from([0xff]));
+    expect(stderr.join("")).toBe("café");
+  });
+
   it("writes stdin bytes to the child", async () => {
     const chunks: string[] = [];
     const payload = Buffer.from([0xff, 0x00, 0x61]);
