@@ -38,6 +38,7 @@ describe("getInventory / putInventory", () => {
       new Response(
         JSON.stringify({
           setupScript: "source ~/.zshrc",
+          setupCacheInputs: ["pnpm-lock.yaml"],
           allowedRoots: ["/opt/harness"],
           requiredEnvironment: ["TOKEN"],
           updateConfig: {
@@ -60,6 +61,7 @@ describe("getInventory / putInventory", () => {
       const inv = await getInventory("host-1");
       expect(inv.repositories).toHaveLength(1);
       expect(inv.setupScript).toBe("source ~/.zshrc");
+      expect(inv.setupCacheInputs).toEqual(["pnpm-lock.yaml"]);
       expect(inv.allowedRoots).toEqual(["/opt/harness"]);
       expect(inv.requiredEnvironment).toEqual(["TOKEN"]);
       expect(inv.updateConfig).toMatchObject({ enabled: true });
@@ -99,6 +101,7 @@ describe("getInventory / putInventory", () => {
     try {
       const ok = await putInventory("host-1", {
         setupScript: "source ~/.zshrc",
+        setupCacheInputs: [],
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
         updateConfig: {
@@ -119,6 +122,7 @@ describe("getInventory / putInventory", () => {
       expect(ok).toEqual({ ok: true });
       expect(sentBody).toEqual({
         setupScript: "source ~/.zshrc",
+        setupCacheInputs: [],
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
         updateConfig: {
