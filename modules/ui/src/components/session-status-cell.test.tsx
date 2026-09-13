@@ -148,6 +148,30 @@ describe("SessionStatusCell", () => {
         />,
       ),
     ).not.toContain("Automatic retry");
+    expect(
+      renderToStaticMarkup(
+        <SessionStatusCell
+          status="queued"
+          sessionId="coded"
+          errorCode="host_lost"
+          infrastructureRetryCount={1}
+        />,
+      ),
+    ).toContain("Automatic retry 1 of 1 in progress after Host lost before launch.");
+    expect(
+      renderToStaticMarkup(
+        <SessionStatusDetail
+          status="queued"
+          errorMessage="checkout fetch failed; retrying once"
+          infrastructureRetryCount={1}
+        />,
+      ),
+    ).toContain("an infrastructure failure");
+    expect(
+      renderToStaticMarkup(
+        <SessionStatusCell status="queued" sessionId="zero" infrastructureRetryCount={0} />,
+      ),
+    ).not.toContain("Automatic retry");
   });
 
   it("uses friendly labels for terminal infrastructure failures", () => {
