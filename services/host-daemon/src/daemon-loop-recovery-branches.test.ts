@@ -42,7 +42,10 @@ type HandoffInternals = {
   handleTerminalHookHandoff(
     message: Extract<HostWireMessage, { type: "session:terminal-hook" }>,
   ): Promise<void>;
-  reconcilePendingTerminalStatusForHandoff(sessionId: string): Promise<{ matched: boolean }>;
+  reconcilePendingTerminalStatusForHandoff(
+    sessionId: string,
+    expiresAtMs: number,
+  ): Promise<{ matched: boolean }>;
   runTerminalHookForClaim(message: object, claim: object, expiresAtMs: number): Promise<unknown>;
 };
 

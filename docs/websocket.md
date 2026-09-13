@@ -173,7 +173,8 @@ overtake logs.
 
 Modern daemons advertise `protocolVersion` (currently `7`) and `runningAttempts: [{ sessionId, attemptId }]`.
 Version `7` adds the absolute control-plane expiry to terminal-hook handoffs; only a v7 daemon may
-receive one, and it bounds hook execution and completion retry to that deadline.
+receive one, and it bounds hook execution, post-hook result probes, and same-process overlap
+settlement of a retained deferred status to that deadline.
 Version `6` adds the deferred checkout-failure result handoff: terminal disposition is persisted
 before the daemon runs its retained hook, and archival waits for the post-hook result completion.
 That exhausted checkout-failure handoff also enqueues the terminal Slack lifecycle when it

@@ -1269,7 +1269,10 @@ export class DaemonLoop {
     // process still owns the original terminal status. That status's retained
     // checkout tail waits for its hook disposition; let it finish its one
     // hook first and merely settle the replacement handoff, never duplicate it.
-    const reconciled = await this.reconcilePendingTerminalStatusForHandoff(msg.sessionId);
+    const reconciled = await this.reconcilePendingTerminalStatusForHandoff(
+      msg.sessionId,
+      expiresAtMs,
+    );
     // The handoff may have been acknowledged or replaced while its same-process
     // owner was settling. Never mutate or restart work for a stale entry.
     if (this.pendingTerminalHookHandoffs.get(msg.handoffId) !== pending) {
@@ -1645,8 +1648,12 @@ export class DaemonLoop {
    * original terminal owner. Deferred statuses release their target only once
    * their hook has run; ordinary statuses already ran it. Keep the status for
    * its own ACK retry, but settle the handoff without executing a second hook.
+   * The incoming handoff's absolute expiry bounds that retained settlement.
    */
-  private async reconcilePendingTerminalStatusForHandoff(sessionId: string): Promise<{
+  private async reconcilePendingTerminalStatusForHandoff(
+    sessionId: string,
+    expiresAtMs: number,
+  ): Promise<{
     matched: boolean;
     result?: import("@auto-harness/shared").SessionResult;
   }> {
@@ -1670,7 +1677,7 @@ export class DaemonLoop {
         }
         if (pending.settleDeferredTerminalHook) {
           const settlementResult =
-            pending.settlementResult ?? pending.settleDeferredTerminalHook(true);
+            pending.settlementResult ?? pending.settleDeferredTerminalHook(true, expiresAtMs);
           pending.settlementResult = settlementResult;
           pending.settlementOccupies = true;
           pending.settlement ??= settlementResult.then(
