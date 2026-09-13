@@ -56,6 +56,14 @@ describe("parseEnvFile / applyEnvFile", () => {
       }),
     ).toEqual({ HARNESS_GITHUB_APP_CONFIG: "" });
   });
+
+  it("keeps an explicitly blank GitHub pull-ref config instead of restoring a persisted value", () => {
+    expect(
+      applyEnvFile("HARNESS_GITHUB_PULL_REF_CONFIG=/etc/auto-harness/pull-refs.json\n", {
+        HARNESS_GITHUB_PULL_REF_CONFIG: "",
+      }),
+    ).toEqual({ HARNESS_GITHUB_PULL_REF_CONFIG: "" });
+  });
 });
 
 describe("renderEnvFile", () => {

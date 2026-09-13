@@ -45,7 +45,8 @@ paths are refused rather than being tied to the supervisor working directory. Un
 or per-profile JSON keys are rejected. Optional
 `HARNESS_MAX_CONCURRENT_ASSIGNMENTS` overrides the
 host-wide assignment cap advertised as `capabilities.maxConcurrentAssignments`. To disable a
-previously persisted GitHub App configuration, export `HARNESS_GITHUB_APP_CONFIG=''` and rerun
+previously persisted GitHub App configuration or pull-ref policy, export
+`HARNESS_GITHUB_APP_CONFIG=''` or `HARNESS_GITHUB_PULL_REF_CONFIG=''` and rerun
 `install-service`; the existing service env entry is cleared. A GitHub App config path must be
 native-absolute for the install host: Windows-shaped paths are refused on POSIX before persistence.
 
