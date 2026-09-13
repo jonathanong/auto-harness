@@ -38,6 +38,8 @@ test.describe("control plane GitHub ingress settings", () => {
     await page.getByTestId("github-ingress-add-fallback-0").click();
     await page.getByTestId("github-ingress-fallback-type-0-0").selectOption("commandId");
     await page.getByTestId("github-ingress-fallback-id-0-0").fill("team,provider");
+    await page.getByTestId("github-ingress-add-label-0").click();
+    await page.getByTestId("github-ingress-label-0-0").fill("gpu");
     await page.getByTestId("github-ingress-save").click();
 
     await expect(page.getByTestId("github-ingress-success")).toContainText("saved");
@@ -50,6 +52,7 @@ test.describe("control plane GitHub ingress settings", () => {
           repositoryId: "repo-1",
           target: { providerId: "provider-1" },
           fallbacks: [{ commandId: "team,provider" }],
+          requiredLabels: ["gpu"],
         }),
       ],
     });
