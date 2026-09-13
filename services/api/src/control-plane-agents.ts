@@ -278,6 +278,26 @@ function reconcileReportedRunningSessions(
   );
 }
 
+function restoreInMemoryRegistration(
+  state: ControlPlaneState,
+  hostId: string,
+  failedConnectionId: string,
+  previousConnectionId: string | undefined,
+  previousConnection: ConnectionRecord | undefined,
+  previousInventory: HostInventoryRecord | undefined,
+): void {
+  state.connections.delete(failedConnectionId);
+  if (previousConnectionId && previousConnection) {
+    state.connections.set(previousConnectionId, previousConnection);
+    state.hostConnection.set(hostId, previousConnectionId);
+    if (previousInventory) state.hostInventories.set(hostId, previousInventory);
+    return;
+  }
+  state.hostConnection.delete(hostId);
+  state.hostInventories.delete(hostId);
+  state.disconnectedHosts.set(hostId, { lastHeartbeatAt: state.now() });
+}
+
 function ownedReportedRunningSessionIds(
   state: ControlPlaneState,
   opts: {
@@ -799,10 +819,24 @@ export async function registerHostDurable(
     return { ok: false, error: "runtime report is invalid" };
   }
   if (!state.storage) {
+    const previousConnectionId = state.hostConnection.get(opts.hostId);
+    const previousConnection = previousConnectionId
+      ? state.connections.get(previousConnectionId)
+      : undefined;
+    const previousInventory = state.hostInventories.get(opts.hostId);
     const result = registerHost(state, { ...opts, deferRunningSessionReconcile: true });
     if (!result.ok) return result;
-    await reconcileReportedRunningSessions(state, opts);
-    return result;
+    const reconciled = await reconcileReportedRunningSessions(state, opts);
+    if (reconciled !== false) return result;
+    restoreInMemoryRegistration(
+      state,
+      opts.hostId,
+      result.connectionId,
+      previousConnectionId,
+      previousConnection,
+      previousInventory,
+    );
+    return { ok: false, error: "reported running session lost reconnect reconciliation" };
   }
   const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);
   if (nameError) {

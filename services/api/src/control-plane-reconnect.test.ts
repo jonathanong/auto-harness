@@ -494,6 +494,80 @@ describe("reconnect reconciliation", () => {
     expect(plane.state.hostConnection.has("h")).toBe(false);
   });
 
+  it("fails storage-less registration when a reported running session cannot be confirmed", async () => {
+    const plane = new ControlPlane({
+      now: () => "2026-01-01T00:00:00.000Z",
+      connectionIdFactory: () => "c1",
+    });
+    const session = { ...durableRunning("s", "w") };
+    const worktree = { ...durableWorktree("w", "s"), online: true };
+    plane.state.sessions.set("s", session);
+    plane.state.worktrees.set("w", worktree);
+    let reads = 0;
+    const origGet = plane.state.sessions.get.bind(plane.state.sessions);
+    plane.state.sessions.get = (id: string) => {
+      const current = origGet(id);
+      if (id !== "s" || !current) return current;
+      reads += 1;
+      return reads === 1 ? current : { ...current, status: "queued" as const };
+    };
+    await expect(
+      plane.registerHostDurable({
+        hostId: "h",
+        worktrees: [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }],
+        commandProfiles: [],
+        runningSessions: ["s"],
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "reported running session lost reconnect reconciliation",
+    });
+    expect(plane.state.hostConnection.has("h")).toBe(false);
+    expect(plane.state.connections.has("c1")).toBe(false);
+  });
+
+  it("restores the prior in-memory connection when replacement reconcile fails", async () => {
+    const plane = new ControlPlane({
+      now: () => "2026-01-01T00:00:00.000Z",
+      connectionIdFactory: (() => {
+        let id = 0;
+        return () => `c${++id}`;
+      })(),
+    });
+    expect(
+      plane.registerHost({
+        hostId: "h",
+        worktrees: [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }],
+        commandProfiles: [],
+      }),
+    ).toEqual({ ok: true, connectionId: "c1" });
+    plane.state.sessions.set("s", { ...durableRunning("s", "w") });
+    plane.state.worktrees.set("w", { ...durableWorktree("w", "s"), online: true, status: "busy" });
+    let reads = 0;
+    const origGet = plane.state.sessions.get.bind(plane.state.sessions);
+    plane.state.sessions.get = (id: string) => {
+      const current = origGet(id);
+      if (id !== "s" || !current) return current;
+      reads += 1;
+      return reads === 1 ? current : { ...current, status: "queued" as const };
+    };
+    await expect(
+      plane.registerHostDurable({
+        hostId: "h",
+        worktrees: [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }],
+        commandProfiles: [],
+        runningSessions: ["s"],
+        replaceExisting: true,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "reported running session lost reconnect reconciliation",
+    });
+    expect(plane.state.hostConnection.get("h")).toBe("c1");
+    expect(plane.state.connections.has("c1")).toBe(true);
+    expect(plane.state.connections.has("c2")).toBe(false);
+  });
+
   it("rolls back mixed scheduled and worktree confirmations after a later report fails", async () => {
     const plane = new ControlPlane({
       now: () => "2026-01-01T00:00:00.000Z",
