@@ -648,8 +648,8 @@ export class DaemonLoop {
       pending.completionController?.abort();
     }
     // A command-start acknowledgement can be lost after the control plane
-    // commits it. Fail closed before waitForIdle() awaits the assignment; the
-    // later stop() call repeats this idempotently for direct callers.
+    // commits it. Fail closed before waitForIdle() awaits the assignment.
+    // stop() always runs this first, so it does not need a second pass.
     for (const key of this.pendingCommandStarts.keys()) {
       this.finishCommandStart(key, false);
     }
@@ -697,9 +697,6 @@ export class DaemonLoop {
     if (this.keepaliveStallTimer) this.timers.clearTimeout(this.keepaliveStallTimer);
     this.keepaliveStallTimer = undefined;
     this.connectionEvents?.stop();
-    for (const key of this.pendingCommandStarts.keys()) {
-      this.finishCommandStart(key, false);
-    }
     for (const [key, pending] of this.pendingTerminalStatus) {
       this.pendingTerminalStatus.delete(key);
       pending.controller.abort();
@@ -1633,7 +1630,11 @@ export class DaemonLoop {
           } catch {
             /* ACK settlement already fail-closed this hook. */
           }
-          return await (pending.settlementResult ?? Promise.resolve(undefined));
+          try {
+            return await (pending.settlementResult ?? Promise.resolve(undefined));
+          } catch {
+            return undefined;
+          }
         }
         if (pending.settleDeferredTerminalHook) {
           const settlementResult =

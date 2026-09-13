@@ -301,4 +301,90 @@ describe("DaemonLoop terminal-hook handoff", () => {
       cleanup();
     }
   });
+
+  it("completes a handoff when an overlapping ACK settlementResult rejects", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const sent: HostToServerMessage[] = [];
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => void sent.push(message),
+      });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
+      const settlementResult = Promise.reject(new Error("hook failed"));
+      void settlementResult.catch(() => undefined);
+      pendingTerminalStatusOf(loop).set("lost\0attempt", {
+        message: { ...terminalStatusFixture, sessionId: "lost", attemptId: "attempt" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settlement: settlementResult,
+        settlementResult,
+        settleDeferredTerminalHook: async () => {
+          throw new Error("should not rerun");
+        },
+      } as never);
+      transport.deliver({
+        type: "session:terminal-hook",
+        handoffId: "replacement",
+        sessionId: "lost",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        errorCode: "host_lost",
+      });
+      await waitFor(() =>
+        sent.some(
+          (message) =>
+            message.type === "session:terminal-hook-complete" &&
+            message.handoffId === "replacement",
+        ),
+      );
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("completes a handoff when overlapping ACK settlement has no result", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const sent: HostToServerMessage[] = [];
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => void sent.push(message),
+      });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
+      pendingTerminalStatusOf(loop).set("lost\0attempt", {
+        message: { ...terminalStatusFixture, sessionId: "lost", attemptId: "attempt" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settlement: Promise.resolve(),
+        settleDeferredTerminalHook: async () => undefined,
+      } as never);
+      transport.deliver({
+        type: "session:terminal-hook",
+        handoffId: "no-result",
+        sessionId: "lost",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        errorCode: "host_lost",
+      });
+      await waitFor(() =>
+        sent.some(
+          (message) =>
+            message.type === "session:terminal-hook-complete" && message.handoffId === "no-result",
+        ),
+      );
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
 });
