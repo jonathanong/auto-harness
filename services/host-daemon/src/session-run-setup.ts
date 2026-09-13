@@ -9,6 +9,7 @@ import { finishClaimedSession, type SessionRunResult } from "./session-outcome.t
 import type { GitHubAppConfig } from "./github-app.ts";
 import { runSetupScript } from "./setup-script.ts";
 import {
+  matchingSetupFingerprintAfterSetup,
   mergeSetupCacheInputs,
   resolveSetupCacheState,
   writeStoredSetupCache,
@@ -47,16 +48,17 @@ export async function runSetupIfNeeded(
     (script): script is string => Boolean(script),
   );
   if (assign.resume || setupScripts.length === 0) return { environment, failure: null };
+  const extraPaths = mergeSetupCacheInputs(
+    claimed.hostSetupCacheInputs,
+    claimed.worktree.setupCacheInputs ?? claimed.repository.setupCacheInputs,
+  );
   const cache = await resolveSetupCacheState({
     cacheDir: setupCacheDir,
     checkoutSha: baseline,
     cwd: claimed.cwd,
     worktreeId: claimed.worktree.id,
     scripts: setupScripts,
-    extraPaths: mergeSetupCacheInputs(
-      claimed.hostSetupCacheInputs,
-      claimed.worktree.setupCacheInputs ?? claimed.repository.setupCacheInputs,
-    ),
+    extraPaths,
     ...(signal ? { signal } : {}),
   });
   if (cache.skip) {
@@ -148,15 +150,25 @@ export async function runSetupIfNeeded(
     if (failure) return { environment, failure };
   }
   streamer.write("system", "Setup complete.");
-  if (setupCacheDir && cache.fingerprintToStore) {
+  if (setupCacheDir && cache.fingerprintToStore && baseline) {
     try {
-      await writeStoredSetupCache(
-        setupCacheDir,
-        claimed.worktree.id,
-        claimed.cwd,
-        cache.fingerprintToStore,
-        environment,
-      );
+      const fingerprint = await matchingSetupFingerprintAfterSetup({
+        checkoutSha: baseline,
+        cwd: claimed.cwd,
+        scripts: setupScripts,
+        extraPaths,
+        expectedFingerprint: cache.fingerprintToStore,
+        ...(signal ? { signal } : {}),
+      });
+      if (fingerprint) {
+        await writeStoredSetupCache(
+          setupCacheDir,
+          claimed.worktree.id,
+          claimed.cwd,
+          fingerprint,
+          environment,
+        );
+      }
     } catch {
       streamer.write(
         "system",

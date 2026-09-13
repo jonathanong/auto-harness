@@ -165,3 +165,26 @@ export async function resolveSetupCacheState(input: {
   }
   return { skip: true, environment: stored.environment };
 }
+
+/** Rehash declared extras after setup. Changed bytes must not be stored as a hit. */
+export async function matchingSetupFingerprintAfterSetup(input: {
+  checkoutSha: string;
+  cwd: string;
+  scripts: readonly string[];
+  extraPaths: readonly string[];
+  expectedFingerprint: string;
+  signal?: AbortSignal;
+}): Promise<string | undefined> {
+  const hash = startSetupFingerprint(input.checkoutSha, input.scripts, input.extraPaths.length);
+  const hashed = await forEachDeclaredSetupFile(
+    input.cwd,
+    input.extraPaths,
+    (path, contents) => {
+      appendExtraFile(hash, path, contents);
+    },
+    input.signal,
+  );
+  if (!hashed) return undefined;
+  const fingerprint = hash.digest("hex");
+  return fingerprint === input.expectedFingerprint ? fingerprint : undefined;
+}
