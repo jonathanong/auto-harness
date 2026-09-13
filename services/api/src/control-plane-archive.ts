@@ -80,7 +80,11 @@ export async function archiveSessionLogs(
     contentType: "application/x-ndjson",
   };
   const current = retryClaim ? null : await readArchiveMetadata(state, key);
-  const replacement = isCompleteStoredArchive(current) ? archiveGeneration(current) : null;
+  const replacement = isCompleteStoredArchive(current)
+    ? current.versionId
+      ? archiveGeneration(current)
+      : null
+    : null;
   const pending: ArchiveMetadata = {
     key,
     contentType: object.contentType,

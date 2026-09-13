@@ -711,8 +711,10 @@ rewrite (account cooldown/fallback routing is now Phase 3, not Phase 5):
 terminal logs to `sessions/{sessionId}/logs.jsonl`, retains archive metadata in DynamoDB, and uses
 the private S3 writer when `ARCHIVE_BUCKET` is configured. Metadata is bounded and records a
 pending first-time upload before the PUT so a repeated terminal message can retry safely. Replacement
-of an already complete archive uploads first and commits the new version id only on success, so a
-failed replacement leaves the prior complete metadata downloadable. The bucket name and
+of a version-pinned complete archive uploads first and commits the new version id only on success,
+so a failed replacement leaves the prior complete metadata downloadable. A complete stored row with
+no `versionId` stays on the first-time pending path so a failed upload remains retryable. The bucket
+name and
 scoped archive policy are wired into the synthesized runtime functions. The REST runtime separately
 has canonical-prefix `GetObject` access for verified presigned archive downloads; Cron and
 WebSocket do not. The 2026-08-18 `qa`

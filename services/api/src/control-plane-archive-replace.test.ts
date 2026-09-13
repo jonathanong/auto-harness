@@ -308,6 +308,33 @@ describe("archive replacement preserves the last complete generation", () => {
     );
   });
 
+  it("writes a retryable pending row when a legacy no-version complete upload fails", async () => {
+    const putArchive = vi.fn(async () => undefined);
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          throw new Error("object store unavailable");
+        },
+      },
+      storage: {
+        getArchive: async () => storedComplete("legacy-fail"),
+        listLogs: async () => [],
+        putArchive,
+      } as never,
+    });
+
+    await expect(archiveSessionLogs(state, "legacy-fail")).rejects.toThrow(
+      "object store unavailable",
+    );
+    expect(putArchive).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "pending", objectStored: false }),
+    );
+    expect(state.archives.get("sessions/legacy-fail/logs.jsonl")).toMatchObject({
+      status: "pending",
+      objectStored: false,
+    });
+  });
+
   it("replaces a legacy complete row after the new version commits", async () => {
     const putArchive = vi.fn(async () => undefined);
     const current = storedComplete("legacy-ok");
@@ -321,26 +348,10 @@ describe("archive replacement preserves the last complete generation", () => {
     });
 
     await archiveSessionLogs(state, "legacy-ok");
-    expect(putArchive).toHaveBeenCalledWith(expect.objectContaining({ versionId: "repaired-v2" }));
-  });
-
-  it("does not put a legacy replacement over a later complete generation", async () => {
-    const putArchive = vi.fn(async () => undefined);
-    let reads = 0;
-    const state = createControlPlaneState({
-      archiveWriter: { putArchive: async () => ({ versionId: "stale-v" }) },
-      storage: {
-        getArchive: async () =>
-          reads++ === 0
-            ? storedComplete("legacy-race")
-            : { ...storedComplete("legacy-race"), updatedAt: "2026-01-02T00:00:00.000Z" },
-        listLogs: async () => [],
-        putArchive,
-      } as never,
-    });
-
-    await archiveSessionLogs(state, "legacy-race");
-    expect(putArchive).not.toHaveBeenCalled();
+    expect(putArchive).toHaveBeenCalledWith(expect.objectContaining({ status: "pending" }));
+    expect(putArchive).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "complete", versionId: "repaired-v2" }),
+    );
   });
 
   it("does not put a replacement when the stored row is no longer complete", async () => {
