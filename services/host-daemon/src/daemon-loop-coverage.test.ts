@@ -391,6 +391,7 @@ describe("DaemonLoop coverage guards", () => {
         waitForTargetFence(targetWork: Promise<void>, signal: AbortSignal): Promise<boolean>;
         prepareForShutdown(): void;
         pendingTerminalStatus: Map<string, unknown>;
+        pendingTerminalHookHandoffs: Map<string, unknown>;
       };
       const pending = pendingTerminalStatusOf(loop);
       const prepareHook = vi.fn();
@@ -440,6 +441,26 @@ describe("DaemonLoop coverage guards", () => {
           new AbortController().signal,
         ),
       ).resolves.toBe(true);
+
+      // waitForIdle must absorb a failed retained handoff just like a
+      // successful one, otherwise shutdown can surface an obsolete hook
+      // error after the control-plane has already taken ownership.
+      let rejectWork!: (error: Error) => void;
+      const failedWork = new Promise<void>((_resolve, reject) => {
+        rejectWork = reject;
+      });
+      internals.pendingTerminalHookHandoffs.set("failed-handoff", {
+        message: { ...terminalHandoff("failed", "wt-1") },
+        complete: true,
+        executing: false,
+        sending: false,
+        work: failedWork.finally(() => {
+          internals.pendingTerminalHookHandoffs.delete("failed-handoff");
+        }),
+      });
+      const idle = loop.waitForIdle();
+      rejectWork(new Error("stale handoff"));
+      await expect(idle).resolves.toBeUndefined();
 
       // Exercise both expiry cleanup branches, including a primitive rejection.
       const deferredResolve = vi.fn();
