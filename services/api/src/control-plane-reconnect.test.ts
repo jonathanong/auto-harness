@@ -597,6 +597,20 @@ describe("reconnect reconciliation", () => {
       status: "idle",
       online: true,
     });
+    plane.state.workspaceSlots.set("slot-other", {
+      id: "slot-other",
+      name: "slot-other",
+      hostId: "other",
+      workspacePoolId: "pool",
+      path: "/other",
+      status: "idle",
+      online: true,
+    });
+    plane.state.worktrees.set("other-w", {
+      ...durableWorktree("other-w", null, "idle"),
+      hostId: "other",
+      online: true,
+    });
     plane.state.worktrees.set("w-extra", {
       ...durableWorktree("w-extra", null, "idle"),
       online: true,
@@ -637,6 +651,8 @@ describe("reconnect reconciliation", () => {
     expect(plane.state.worktrees.get("w-extra")?.online).toBe(false);
     expect(plane.state.workspaceSlots.has("slot-new")).toBe(false);
     expect(plane.state.workspaceSlots.get("slot-prior")?.online).toBe(false);
+    expect(plane.state.workspaceSlots.get("slot-other")?.online).toBe(true);
+    expect(plane.state.worktrees.get("other-w")?.online).toBe(true);
     expect(plane.state.drainingHosts.has("h")).toBe(false);
     expect(
       plane.state.hostInventories
