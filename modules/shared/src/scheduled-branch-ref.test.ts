@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { isValidScheduledBranchRef, isValidSessionRef } from "./scheduled-branch-ref.ts";
+import {
+  isValidGitHubIngressDefaultRef,
+  isValidScheduledBranchRef,
+  isValidSessionRef,
+} from "./scheduled-branch-ref.ts";
 
 describe("isValidScheduledBranchRef", () => {
   it("accepts ordinary branch names", () => {
@@ -82,5 +86,32 @@ describe("isValidSessionRef", () => {
     expect(isValidSessionRef(1)).toBe(false);
     expect(isValidSessionRef(null)).toBe(false);
     expect(isValidSessionRef(undefined)).toBe(false);
+  });
+});
+
+describe("isValidGitHubIngressDefaultRef", () => {
+  it("accepts canonical heads refs, including slashes", () => {
+    expect(isValidGitHubIngressDefaultRef("refs/heads/main")).toBe(true);
+    expect(isValidGitHubIngressDefaultRef("refs/heads/release/v1.2")).toBe(true);
+    expect(isValidGitHubIngressDefaultRef("refs/heads/feature/scheduled-maintenance")).toBe(true);
+  });
+
+  it("rejects HEAD, ancestry, tags, and malformed branch refs", () => {
+    for (const value of [
+      "",
+      "HEAD",
+      "HEAD~1",
+      "HEAD^2",
+      "main",
+      "refs/tags/v1.2.3",
+      "refs/heads/",
+      "refs/heads/HEAD",
+      "refs/heads/-branch",
+      "refs/heads/feature..broken",
+      "refs/pull/1/head",
+      "a".repeat(256),
+    ]) {
+      expect(isValidGitHubIngressDefaultRef(value)).toBe(false);
+    }
   });
 });

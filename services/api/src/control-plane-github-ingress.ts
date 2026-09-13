@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   DEFAULT_QUEUE_TTL_SECONDS,
-  isValidSessionRef,
+  isValidGitHubIngressDefaultRef,
   MAX_REQUIRED_LABELS,
   MAX_REQUIRED_LABEL_LENGTH,
   sessionPriorityError,
@@ -269,8 +269,8 @@ function validateInput(
     ) {
       return { ok: false, error: "repositoryId is required" };
     }
-    if (!isValidSessionRef(binding.defaultRef)) {
-      return { ok: false, error: "defaultRef must be a valid git ref" };
+    if (!isValidGitHubIngressDefaultRef(binding.defaultRef)) {
+      return { ok: false, error: "defaultRef must be a canonical refs/heads/... branch" };
     }
     const routing = validateTargetRouting(binding);
     if (!routing.ok) return routing;

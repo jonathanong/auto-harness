@@ -303,6 +303,10 @@ describe("GitHub ingress config", () => {
       { defaultRef: "bad ref" },
       { defaultRef: "../main" },
       { defaultRef: "refs/heads/" },
+      { defaultRef: "HEAD" },
+      { defaultRef: "HEAD~1" },
+      { defaultRef: "main" },
+      { defaultRef: "refs/tags/v1.2.3" },
       { defaultRef: "x".repeat(256) },
       { defaultRef: "é".repeat(128) },
       { requiredLabels: Array.from({ length: 17 }, () => "label") },
@@ -450,7 +454,7 @@ describe("GitHub ingress config", () => {
   it("documents the runtime UTF-8 byte bound for defaultRef", () => {
     const openapi = readFileSync(new URL("../../../docs/openapi.yaml", import.meta.url), "utf8");
     expect(openapi).toMatch(
-      /defaultRef:\n\s+type: string\n\s+minLength: 1\n\s+description: .*255 bytes\./,
+      /defaultRef:\n\s+type: string\n\s+minLength: 1\n\s+pattern: "\^refs\/heads\/"\n\s+description: .*255 bytes\./,
     );
     expect(openapi).not.toMatch(/defaultRef:.*maxLength:/);
   });

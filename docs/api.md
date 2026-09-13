@@ -424,7 +424,7 @@ admission flag. It requires the last observed positive integer `version` plus op
 `generation`. An omitted `enabled` must not re-enable a deliberately disabled
 configuration; send `enabled: true` to turn admission back on. `DELETE` requires those fences in `If-Match` and
 `If-Match-Generation`; stale mutations, including across delete/recreate, return `409`. A binding's
-default ref is used for issue comments; pull-request comments use `refs/pull/<number>/head`.
+default ref is a canonical `refs/heads/...` branch used for issue comments; pull-request comments use `refs/pull/<number>/head`.
 Every eligible host must already have `HARNESS_GITHUB_PULL_REF_CONFIG` provisioned; otherwise
 checkout fails closed with `Configured pull-ref checkout has no operator policy`. See
 [GitHub pull-ref checkout policy](deploy-host-daemon.md#github-pull-ref-checkout-policy).

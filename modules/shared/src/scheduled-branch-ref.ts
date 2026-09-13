@@ -43,6 +43,19 @@ function hasSafeRefPathSegments(value: string): boolean {
   return value.split("/").every((part) => !part.startsWith(".") && !part.endsWith(".lock"));
 }
 
+const HEADS_PREFIX = "refs/heads/";
+
+/**
+ * GitHub ingress `defaultRef` is the branch used for issue comments that are not
+ * pull requests. It must be a canonical `refs/heads/...` name; revision
+ * expressions and tag refs are rejected.
+ */
+export function isValidGitHubIngressDefaultRef(value: unknown): value is string {
+  if (typeof value !== "string" || !value.startsWith(HEADS_PREFIX)) return false;
+  if (new TextEncoder().encode(value).length > MAX_SCHEDULED_BRANCH_REF_BYTES) return false;
+  return isValidScheduledBranchRef(value.slice(HEADS_PREFIX.length));
+}
+
 /**
  * Validate a scheduled checkout branch name without consulting a repository.
  *

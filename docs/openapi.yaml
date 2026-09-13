@@ -874,7 +874,8 @@ components:
         defaultRef:
           type: string
           minLength: 1
-          description: Valid git ref with a maximum UTF-8 encoded length of 255 bytes.
+          pattern: "^refs/heads/"
+          description: Canonical refs/heads/... branch with a maximum UTF-8 encoded length of 255 bytes.
         allowedLogins:
           type: array
           maxItems: 100

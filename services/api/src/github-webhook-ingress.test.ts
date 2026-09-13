@@ -176,7 +176,8 @@ describe("parseGitHubWebhookIngress", () => {
 
   it("rejects invalid default refs and session timeouts in bindings", () => {
     for (const candidate of [
-      { ...binding, defaultRef: "-main" },
+      { ...binding, defaultRef: "HEAD~1" },
+      { ...binding, defaultRef: "refs/tags/v1" },
       { ...binding, defaultRef: "refs/heads/main\nattacker" },
       { ...binding, timeout: 0 },
       { ...binding, timeout: Number.POSITIVE_INFINITY },
