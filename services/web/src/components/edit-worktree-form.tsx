@@ -85,11 +85,12 @@ export function EditWorktreeForm({
             const setupScriptEntry = fd.get("setupScript");
             const setupScript = typeof setupScriptEntry === "string" ? setupScriptEntry : "";
             const worktreeSetupScript = setupScript.trim() ? setupScript : undefined;
+            const setupCacheInputsEntry = String(fd.get("setupCacheInputs") ?? "");
             let setupCacheInputs: string[] | undefined;
             try {
               if (canWriteExecConfig && setupCacheInputsEdited) {
                 setupCacheInputs = parseSetupCacheInputsField(
-                  String(fd.get("setupCacheInputs") ?? ""),
+                  setupCacheInputsEntry,
                   `worktree.${worktree.id}.setupCacheInputs`,
                 );
               }
@@ -119,9 +120,7 @@ export function EditWorktreeForm({
                   ...(canWriteExecConfig && setupScriptEdited
                     ? { setupScript: worktreeSetupScript ?? "" }
                     : {}),
-                  ...(canWriteExecConfig && setupCacheInputsEdited
-                    ? { setupCacheInputs: setupCacheInputs ?? [] }
-                    : {}),
+                  ...(setupCacheInputs !== undefined ? { setupCacheInputs } : {}),
                 }),
               );
               if (!r.ok) {

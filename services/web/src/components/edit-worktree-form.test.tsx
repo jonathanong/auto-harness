@@ -69,6 +69,15 @@ describe("EditWorktreeForm", () => {
     );
     pressCancel();
     withCache.unmount();
+
+    const inherited = mountForm(
+      form({ id: worktree.id, name: worktree.name, path: worktree.path, labels: worktree.labels }),
+    );
+    press(field(inherited.container, "worktree-edit-open"));
+    expect(field<HTMLTextAreaElement>(document, "worktree-edit-setup-script").value).toBe("");
+    expect(field<HTMLTextAreaElement>(document, "worktree-edit-setup-cache-inputs").value).toBe("");
+    pressCancel();
+    inherited.unmount();
   });
 
   it("requires an absolute path", () => {
