@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createGitClient } from "./git.ts";
+import { CheckoutFetchError } from "./git-commands.ts";
 import { fetchGitHubPullRequestRef } from "./git-github-pull-ref.ts";
 import { scripted } from "../test-helpers/git-test-helpers.ts";
 
@@ -247,7 +248,7 @@ describe("createGitClient checkout and revParse", () => {
         "https://github.com/example/repository.git",
         join(checkoutRepo, ".git", "objects"),
       ),
-    ).resolves.toBeNull();
+    ).rejects.toBeInstanceOf(CheckoutFetchError);
     expect(fetchEnvironment?.GIT_CONFIG_NOSYSTEM).toBe("1");
     expect(fetchEnvironment?.GIT_CONFIG_GLOBAL).toBe("/dev/null");
     expect(fetchEnvironment).toMatchObject({
@@ -711,7 +712,7 @@ describe("createGitClient checkout and revParse", () => {
     ).rejects.toThrow("no operator policy");
   });
 
-  it("checkoutRef fails closed instead of probing an untrusted fallback remote", async () => {
+  it("classifies a failed pull-ref fetch as a checkout fetch failure instead of probing an untrusted fallback remote", async () => {
     const ref = "refs/pull/7/head";
     const git = createGitClient(
       scripted([
@@ -742,10 +743,10 @@ describe("createGitClient checkout and revParse", () => {
 
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
-    ).rejects.toThrow("Failed to fetch GitHub pull-request ref refs/pull/7/head");
+    ).rejects.toBeInstanceOf(CheckoutFetchError);
   });
 
-  it("checkoutRef fails closed when no remote exposes a GitHub pull-request ref", async () => {
+  it("classifies a failed pull-ref fetch as a checkout fetch failure when the remote cannot transfer the advertised head", async () => {
     const ref = "refs/pull/8/head";
     const checkout = createGitClient(
       scripted([
@@ -774,9 +775,7 @@ describe("createGitClient checkout and revParse", () => {
       pullRefPolicy(),
     ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
 
-    await expect(checkout).rejects.toThrow(
-      "Failed to fetch GitHub pull-request ref refs/pull/8/head",
-    );
+    await expect(checkout).rejects.toBeInstanceOf(CheckoutFetchError);
   });
 
   it("checkoutRef fails closed when its bounded scratch ref cannot be deleted", async () => {

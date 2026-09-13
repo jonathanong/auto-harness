@@ -20,6 +20,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   };
 });
 
+import { CheckoutFetchError } from "./git-commands.ts";
 import {
   deleteGitHubPullRequestRef,
   fetchGitHubPullRequestRef,
@@ -121,8 +122,47 @@ describe("isolated GitHub pull-ref fetch", () => {
     await expect(fetchGitHubPullRequestRef(runner, cwd, ref, undefined)).resolves.toBeNull();
   });
 
+  it("classifies a failed pull-ref advertisement as a checkout fetch failure", async () => {
+    await expect(
+      fetchGitHubPullRequestRef(
+        scripted([
+          shallow,
+          notPartial,
+          notPromisor,
+          { ...advertised, exitCode: 2, stdout: "", stderr: "Could not resolve host" },
+        ]),
+        cwd,
+        ref,
+        remoteUrl,
+        objectDirectory,
+      ),
+    ).rejects.toBeInstanceOf(CheckoutFetchError);
+  });
+
+  it("classifies a failed pull-ref fetch as a checkout fetch failure", async () => {
+    await expect(
+      fetchGitHubPullRequestRef(
+        scripted([
+          shallow,
+          notPartial,
+          notPromisor,
+          advertised,
+          initialized,
+          basePresent,
+          { ...fetched, exitCode: 1, stderr: "network unavailable" },
+        ]),
+        cwd,
+        ref,
+        remoteUrl,
+        objectDirectory,
+      ),
+    ).rejects.toMatchObject({
+      name: "CheckoutFetchError",
+      message: expect.stringContaining("Failed to fetch GitHub pull-request ref"),
+    });
+  });
+
   it.each([
-    ["advertisement", [{ ...advertised, exitCode: 2, stdout: "" }]],
     ["empty successful advertisement", [{ ...advertised, stdout: "" }]],
     [
       "ambiguous advertisement lines",
@@ -406,7 +446,7 @@ describe("isolated GitHub pull-ref fetch", () => {
         remoteUrl,
         '/srv/repos/team:"project/.git/objects',
       ),
-    ).resolves.toBeNull();
+    ).rejects.toBeInstanceOf(CheckoutFetchError);
     expect(fetchEnvironment?.GIT_ALTERNATE_OBJECT_DIRECTORIES).toBe(
       '"/srv/repos/team:\\"project/.git/objects"',
     );

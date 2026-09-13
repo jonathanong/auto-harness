@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import type { GitClient } from "./git.ts";
+import { checkoutFetchFailure } from "./git-commands.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { baseAssign, setup } from "../test-helpers/session-runner-test-helpers.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
@@ -112,5 +113,41 @@ describe("SessionRunner process and profile failures", () => {
     expect(result.status).toBe("failed");
     expect(result.errorCode).toBe("unknown_command_profile");
     expect(spawn).toEqual([]);
+  });
+
+  it("maps a GitHub pull-ref fetch failure to checkout_fetch_failed", async () => {
+    const config = parseDaemonConfig({
+      hostId: "a1",
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
+        },
+      ],
+    });
+    const worktrees = new WorktreeManager(config, {
+      ensureRepo: async () => undefined,
+      ensureWorktree: async () => undefined,
+      checkoutRef: async () => {
+        throw checkoutFetchFailure(
+          "Failed to fetch GitHub pull-request ref refs/pull/42/head",
+          "Could not resolve host",
+        );
+      },
+      prepareMainCheckout: async () => undefined,
+      revParse: async () => "x",
+    });
+    const sessionRunner = new SessionRunner({
+      worktrees,
+      processRunner: {
+        async run() {
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+    });
+    const result = await sessionRunner.run(baseAssign({ ref: "refs/pull/42/head" }));
+    expect(result.errorCode).toBe("checkout_fetch_failed");
   });
 });

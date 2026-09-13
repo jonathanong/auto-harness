@@ -742,7 +742,8 @@ immediately tries the next eligible account or fallback. Providerless and non-st
 do not pause an account. See [host-daemon.md — Usage limits](host-daemon.md#usage-limits-ai-vendor--cli-quotas).
 
 Infrastructure failures have a separate bounded retry policy. A checkout-stage fetch failure is
-reported as `checkout_fetch_failed`; a host lost after assignment but before the v4
+reported as `checkout_fetch_failed` (including a failed GitHub pull-request ref `ls-remote` or
+`fetch`); a host lost after assignment but before the v4
 `session:command-start-acknowledged` checkpoint is reported as `host_lost`. The control plane
 automatically retries the same logical session once with a fresh `attemptId`, preserving its
 inputs, concurrency lock, and absolute `queueExpiresAt`. A second eligible failure, an

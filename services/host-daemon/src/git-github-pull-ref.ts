@@ -6,7 +6,7 @@ import { join, parse } from "node:path";
 
 import { createChildEnv } from "./child-env.ts";
 import type { ProcessRunner } from "./executor.ts";
-import { runGit } from "./git-commands.ts";
+import { checkoutFetchFailure, runGit } from "./git-commands.ts";
 import type { GitHubPullRefConfig } from "./github-pull-ref-config.ts";
 
 const GITHUB_PULL_REQUEST_REF = /^refs\/pull\/([1-9]\d*)\/head$/;
@@ -185,6 +185,24 @@ async function cleanupTemporaryDirectory(
   }
 }
 
+async function runPullRequestTransport(
+  runner: ProcessRunner,
+  cwd: string,
+  args: string[],
+  signal: AbortSignal | undefined,
+  environment: NodeJS.ProcessEnv,
+  category: string,
+): Promise<Awaited<ReturnType<typeof runGit>>> {
+  let result: Awaited<ReturnType<typeof runGit>>;
+  try {
+    result = await runGit(runner, cwd, args, signal, environment);
+  } catch (error) {
+    throw checkoutFetchFailure(category, error instanceof Error ? error.message : String(error));
+  }
+  if (result.exitCode !== 0) throw checkoutFetchFailure(category, result.stderr);
+  return result;
+}
+
 export async function fetchGitHubPullRequestRef(
   runner: ProcessRunner,
   cwd: string,
@@ -247,18 +265,19 @@ export async function fetchGitHubPullRequestRef(
     // be replaced by a session. The Windows policy loader rejects pull refs until it can prove an
     // equivalent native ACL boundary.
     const transportCwd = parse(temporaryDirectory).root;
+    const fetchCategory = `Failed to fetch GitHub pull-request ref ${ref}`;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       // Capture the exact remote-advertised object identity before a same-UID session can mutate
       // the temporary repository's loose ref. Git object IDs bind the subsequently imported commit
       // cryptographically; a tampered ref can now only turn this transfer into a failed checkout.
-      const advertised = await runGit(
+      const advertised = await runPullRequestTransport(
         runner,
         transportCwd,
         [...transport, "ls-remote", "--exit-code", configured.remoteUrl, ref, "HEAD"],
         signal,
         environment,
+        fetchCategory,
       );
-      if (advertised.exitCode !== 0) return null;
       const advertisedRefs = advertisedPullRequestBase(advertised.stdout, ref, objectFormat);
       if (advertisedRefs === undefined) return null;
       const temporaryRepository = join(temporaryDirectory, `repository-${attempt}.git`);
@@ -283,7 +302,7 @@ export async function fetchGitHubPullRequestRef(
         environment,
       );
       if (basePresent.exitCode !== 0) return null;
-      const fetched = await runGit(
+      await runPullRequestTransport(
         runner,
         transportCwd,
         [
@@ -299,8 +318,8 @@ export async function fetchGitHubPullRequestRef(
         ],
         signal,
         environment,
+        fetchCategory,
       );
-      if (fetched.exitCode !== 0) return null;
       const resolved = await runGit(
         runner,
         transportCwd,
