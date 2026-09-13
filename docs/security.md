@@ -108,7 +108,7 @@ integers): `HARNESS_RATE_LIMIT_WINDOW_SECONDS`,
 for an isolated loopback test. The login bucket applies to `POST /auth/login`
 and to unauthenticated requests that fail credential checks. It is keyed by
 the peer socket address. Authenticated requests use only the actor
-read/mutation/scheduler/host buckets. Public Slack callbacks and events use the
+read/mutation/scheduler/host buckets. Public Slack callbacks and events, GitHub webhook deliveries, and custom webhooks use the
 public-ingress bucket keyed by peer address before body parsing or storage. A
 forwarded address is used only when
 `HARNESS_TRUST_PROXY=true`; otherwise `X-Forwarded-For` is ignored because it

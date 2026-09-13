@@ -53,6 +53,23 @@ describe("local API rate limits", () => {
     expect(audits.some((audit) => audit.action === "rate-limit:deny")).toBe(false);
   });
 
+  it("uses the bounded public-ingress bucket for unauthenticated GitHub webhooks", async () => {
+    const events: string[] = [];
+    const { handler, plane } = createLocalApp({
+      rateLimitNow: () => 50_000,
+      rateLimitConfig: { limits: { publicIngress: 1, mutation: 10 } },
+      onRateLimitEvent: (event) => events.push(`${event.bucket}:${event.outcome}`),
+    });
+
+    const path = "/api/v1/webhooks/github";
+    expect((await invokeHandler(handler, "POST", path, {})).status).toBe(404);
+    expect((await invokeHandler(handler, "POST", path, {})).status).toBe(429);
+    expect(events).toEqual(["publicIngress:allowed", "publicIngress:denied"]);
+    const audits = (await plane.listAuditLogs()).items;
+    expect(audits.some((audit) => audit.action === "rate-limit:deny")).toBe(false);
+    expect(audits.filter((audit) => audit.action === "webhook:github:receive")).toHaveLength(1);
+  });
+
   it("audits denied mutations without request secrets", async () => {
     const store = new MemorySessionStore();
     const { handler, plane } = createLocalApp({

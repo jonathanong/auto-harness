@@ -144,7 +144,14 @@ export function createLocalApp(options: LocalServerOptions = {}): {
       return;
     }
     if (url.pathname === "/api/v1/webhooks/github") {
-      if (await enforceRateLimit({ ...loginLimit, bucket: "mutation" })) return;
+      if (
+        await enforceRateLimit({
+          ...loginLimit,
+          bucket: "publicIngress",
+          auditDenied: false,
+        })
+      )
+        return;
       if (await handleGitHubIngressRoute(ctx)) return;
     }
     if (loginRoute) {
