@@ -482,7 +482,9 @@ only that repository and the three listed write permissions, injects bot author/
 only into that session's process environment, and limits its command to the token expiry less five
 minutes. It never writes the shared repository config. A native resume receives a new token; there
 is no refresh service. Mapped sessions strip ambient GitHub credential variables before setup and
-terminal hooks, inject the scoped token and bot identity into the assigned command and terminal hook,
+terminal hooks, inject the scoped token and bot identity into the assigned command and terminal hook
+under the canonical `GH_TOKEN` / `GIT_AUTHOR_*` / `GIT_COMMITTER_*` names exactly once (a differently
+cased operator allowlist entry is replaced in place; unrelated entries keep their order),
 and use a fresh private empty `GH_CONFIG_DIR` for the session so stored `gh auth login` credentials
 cannot be used as a fallback. The temporary directory is removed after the session. A host without
 this setting, or a repository omitted from the mapping, retains its current ambient GitHub behavior.

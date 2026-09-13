@@ -2,12 +2,14 @@
 import { generateKeyPairSync, verify } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
+import { createChildEnv } from "./child-env.ts";
 import {
   GITHUB_APP_TOKEN_MARGIN_MS,
   githubBotEmail,
   loadGitHubAppConfig,
   mintInstallationToken,
   parseGitHubAppConfig,
+  withInstallationToken,
   withoutAmbientGitHubTokens,
 } from "./github-app.ts";
 
@@ -322,4 +324,58 @@ describe("GitHub App credentials", () => {
       }),
     ).toEqual({ SAFE: "kept", HARNESS_CHILD_ENV_ALLOWLIST: "SAFE" });
   });
+
+  it.each([
+    {
+      name: "canonical identity names",
+      allowlist: "GIT_AUTHOR_NAME",
+      extra: {},
+      expectedAllowlist:
+        "GIT_AUTHOR_NAME,GH_TOKEN,GIT_AUTHOR_EMAIL,GIT_COMMITTER_NAME,GIT_COMMITTER_EMAIL",
+    },
+    {
+      name: "differently cased identity names",
+      allowlist: "git_author_name",
+      extra: { git_author_name: "operator-author" },
+      expectedAllowlist:
+        "GIT_AUTHOR_NAME,GH_TOKEN,GIT_AUTHOR_EMAIL,GIT_COMMITTER_NAME,GIT_COMMITTER_EMAIL",
+    },
+    {
+      name: "duplicate mixed-case identity names",
+      allowlist: "git_author_name,GIT_AUTHOR_NAME",
+      extra: { git_author_name: "operator-author" },
+      expectedAllowlist:
+        "GIT_AUTHOR_NAME,GH_TOKEN,GIT_AUTHOR_EMAIL,GIT_COMMITTER_NAME,GIT_COMMITTER_EMAIL",
+    },
+    {
+      name: "unrelated operator entries",
+      allowlist: "TOKEN,git_author_name,SAFE",
+      extra: { TOKEN: "blackboard", git_author_name: "operator-author", SAFE: "kept" },
+      expectedAllowlist:
+        "TOKEN,GIT_AUTHOR_NAME,SAFE,GH_TOKEN,GIT_AUTHOR_EMAIL,GIT_COMMITTER_NAME,GIT_COMMITTER_EMAIL",
+    },
+  ])(
+    "canonicalizes identity allowlist entries ($name)",
+    ({ allowlist, extra, expectedAllowlist }) => {
+      const injected = withInstallationToken(
+        {
+          PATH: "/bin",
+          HOME: "/home/harness",
+          HARNESS_CHILD_ENV_ALLOWLIST: allowlist,
+          ...extra,
+        },
+        config(),
+        { token: "ghs_exact-token", expiresAtMs: Date.now() + 60_000 },
+      );
+      expect(injected.HARNESS_CHILD_ENV_ALLOWLIST).toBe(expectedAllowlist);
+      expect(injected.GIT_AUTHOR_NAME).toBe("auto-harness[bot]");
+      const child = createChildEnv(injected);
+      expect(child.GIT_AUTHOR_NAME).toBe("auto-harness[bot]");
+      expect(child.GH_TOKEN).toBe("ghs_exact-token");
+      expect(child.git_author_name).toBeUndefined();
+      expect(Object.keys(child).filter((key) => key.toUpperCase() === "GIT_AUTHOR_NAME")).toEqual([
+        "GIT_AUTHOR_NAME",
+      ]);
+    },
+  );
 });
