@@ -112,6 +112,7 @@ export async function updateGitHubIngressConfig(
       current.createdAt,
       state.now(),
       input.secret === undefined ? current.encryptedSecret : undefined,
+      current.enabled,
     );
     const size = configSizeError(record);
     if (size) return { ok: false, error: size };
@@ -190,6 +191,7 @@ async function makeRecord(
   createdAt: string,
   updatedAt: string,
   retainedEncryptedSecret?: string,
+  retainedEnabled?: boolean,
 ): Promise<GitHubIngressConfigRecord> {
   return {
     id: "github-ingress",
@@ -200,7 +202,7 @@ async function makeRecord(
         JSON.stringify({ secret: input.secret }),
         githubIngressEncryptionContext(),
       )),
-    enabled: input.enabled ?? true,
+    enabled: input.enabled ?? retainedEnabled ?? true,
     generation,
     bindings: input.bindings.map((binding) => ({
       githubRepositoryId: binding.githubRepositoryId,

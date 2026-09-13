@@ -738,6 +738,30 @@ describe("GitHub App ingress configuration routes", () => {
     await expect(plane.getGitHubIngressConfig()).resolves.toBeNull();
   });
 
+  it("retains a disabled flag when PUT omits enabled", async () => {
+    const { handler } = await fixture(false);
+    const created = await invokeHandler(
+      handler,
+      "POST",
+      "/api/v1/integrations/github-ingress",
+      configBody({ enabled: false }),
+    );
+    const generation = (created.json as { generation: string }).generation;
+    const update = configBody({ version: 1, generation });
+    delete (update as { secret?: string; enabled?: boolean }).secret;
+    delete (update as { enabled?: boolean }).enabled;
+    expect(
+      await invokeHandler(handler, "PUT", "/api/v1/integrations/github-ingress", update),
+    ).toMatchObject({ status: 200, json: { enabled: false, version: 2 } });
+    expect(
+      await invokeHandler(handler, "PUT", "/api/v1/integrations/github-ingress", {
+        ...update,
+        enabled: true,
+        version: 2,
+      }),
+    ).toMatchObject({ status: 200, json: { enabled: true, version: 3 } });
+  });
+
   it("rejects stale mutation fences after delete and recreate", async () => {
     const { handler } = await fixture(false);
     const original = await invokeHandler(
