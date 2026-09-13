@@ -1134,10 +1134,7 @@ export class DaemonLoop {
       // handoff must find this exact promise rather than run the hook again.
       if (pending.settlement) {
         return pending.settlement.finally(() => {
-          if (this.pendingTerminalStatus.get(key) === pending) {
-            this.pendingTerminalStatus.delete(key);
-          }
-          pending.resolveDeferredDisposition?.();
+          this.finishPendingTerminalStatus(key, pending);
         });
       }
       const settlement = (async () => {
@@ -1210,10 +1207,7 @@ export class DaemonLoop {
           this.sendTerminalHookHandoffCompletion(handoff);
         }
       })().finally(() => {
-        if (this.pendingTerminalStatus.get(key) === pending) {
-          this.pendingTerminalStatus.delete(key);
-        }
-        pending.resolveDeferredDisposition?.();
+        this.finishPendingTerminalStatus(key, pending);
       });
       pending.settlement = settlement;
       return settlement;
@@ -1325,6 +1319,14 @@ export class DaemonLoop {
       count += 1;
     }
     return count;
+  }
+
+  private finishPendingTerminalStatus(key: string, pending: PendingTerminalStatus): void {
+    if (this.pendingTerminalStatus.get(key) === pending) {
+      this.pendingTerminalStatus.delete(key);
+    }
+    pending.resolveDeferredDisposition?.();
+    if (pending.claimedExecutionSlot === true) this.scheduleQueuedExecution();
   }
 
   private activeAssignmentCount(): number {
