@@ -81,6 +81,34 @@ describe("durable archive expiry reads", () => {
     );
   });
 
+  it("does not expire an in-flight processing claim that already captured logs", async () => {
+    const expireArchive = vi.fn(async () => true);
+    const queryLogs = vi.fn(async () => []);
+    const plane = new ControlPlane({
+      now: () => "2026-01-08T00:00:00.000Z",
+      storage: {
+        getArchive: async () => ({
+          key: "sessions/session/logs.jsonl",
+          contentType: "application/x-ndjson",
+          bodyBytes: 42,
+          status: "pending",
+          objectStored: false,
+          retryState: "processing",
+          retryOrder: "claim",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        }),
+        queryLogs,
+        expireArchive,
+      } as never,
+    });
+
+    await expect(plane.getArchiveDownloadDurable("session")).resolves.toEqual({
+      state: "dynamodb",
+    });
+    expect(queryLogs).toHaveBeenCalledOnce();
+    expect(expireArchive).not.toHaveBeenCalled();
+  });
+
   it("does not report expired when a concurrent complete wins the durable fence", async () => {
     const expireArchive = vi.fn(async () => false);
     const plane = new ControlPlane({
@@ -126,7 +154,7 @@ describe("durable archive expiry reads", () => {
       contentType: "application/x-ndjson",
       bodyBytes: 4,
     });
-    expect(expireArchive).toHaveBeenCalledOnce();
+    expect(expireArchive).not.toHaveBeenCalled();
   });
 
   it("stays on the recent-log path when expire persistence fails", async () => {

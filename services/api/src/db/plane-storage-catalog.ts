@@ -1669,7 +1669,7 @@ export async function completeArchiveRetry(
   }
 }
 
-/** Persist expired and drop retry GSI keys only while a complete winner is absent. */
+/** Persist expired and drop retry GSI keys only while a complete winner and in-flight processing claim are absent. */
 export async function expireArchive(
   ctx: PlaneStorageCtx,
   key: string,
@@ -1683,13 +1683,14 @@ export async function expireArchive(
         UpdateExpression:
           "SET #status = :expired, updatedAt = :updatedAt REMOVE retryState, retryOrder",
         ConditionExpression:
-          "#status = :expired OR (objectStored = :false AND (attribute_not_exists(#status) OR #status = :pending))",
+          "#status = :expired OR (objectStored = :false AND (attribute_not_exists(#status) OR #status = :pending) AND (attribute_not_exists(retryState) OR retryState <> :processing))",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
           ":expired": "expired",
           ":updatedAt": updatedAt,
           ":false": false,
           ":pending": "pending",
+          ":processing": "processing",
         },
       }),
     );

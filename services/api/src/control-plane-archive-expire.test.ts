@@ -126,6 +126,49 @@ describe("archive expire persistence", () => {
     expect(state.archives.get(pending.key)).toBeUndefined();
   });
 
+  it("does not expire an in-flight processing claim", async () => {
+    const expireArchive = vi.fn(async () => true);
+    const processing: ArchiveMetadata = { ...pending, retryState: "processing" };
+    const state = createControlPlaneState({
+      now: () => "now",
+      storage: { expireArchive, getArchive: async () => processing } as never,
+    });
+    await expect(persistExpiredArchive(state, processing.key, processing)).resolves.toBe("pending");
+    expect(expireArchive).not.toHaveBeenCalled();
+    expect(state.archives.get(processing.key)).toMatchObject({ retryState: "processing" });
+
+    const memory = createControlPlaneState({ now: () => "now" });
+    memory.archives.set(processing.key, processing);
+    await expect(persistExpiredArchive(memory, processing.key, processing)).resolves.toBe(
+      "pending",
+    );
+    expect(memory.archives.get(processing.key)).toMatchObject({
+      status: "pending",
+      retryState: "processing",
+    });
+
+    const completeMemory = createControlPlaneState({ now: () => "now" });
+    completeMemory.archives.set(processing.key, {
+      ...processing,
+      status: "complete",
+      objectStored: true,
+    });
+    await expect(persistExpiredArchive(completeMemory, processing.key, processing)).resolves.toBe(
+      "complete",
+    );
+
+    const expiredState = createControlPlaneState({
+      storage: {
+        expireArchive,
+        getArchive: async () => ({ ...processing, status: "expired" as const }),
+      } as never,
+    });
+    await expect(persistExpiredArchive(expiredState, processing.key, processing)).resolves.toBe(
+      "expired",
+    );
+    expect(expireArchive).not.toHaveBeenCalled();
+  });
+
   it("refuses to clobber an in-memory complete winner", async () => {
     const state = createControlPlaneState({ now: () => "now" });
     state.archives.set(pending.key, { ...pending, status: "complete", objectStored: true });

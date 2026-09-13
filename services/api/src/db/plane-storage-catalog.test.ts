@@ -213,10 +213,11 @@ describe("archive retry storage", () => {
         UpdateExpression:
           "SET #status = :expired, updatedAt = :updatedAt REMOVE retryState, retryOrder",
         ConditionExpression:
-          "#status = :expired OR (objectStored = :false AND (attribute_not_exists(#status) OR #status = :pending))",
+          "#status = :expired OR (objectStored = :false AND (attribute_not_exists(#status) OR #status = :pending) AND (attribute_not_exists(retryState) OR retryState <> :processing))",
         ExpressionAttributeValues: expect.objectContaining({
           ":expired": "expired",
           ":pending": "pending",
+          ":processing": "processing",
         }),
       },
     });
