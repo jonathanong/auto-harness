@@ -21,6 +21,7 @@ import type {
 } from "./slack-oauth-types.ts";
 
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
+const OVERSIZED_DRAIN_TIMEOUT_MS = 5_000;
 const DEFAULT_PUBLIC_BASE_URL = "http://localhost:7421";
 
 /** Configured browser origin. Empty or unset falls back to the local web default. */
@@ -114,29 +115,46 @@ export function readRawBody(req: IncomingMessage, maxBytes = MAX_JSON_BODY_BYTES
     const chunks: Buffer[] = [];
     let size = 0;
     let rejected = false;
+    let settled = false;
+    let drained = 0;
+    let drainTimer: ReturnType<typeof setTimeout> | undefined;
     const oversized = new Error(
       maxBytes === MAX_JSON_BODY_BYTES
         ? "request body exceeds 1 MiB"
         : "request body exceeds route limit",
     );
+    const settle = (close: boolean, error?: Error, body?: Buffer): void => {
+      if (settled) return;
+      settled = true;
+      if (drainTimer !== undefined) clearTimeout(drainTimer);
+      if (close && typeof req.destroy === "function") req.destroy();
+      if (error) reject(error);
+      else resolve(body ?? Buffer.concat(chunks));
+    };
+    const failOversized = (close: boolean): void => settle(close, oversized);
     req.on("data", (chunk: Buffer) => {
-      if (rejected) return;
+      if (rejected) {
+        drained += chunk.length;
+        if (drained > maxBytes) failOversized(true);
+        return;
+      }
       size += chunk.length;
       if (size > maxBytes) {
         rejected = true;
-        // Stop retaining bytes, then drain until `end` so keep-alive reuse does not parse
-        // leftover body bytes as the next request. Callers send 413/400 after this promise
-        // settles. Lambda's already-buffered Readable ends immediately after resume.
         if (typeof req.resume === "function") req.resume();
+        drainTimer = setTimeout(() => failOversized(true), OVERSIZED_DRAIN_TIMEOUT_MS);
         return;
       }
       chunks.push(chunk);
     });
     req.on("end", () => {
-      if (rejected) reject(oversized);
-      else resolve(Buffer.concat(chunks));
+      if (rejected) failOversized(false);
+      else settle(false);
     });
-    req.on("error", reject);
+    req.on("error", (error: Error) => {
+      if (rejected) failOversized(false);
+      else settle(false, error);
+    });
   });
 }
 

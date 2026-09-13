@@ -145,8 +145,8 @@ unaudited denial.
 
 Local ingress also rejects HTTP JSON bodies over 1 MiB, WebSocket frames over
 128 KiB, and individual log chunks over 32 KiB. Oversized HTTP bodies are drained
-until the request ends before the error response is written so a keep-alive
-connection can parse the next request. In-memory session log retention
+until the request ends, or closed after a 5s/body-cap discard bound, before the
+error response is written so a keep-alive connection can parse the next request. In-memory session log retention
 is capped at 10,000 chunks / 10 MiB per session. A WebSocket host must
 authenticate with a service-account key bound to its `hostId`; it can only ack,
 log, or report status for sessions assigned to that host. Closing the socket

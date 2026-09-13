@@ -43,8 +43,6 @@ describe("raw request bodies", () => {
   it("drains remaining bytes before rejecting an oversized body", async () => {
     const stream = request();
     const body = readRawBody(stream.req as never, 3);
-    stream.emit("data", Buffer.from("four"));
-    stream.emit("data", Buffer.alloc(1024 * 1024));
     let settled = false;
     void body.then(
       () => {
@@ -54,6 +52,8 @@ describe("raw request bodies", () => {
         settled = true;
       },
     );
+    stream.emit("data", Buffer.from("four"));
+    stream.emit("data", Buffer.from("x"));
     await Promise.resolve();
     expect(settled).toBe(false);
     expect(stream.resume).toHaveBeenCalledOnce();
@@ -61,6 +61,34 @@ describe("raw request bodies", () => {
     stream.emit("end");
     await expect(body).rejects.toThrow("request body exceeds route limit");
     expect(settled).toBe(true);
+  });
+
+  it("closes the connection when an oversized body does not finish draining", async () => {
+    vi.useFakeTimers();
+    try {
+      const stream = request();
+      const body = readRawBody(stream.req as never, 3);
+      const rejected = expect(body).rejects.toThrow("request body exceeds route limit");
+      stream.emit("data", Buffer.from("four"));
+      expect(stream.resume).toHaveBeenCalledOnce();
+      expect(stream.destroy).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await rejected;
+      expect(stream.destroy).toHaveBeenCalledOnce();
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it("closes the connection when discarded overflow exceeds the body cap", async () => {
+    const stream = request();
+    const body = readRawBody(stream.req as never, 3);
+    const rejected = expect(body).rejects.toThrow("request body exceeds route limit");
+    stream.emit("data", Buffer.from("four"));
+    stream.emit("data", Buffer.alloc(4));
+    await rejected;
+    expect(stream.destroy).toHaveBeenCalledOnce();
   });
 
   it("propagates stream failures", async () => {
