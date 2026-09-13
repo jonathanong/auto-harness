@@ -139,6 +139,7 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
 
   const archiveMatch = /^\/api\/v1\/sessions\/([^/]+)\/archive$/.exec(url.pathname);
   if (method === "GET" && archiveMatch) {
+    res.setHeader("Cache-Control", "no-store");
     try {
       const session = await plane.getSessionDurable(archiveMatch[1]!);
       if (
@@ -148,10 +149,8 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
       ) {
         send(res, 404, { error: { code: "NOT_FOUND", message: "session not found" } });
       } else if (!isTerminalSessionStatus(session.status)) {
-        res.setHeader("Cache-Control", "no-store");
         send(res, 200, { state: "dynamodb" });
       } else {
-        res.setHeader("Cache-Control", "no-store");
         send(
           res,
           200,
