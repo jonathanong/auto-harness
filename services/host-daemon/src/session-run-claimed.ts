@@ -309,6 +309,9 @@ export async function runClaimedSession(
   }
 
   if (assign.resolvedArgv.length === 0) {
+    const hookEnvironment = installationToken
+      ? withInstallationToken(setup.environment, githubApp!, installationToken)
+      : setup.environment;
     return await finishClaimedSession(
       effectiveTerminalRunner,
       streamer,
@@ -322,7 +325,7 @@ export async function runClaimedSession(
         errorMessage: "no resolved command argv for this session",
         ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       },
-      authenticatedTerminalEnvironment,
+      hookEnvironment,
       baseline,
       true,
       githubApp,

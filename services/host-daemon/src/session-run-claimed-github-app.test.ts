@@ -294,7 +294,12 @@ describe("claimed session GitHub App credentials", () => {
           return { exitCode: 0, timedOut: false, signal: null };
         }
         setupEnv = options.env;
-        return { exitCode: 0, timedOut: false, signal: null, environment: { ...options.env } };
+        return {
+          exitCode: 0,
+          timedOut: false,
+          signal: null,
+          environment: { ...options.env, PATH: `/setup-bin:${options.env?.PATH ?? ""}` },
+        };
       },
     };
     const commandRunner: ProcessRunner = {
@@ -340,6 +345,7 @@ describe("claimed session GitHub App credentials", () => {
     expect(setupEnv?.GH_TOKEN).toBeUndefined();
     expect(hookEnv?.GH_TOKEN).toBe("ghs_exact-token");
     expect(hookEnv?.GIT_AUTHOR_NAME).toBe("auto-harness[bot]");
+    expect(hookEnv?.PATH).toMatch(/^\/setup-bin:/);
     expect(logs.map((chunk) => chunk.content).join("")).not.toContain("ghs_exact-token");
   });
 
