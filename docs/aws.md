@@ -339,7 +339,10 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
      not preempt an in-flight `processing` retry claim that already recorded captured transcript
      bytes for the current retry generation, so that worker can still complete the upload.
      Memory-only expiry consults the live in-memory row before writing the expired fence, so a
-     stale pending GET snapshot cannot expire that claim. Empty processing claims, reclaimed
+     stale pending GET snapshot cannot expire that claim. Memory-only retries also compare the live
+     claim with the owned retry before empty expiry or the object PUT, and again after the
+     retention log probe even when recent logs remain, so a mismatched, expired, or absent
+     generation cannot mutate a newer claim. Empty processing claims, reclaimed
      generations that no longer own the capture marker, and unclaimed pending rows with confirmed
      absent logs still expire.
      First-time archives persist pending metadata before the PUT so Cron can retry the same key.

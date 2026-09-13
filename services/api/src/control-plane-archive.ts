@@ -12,6 +12,19 @@ import {
   readArchiveMetadata,
 } from "./control-plane-archive-replace.ts";
 
+function liveInMemoryClaimBlocksEmptyExpiry(
+  claimed: ArchiveMetadata | undefined,
+  retryOrder: string,
+): boolean {
+  return (
+    claimed === undefined ||
+    claimed.status === "expired" ||
+    claimed.retryState !== "processing" ||
+    claimed.retryOrder !== retryOrder ||
+    (claimed.bodyBytes > 0 && claimed.capturedRetryOrder === claimed.retryOrder)
+  );
+}
+
 async function rewriteWinningArchive(
   state: ControlPlaneState,
   sessionId: string,
@@ -83,6 +96,7 @@ export async function archiveSessionLogs(
   const current = retryClaim ? null : await readArchiveMetadata(state, key);
   const replacement = isCompleteStoredArchive(current) ? archiveGeneration(current) : null;
   const legacyUnversioned = isCompleteStoredArchive(current) && !current.versionId;
+  const retryOrder = retryClaim?.retryOrder ?? `${state.now()}#${key}`;
   const pending: ArchiveMetadata = {
     key,
     contentType: object.contentType,
@@ -91,7 +105,7 @@ export async function archiveSessionLogs(
     objectStored: false,
     updatedAt: state.now(),
     retryState: retryClaim?.retryState ?? "pending",
-    retryOrder: retryClaim?.retryOrder ?? `${state.now()}#${key}`,
+    retryOrder,
   };
   let ownedRetry = retryClaim;
   if (!replacement) {
@@ -116,15 +130,22 @@ export async function archiveSessionLogs(
     if (!queued) return object;
     ownedRetry = {
       retryState: "processing",
-      retryOrder: retryPending.retryOrder ?? `${state.now()}#${key}`,
+      retryOrder,
     };
   }
-  if (ownedRetry && pending.bodyBytes === 0 && state.storage && !replacement) {
-    const existing = await state.storage.getArchive(object.key);
-    if (
-      archiveRetentionElapsed(state.now(), [existing?.updatedAt]) &&
-      !(await recentLogsRemain(state, sessionId))
-    ) {
+  if (ownedRetry && pending.bodyBytes === 0 && !replacement) {
+    const claimed = state.archives.get(object.key);
+    if (!state.storage && liveInMemoryClaimBlocksEmptyExpiry(claimed, ownedRetry.retryOrder)) {
+      return object;
+    }
+    const existing = state.storage ? await state.storage.getArchive(object.key) : claimed;
+    if (archiveRetentionElapsed(state.now(), [existing?.updatedAt])) {
+      const logsRemain = await recentLogsRemain(state, sessionId);
+      const latest = state.archives.get(object.key);
+      if (!state.storage && liveInMemoryClaimBlocksEmptyExpiry(latest, ownedRetry.retryOrder)) {
+        return object;
+      }
+      if (logsRemain) return object;
       await persistExpiredArchive(state, object.key, {
         ...pending,
         retryState: "processing",
@@ -135,6 +156,13 @@ export async function archiveSessionLogs(
   }
   if (ownedRetry && pending.bodyBytes > 0) {
     const claimed = state.archives.get(object.key);
+    if (!state.storage) {
+      if (claimed === undefined || claimed.status === "expired") return object;
+      if (claimed.retryState !== "processing" || claimed.retryOrder !== ownedRetry.retryOrder) {
+        await rewriteWinningArchive(state, sessionId, object.key);
+        return object;
+      }
+    }
     if (
       claimed?.retryState === "processing" &&
       claimed.retryOrder === ownedRetry.retryOrder &&
