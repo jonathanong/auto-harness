@@ -489,6 +489,9 @@ describe("isolated GitHub pull-ref fetch", () => {
             "--show-object-format=storage",
           ]);
           options.onChunk({ stream: "stdout", data: "sha1\n" });
+        } else if (args[0] === "ls-files") {
+          expect(args).toEqual(["ls-files", "-v", "-z"]);
+          materializationEnvironment = options.env;
         } else {
           expect(args).toEqual(["read-tree", "--reset", "-u", "--no-sparse-checkout", pullSha]);
           materializationEnvironment = options.env;
@@ -515,6 +518,47 @@ describe("isolated GitHub pull-ref fetch", () => {
       GIT_INDEX_FILE: "/srv/repository/.git/worktrees/one/index",
     });
     expect(materializationEnvironment?.GIT_DIR).not.toContain("auto-harness-pull-checkout-");
+  });
+
+  it("clears hidden index flags on the isolated index before read-tree", async () => {
+    const commands: string[][] = [];
+    const runner = {
+      async run(options: import("./executor.ts").RunProcessOptions) {
+        const args = options.argv.slice(1);
+        commands.push(args);
+        if (args[0] === "--git-dir") {
+          options.onChunk({ stream: "stdout", data: "sha1\n" });
+        } else if (args[0] === "ls-files") {
+          options.onChunk({ stream: "stdout", data: "S tracked.txt\0h obstructed.txt\0" });
+        }
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+
+    await expect(
+      materializeGitHubPullRequestRef(
+        runner,
+        "/etc/auto-harness/pull-ref-materializers/sha1.git",
+        cwd,
+        pullSha,
+        "/srv/repository/.git/objects",
+        "/srv/repository/.git/worktrees/one/index",
+        "sha1",
+      ),
+    ).resolves.toBe(true);
+
+    expect(commands).toEqual([
+      [
+        "--git-dir",
+        "/etc/auto-harness/pull-ref-materializers/sha1.git",
+        "rev-parse",
+        "--show-object-format=storage",
+      ],
+      ["ls-files", "-v", "-z"],
+      ["update-index", "--no-assume-unchanged", "--", "obstructed.txt"],
+      ["update-index", "--no-skip-worktree", "--", "tracked.txt"],
+      ["read-tree", "--reset", "-u", "--no-sparse-checkout", pullSha],
+    ]);
   });
 
   it("fails closed when the selected immutable materializer uses the wrong object format", async () => {
