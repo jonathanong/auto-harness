@@ -182,10 +182,12 @@ describe("GET /api/v1/sessions/:id/archive", () => {
   it("distinguishes recent and unavailable transcripts", async () => {
     const { plane, invoke, own } = await harness();
     const path = `/api/v1/sessions/${own.id}/archive`;
-    await expect(invoke("GET", path)).resolves.toMatchObject({
+    const recent = await invoke("GET", path);
+    expect(recent).toMatchObject({
       status: 200,
       json: { state: "dynamodb" },
     });
+    expect(recent.headers.get("cache-control")).toBe("no-store");
     plane.state.archives.set(`sessions/${own.id}/logs.jsonl`, {
       key: `sessions/${own.id}/logs.jsonl`,
       versionId: "archive-v1",
@@ -204,8 +206,12 @@ describe("GET /api/v1/sessions/:id/archive", () => {
   it("does not probe S3 for unknown or out-of-scope sessions", async () => {
     const { invoke, other, downloads } = await harness();
 
-    expect((await invoke("GET", `/api/v1/sessions/${other.id}/archive`)).status).toBe(404);
-    expect((await invoke("GET", "/api/v1/sessions/missing/archive")).status).toBe(404);
+    const missing = await invoke("GET", `/api/v1/sessions/${other.id}/archive`);
+    const unknown = await invoke("GET", "/api/v1/sessions/missing/archive");
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get("cache-control")).toBe("no-store");
+    expect(unknown.status).toBe(404);
+    expect(unknown.headers.get("cache-control")).toBe("no-store");
     expect(downloads).toEqual([]);
   });
 
@@ -236,6 +242,7 @@ describe("GET /api/v1/sessions/:id/archive", () => {
 
     const res = await invoke("GET", `/api/v1/sessions/${own.id}/archive`);
     expect(res.status).toBe(500);
+    expect(res.headers.get("cache-control")).toBe("no-store");
     expect(res.json).toMatchObject({ error: { code: "INTERNAL_ERROR" } });
   });
 });
