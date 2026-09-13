@@ -220,14 +220,16 @@ export async function resetInitializedSubmodules(
     environment,
   );
   if (synced.exitCode !== 0) throw gitFailure("Failed to sync submodules", synced.stderr);
+  const fetched = await runGit(runner, cwd, ["fetch", "--recurse-submodules"], signal, environment);
+  if (fetched.exitCode !== 0) {
+    throw checkoutFetchFailure("Failed to fetch submodule objects", fetched.stderr);
+  }
   const updated = await runGit(
     runner,
     cwd,
-    ["submodule", "update", "--recursive", "--checkout", "--force"],
+    ["submodule", "update", "--recursive", "--checkout", "--force", "--no-fetch"],
     signal,
     environment,
   );
-  if (updated.exitCode !== 0) {
-    throw checkoutFetchFailure("Failed to update submodules", updated.stderr);
-  }
+  if (updated.exitCode !== 0) throw gitFailure("Failed to update submodules", updated.stderr);
 }

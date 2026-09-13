@@ -152,7 +152,7 @@ describe("SessionRunner claim and checkout failures", () => {
       ensureRepo: async () => undefined,
       ensureWorktree: async () => undefined,
       checkoutRef: async () => {
-        throw checkoutFetchFailure("Failed to update submodules", "Could not resolve host");
+        throw checkoutFetchFailure("Failed to fetch submodule objects", "Could not resolve host");
       },
       prepareMainCheckout: async () => undefined,
       revParse: async () => "x",
