@@ -1,4 +1,4 @@
-import { normalizeSessionResult, thrownMessage } from "@auto-harness/shared";
+import { harnessSessionResult, normalizeSessionResult, thrownMessage } from "@auto-harness/shared";
 import type {
   SessionAssign,
   SessionErrorCode,
@@ -63,9 +63,7 @@ type ClaimedHookTarget = {
 };
 
 /** Every daemon-owned terminal path has a queryable fallback, even without a checkout. */
-export function harnessSessionResult(status: SessionTerminalStatus): SessionResult {
-  return { summary: `Session ${status}`, summarySource: "harness" };
-}
+export { harnessSessionResult };
 
 /** A stale claim can still report the agent's own outcome without probing its old checkout. */
 function summaryOnlySessionResult(outcome: SessionOutcome): SessionResult {

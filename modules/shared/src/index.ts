@@ -49,9 +49,11 @@ export {
   MAX_SESSION_RESULT_URL_BYTES,
   MAX_SESSION_RESULT_FILES,
   MAX_SESSION_RESULT_FILE_BYTES,
+  harnessSessionResult,
   isSessionResult,
   normalizeSessionResult,
 } from "./session-result.ts";
+export { resolveTerminalHookCompletionResult } from "./terminal-hook-handoff.ts";
 export type {
   WorkspacePoolAttachment,
   WorkspaceSessionInput,

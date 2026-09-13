@@ -213,8 +213,12 @@ describe("DynamoDB Local terminal hook handoffs", () => {
         handoffId: handoff.handoffId,
         hostId: handoff.hostId,
         connectionId: "current-connection",
+        result: { summary: "late replacement", summarySource: "agent" },
       }),
     ).toBe(true);
+    await expect(getSession(ctx, "finish-handoff")).resolves.toMatchObject({
+      result: { summary: "post-hook", summarySource: "harness" },
+    });
   });
 
   it("expires only the exact unclaimed handoff and preserves unexpected Dynamo failures", async () => {

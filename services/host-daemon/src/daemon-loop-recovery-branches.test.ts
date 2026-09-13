@@ -90,6 +90,7 @@ describe("DaemonLoop recovery branch coverage", () => {
         type: "session:terminal-hook-complete",
         sessionId: "session-complete",
         handoffId: "complete",
+        result: { summary: "Session failed", summarySource: "harness" },
       });
     } finally {
       cleanup();

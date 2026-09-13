@@ -21,6 +21,8 @@ describe("package exports", () => {
     expect(shared.COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION).toBe(4);
     expect(shared.DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION).toBe(6);
     expect(shared.TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION).toBe(7);
+    expect(typeof shared.harnessSessionResult).toBe("function");
+    expect(typeof shared.resolveTerminalHookCompletionResult).toBe("function");
     expect(shared.KEEPALIVE_ACK_PROTOCOL_VERSION).toBe(2);
     expect(typeof shared.isHostRunningAttempt).toBe("function");
     expect(typeof shared.validateCommandExecutable).toBe("function");

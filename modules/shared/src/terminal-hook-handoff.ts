@@ -1,5 +1,6 @@
+import { DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION } from "./constants.ts";
 import type { SessionErrorCode, SessionStatus } from "./types.ts";
-import type { SessionResult } from "./session-result.ts";
+import { harnessSessionResult, type SessionResult } from "./session-result.ts";
 
 /** Durable disposition for a terminal status whose local hook may still be retained. */
 export type TerminalStatusAcknowledgedMessage = {
@@ -41,3 +42,18 @@ export type TerminalHookAcknowledgedMessage = {
   handoffId: string;
   sessionId: string;
 };
+
+/**
+ * Protocol v6 deferred-result completions always persist a bounded result.
+ * v5 host-loss completions from older daemons may omit one.
+ */
+export function resolveTerminalHookCompletionResult(
+  protocolVersion: number,
+  status: TerminalHookHandoffMessage["status"],
+  result?: SessionResult,
+): SessionResult | undefined {
+  if (result) return result;
+  return protocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION
+    ? harnessSessionResult(status)
+    : undefined;
+}

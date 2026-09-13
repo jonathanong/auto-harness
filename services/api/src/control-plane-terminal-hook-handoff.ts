@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- handoff delivery, settlement, and expiry share one lifecycle boundary. */
 import {
+  resolveTerminalHookCompletionResult,
   TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION,
   type HostWireMessage,
 } from "@auto-harness/shared";
@@ -120,6 +121,7 @@ export async function settleTerminalHookHandoff(
     handoffId: string;
     hostId: string;
     connectionId?: string;
+    protocolVersion?: number;
     result?: import("@auto-harness/shared").SessionResult;
   },
 ): Promise<boolean> {
@@ -139,6 +141,17 @@ export async function settleTerminalHookHandoff(
     );
   }
   const archive = pendingArchiveIntent(state, input.sessionId);
+  // Durable AWS invocations pass the authenticated socket protocol via
+  // `input.protocolVersion`. The process connection cache is not a fallback
+  // on that path: a warm Lambda may not have seen the original register.
+  const protocolVersion =
+    input.protocolVersion ??
+    (input.connectionId === undefined
+      ? 0
+      : connectionProtocolVersion(state.connections.get(input.connectionId)));
+  const result =
+    session.result ??
+    resolveTerminalHookCompletionResult(protocolVersion, handoff.status, input.result);
   const settled = state.storage
     ? input.connectionId !== undefined &&
       (await state.storage.settleTerminalHookHandoff({
@@ -149,14 +162,14 @@ export async function settleTerminalHookHandoff(
         worktreeId: handoff.worktreeId,
         archive,
         ...(handoff.mainCheckoutLease ? { mainCheckoutRepositoryId: handoff.repositoryId } : {}),
-        ...(input.result ? { result: input.result } : {}),
+        ...(result ? { result } : {}),
       }))
     : input.connectionId !== undefined &&
       state.hostConnection.get(input.hostId) === input.connectionId;
   if (!settled) return false;
   releaseReservedWorktree(state, session.id, handoff.worktreeId);
   releaseReservedMainCheckout(state, session.id, handoff);
-  const next = { ...session, ...(input.result ? { result: input.result } : {}) };
+  const next = { ...session, ...(result && !session.result ? { result } : {}) };
   delete next.terminalHookHandoff;
   delete next.activeHostId;
   delete next.activeHostOrder;
