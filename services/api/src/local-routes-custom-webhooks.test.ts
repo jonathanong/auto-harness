@@ -567,6 +567,33 @@ describe("custom webhook receiver", () => {
     ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
   });
 
+  it("round-trips GET, update, and delete for a stored row without generation", async () => {
+    const { plane, handler } = await fixture();
+    const record = await plane.getCustomWebhookIntegrationRecord("deploy");
+    if (!record) throw new Error("expected record");
+    delete record.generation;
+    plane.state.customWebhookIntegrations.set("deploy", record);
+    expect(await invokeHandler(handler, "GET", "/api/v1/integrations/custom/deploy")).toMatchObject(
+      { status: 200, json: { generation: "legacy" } },
+    );
+    expect(
+      await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/deploy", {
+        repositoryId: "repo",
+        target: { providerId: "provider" },
+        timeout: 60,
+        version: 1,
+        generation: "legacy",
+      }),
+    ).toMatchObject({ status: 200, json: { version: 2 } });
+    const updated = await plane.getCustomWebhookIntegrationRecord("deploy");
+    expect(
+      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy", undefined, {
+        "if-match": "2",
+        "if-match-generation": updated?.generation ?? "legacy",
+      }),
+    ).toMatchObject({ status: 204 });
+  });
+
   it("verifies the raw body, applies operator routing, and asynchronously acknowledges", async () => {
     const { plane, handler } = await fixture();
     const body = { prompt: "run deploy", idempotencyKey: "delivery-1", ref: "main" };

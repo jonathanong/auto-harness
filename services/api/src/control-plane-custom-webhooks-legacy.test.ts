@@ -45,6 +45,9 @@ describe("legacy custom webhook integrations", () => {
     const legacy = await plane.getCustomWebhookIntegrationRecord("deploy");
     expect(legacy).not.toBeNull();
     delete legacy!.generation;
+    await expect(plane.getCustomWebhookIntegration("deploy")).resolves.toMatchObject({
+      generation: "legacy",
+    });
 
     await expect(
       plane.updateCustomWebhookIntegration({

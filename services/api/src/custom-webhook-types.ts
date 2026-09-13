@@ -8,8 +8,8 @@ export function isValidCustomWebhookId(value: string): boolean {
 
 export type PublicCustomWebhookIntegration = Omit<
   CustomWebhookIntegrationRecord,
-  "encryptedSecret"
-> & { secretConfigured: true };
+  "encryptedSecret" | "generation"
+> & { secretConfigured: true; generation: string };
 
 export type CustomWebhookConfigInput = {
   id: string;
@@ -32,6 +32,6 @@ export function customWebhookEncryptionContext(id: string): Record<string, strin
 export function toPublicCustomWebhookIntegration(
   record: CustomWebhookIntegrationRecord,
 ): PublicCustomWebhookIntegration {
-  const { encryptedSecret: _encryptedSecret, ...publicRecord } = record;
-  return { ...publicRecord, secretConfigured: true };
+  const { encryptedSecret: _encryptedSecret, generation, ...publicRecord } = record;
+  return { ...publicRecord, generation: generation ?? "legacy", secretConfigured: true };
 }
