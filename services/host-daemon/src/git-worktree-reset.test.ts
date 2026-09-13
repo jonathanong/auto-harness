@@ -191,4 +191,37 @@ describe("resetPriorWorktreeState", () => {
 
     expect(updates).toHaveLength(3);
   });
+
+  it("round-trips flagged path bytes through stdin instead of argv", async () => {
+    const { cwd, gitDir } = fixture();
+    const cafePrefix = `${Buffer.from("S ").toString("latin1")}${Buffer.from([0xc3]).toString("latin1")}`;
+    const cafeRest = Buffer.from([0xa9, 0x2e, 0x74, 0x78, 0x74, 0x00]).toString("latin1");
+    const invalid = Buffer.from([0x53, 0x20, 0xff, 0x2e, 0x62, 0x69, 0x6e, 0x00]).toString(
+      "latin1",
+    );
+    const updates: Array<{ argv: string[]; stdin?: Buffer }> = [];
+    const runner: ProcessRunner = {
+      async run(options) {
+        if (options.argv[1] === "ls-files") {
+          expect(options.outputEncoding).toBe("latin1");
+          options.onChunk({ stream: "stdout", data: cafePrefix });
+          options.onChunk({ stream: "stdout", data: cafeRest + invalid });
+        } else {
+          updates.push({ argv: options.argv.slice(1), stdin: options.stdin });
+        }
+        return processResult();
+      },
+    };
+
+    await resetPriorWorktreeState(runner, cwd, gitDir);
+
+    expect(updates).toEqual([
+      {
+        argv: ["update-index", "--no-skip-worktree", "-z", "--stdin"],
+        stdin: Buffer.from([
+          0xc3, 0xa9, 0x2e, 0x74, 0x78, 0x74, 0x00, 0xff, 0x2e, 0x62, 0x69, 0x6e, 0x00,
+        ]),
+      },
+    ]);
+  });
 });

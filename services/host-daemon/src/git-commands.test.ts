@@ -367,6 +367,33 @@ describe("runGit executable resolution", () => {
     expect(result.stdout).toBe(output);
   });
 
+  it("forwards latin1 stdout capture and stdin bytes", async () => {
+    let outputEncoding: string | undefined;
+    let stdin: Buffer | undefined;
+    const listed = Buffer.from([0x53, 0x20, 0xff, 0x00]).toString("latin1");
+    const result = await runGit(
+      {
+        async run(options) {
+          outputEncoding = options.outputEncoding;
+          stdin = options.stdin;
+          options.onChunk({ stream: "stdout", data: listed });
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+      "/repo",
+      ["update-index", "-z", "--stdin"],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { stdoutEncoding: "latin1", stdin: Buffer.from([0xff, 0x00]) },
+    );
+
+    expect(outputEncoding).toBe("latin1");
+    expect(stdin).toEqual(Buffer.from([0xff, 0x00]));
+    expect(result.stdout).toBe(listed);
+  });
+
   it("fails closed when structured Git stdout exceeds its total capture bound", async () => {
     await expect(
       runGit(

@@ -42,6 +42,13 @@ export type RunProcessOptions = {
    * must leave this unset so one noisy read cannot bypass the transport limit.
    */
   preserveOutputChunks?: boolean;
+  /**
+   * Decode preserved stdout/stderr with this encoding. Latin-1 keeps each
+   * captured byte so NUL-delimited Git path lists survive chunk splits.
+   */
+  outputEncoding?: "utf8" | "latin1";
+  /** Optional stdin bytes for porcelain that cannot round-trip paths through argv. */
+  stdin?: Buffer;
   onChunk: (chunk: OutputChunk) => void;
 };
 
@@ -129,8 +136,14 @@ export class SpawnProcessRunner implements ProcessRunner {
         // A detached POSIX child starts a process group. This makes timeout and
         // cancellation kill helpers that a CLI may have spawned as well.
         detached: this.platform !== "win32",
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: [options.stdin ? "pipe" : "ignore", "pipe", "pipe"],
       });
+      if (options.stdin) {
+        child.stdin?.on("error", () => {
+          /* The child can close stdin before the bounded write finishes. */
+        });
+        child.stdin?.end(options.stdin);
+      }
 
       let timedOut = false;
       let cancelled = false;
@@ -209,7 +222,7 @@ export class SpawnProcessRunner implements ProcessRunner {
 
       const emitChunk = (stream: OutputChunk["stream"], buf: Buffer): void => {
         if (options.preserveOutputChunks) {
-          options.onChunk({ stream, data: buf.toString("utf8") });
+          options.onChunk({ stream, data: buf.toString(options.outputEncoding ?? "utf8") });
           return;
         }
         // Keep a malicious/noisy process from allocating unbounded memory in

@@ -164,6 +164,7 @@ export async function clearTrackedPathFlags(
     environment,
     undefined,
     MAX_CAPTURED_GIT_STDOUT_BYTES * 2,
+    { stdoutEncoding: "latin1" },
   );
   if (listed.exitCode !== 0) throw gitFailure("Failed to inspect tracked files", listed.stderr);
   const paths = flaggedTrackedPaths(listed.stdout);
@@ -175,9 +176,12 @@ export async function clearTrackedPathFlags(
       const updated = await runGit(
         runner,
         cwd,
-        ["update-index", flag, "--", ...chunk],
+        ["update-index", flag, "-z", "--stdin"],
         signal,
         environment,
+        undefined,
+        undefined,
+        { stdin: Buffer.from(`${chunk.join("\0")}\0`, "latin1") },
       );
       if (updated.exitCode !== 0) {
         throw gitFailure("Failed to clear tracked-file index flags", updated.stderr);

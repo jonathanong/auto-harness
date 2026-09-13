@@ -13,9 +13,17 @@ const MAX_CAPTURED_GIT_STDERR_BYTES = 64 * 1_024;
 const DIAGNOSTIC_TRUNCATION_MARKER = " [diagnostic truncated]";
 const OUTPUT_CHUNK_TRUNCATION_MARKER = "[output chunk truncated]";
 
-function appendBounded(current: string, next: string, maxBytes: number): string {
-  const remaining = maxBytes - Buffer.byteLength(current, "utf8");
+type GitStdoutEncoding = "utf8" | "latin1";
+
+function appendBounded(
+  current: string,
+  next: string,
+  maxBytes: number,
+  encoding: GitStdoutEncoding = "utf8",
+): string {
+  const remaining = maxBytes - Buffer.byteLength(current, encoding);
   if (remaining <= 0) return current;
+  if (encoding === "latin1") return current + next.slice(0, remaining);
   return current + truncateUtf8(next, remaining);
 }
 
@@ -176,12 +184,14 @@ export async function runGit(
   environment: NodeJS.ProcessEnv = { ...createChildEnv(), GIT_NO_REPLACE_OBJECTS: "1" },
   platform: NodeJS.Platform = process.platform,
   stdoutLimitBytes = MAX_CAPTURED_GIT_STDOUT_BYTES,
+  capture?: { stdoutEncoding?: GitStdoutEncoding; stdin?: Buffer },
 ): Promise<GitResult> {
   let stdout = "";
   let stdoutCaptureTruncated = false;
   let stderr = "";
   let stderrCaptureTruncated = false;
   let discardStderrContinuation = false;
+  const stdoutEncoding = capture?.stdoutEncoding ?? "utf8";
   const result = await runner.run({
     argv: [resolveTrustedExecutable("git", environment, platform), ...args],
     cwd,
@@ -192,15 +202,17 @@ export async function runGit(
     // marker into an authoritative filename.
     preserveOutputChunks: true,
     ...(signal ? { signal } : {}),
+    ...(stdoutEncoding === "latin1" ? { outputEncoding: "latin1" as const } : {}),
+    ...(capture?.stdin ? { stdin: capture.stdin } : {}),
     onChunk: (c) => {
       if (c.stream === "stdout") {
         if (
-          Buffer.byteLength(c.data, "utf8") >
-          stdoutLimitBytes - Buffer.byteLength(stdout, "utf8")
+          Buffer.byteLength(c.data, stdoutEncoding) >
+          stdoutLimitBytes - Buffer.byteLength(stdout, stdoutEncoding)
         ) {
           stdoutCaptureTruncated = true;
         }
-        stdout = appendBounded(stdout, c.data, stdoutLimitBytes);
+        stdout = appendBounded(stdout, c.data, stdoutLimitBytes, stdoutEncoding);
       } else {
         if (c.data.includes(OUTPUT_CHUNK_TRUNCATION_MARKER)) {
           stderr = discardTrailingLine(stderr);
