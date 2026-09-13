@@ -16,6 +16,7 @@ function updatePersistedDaemonEnv(contents: string, env: NodeJS.ProcessEnv): str
   const updaterKeys = new Set([
     "HARNESS_HOST_SENTRY_DSN",
     "HARNESS_GITHUB_APP_CONFIG",
+    "HARNESS_GITHUB_PULL_REF_CONFIG",
     "HARNESS_UPDATE_MANIFEST_URL",
     "HARNESS_UPDATE_PUBLIC_KEY",
     "HARNESS_UPDATE_INSTALL_DIR",

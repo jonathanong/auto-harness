@@ -205,6 +205,37 @@ describe("persisted service environment validation", () => {
     expect(updated).not.toContain("updates.example.test");
   });
 
+  it("persists, retains, and clears an optional GitHub pull-ref policy path", () => {
+    const original =
+      "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com\nHARNESS_API_KEY=secret\n";
+    const withPolicy = preparePersistedEnv({
+      existing: original,
+      example: "",
+      env: { HARNESS_GITHUB_PULL_REF_CONFIG: "/etc/auto-harness/pull-refs.json" },
+    }).contents;
+    expect(withPolicy).toContain("HARNESS_GITHUB_PULL_REF_CONFIG=/etc/auto-harness/pull-refs.json");
+    const retained = preparePersistedEnv({
+      existing: withPolicy,
+      example: "",
+      env: {},
+    }).contents;
+    expect(retained).toContain("HARNESS_GITHUB_PULL_REF_CONFIG=/etc/auto-harness/pull-refs.json");
+    const cleared = preparePersistedEnv({
+      existing: withPolicy,
+      example: "",
+      env: { HARNESS_GITHUB_PULL_REF_CONFIG: "" },
+    }).contents;
+    expect(cleared).toContain("HARNESS_GITHUB_PULL_REF_CONFIG=\n");
+    expect(cleared).not.toContain("pull-refs.json");
+    expect(
+      preparePersistedEnv({
+        existing: withPolicy,
+        example: "",
+        env: { HARNESS_GITHUB_PULL_REF_CONFIG: "pull-refs.json" },
+      }),
+    ).toEqual({ contents: withPolicy, errors: ["HARNESS_GITHUB_PULL_REF_CONFIG"] });
+  });
+
   it("persists and clears an optional host Sentry DSN", () => {
     const original =
       "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com\nHARNESS_API_KEY=secret\n";

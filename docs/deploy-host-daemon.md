@@ -266,7 +266,7 @@ On the agent host:
 | `HARNESS_API_KEY`                | Service account `hns_…`                                                                                                                                                                                                                                                                                                                                                                                            |
 | `HARNESS_CHILD_ENV_ALLOWLIST`    | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`). Every listed name must also be defined in the persisted service environment; installation and daemon startup reject malformed, reserved, duplicate, or undefined names without printing their values. Empty defined values are allowed.                                                             |
 | `HARNESS_GITHUB_APP_CONFIG`      | Optional native-absolute path to a host-local GitHub App config JSON file. `install-service` uses the target host platform's path rules (the same `path.isAbsolute` contract the daemon applies at startup), so a Windows-shaped path is refused on POSIX before it is persisted. It is not a child allowlist entry: the daemon mints and injects the per-session `GH_TOKEN` itself.                               |
-| `HARNESS_GITHUB_PULL_REF_CONFIG` | Optional absolute path to host-local immutable pull-request fetch policy. Required to run sessions against `refs/pull/<number>/head`; never add it to the child allowlist.                                                                                                                                                                                                                                         |
+| `HARNESS_GITHUB_PULL_REF_CONFIG` | Optional absolute path to host-local immutable pull-request fetch policy. Required to run sessions against `refs/pull/<number>/head`; never add it to the child allowlist. `install-service` persists it; an explicit empty value clears a previously stored path. Omission retains the current value.                                                                                                             |
 | `HARNESS_UPDATE_MANIFEST_URL`    | Optional HTTPS signed-update manifest. Set this and `HARNESS_UPDATE_PUBLIC_KEY` together to enable updates.                                                                                                                                                                                                                                                                                                        |
 | `HARNESS_UPDATE_PUBLIC_KEY`      | Ed25519 PEM used to verify the update manifest. In an EnvironmentFile, encode line breaks as literal `\\n`.                                                                                                                                                                                                                                                                                                        |
 | `HARNESS_UPDATE_INSTALL_DIR`     | Optional persistent signed-update root. It must be an absolute path on every platform. On Linux it defaults to `/opt/auto-harness`; every path component through a custom root must be a root-owned, non-writable, non-symlink directory. Its `current`/`releases` contents stay root-owned while only `incoming` is writable by `harness`. The writable deployment checkout is `staging/` beneath that same root. |
@@ -403,7 +403,23 @@ after assignment and therefore are not advertised as ambient host environment ca
 To enable `refs/pull/<number>/head`, create a root-owned mode-`0644` policy file, or a root-owned
 `root:harness` mode-`0640` policy file, outside every checkout and set its absolute path as
 `HARNESS_GITHUB_PULL_REF_CONFIG`. Every parent directory and the file itself must be root-owned,
-non-group/world-writable, and free of symlinks.
+non-group/world-writable, and free of symlinks. To remove a previously persisted path, pass an
+explicit empty `HARNESS_GITHUB_PULL_REF_CONFIG=''` into `install-service`; omitting the variable
+retains the current value.
+
+On Linux, `/etc/auto-harness/host-daemon.env` is root-owned, so this update needs `sudo` — and
+plain `sudo` resets the environment, silently dropping an exported empty value. `install-service`
+would then retain the old path, or fail persisted-identity validation instead of clearing it. Pass
+both `HARNESS_ENV_FILE` and the empty key to `sudo env` explicitly, the same pattern already used
+above for execution profiles:
+
+```bash
+sudo env \
+  HARNESS_ENV_FILE=/etc/auto-harness/host-daemon.env \
+  HARNESS_GITHUB_PULL_REF_CONFIG='' \
+  pnpm local:daemon install-service
+```
+
 Create one immutable bare materializer for each Git object format before enabling this policy. The
 directories, every descendant (including `config` and `info/`), and every ancestor must be
 root-owned, symlink-free, and non-writable; the materializers are read-only Git metadata, not
