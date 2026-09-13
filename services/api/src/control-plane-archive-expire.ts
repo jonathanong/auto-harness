@@ -46,13 +46,17 @@ function isCapturedCurrentRetry(metadata: ArchiveMetadata): boolean {
   );
 }
 
+function isStoredCompleteArchive(metadata: ArchiveMetadata | null | undefined): boolean {
+  return metadata?.status === "complete" && metadata.objectStored === true;
+}
+
 /** Persist a terminal expired fence, or report that a complete winner already exists. */
 export async function persistExpiredArchive(
   state: ControlPlaneState,
   key: string,
   metadata: ArchiveMetadata,
 ): Promise<ArchiveExpirePersistResult> {
-  if (metadata.status === "complete") return "complete";
+  if (isStoredCompleteArchive(metadata)) return "complete";
   if (metadata.status === "expired") {
     mirrorExpired(state, key, metadata);
     return "expired";
@@ -63,10 +67,10 @@ export async function persistExpiredArchive(
       const latest = await storage.getArchive(key);
       if (latest) state.archives.set(key, latest);
       if (latest?.status === "expired") return "expired";
-      if (latest?.status === "complete") return "complete";
+      if (isStoredCompleteArchive(latest)) return "complete";
     } else {
       const current = state.archives.get(key) ?? metadata;
-      if (current.status === "complete") return "complete";
+      if (isStoredCompleteArchive(current)) return "complete";
     }
     return "pending";
   }
@@ -83,11 +87,11 @@ export async function persistExpiredArchive(
     const latest = await storage.getArchive(key);
     if (latest) state.archives.set(key, latest);
     if (latest?.status === "expired") return "expired";
-    if (latest?.status === "complete") return "complete";
+    if (isStoredCompleteArchive(latest)) return "complete";
     return "pending";
   }
   const current = state.archives.get(key) ?? metadata;
-  if (current.status === "complete") return "complete";
+  if (isStoredCompleteArchive(current)) return "complete";
   if (isCapturedCurrentRetry(current)) return "pending";
   mirrorExpired(state, key, current);
   return "expired";

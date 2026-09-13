@@ -1290,6 +1290,32 @@ describe("archive retry state", () => {
     });
   });
 
+  it("expires a complete unstored in-memory retry so later sweeps do not reclaim it", async () => {
+    const state = createControlPlaneState({
+      now: () => "2026-01-08T00:00:00.000Z",
+      archiveWriter: {
+        putArchive: async () => {
+          throw new Error("empty unstored complete should expire");
+        },
+      },
+    });
+    const key = "sessions/unstored-complete/logs.jsonl";
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "complete",
+      objectStored: false,
+      retryState: "pending",
+      retryOrder: "claim-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await expect(retryPendingArchives(state)).resolves.toBe(1);
+    expect(state.archives.get(key)).toMatchObject({ status: "expired" });
+    expect(state.archives.get(key)?.retryState).toBeUndefined();
+    await expect(retryPendingArchives(state)).resolves.toBe(0);
+  });
+
   it("includes processing retries and sorts missing retry orders by archive key", async () => {
     const uploaded: string[] = [];
     const state = createControlPlaneState({

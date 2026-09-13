@@ -256,4 +256,18 @@ describe("archive expire persistence", () => {
     await expect(persistExpiredArchive(state, pending.key, pending)).resolves.toBe("complete");
     expect(state.archives.get(pending.key)?.status).toBe("complete");
   });
+
+  it("expires a complete in-memory row that never stored an object", async () => {
+    const state = createControlPlaneState({ now: () => "now" });
+    const unstored: ArchiveMetadata = {
+      ...pending,
+      status: "complete",
+      objectStored: false,
+    };
+    state.archives.set(unstored.key, unstored);
+    await expect(persistExpiredArchive(state, unstored.key, unstored)).resolves.toBe("expired");
+    expect(state.archives.get(unstored.key)?.status).toBe("expired");
+    expect(state.archives.get(unstored.key)).not.toHaveProperty("retryState");
+    expect(state.archives.get(unstored.key)).not.toHaveProperty("retryOrder");
+  });
 });

@@ -344,7 +344,8 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
      retention log probe even when recent logs remain, so a mismatched, expired, or absent
      generation cannot mutate a newer claim. Empty processing claims, reclaimed
      generations that no longer own the capture marker, and unclaimed pending rows with confirmed
-     absent logs still expire.
+     absent logs still expire. A complete in-memory row with no stored object is expired the same
+     way, so a disappeared writer cannot leave retry attributes that sweeps reclaim forever.
      First-time archives persist pending metadata before the PUT so Cron can retry the same key.
      A complete, stored, version-pinned archive keeps that metadata until a replacement object
      version is committed; a failed replacement leaves the prior complete row downloadable. A
