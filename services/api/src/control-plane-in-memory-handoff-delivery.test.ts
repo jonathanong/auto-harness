@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- registration, keepalive retry, and requeue branches share this fixture. */
 import { describe, expect, it } from "vitest";
 
 import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
@@ -159,5 +160,69 @@ describe("in-memory recovery handoff delivery", () => {
         }),
       ],
     });
+  });
+
+  it("returns a failed storage-less replacement register without listing handoffs", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    expect(
+      handleHostMessage(state, {
+        type: "host:register",
+        hostId: "host",
+        worktrees: [],
+        protocolVersion: 7,
+      }),
+    ).toEqual({ ok: true });
+
+    await expect(
+      handleHostMessageDurable(state, {
+        type: "host:register",
+        hostId: "host",
+        worktrees: [],
+        protocolVersion: 7,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "hostId host already has an active connection",
+    });
+  });
+
+  it("requeues omitted in-memory sessions from a keepalive before listing handoffs", async () => {
+    const state = createControlPlaneState({ now: () => NOW, idFactory: () => "handoff" });
+    expect(
+      handleHostMessage(state, {
+        type: "host:register",
+        hostId: "host",
+        worktrees: [],
+        protocolVersion: 7,
+      }),
+    ).toEqual({ ok: true });
+    state.sessions.set(
+      "session",
+      running({ ackReceivedAt: NOW, primaryCommandStartState: "pending" }),
+    );
+    state.worktrees.set("worktree", busyWorktree());
+
+    await expect(
+      handleHostMessageDurable(state, {
+        type: "host:keepalive",
+        hostId: "host",
+        at: NOW,
+        runningSessions: [],
+      }),
+    ).resolves.toEqual({ ok: true });
+    expect(state.sessions.get("session")?.status).toBe("queued");
+  });
+
+  it("does not list handoffs for a disconnected local keepalive", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    state.sessions.set("session", pendingHandoff());
+
+    await expect(
+      handleHostMessageDurable(state, {
+        type: "host:keepalive",
+        hostId: "host",
+        at: NOW,
+      }),
+    ).resolves.toEqual({ ok: false, error: "agent not connected" });
   });
 });
