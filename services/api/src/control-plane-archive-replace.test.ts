@@ -622,6 +622,46 @@ describe("archive replacement preserves the last complete generation", () => {
     });
   });
 
+  it("does not PUT an empty durable legacy replacement after the capture fence loses", async () => {
+    let uploaded = 0;
+    const current = storedComplete("legacy-empty-capture-lost");
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+      storage: {
+        getArchive: async () => current,
+        listLogs: async () => [],
+        replaceCompleteArchivePending: async () => true,
+        recordArchiveRetryCapture: async () => false,
+      } as never,
+    });
+    await archiveSessionLogs(state, "legacy-empty-capture-lost");
+    expect(uploaded).toBe(0);
+  });
+
+  it("PUTs a matching empty durable legacy replacement after the capture fence wins", async () => {
+    let uploaded = 0;
+    const current = storedComplete("legacy-empty-capture-ok");
+    const recordArchiveRetryCapture = vi.fn(async () => true);
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          uploaded += 1;
+          return { versionId: "empty-durable-v1" };
+        },
+      },
+      storage: {
+        getArchive: async () => current,
+        listLogs: async () => [],
+        replaceCompleteArchivePending: async () => true,
+        recordArchiveRetryCapture,
+        completeArchiveRetry: async () => true,
+      } as never,
+    });
+    await archiveSessionLogs(state, "legacy-empty-capture-ok");
+    expect(recordArchiveRetryCapture).toHaveBeenCalledWith(current.key, expect.any(String), 0);
+    expect(uploaded).toBe(1);
+  });
+
   it("does not queue a version-pinned generation as a legacy retry", async () => {
     const putArchive = vi.fn(async () => undefined);
     const current = storedComplete("legacy-pinned", "complete-v1");

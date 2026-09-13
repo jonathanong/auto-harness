@@ -156,6 +156,19 @@ export async function archiveSessionLogs(
       }
     }
   }
+  if (
+    ownedRetry &&
+    pending.bodyBytes === 0 &&
+    state.storage &&
+    typeof state.storage.recordArchiveRetryCapture === "function"
+  ) {
+    const recorded = await state.storage.recordArchiveRetryCapture(
+      object.key,
+      ownedRetry.retryOrder,
+      pending.bodyBytes,
+    );
+    if (!recorded) return object;
+  }
   if (ownedRetry && pending.bodyBytes > 0) {
     const claimed = state.archives.get(object.key);
     if (!state.storage) {

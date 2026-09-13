@@ -273,7 +273,8 @@ its upload. Memory-only expiry re-reads the live in-memory row before writing th
 stale pending snapshot cannot expire a claim that already recorded captured bytes. Memory-only
 retries also check the live claim against the owned retry before empty expiry or the object PUT,
 including empty legacy unversioned replacements after the queue await, and again after the
-retention log probe even when recent logs remain. An absent in-memory claim is treated as a lost
+retention log probe even when recent logs remain. Durable empty replacements also re-check the
+processing claim before the object PUT. An absent in-memory claim is treated as a lost
 fence.
 Empty processing claims, reclaimed generations, and empty completes against an already-expired row
 stay rejected.

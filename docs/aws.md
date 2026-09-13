@@ -353,7 +353,8 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
      newer version-pinned complete row. Completing that upload uses the retry fence, not
      `replaceCompleteArchive`, because the row is no longer complete. An empty transcript on that
      legacy replacement path uses the same live-claim check as other empty retries, so a stale
-     generation cannot PUT after the queue await if a newer claim already won.
+     generation cannot PUT after the queue await if a newer claim already won. Durable empty
+     replacements also re-check the processing claim with the capture fence before the object PUT.
    - Leave DynamoDB rows intact after upload; this archive path never deletes them
      REST and Cron write the object from those workers; there is no separate archival Lambda.
      WebSocket terminal transitions persist pending archive metadata without S3 access; Cron
