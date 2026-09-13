@@ -566,6 +566,102 @@ describe("archive replacement preserves the last complete generation", () => {
     expect(state.archives.get(current.key)).toEqual(current);
   });
 
+  it("does not PUT an empty legacy replacement after a newer live claim wins", async () => {
+    let uploaded = 0;
+    const current = storedComplete("legacy-empty-replaced");
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+    });
+    state.archives.set(current.key, current);
+    let reads = 0;
+    const originalGet = state.archives.get.bind(state.archives);
+    state.archives.get = ((key: string) => {
+      reads += 1;
+      if (reads >= 3) {
+        state.archives.set(key, {
+          key,
+          contentType: "application/x-ndjson",
+          bodyBytes: 42,
+          status: "pending",
+          objectStored: false,
+          retryState: "processing",
+          retryOrder: "newer-claim",
+          capturedRetryOrder: "newer-claim",
+          updatedAt: "2026-01-08T00:00:00.000Z",
+        });
+      }
+      return originalGet(key);
+    }) as typeof state.archives.get;
+
+    await archiveSessionLogs(state, "legacy-empty-replaced");
+    expect(uploaded).toBe(0);
+    expect(state.archives.get(current.key)).toMatchObject({
+      retryOrder: "newer-claim",
+      bodyBytes: 42,
+    });
+  });
+
+  it("completes a matching empty legacy replacement", async () => {
+    let uploaded = 0;
+    const current = storedComplete("legacy-empty-ok");
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          uploaded += 1;
+          return { versionId: "empty-legacy-v1" };
+        },
+      },
+    });
+    state.archives.set(current.key, current);
+
+    await archiveSessionLogs(state, "legacy-empty-ok");
+    expect(uploaded).toBe(1);
+    expect(state.archives.get(current.key)).toMatchObject({
+      status: "complete",
+      versionId: "empty-legacy-v1",
+    });
+  });
+
+  it("does not PUT an empty durable legacy replacement after the capture fence loses", async () => {
+    let uploaded = 0;
+    const current = storedComplete("legacy-empty-capture-lost");
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+      storage: {
+        getArchive: async () => current,
+        listLogs: async () => [],
+        replaceCompleteArchivePending: async () => true,
+        recordArchiveRetryCapture: async () => false,
+      } as never,
+    });
+    await archiveSessionLogs(state, "legacy-empty-capture-lost");
+    expect(uploaded).toBe(0);
+  });
+
+  it("PUTs a matching empty durable legacy replacement after the capture fence wins", async () => {
+    let uploaded = 0;
+    const current = storedComplete("legacy-empty-capture-ok");
+    const recordArchiveRetryCapture = vi.fn(async () => true);
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          uploaded += 1;
+          return { versionId: "empty-durable-v1" };
+        },
+      },
+      storage: {
+        getArchive: async () => current,
+        listLogs: async () => [],
+        replaceCompleteArchivePending: async () => true,
+        recordArchiveRetryCapture,
+        completeArchiveRetry: async () => true,
+      } as never,
+    });
+    await archiveSessionLogs(state, "legacy-empty-capture-ok");
+    expect(recordArchiveRetryCapture).toHaveBeenCalledWith(current.key, expect.any(String), 0);
+    expect(uploaded).toBe(1);
+  });
+
   it("does not queue a version-pinned generation as a legacy retry", async () => {
     const putArchive = vi.fn(async () => undefined);
     const current = storedComplete("legacy-pinned", "complete-v1");
