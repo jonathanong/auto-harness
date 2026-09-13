@@ -131,6 +131,40 @@ describe("SpawnProcessRunner", () => {
     expect(stderr.join("")).toBe("café");
   });
 
+  it("decodes preserved UTF-8 stderr across chunk boundaries", async () => {
+    const stderr: string[] = [];
+    const result = await new SpawnProcessRunner().run({
+      argv: [
+        process.execPath,
+        "-e",
+        "process.stderr.write(Buffer.from([0xc3])); process.stderr.write(Buffer.from([0xa9]))",
+      ],
+      cwd: process.cwd(),
+      timeoutMs: 5_000,
+      preserveOutputChunks: true,
+      onChunk: (chunk) => {
+        if (chunk.stream === "stderr") stderr.push(chunk.data);
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.join("")).toBe("é");
+  });
+
+  it("flushes an incomplete preserved UTF-8 stderr sequence on close", async () => {
+    const stderr: string[] = [];
+    const result = await new SpawnProcessRunner().run({
+      argv: [process.execPath, "-e", "process.stderr.write(Buffer.from([0xc3]))"],
+      cwd: process.cwd(),
+      timeoutMs: 5_000,
+      preserveOutputChunks: true,
+      onChunk: (chunk) => {
+        if (chunk.stream === "stderr") stderr.push(chunk.data);
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.join("")).toBe("\uFFFD");
+  });
+
   it("writes stdin bytes to the child", async () => {
     const chunks: string[] = [];
     const payload = Buffer.from([0xff, 0x00, 0x61]);

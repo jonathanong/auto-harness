@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 
 import { createChildEnv } from "./child-env.ts";
 import { killWindowsProcessTree, type WindowsProcessTreeKill } from "./windows-process-tree.ts";
@@ -220,9 +221,15 @@ export class SpawnProcessRunner implements ProcessRunner {
       const onAbort = () => stop("cancel");
       options.signal?.addEventListener("abort", onAbort, { once: true });
 
+      const stderrDecoder = options.preserveOutputChunks ? new StringDecoder("utf8") : null;
       const emitChunk = (stream: OutputChunk["stream"], buf: Buffer): void => {
         if (options.preserveOutputChunks) {
-          const encoding = stream === "stdout" ? (options.outputEncoding ?? "utf8") : "utf8";
+          if (stream === "stderr") {
+            const data = stderrDecoder!.write(buf);
+            if (data) options.onChunk({ stream, data });
+            return;
+          }
+          const encoding = options.outputEncoding ?? "utf8";
           options.onChunk({ stream, data: buf.toString(encoding) });
           return;
         }
@@ -267,6 +274,8 @@ export class SpawnProcessRunner implements ProcessRunner {
         closed = true;
         clearTimeout(timer);
         options.signal?.removeEventListener("abort", onAbort);
+        const flushed = stderrDecoder?.end();
+        if (flushed) options.onChunk({ stream: "stderr", data: flushed });
         resolve({
           exitCode: code,
           timedOut,
