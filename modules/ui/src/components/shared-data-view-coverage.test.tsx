@@ -99,7 +99,7 @@ describe("shared data display composites", () => {
       render(
         <SessionExecutionSummary
           status="queued"
-          errorCode="checkout_fetch_failed"
+          errorMessage="checkout fetch failed; retrying once"
           infrastructureRetryCount={1}
           lastInfrastructureErrorCode="checkout_fetch_failed"
         />,

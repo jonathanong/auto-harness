@@ -105,7 +105,7 @@ describe("SessionStatusCell", () => {
       <SessionStatusCell
         status="queued"
         sessionId="retry"
-        errorCode="host_lost"
+        errorMessage="host was lost before command launch; retrying once"
         infrastructureRetryCount={1}
         lastInfrastructureErrorCode="host_lost"
       />,
@@ -132,6 +132,17 @@ describe("SessionStatusCell", () => {
           status="queued"
           sessionId="stale"
           errorCode="usage_limit"
+          errorMessage="provider usage limit; requeued"
+          infrastructureRetryCount={1}
+          lastInfrastructureErrorCode="host_lost"
+        />,
+      ),
+    ).not.toContain("Automatic retry");
+    expect(
+      renderToStaticMarkup(
+        <SessionStatusDetail
+          status="queued"
+          errorMessage="host disconnected; requeued"
           infrastructureRetryCount={1}
           lastInfrastructureErrorCode="host_lost"
         />,

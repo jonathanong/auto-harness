@@ -43,6 +43,7 @@ export function SessionStatusBar({ session: s }: { session: SessionSummary }) {
         <SessionStatusDetail
           status={s.status}
           errorCode={s.errorCode}
+          errorMessage={s.errorMessage}
           infrastructureRetryCount={s.infrastructureRetryCount}
           lastInfrastructureErrorCode={s.lastInfrastructureErrorCode}
         />

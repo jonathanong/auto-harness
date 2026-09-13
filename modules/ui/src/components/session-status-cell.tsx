@@ -28,25 +28,31 @@ function infrastructureRetryCopy(
   infrastructureRetryCount?: number | null,
   lastInfrastructureErrorCode?: string | null,
   errorCode?: string | null,
+  errorMessage?: string | null,
 ): string | null {
-  if (!isActiveInfrastructureRetry(status, infrastructureRetryCount, errorCode)) return null;
+  if (!isActiveInfrastructureRetry(status, infrastructureRetryCount, errorCode, errorMessage)) {
+    return null;
+  }
   const reason =
     sessionInfrastructureRetryReason(lastInfrastructureErrorCode ?? errorCode) ??
     "an infrastructure failure";
   return `Automatic retry ${infrastructureRetryCount} of 1 in progress after ${reason}.`;
 }
 
-/** Historical retry counts stay visible after a later unrelated requeue; this is the live marker. */
+/**
+ * Live queue reason, not historical count. Infra requeue persists
+ * `errorMessage` containing "retrying once" and does not set `errorCode`.
+ */
 export function isActiveInfrastructureRetry(
   status: string,
   infrastructureRetryCount?: number | null,
   errorCode?: string | null,
+  errorMessage?: string | null,
 ): boolean {
-  return (
-    status === "queued" &&
-    (infrastructureRetryCount ?? 0) > 0 &&
-    (errorCode === "checkout_fetch_failed" || errorCode === "host_lost")
-  );
+  if (status !== "queued" || (infrastructureRetryCount ?? 0) < 1) return false;
+  if (errorCode === "usage_limit") return false;
+  if (errorCode === "checkout_fetch_failed" || errorCode === "host_lost") return true;
+  return typeof errorMessage === "string" && errorMessage.includes("retrying once");
 }
 
 /** Status badge plus the documented human-readable terminal reason. */
@@ -72,6 +78,7 @@ export function SessionStatusCell({
     infrastructureRetryCount,
     lastInfrastructureErrorCode,
     errorCode,
+    errorMessage,
   );
   return (
     <div className="space-y-1" data-pw={`session-status-${sessionId}`}>
@@ -100,11 +107,13 @@ export function SessionStatusCell({
 export function SessionStatusDetail({
   status,
   errorCode,
+  errorMessage,
   infrastructureRetryCount,
   lastInfrastructureErrorCode,
 }: {
   status: string;
   errorCode?: string | null | undefined;
+  errorMessage?: string | null | undefined;
   infrastructureRetryCount?: number | null | undefined;
   lastInfrastructureErrorCode?: string | null | undefined;
 }) {
@@ -114,6 +123,7 @@ export function SessionStatusDetail({
     infrastructureRetryCount,
     lastInfrastructureErrorCode,
     errorCode,
+    errorMessage,
   );
   return (
     <div className="space-y-1" data-pw="session-detail-status">

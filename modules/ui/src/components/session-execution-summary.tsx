@@ -29,7 +29,12 @@ export function SessionExecutionSummary({
 }: SessionExecutionSummaryProps) {
   const terminal = isTerminalSessionStatus(status);
   const showError = Boolean(errorMessage || (terminal && errorCode));
-  const retrying = isActiveInfrastructureRetry(status, infrastructureRetryCount, errorCode);
+  const retrying = isActiveInfrastructureRetry(
+    status,
+    infrastructureRetryCount,
+    errorCode,
+    errorMessage,
+  );
   const retryReason =
     sessionInfrastructureRetryReason(lastInfrastructureErrorCode) ?? "an infrastructure failure";
   return (
