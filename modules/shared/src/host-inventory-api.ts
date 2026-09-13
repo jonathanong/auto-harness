@@ -3,6 +3,7 @@ import { parseRequiredEnvironment } from "./environment-requirements.ts";
 import { emptyHostInventory, type HostInventory } from "./host-inventory.ts";
 import { isHostCapability, normalizeHostCapabilities } from "./host-capabilities.ts";
 import type { HostExecConfigPatch } from "./host-exec-config.ts";
+import { parseSetupCacheInputs } from "./setup-cache-inputs.ts";
 import { parseHostUpdateConfig } from "./host-update-config.ts";
 
 /**
@@ -37,6 +38,11 @@ async function readInventory(
     version,
     inventory: {
       ...(typeof cfg.setupScript === "string" ? { setupScript: cfg.setupScript } : {}),
+      ...(Object.hasOwn(cfg, "setupCacheInputs")
+        ? {
+            setupCacheInputs: parseSetupCacheInputs(cfg.setupCacheInputs, "setupCacheInputs") ?? [],
+          }
+        : {}),
       ...(Array.isArray(cfg.allowedRoots) &&
       cfg.allowedRoots.every((root) => typeof root === "string")
         ? { allowedRoots: cfg.allowedRoots as string[] }
@@ -71,6 +77,7 @@ export async function putInventory(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       ...(inv.setupScript !== undefined ? { setupScript: inv.setupScript } : {}),
+      ...(inv.setupCacheInputs !== undefined ? { setupCacheInputs: inv.setupCacheInputs } : {}),
       ...(inv.allowedRoots !== undefined ? { allowedRoots: inv.allowedRoots } : {}),
       ...(inv.requiredEnvironment !== undefined
         ? { requiredEnvironment: inv.requiredEnvironment }

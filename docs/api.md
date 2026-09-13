@@ -1634,7 +1634,7 @@ hydrated in-process callers may include `available: true | false` as a best-effo
 #### Host inventory: setup and Provider Accounts
 
 `GET /api/v1/hosts/:hostId/inventory` still returns the full host document, including setup
-scripts, terminal hook paths, and `allowedRoots`. Ordinary inventory writes do not.
+scripts, `setupCacheInputs`, terminal hook paths, and `allowedRoots`. Ordinary inventory writes do not.
 
 `PUT /api/v1/hosts/:hostId/inventory` (see [cli.md](cli.md), `fleet:inventory`) attaches
 repositories and worktrees, labels, required environment, and provider-account attachments.
