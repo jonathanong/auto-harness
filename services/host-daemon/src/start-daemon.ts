@@ -49,6 +49,8 @@ type StartDaemonOptions = {
   updateBootPrepared?: boolean;
   /** Test seam for the platform-specific update supervisor adapter. */
   updateService?: HostServiceOpts;
+  /** Host-owned directory for last-successful setup fingerprints. */
+  setupCacheDir?: string;
 };
 
 type InventoryPollOptions = {
@@ -293,6 +295,7 @@ async function connectDaemon(
     executionProfiles,
     ...(githubApp ? { githubApp } : {}),
     ...(options.runtime ? { runtime: options.runtime } : {}),
+    ...(options.setupCacheDir !== undefined ? { setupCacheDir: options.setupCacheDir } : {}),
   });
   await loop.start();
   try {

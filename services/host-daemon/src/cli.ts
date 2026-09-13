@@ -26,6 +26,7 @@ import {
 } from "./host-service.ts";
 import { fetchControlPlaneHostStatus, type ControlPlaneHostStatus } from "./host-status.ts";
 import { ensureDaemonReady, runAssignedSession } from "./runtime.ts";
+import { defaultSetupCacheDir } from "./setup-script-cache.ts";
 import { initHostSentry, reportHostCrash } from "./sentry.ts";
 import type { SessionRunResult } from "./session-runner.ts";
 
@@ -447,6 +448,7 @@ export async function runCli(
         error: deps.error,
         childEnvSource: resolvedEnv,
         updateBootPrepared,
+        setupCacheDir: defaultSetupCacheDir(),
         ...(runtime ? { runtime } : {}),
       });
       // The previous handler ran stop() again on a second signal, had no catch — so a
