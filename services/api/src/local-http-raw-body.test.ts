@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { Agent, createServer, request as httpRequest } from "node:http";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -40,15 +40,55 @@ describe("raw request bodies", () => {
     expect(stream.destroy).not.toHaveBeenCalled();
   });
 
-  it("rejects oversized bodies once and ignores a later end event", async () => {
+  it("drains remaining bytes before rejecting an oversized body", async () => {
     const stream = request();
     const body = readRawBody(stream.req as never, 3);
+    let settled = false;
+    void body.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
     stream.emit("data", Buffer.from("four"));
-    stream.emit("data", Buffer.alloc(1024 * 1024));
-    stream.emit("end");
-    await expect(body).rejects.toThrow("request body exceeds route limit");
+    stream.emit("data", Buffer.from("x"));
+    await Promise.resolve();
+    expect(settled).toBe(false);
     expect(stream.resume).toHaveBeenCalledOnce();
     expect(stream.destroy).not.toHaveBeenCalled();
+    stream.emit("end");
+    await expect(body).rejects.toThrow("request body exceeds route limit");
+    expect(settled).toBe(true);
+  });
+
+  it("closes the connection when an oversized body does not finish draining", async () => {
+    vi.useFakeTimers();
+    try {
+      const stream = request();
+      const body = readRawBody(stream.req as never, 3);
+      const rejected = expect(body).rejects.toThrow("request body exceeds route limit");
+      stream.emit("data", Buffer.from("four"));
+      expect(stream.resume).toHaveBeenCalledOnce();
+      expect(stream.destroy).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await rejected;
+      expect(stream.destroy).toHaveBeenCalledOnce();
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it("closes the connection when discarded overflow exceeds the body cap", async () => {
+    const stream = request();
+    const body = readRawBody(stream.req as never, 3);
+    const rejected = expect(body).rejects.toThrow("request body exceeds route limit");
+    stream.emit("data", Buffer.from("four"));
+    stream.emit("data", Buffer.alloc(4));
+    await rejected;
+    expect(stream.destroy).toHaveBeenCalledOnce();
   });
 
   it("propagates stream failures", async () => {
@@ -88,6 +128,77 @@ describe("raw request bodies", () => {
         error: { code: "PAYLOAD_TOO_LARGE", message: "Slack event exceeds route limit" },
       });
     } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("keeps a keep-alive connection usable after draining an oversized body", async () => {
+    const handler = createLocalApp({
+      plane: new ControlPlane(),
+      authMode: "disabled",
+      rateLimitConfig: { enabled: false },
+    }).handler;
+    const server = createServer((req, res) => {
+      void handler(req, res);
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.listen(0, "127.0.0.1", resolve);
+      server.on("error", reject);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+    const agent = new Agent({ keepAlive: true, maxSockets: 1 });
+
+    const exchange = (
+      method: string,
+      path: string,
+      body?: Buffer,
+    ): Promise<{ status: number; json: unknown; reusedSocket: boolean }> =>
+      new Promise((resolve, reject) => {
+        const req = httpRequest(
+          {
+            hostname: "127.0.0.1",
+            port: address.port,
+            method,
+            path,
+            agent,
+            headers: body
+              ? { "content-type": "application/json", "content-length": body.length }
+              : {},
+          },
+          (res) => {
+            const chunks: Buffer[] = [];
+            res.on("data", (chunk: Buffer) => chunks.push(chunk));
+            res.on("end", () => {
+              const raw = Buffer.concat(chunks).toString("utf8");
+              resolve({
+                status: res.statusCode ?? 0,
+                json: raw ? (JSON.parse(raw) as unknown) : null,
+                reusedSocket: req.reusedSocket === true,
+              });
+            });
+          },
+        );
+        req.on("error", reject);
+        req.end(body);
+      });
+
+    try {
+      const oversized = await exchange(
+        "POST",
+        "/api/v1/webhooks/custom/deploy",
+        Buffer.alloc(1024 * 1024 + 1, 0x78),
+      );
+      expect(oversized).toMatchObject({
+        status: 400,
+        json: { error: { code: "VALIDATION_ERROR" } },
+      });
+      const health = await exchange("GET", "/health");
+      expect(health).toMatchObject({ status: 200, json: { ok: true }, reusedSocket: true });
+    } finally {
+      agent.destroy();
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
       });
