@@ -41,6 +41,7 @@ import type { UsageRecord } from "./usage.ts";
 import type { ArchiveWriter } from "./archive-writer.ts";
 import type { ArchiveReader } from "./archive-reader.ts";
 import { enqueueSlackSessionLifecycle } from "./slack-session-runtime.ts";
+import { attachPendingTerminalHookHandoffIndex } from "./control-plane-terminal-hook-handoff-index.ts";
 
 /** Shared mutable state bag for ControlPlane subsystems. */
 export type ControlPlaneState = {
@@ -70,6 +71,8 @@ export type ControlPlaneState = {
   connections: Map<string, ConnectionRecord>;
   /** hostId → connectionId (at most one live agent connection — Invariant 3). */
   hostConnection: Map<string, string>;
+  /** hostId → session ids with an unsettled in-memory terminal-hook handoff. */
+  pendingTerminalHookHandoffsByHost: Map<string, Set<string>>;
   logs: Map<string, LogRecord[]>;
   schedules: Map<string, ScheduleRecord>;
   repositories: Map<string, RepositoryRecord>;
@@ -167,7 +170,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
   ) {
     throw new Error(`Archive object storage requires the ${DEFAULT_ARCHIVE_PREFIX} key prefix`);
   }
-  return {
+  const state: ControlPlaneState = {
     storage: options.storage,
     pendingPersists: [],
     pendingLogPersists: new Map(),
@@ -178,6 +181,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     workspaceSlots: new Map(),
     connections: new Map(),
     hostConnection: new Map(),
+    pendingTerminalHookHandoffsByHost: new Map(),
     logs: new Map(),
     schedules: new Map(),
     repositories: new Map(),
@@ -246,6 +250,8 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     onAssignmentRequested: options.onAssignmentRequested,
     onLogCommitted: undefined,
   };
+  attachPendingTerminalHookHandoffIndex(state);
+  return state;
 }
 const noop = (): void => undefined;
 

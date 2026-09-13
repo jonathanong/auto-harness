@@ -12,6 +12,7 @@ import type { SessionRecord } from "./db/types.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import { enqueueSlackSessionLifecycle } from "./slack-session-runtime.ts";
+import { inMemorySessionsForPendingHandoffs } from "./control-plane-terminal-hook-handoff-index.ts";
 
 export const TERMINAL_HOOK_HANDOFF_DELIVERY_LIMIT = 500;
 
@@ -81,7 +82,11 @@ export async function pendingTerminalHookHandoffs(
         ).filter((session): session is NonNullable<typeof session> => session !== null)
       : state.storage
         ? await state.storage.listActiveSessionsByHost(hostId)
-        : [...state.sessions.values()].filter((session) => session.activeHostId === hostId);
+        : inMemorySessionsForPendingHandoffs(
+            state,
+            hostId,
+            options.sessionIds ? new Set(options.sessionIds) : undefined,
+          );
   const pending: Array<Extract<HostWireMessage, { type: "session:terminal-hook" }>> = [];
   const sessionIds = options.sessionIds ? new Set(options.sessionIds) : undefined;
   const nowMs = Date.parse(state.now());
