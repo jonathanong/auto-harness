@@ -59,8 +59,10 @@ afterEach(async () => {
 describe("packaged host daemon lifecycle", () => {
   it("delivers SIGTERM to the daemon and drains an in-flight CLI before exiting", async () => {
     root = mkdtempSync(join(tmpdir(), "ah-packaged-daemon-"));
+    const home = join(root, "home");
     const repositoryPath = join(root, "repository");
     const worktreePath = join(root, "worktree");
+    mkdirSync(home);
     mkdirSync(repositoryPath);
     await git(repositoryPath, ["init"]);
     await git(repositoryPath, ["config", "user.email", "integration@auto-harness.local"]);
@@ -139,6 +141,8 @@ describe("packaged host daemon lifecycle", () => {
         env: {
           ...process.env,
           PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ""}`,
+          HOME: home,
+          USERPROFILE: home,
           HARNESS_HOST_ID: hostId,
           HARNESS_API_URL: base,
           HARNESS_LOG_LEVEL: "info",
