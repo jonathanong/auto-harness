@@ -58,7 +58,9 @@ graph TB
 Today, those control-plane behaviors run in the local API. Durable session-log archival writes
 JSONL through an injected S3 adapter when `ARCHIVE_BUCKET` is configured and retains archive
 metadata in DynamoDB. That metadata contains only bounded pointer/retry state, never the log body;
-pending uploads are retried idempotently at the same object key. Authorized session reads use a
+pending first-time uploads are retried idempotently at the same object key. Complete metadata is
+the acknowledgement of a stored object version and is not discarded until a replacement version is
+committed. Authorized session reads use a
 durable metadata point lookup, verify the canonical S3 object's expected bytes and content type,
 and mint a short-lived direct download. The private lifecycle-managed bucket grants writes only to
 REST/Cron and reads only to REST; WebSocket has neither permission.

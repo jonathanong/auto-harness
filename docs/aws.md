@@ -336,6 +336,9 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
    - Write the `sessions/{sessionId}/logs.jsonl` object and track pending/completed/expired state.
      `expired` is a durable terminal metadata status: retry GSI attributes are removed so Cron
      cannot later serialize an empty log set and mark the archive complete.
+     First-time archives persist pending metadata before the PUT so Cron can retry the same key.
+     A complete, stored archive keeps that metadata until a replacement object version is committed;
+     a failed replacement leaves the prior complete row downloadable.
    - Leave DynamoDB rows intact after upload; this archive path never deletes them
      REST and Cron write the object from those workers; there is no separate archival Lambda.
      WebSocket terminal transitions persist pending archive metadata without S3 access; Cron
