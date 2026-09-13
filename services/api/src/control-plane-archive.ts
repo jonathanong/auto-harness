@@ -96,6 +96,7 @@ export async function archiveSessionLogs(
   const current = retryClaim ? null : await readArchiveMetadata(state, key);
   const replacement = isCompleteStoredArchive(current) ? archiveGeneration(current) : null;
   const legacyUnversioned = isCompleteStoredArchive(current) && !current.versionId;
+  const retryOrder = retryClaim?.retryOrder ?? `${state.now()}#${key}`;
   const pending: ArchiveMetadata = {
     key,
     contentType: object.contentType,
@@ -104,7 +105,7 @@ export async function archiveSessionLogs(
     objectStored: false,
     updatedAt: state.now(),
     retryState: retryClaim?.retryState ?? "pending",
-    retryOrder: retryClaim?.retryOrder ?? `${state.now()}#${key}`,
+    retryOrder,
   };
   let ownedRetry = retryClaim;
   if (!replacement) {
@@ -129,7 +130,7 @@ export async function archiveSessionLogs(
     if (!queued) return object;
     ownedRetry = {
       retryState: "processing",
-      retryOrder: retryPending.retryOrder ?? `${state.now()}#${key}`,
+      retryOrder,
     };
   }
   if (ownedRetry && pending.bodyBytes === 0 && !replacement) {
@@ -144,14 +145,13 @@ export async function archiveSessionLogs(
       if (!state.storage && liveInMemoryClaimBlocksEmptyExpiry(latest, ownedRetry.retryOrder)) {
         return object;
       }
-      if (!logsRemain) {
-        await persistExpiredArchive(state, object.key, {
-          ...pending,
-          retryState: "processing",
-          retryOrder: ownedRetry.retryOrder,
-        });
-        return object;
-      }
+      if (logsRemain) return object;
+      await persistExpiredArchive(state, object.key, {
+        ...pending,
+        retryState: "processing",
+        retryOrder: ownedRetry.retryOrder,
+      });
+      return object;
     }
   }
   if (ownedRetry && pending.bodyBytes > 0) {

@@ -614,6 +614,43 @@ describe("archive retry state", () => {
     });
   });
 
+  it("does not PUT an empty matching retry when logs appear during the retention probe", async () => {
+    let uploaded = 0;
+    const key = "sessions/empty-logs-keep/logs.jsonl";
+    const state = createControlPlaneState({
+      now: () => "2026-01-08T00:00:00.000Z",
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+    });
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "claim-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    let logReads = 0;
+    const originalGet = state.logs.get.bind(state.logs);
+    state.logs.get = ((sessionId: string) => {
+      logReads += 1;
+      if (logReads >= 2) {
+        state.logs.set(sessionId, [{ timestamp: "1", stream: "stdout", content: "late" } as never]);
+      }
+      return originalGet(sessionId);
+    }) as typeof state.logs.get;
+    await retrySessionArchiveIfNeeded(state, "empty-logs-keep", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(uploaded).toBe(0);
+    expect(state.archives.get(key)).toMatchObject({
+      retryOrder: "claim-order",
+      status: "pending",
+    });
+  });
+
   it("does not let an empty retry expire a captured nonempty claim of the same order", async () => {
     let uploaded = 0;
     const key = "sessions/empty-captured/logs.jsonl";
