@@ -573,6 +573,72 @@ describe("reconnect reconciliation", () => {
     expect(plane.state.disconnectedHosts.has("h")).toBe(true);
   });
 
+  it("does not restore in-memory inventory over a newer same-host catalog edit", async () => {
+    const plane = new ControlPlane({
+      now: () => "2026-01-01T00:00:00.000Z",
+      connectionIdFactory: (() => {
+        let id = 0;
+        return () => `c${++id}`;
+      })(),
+    });
+    expect(
+      plane.registerHost({
+        hostId: "h",
+        worktrees: [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }],
+        commandProfiles: [],
+      }),
+    ).toEqual({ ok: true, connectionId: "c1" });
+    plane.state.sessions.set("s", { ...durableRunning("s", "w") });
+    plane.state.worktrees.set("w", { ...durableWorktree("w", "s"), online: true, status: "busy" });
+    let seeded = false;
+    loseSessionAfterValidation(plane, "s", () => {
+      if (seeded) return;
+      seeded = true;
+      const current = plane.state.hostInventories.get("h");
+      const put = plane.putHostInventory("h", {
+        version: current?.version,
+        repositories: [
+          {
+            id: "r",
+            path: current?.repositories[0]?.path ?? "/r",
+            worktrees: [
+              { id: "w", name: "w", path: "/w", labels: [] },
+              { id: "w-catalog", name: "w-catalog", path: "/w-catalog", labels: [] },
+            ],
+          },
+        ],
+      });
+      if (!put.ok) throw new Error(put.error);
+    });
+    await expect(
+      plane.registerHostDurable({
+        hostId: "h",
+        worktrees: [
+          { id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] },
+          { id: "w2", name: "w2", repositoryId: "r", path: "/w2", labels: [] },
+        ],
+        commandProfiles: [],
+        runningSessions: ["s"],
+        replaceExisting: true,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "reported running session lost reconnect reconciliation",
+    });
+    expect(plane.state.hostConnection.has("h")).toBe(false);
+    expect(plane.state.hostInventories.get("h")?.version).toBe(3);
+    expect(
+      plane.state.hostInventories
+        .get("h")
+        ?.repositories.flatMap((repo) => repo.worktrees.map((wt) => wt.id)),
+    ).toEqual(["w", "w-catalog"]);
+    expect(plane.state.worktrees.get("w-catalog")).toMatchObject({
+      id: "w-catalog",
+      online: false,
+    });
+    expect(plane.state.worktrees.has("w2")).toBe(false);
+  });
+
   it("drops replacement-only worktrees and slots when storage-less reconcile fails", async () => {
     const plane = new ControlPlane({
       now: () => "2026-01-01T00:00:00.000Z",

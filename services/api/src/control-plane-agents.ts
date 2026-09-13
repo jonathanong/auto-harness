@@ -284,6 +284,7 @@ type InMemoryRegistrationSnapshot = {
   worktrees: Map<string, WorktreeRecord>;
   slots: Map<string, WorkspaceSlotRecord>;
   inventory: HostInventoryRecord | undefined;
+  inventoryVersion: number;
   disconnected: { lastHeartbeatAt: string } | undefined;
 };
 
@@ -291,6 +292,7 @@ function snapshotInMemoryRegistration(
   state: ControlPlaneState,
   hostId: string,
 ): InMemoryRegistrationSnapshot {
+  const inventory = state.hostInventories.get(hostId);
   return {
     worktrees: new Map(
       [...state.worktrees.values()]
@@ -302,7 +304,8 @@ function snapshotInMemoryRegistration(
         .filter((slot) => slot.hostId === hostId)
         .map((slot) => [slot.id, { ...slot }]),
     ),
-    inventory: state.hostInventories.get(hostId),
+    inventory,
+    inventoryVersion: inventory?.version ?? 0,
     disconnected: state.disconnectedHosts.get(hostId),
   };
 }
@@ -404,24 +407,29 @@ function restoreInMemoryRegistration(
   snapshot: InMemoryRegistrationSnapshot,
 ): void {
   const winnerOwnsHost = state.hostConnection.get(hostId) !== failedConnectionId;
+  const catalogMoved =
+    (state.hostInventories.get(hostId)?.version ?? 0) !== snapshot.inventoryVersion + 1;
   const reason = "reported running session lost reconnect reconciliation";
   state.connections.delete(failedConnectionId);
   if (!winnerOwnsHost) {
     state.hostConnection.delete(hostId);
-    if (snapshot.inventory) state.hostInventories.set(hostId, snapshot.inventory);
-    else state.hostInventories.delete(hostId);
-    for (const [id, wt] of snapshot.worktrees) {
-      if (!state.worktrees.has(id)) state.worktrees.set(id, { ...wt });
-    }
-    for (const [id, slot] of snapshot.slots) {
-      if (!state.workspaceSlots.has(id)) state.workspaceSlots.set(id, { ...slot });
+    if (!catalogMoved) {
+      if (snapshot.inventory) state.hostInventories.set(hostId, snapshot.inventory);
+      else state.hostInventories.delete(hostId);
+      state.hostInventoryRevision += 1;
+      for (const [id, wt] of snapshot.worktrees) {
+        if (!state.worktrees.has(id)) state.worktrees.set(id, { ...wt });
+      }
+      for (const [id, slot] of snapshot.slots) {
+        if (!state.workspaceSlots.has(id)) state.workspaceSlots.set(id, { ...slot });
+      }
     }
     state.drainingHosts.delete(hostId);
     offlineHostAndRequeue(state, hostId, reason);
     offlineWorkspaceSlotsLocal(state, hostId, reason);
     state.disconnectedHosts.set(hostId, snapshot.disconnected ?? { lastHeartbeatAt: state.now() });
   }
-  dropReplacementOnlyCapacity(state, hostId, snapshot, winnerOwnsHost, reason);
+  dropReplacementOnlyCapacity(state, hostId, snapshot, winnerOwnsHost || catalogMoved, reason);
 }
 
 function ownedReportedRunningSessionIds(
