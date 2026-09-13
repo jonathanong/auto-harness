@@ -88,10 +88,8 @@ export async function pendingTerminalHookHandoffs(
             options.sessionIds ? new Set(options.sessionIds) : undefined,
           );
   const pending: Array<Extract<HostWireMessage, { type: "session:terminal-hook" }>> = [];
-  const sessionIds = options.sessionIds ? new Set(options.sessionIds) : undefined;
   const nowMs = Date.parse(state.now());
   for (const session of sessions) {
-    if (sessionIds && !sessionIds.has(session.id)) continue;
     const handoff = session.terminalHookHandoff;
     if (!handoff || handoff.hostId !== hostId) continue;
     if (Date.parse(handoff.expiresAt) <= nowMs) {

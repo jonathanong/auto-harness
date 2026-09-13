@@ -78,6 +78,21 @@ describe("in-memory pending terminal-hook handoff host index", () => {
     expect(state.pendingTerminalHookHandoffsByHost.has("host")).toBe(false);
   });
 
+  it("keeps the host bucket until the last indexed session is removed", () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const first = pending({ id: "first" });
+    const second = pending({ id: "second" });
+    state.sessions.set(first.id, first);
+    state.sessions.set(second.id, second);
+    expect(state.pendingTerminalHookHandoffsByHost.get("host")).toEqual(
+      new Set(["first", "second"]),
+    );
+    state.sessions.set(first.id, running({ id: "first" }));
+    expect(state.pendingTerminalHookHandoffsByHost.get("host")).toEqual(new Set(["second"]));
+    state.sessions.delete(second.id);
+    expect(state.pendingTerminalHookHandoffsByHost.has("host")).toBe(false);
+  });
+
   it("clears the host index and ignores stale session ids", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     const handoff = pending();
@@ -91,5 +106,8 @@ describe("in-memory pending terminal-hook handoff host index", () => {
     state.pendingTerminalHookHandoffsByHost.delete("host");
     indexPendingTerminalHookHandoff(state, pending({ id: "never-indexed" }), undefined);
     expect(state.pendingTerminalHookHandoffsByHost.has("host")).toBe(false);
+    await expect(
+      pendingTerminalHookHandoffs(state, "host", { protocolVersion: 7 }),
+    ).resolves.toEqual([]);
   });
 });
