@@ -392,12 +392,19 @@ function conflict(): Failure {
   };
 }
 
-function catalogObservation(
-  map: Map<string, { name: string; updatedAt: string }>,
-  id: string,
-): string {
+const catalogRecordIds = new WeakMap<object, number>();
+let nextCatalogRecordId = 1;
+
+function catalogObservation(map: Map<string, object>, id: string): string {
   const value = map.get(id);
-  return value === undefined ? `${id}:missing` : `${id}:${value.updatedAt}:${value.name}`;
+  if (value === undefined) return `${id}:missing`;
+  let token = catalogRecordIds.get(value);
+  if (token === undefined) {
+    token = nextCatalogRecordId;
+    nextCatalogRecordId += 1;
+    catalogRecordIds.set(value, token);
+  }
+  return `${id}:${String(token)}`;
 }
 
 function inMemoryWebhookCatalogFingerprint(

@@ -326,7 +326,9 @@ describe("custom webhook integration lifecycle", () => {
       name: "repository",
       webhook: {},
       mutate: (value: ControlPlane) => {
-        expect(value.updateRepository("repo", { name: "renamed" }).ok).toBe(true);
+        expect(value.updateRepository("repo", { url: "https://example.test/repo.git" }).ok).toBe(
+          true,
+        );
       },
     },
     {
