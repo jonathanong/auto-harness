@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- checkout resolution, recovery, and diagnostics share one scripted Git fixture. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createGitClient } from "./git.ts";
@@ -111,7 +111,7 @@ function loadOperatorPolicy(remoteUrl = "https://github.com/example/repository.g
         },
       }),
     (path) =>
-      path === policyConfigPath || path.endsWith("/config") ? rootOwnedFile : rootOwnedDirectory,
+      path === policyConfigPath || basename(path) === "config" ? rootOwnedFile : rootOwnedDirectory,
     "linux",
     (path) =>
       path === materializerGitDirs.sha1 || path === materializerGitDirs.sha256
