@@ -555,6 +555,12 @@ If a `session:assign` was in flight when drain started, the agent nacks or fails
 1. New `$connect` + `host:register` with current worktree inventory and any still-running local sessions
 2. Control plane reconciles: worktrees online; running session IDs re-bound; queued sessions may assign to newly idle capacity
 
+On the storage-less local hub, `host:register` awaits omitted-session reconcile before accepting the
+socket. If that pass returns false, registration fails closed: the failed connection is dropped,
+replacement-only ads are stripped, and unacked provisional worktree or workspace-slot claims are
+released — including `workspaceSlotLease` and the pending acknowledgement — so a later cancel cannot
+retain a lease for a slot the rollback already deleted.
+
 ---
 
 ## S3 archival

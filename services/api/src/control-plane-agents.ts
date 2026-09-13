@@ -15,6 +15,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistSession, persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { validateRegisterWorktreeNames } from "./control-plane-worktree-names.ts";
 import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
+import { releaseWorktree } from "./control-plane-worktree-release.ts";
 import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
 import { reconcileHostOwnedSessions } from "./control-plane-reconnect-omitted.ts";
 import { requestAssignment } from "./request-assignment.ts";
@@ -30,6 +31,7 @@ import {
   syncHostWorkspaceSlotsDurable,
 } from "./control-plane-agent-hosts.ts";
 import type { HostInventoryRecord } from "./db/plane-storage-types.ts";
+import type { SessionRecord, WorkspaceSlotRecord, WorktreeRecord } from "./db/types.ts";
 import { inventoryReferenceMarkers } from "./control-plane-delete-reference-markers.ts";
 import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 import { repositoryEnvironmentReadiness } from "./control-plane-host-environment.ts";
@@ -276,6 +278,150 @@ function reconcileReportedRunningSessions(
     reportedRunningSessionIds(opts),
     opts.runningAttempts ?? [],
   );
+}
+
+type InMemoryRegistrationSnapshot = {
+  worktrees: Map<string, WorktreeRecord>;
+  slots: Map<string, WorkspaceSlotRecord>;
+  inventory: HostInventoryRecord | undefined;
+  disconnected: { lastHeartbeatAt: string } | undefined;
+};
+
+function snapshotInMemoryRegistration(
+  state: ControlPlaneState,
+  hostId: string,
+): InMemoryRegistrationSnapshot {
+  return {
+    worktrees: new Map(
+      [...state.worktrees.values()]
+        .filter((wt) => wt.hostId === hostId)
+        .map((wt) => [wt.id, { ...wt }]),
+    ),
+    slots: new Map(
+      [...state.workspaceSlots.values()]
+        .filter((slot) => slot.hostId === hostId)
+        .map((slot) => [slot.id, { ...slot }]),
+    ),
+    inventory: state.hostInventories.get(hostId),
+    disconnected: state.disconnectedHosts.get(hostId),
+  };
+}
+
+function advertisedWorktreeIds(inventory: HostInventoryRecord | undefined): Set<string> {
+  return new Set(
+    (inventory?.repositories ?? []).flatMap((repo) => repo.worktrees.map((wt) => wt.id)),
+  );
+}
+
+function advertisedSlotIds(inventory: HostInventoryRecord | undefined): Set<string> {
+  return new Set(
+    (inventory?.workspacePools ?? []).flatMap((pool) => pool.slots.map((slot) => slot.id)),
+  );
+}
+
+function isUnackedProvisionalAssignment(
+  session: SessionRecord | undefined,
+): session is SessionRecord {
+  return (
+    session !== undefined &&
+    (session.status === "running" || session.status === "cancelled") &&
+    !session.ackReceivedAt
+  );
+}
+
+function releaseUnackedProvisionalAssignment(
+  state: ControlPlaneState,
+  session: SessionRecord,
+  reason: string,
+  target: "worktree" | "slot",
+): void {
+  releaseProviderAccountLease(state, session);
+  if (session.status === "running") {
+    session.status = "queued";
+    session.errorMessage = reason;
+    delete session.completedAt;
+  }
+  if (target === "worktree") session.worktreeId = null;
+  else session.workspaceSlotId = null;
+  session.hostId = null;
+  delete session.workspaceSlotLease;
+  delete session.assignmentConnectionId;
+  delete session.assignmentSentAt;
+  delete session.ackReceivedAt;
+  delete session.reconnectDeadlineAt;
+  state.pendingAcks.delete(session.id);
+  persistSession(state, session);
+}
+
+function requeueUnackedWorktree(
+  state: ControlPlaneState,
+  worktree: WorktreeRecord,
+  reason: string,
+): void {
+  const session = worktree.currentSessionId
+    ? state.sessions.get(worktree.currentSessionId)
+    : undefined;
+  if (!isUnackedProvisionalAssignment(session)) return;
+  releaseWorktree(state, worktree.id);
+  releaseUnackedProvisionalAssignment(state, session, reason, "worktree");
+}
+
+function dropReplacementOnlyCapacity(
+  state: ControlPlaneState,
+  hostId: string,
+  snapshot: InMemoryRegistrationSnapshot,
+  winnerOwnsHost: boolean,
+  reason: string,
+): void {
+  const winnerInventory = winnerOwnsHost ? state.hostInventories.get(hostId) : undefined;
+  const winnerWorktrees = advertisedWorktreeIds(winnerInventory);
+  const winnerSlots = advertisedSlotIds(winnerInventory);
+  for (const [id, wt] of state.worktrees) {
+    if (wt.hostId !== hostId || snapshot.worktrees.has(id) || winnerWorktrees.has(id)) continue;
+    requeueUnackedWorktree(state, wt, reason);
+    if (wt.status === "busy" || wt.currentSessionId) continue;
+    state.worktrees.delete(id);
+  }
+  for (const [id, slot] of state.workspaceSlots) {
+    if (slot.hostId !== hostId || snapshot.slots.has(id) || winnerSlots.has(id)) continue;
+    if (slot.currentSessionId) {
+      const session = state.sessions.get(slot.currentSessionId);
+      if (isUnackedProvisionalAssignment(session)) {
+        releaseUnackedProvisionalAssignment(state, session, reason, "slot");
+        state.workspaceSlots.set(id, { ...slot, status: "idle", currentSessionId: null });
+      }
+    }
+    const current = state.workspaceSlots.get(id);
+    if (current && (current.status === "busy" || current.currentSessionId)) continue;
+    state.workspaceSlots.delete(id);
+  }
+}
+
+function restoreInMemoryRegistration(
+  state: ControlPlaneState,
+  hostId: string,
+  failedConnectionId: string,
+  snapshot: InMemoryRegistrationSnapshot,
+): void {
+  const winnerOwnsHost = state.hostConnection.get(hostId) !== failedConnectionId;
+  const reason = "reported running session lost reconnect reconciliation";
+  state.connections.delete(failedConnectionId);
+  if (!winnerOwnsHost) {
+    state.hostConnection.delete(hostId);
+    if (snapshot.inventory) state.hostInventories.set(hostId, snapshot.inventory);
+    else state.hostInventories.delete(hostId);
+    for (const [id, wt] of snapshot.worktrees) {
+      if (!state.worktrees.has(id)) state.worktrees.set(id, { ...wt });
+    }
+    for (const [id, slot] of snapshot.slots) {
+      if (!state.workspaceSlots.has(id)) state.workspaceSlots.set(id, { ...slot });
+    }
+    state.drainingHosts.delete(hostId);
+    offlineHostAndRequeue(state, hostId, reason);
+    offlineWorkspaceSlotsLocal(state, hostId, reason);
+    state.disconnectedHosts.set(hostId, snapshot.disconnected ?? { lastHeartbeatAt: state.now() });
+  }
+  dropReplacementOnlyCapacity(state, hostId, snapshot, winnerOwnsHost, reason);
 }
 
 function ownedReportedRunningSessionIds(
@@ -799,10 +945,13 @@ export async function registerHostDurable(
     return { ok: false, error: "runtime report is invalid" };
   }
   if (!state.storage) {
+    const previous = snapshotInMemoryRegistration(state, opts.hostId);
     const result = registerHost(state, { ...opts, deferRunningSessionReconcile: true });
     if (!result.ok) return result;
-    await reconcileReportedRunningSessions(state, opts);
-    return result;
+    const reconciled = await reconcileReportedRunningSessions(state, opts);
+    if (reconciled !== false) return result;
+    restoreInMemoryRegistration(state, opts.hostId, result.connectionId, previous);
+    return { ok: false, error: "reported running session lost reconnect reconciliation" };
   }
   const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);
   if (nameError) {
