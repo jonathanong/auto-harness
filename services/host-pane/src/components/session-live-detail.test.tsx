@@ -63,13 +63,14 @@ describe("host session live detail", () => {
 
   it("refreshes a queued detail to terminal state and removes its deadline", async () => {
     vi.useFakeTimers();
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(response(true, { state: "dynamodb" }))
-        .mockResolvedValue(response(true, { ...queued, status: "completed" })),
-    );
+    const completed = { ...queued, status: "completed" };
+    const archive = { state: "dynamodb" };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/archive")) return response(true, archive);
+      return response(true, completed);
+    });
+    vi.stubGlobal("fetch", fetchMock);
     const view = mount(
       <SessionLiveDetail initialSession={queued}>
         <p data-pw="child">child</p>
@@ -88,6 +89,11 @@ describe("host session live detail", () => {
     expect(view.container.querySelector('[data-pw="session-detail-queue-deadline"]')).toBeNull();
     expect(view.container.querySelector('[data-pw="session-resume"]')).not.toBeNull();
     expect(view.container.querySelector('[data-pw="session-archive"]')).not.toBeNull();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/archive"))).toBe(true);
+    expect(view.container.querySelector('[data-pw="session-archive-error"]')).toBeNull();
+    expect(
+      view.container.querySelector('[data-pw="session-archive-state"]')?.textContent,
+    ).toContain("not archived");
     view.unmount();
     expect(vi.getTimerCount()).toBe(0);
   });
