@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- inventory parse, exec-config apply, and helper extras share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -161,6 +162,12 @@ describe("setupCacheInputs exec-config", () => {
         },
       ],
     });
+    expect(
+      parseHostInventory({
+        repositories: [],
+        setupCacheInputs: undefined,
+      }),
+    ).toMatchObject({ setupCacheInputs: [] });
     expect(() =>
       parseHostInventory({
         repositories: [],
@@ -202,5 +209,12 @@ describe("setupCacheInputs inventory helpers", () => {
       setupCacheInputs: [],
     });
     expect(inv.repositories[0]?.worktrees[0]).not.toHaveProperty("setupCacheInputs");
+    inv = upsertHostRepository(inv, {
+      id: "demo",
+      path: "/repo2",
+      defaultBranch: "main",
+      setupCacheInputs: [],
+    });
+    expect(inv.repositories[0]).not.toHaveProperty("setupCacheInputs");
   });
 });
