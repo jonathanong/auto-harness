@@ -337,7 +337,8 @@ function releaseUnackedProvisionalAssignment(
   session: SessionRecord,
   reason: string,
   target: "worktree" | "slot",
-): void {
+): string | undefined {
+  const requeued = session.status === "running" ? session.id : undefined;
   releaseProviderAccountLease(state, session);
   if (session.status === "running") {
     session.status = "queued";
@@ -354,19 +355,20 @@ function releaseUnackedProvisionalAssignment(
   delete session.reconnectDeadlineAt;
   state.pendingAcks.delete(session.id);
   persistSession(state, session);
+  return requeued;
 }
 
 function requeueUnackedWorktree(
   state: ControlPlaneState,
   worktree: WorktreeRecord,
   reason: string,
-): void {
+): string | undefined {
   const session = worktree.currentSessionId
     ? state.sessions.get(worktree.currentSessionId)
     : undefined;
   if (!isUnackedProvisionalAssignment(session)) return;
   releaseWorktree(state, worktree.id);
-  releaseUnackedProvisionalAssignment(state, session, reason, "worktree");
+  return releaseUnackedProvisionalAssignment(state, session, reason, "worktree");
 }
 
 function dropReplacementOnlyCapacity(
@@ -375,13 +377,15 @@ function dropReplacementOnlyCapacity(
   snapshot: InMemoryRegistrationSnapshot,
   winnerOwnsHost: boolean,
   reason: string,
-): void {
+): string[] {
+  const requeued: string[] = [];
   const winnerInventory = winnerOwnsHost ? state.hostInventories.get(hostId) : undefined;
   const winnerWorktrees = advertisedWorktreeIds(winnerInventory);
   const winnerSlots = advertisedSlotIds(winnerInventory);
   for (const [id, wt] of state.worktrees) {
     if (wt.hostId !== hostId || snapshot.worktrees.has(id) || winnerWorktrees.has(id)) continue;
-    requeueUnackedWorktree(state, wt, reason);
+    const sessionId = requeueUnackedWorktree(state, wt, reason);
+    if (sessionId) requeued.push(sessionId);
     if (wt.status === "busy" || wt.currentSessionId) continue;
     state.worktrees.delete(id);
   }
@@ -390,7 +394,8 @@ function dropReplacementOnlyCapacity(
     if (slot.currentSessionId) {
       const session = state.sessions.get(slot.currentSessionId);
       if (isUnackedProvisionalAssignment(session)) {
-        releaseUnackedProvisionalAssignment(state, session, reason, "slot");
+        const sessionId = releaseUnackedProvisionalAssignment(state, session, reason, "slot");
+        if (sessionId) requeued.push(sessionId);
         state.workspaceSlots.set(id, { ...slot, status: "idle", currentSessionId: null });
       }
     }
@@ -398,6 +403,7 @@ function dropReplacementOnlyCapacity(
     if (current && (current.status === "busy" || current.currentSessionId)) continue;
     state.workspaceSlots.delete(id);
   }
+  return requeued;
 }
 
 function restoreInMemoryRegistration(
@@ -406,10 +412,11 @@ function restoreInMemoryRegistration(
   failedConnectionId: string,
   snapshot: InMemoryRegistrationSnapshot,
   registrationInventory: HostInventoryRecord | undefined,
-): void {
+): string[] {
   const winnerOwnsHost = state.hostConnection.get(hostId) !== failedConnectionId;
   const catalogMoved = state.hostInventories.get(hostId) !== registrationInventory;
   const reason = "reported running session lost reconnect reconciliation";
+  const requeued: string[] = [];
   state.connections.delete(failedConnectionId);
   if (!winnerOwnsHost) {
     state.hostConnection.delete(hostId);
@@ -425,11 +432,14 @@ function restoreInMemoryRegistration(
       }
     }
     state.drainingHosts.delete(hostId);
-    offlineHostAndRequeue(state, hostId, reason);
-    offlineWorkspaceSlotsLocal(state, hostId, reason);
+    requeued.push(...offlineHostAndRequeue(state, hostId, reason));
+    requeued.push(...offlineWorkspaceSlotsLocal(state, hostId, reason));
     state.disconnectedHosts.set(hostId, snapshot.disconnected ?? { lastHeartbeatAt: state.now() });
   }
-  dropReplacementOnlyCapacity(state, hostId, snapshot, winnerOwnsHost || catalogMoved, reason);
+  requeued.push(
+    ...dropReplacementOnlyCapacity(state, hostId, snapshot, winnerOwnsHost || catalogMoved, reason),
+  );
+  return requeued;
 }
 
 function ownedReportedRunningSessionIds(
@@ -959,13 +969,16 @@ export async function registerHostDurable(
     const registrationInventory = state.hostInventories.get(opts.hostId);
     const reconciled = await reconcileReportedRunningSessions(state, opts);
     if (reconciled !== false) return result;
-    restoreInMemoryRegistration(
+    const requeued = restoreInMemoryRegistration(
       state,
       opts.hostId,
       result.connectionId,
       previous,
       registrationInventory,
     );
+    // Otherwise a recovered session sits queued until the next cron sweep or
+    // an unrelated scheduling event, defeating the point of a fast recovery.
+    if (requeued.length > 0) await requestAssignment(state);
     return { ok: false, error: "reported running session lost reconnect reconciliation" };
   }
   const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);
