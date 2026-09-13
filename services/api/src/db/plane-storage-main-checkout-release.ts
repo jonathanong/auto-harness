@@ -34,7 +34,7 @@ type ReleaseMainCheckoutOptions = {
   result?: SessionResult | undefined;
   suppressedTargetIndex?: number;
   queueOrder?: string;
-  expectedStatus?: "running" | "cancelled";
+  expectedStatus?: "running" | "cancelled" | "timed_out";
   attemptId?: string;
   concurrencyId?: string | undefined;
   /** Used by the assignment ACK deadline only: do not release a run whose
@@ -50,6 +50,7 @@ type ReleaseMainCheckoutOptions = {
   timedOutAssignmentConnectionId?: string;
   infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
   terminalHookHandoff?: import("./types.ts").SessionRecord["terminalHookHandoff"];
+  expectedTerminalHookHandoffAbsent?: boolean;
 };
 
 async function queueOrderForSession(ctx: PlaneStorageCtx, sessionId: string): Promise<string> {
@@ -153,6 +154,9 @@ export async function releaseMainCheckoutSession(
               ConditionExpression:
                 "#s = :expectedStatus AND hostId = :hostId AND assignmentConnectionId = :connectionId AND mainCheckoutLease = :true" +
                 (opts.attemptId ? " AND attemptId = :attemptId" : "") +
+                (opts.expectedTerminalHookHandoffAbsent
+                  ? " AND attribute_not_exists(terminalHookHandoff)"
+                  : "") +
                 (opts.requireUnacknowledged ? " AND attribute_not_exists(ackReceivedAt)" : "") +
                 (opts.infrastructureErrorCode
                   ? " AND (attribute_not_exists(infrastructureRetryCount) OR infrastructureRetryCount < :maxInfrastructureRetries)"

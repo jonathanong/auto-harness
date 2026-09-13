@@ -56,6 +56,7 @@ type FinishSessionOpts = {
   timedOutAssignmentConnectionId?: string;
   /** Retain a host-indexed, replacement-daemon terminal-hook handoff. */
   terminalHookHandoff?: import("./types.ts").SessionRecord["terminalHookHandoff"];
+  expectedTerminalHookHandoffAbsent?: boolean;
   expectedStatus?: string;
 };
 
@@ -161,7 +162,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
 }
 
 function finishSessionCondition(opts: FinishSessionOpts): string {
-  return `#s = :expectedStatus AND worktreeId = :worktreeId${opts.workspaceSlotId !== undefined ? " AND workspaceSlotId = :workspaceSlotId" : ""} AND attemptId = :attemptId${opts.expectedReconnectDeadlineAt ? " AND reconnectDeadlineAt = :reconnectDeadlineAt" : ""}${opts.expectedConnectionId ? " AND (attribute_not_exists(assignmentConnectionId) OR assignmentConnectionId = :connectionId)" : ""}${opts.infrastructureErrorCode ? " AND (attribute_not_exists(infrastructureRetryCount) OR infrastructureRetryCount < :maxInfrastructureRetries) AND primaryCommandStartState = :pendingCommandStart" : ""}`;
+  return `#s = :expectedStatus AND worktreeId = :worktreeId${opts.workspaceSlotId !== undefined ? " AND workspaceSlotId = :workspaceSlotId" : ""} AND attemptId = :attemptId${opts.expectedTerminalHookHandoffAbsent ? " AND attribute_not_exists(terminalHookHandoff)" : ""}${opts.expectedReconnectDeadlineAt ? " AND reconnectDeadlineAt = :reconnectDeadlineAt" : ""}${opts.expectedConnectionId ? " AND (attribute_not_exists(assignmentConnectionId) OR assignmentConnectionId = :connectionId)" : ""}${opts.infrastructureErrorCode ? " AND (attribute_not_exists(infrastructureRetryCount) OR infrastructureRetryCount < :maxInfrastructureRetries) AND primaryCommandStartState = :pendingCommandStart" : ""}`;
 }
 
 function finishSessionItems(

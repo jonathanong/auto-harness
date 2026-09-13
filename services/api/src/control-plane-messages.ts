@@ -251,11 +251,12 @@ function deferredTerminalHookHandoff(
   session: SessionRecord,
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
 ): SessionRecord["terminalHookHandoff"] | undefined {
-  if (!session.hostId) return undefined;
+  const hostId = session.hostId ?? session.timedOutHostId;
+  if (!hostId) return undefined;
   return {
     handoffId: state.idFactory(),
     attemptId: msg.attemptId,
-    hostId: session.hostId,
+    hostId,
     repositoryId: session.repositoryId,
     worktreeId: session.worktreeId ?? null,
     ...(session.mainCheckoutLease ? { mainCheckoutLease: true as const } : {}),
@@ -285,8 +286,7 @@ async function committedDeferredCheckoutFailureHandoff(
 ): Promise<NonNullable<SessionRecord["terminalHookHandoff"]> | undefined> {
   const current = await state.storage?.getSession(sessionId, true);
   const handoff = current?.terminalHookHandoff;
-  return current?.status === proposed.status &&
-    handoff?.attemptId === proposed.attemptId &&
+  return handoff?.attemptId === proposed.attemptId &&
     handoff?.hostId === proposed.hostId &&
     handoff.status === proposed.status
     ? handoff
@@ -1253,6 +1253,210 @@ async function applySessionStatusDurable(
     return { ok: false, error: "session not found" };
   }
   state.sessions.set(session.id, session);
+  if (
+    msg.deferTerminalHookResult === true &&
+    session.terminalHookHandoff?.attemptId === msg.attemptId
+  ) {
+    const handoff = session.terminalHookHandoff;
+    const owned = handoff.status === msg.status && (!fence || handoff.hostId === fence.hostId);
+    return {
+      ok: true,
+      applied: true,
+      ...(owned ? { terminalHookHandoffId: handoff.handoffId } : {}),
+      ...(owned && protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
+        ? { terminalHookHandoffExpiresAt: handoff.expiresAt }
+        : {}),
+    };
+  }
+  const retainedLateTerminalHandoff =
+    msg.deferTerminalHookResult === true &&
+    protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
+    (session.status === "cancelled" || session.status === "timed_out") &&
+    isTerminalSessionStatus(msg.status) &&
+    !session.terminalHookHandoff &&
+    session.attemptId === msg.attemptId
+      ? deferredTerminalHookHandoff(state, session, msg)
+      : undefined;
+  // Durable timeout intentionally detaches the assignment before the daemon
+  // exits (`worktreeId`/`hostId` are null, `timedOutHostId` remains). Retain
+  // the hook against that remembered owner without reclaiming its freed
+  // worktree or main-checkout lease.
+  if (
+    retainedLateTerminalHandoff &&
+    session.status === "timed_out" &&
+    !session.worktreeId &&
+    !session.workspaceSlotId &&
+    !session.mainCheckoutLease
+  ) {
+    const retained = await storage.finishSession({
+      sessionId: session.id,
+      worktreeId: null,
+      attemptId: msg.attemptId,
+      status: "timed_out",
+      expectedStatus: "timed_out",
+      queueShard: session.queueShard,
+      completedAt: session.completedAt ?? state.now(),
+      ...(fence ? { fence } : {}),
+      ...(session.providerAccountLease
+        ? { providerAccountLease: session.providerAccountLease }
+        : {}),
+      ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+      terminalHookHandoff: retainedLateTerminalHandoff,
+      expectedTerminalHookHandoffAbsent: true,
+    });
+    if (!retained) return { ok: true };
+    const committedHandoff = await committedDeferredCheckoutFailureHandoff(
+      state,
+      session.id,
+      retainedLateTerminalHandoff,
+    );
+    if (!committedHandoff) return { ok: true };
+    state.sessions.set(session.id, { ...session, terminalHookHandoff: committedHandoff });
+    state.pendingAcks.delete(session.id);
+    return {
+      ok: true,
+      applied: true,
+      terminalHookHandoffId: committedHandoff.handoffId,
+      terminalHookHandoffExpiresAt: committedHandoff.expiresAt,
+    };
+  }
+  // Cancellation and timeout mark a session terminal before the daemon's
+  // setup process necessarily exits. A modern daemon can retain that
+  // process's hook until this cleanup write commits, so use the same
+  // worktree-reserving terminal transaction as a running terminal report.
+  if (
+    retainedLateTerminalHandoff &&
+    session.mainCheckoutLease &&
+    session.hostId &&
+    session.assignmentConnectionId
+  ) {
+    const retained = await storage.releaseMainCheckoutSession({
+      sessionId: session.id,
+      hostId: session.hostId,
+      repositoryId: session.repositoryId,
+      connectionId: session.assignmentConnectionId,
+      attemptId: msg.attemptId,
+      status: session.status,
+      expectedStatus: session.status === "cancelled" ? "cancelled" : "timed_out",
+      queueShard: session.queueShard,
+      completedAt: session.completedAt ?? state.now(),
+      ...(session.status === "cancelled" && session.concurrencyId
+        ? { concurrencyId: session.concurrencyId }
+        : {}),
+      ...(session.providerAccountLease
+        ? { providerAccountLease: session.providerAccountLease }
+        : {}),
+      ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+      terminalHookHandoff: retainedLateTerminalHandoff,
+      expectedTerminalHookHandoffAbsent: true,
+    });
+    if (!retained) return { ok: true };
+    const committedHandoff = await committedDeferredCheckoutFailureHandoff(
+      state,
+      session.id,
+      retainedLateTerminalHandoff,
+    );
+    if (!committedHandoff) return { ok: true };
+    state.sessions.set(session.id, {
+      ...session,
+      worktreeId: null,
+      terminalHookHandoff: committedHandoff,
+    });
+    state.pendingAcks.delete(session.id);
+    return {
+      ok: true,
+      applied: true,
+      terminalHookHandoffId: committedHandoff.handoffId,
+      terminalHookHandoffExpiresAt: committedHandoff.expiresAt,
+    };
+  }
+  if (retainedLateTerminalHandoff && session.workspaceSlotId) {
+    const slotId = session.workspaceSlotId;
+    const retained = await storage.finishSession({
+      sessionId: session.id,
+      worktreeId: null,
+      workspaceSlotId: slotId,
+      attemptId: msg.attemptId,
+      status: session.status,
+      expectedStatus: session.status,
+      queueShard: session.queueShard,
+      completedAt: session.completedAt ?? state.now(),
+      ...(fence ? { fence } : {}),
+      ...(session.status === "cancelled" && session.concurrencyId
+        ? { concurrencyId: session.concurrencyId }
+        : {}),
+      ...(session.providerAccountLease
+        ? { providerAccountLease: session.providerAccountLease }
+        : {}),
+      ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+      terminalHookHandoff: retainedLateTerminalHandoff,
+      expectedTerminalHookHandoffAbsent: true,
+    });
+    if (!retained) return { ok: true };
+    const committedHandoff = await committedDeferredCheckoutFailureHandoff(
+      state,
+      session.id,
+      retainedLateTerminalHandoff,
+    );
+    if (!committedHandoff) return { ok: true };
+    const next = { ...session, workspaceSlotId: null, terminalHookHandoff: committedHandoff };
+    delete next.workspaceSlotLease;
+    state.sessions.set(session.id, next);
+    state.pendingAcks.delete(session.id);
+    return {
+      ok: true,
+      applied: true,
+      terminalHookHandoffId: committedHandoff.handoffId,
+      terminalHookHandoffExpiresAt: committedHandoff.expiresAt,
+    };
+  }
+  if (retainedLateTerminalHandoff && session.worktreeId) {
+    const retained = await storage.finishSession({
+      sessionId: session.id,
+      worktreeId: retainedLateTerminalHandoff.worktreeId,
+      attemptId: msg.attemptId,
+      status: session.status,
+      expectedStatus: session.status,
+      queueShard: session.queueShard,
+      completedAt: session.completedAt ?? state.now(),
+      ...(fence ? { fence } : {}),
+      ...(session.status === "cancelled" && session.concurrencyId
+        ? { concurrencyId: session.concurrencyId }
+        : {}),
+      ...(session.providerAccountLease
+        ? { providerAccountLease: session.providerAccountLease }
+        : {}),
+      ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+      terminalHookHandoff: retainedLateTerminalHandoff,
+      expectedTerminalHookHandoffAbsent: true,
+    });
+    if (!retained) return { ok: true };
+    const committedHandoff = await committedDeferredCheckoutFailureHandoff(
+      state,
+      session.id,
+      retainedLateTerminalHandoff,
+    );
+    if (!committedHandoff) return { ok: true };
+    const next = {
+      ...session,
+      worktreeId: null,
+      terminalHookHandoff: committedHandoff,
+    };
+    delete next.assignmentConnectionId;
+    delete next.assignmentSentAt;
+    delete next.ackReceivedAt;
+    delete next.reconnectDeadlineAt;
+    state.sessions.set(session.id, next);
+    state.pendingAcks.delete(session.id);
+    return {
+      ok: true,
+      applied: true,
+      terminalHookHandoffId: committedHandoff.handoffId,
+      ...(protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
+        ? { terminalHookHandoffExpiresAt: committedHandoff.expiresAt }
+        : {}),
+    };
+  }
   if (
     session.status === "timed_out" &&
     isTerminalSessionStatus(msg.status) &&

@@ -543,7 +543,7 @@ export class DynamoPlaneStorageBase {
     cliResumeRef?: string | undefined;
     result?: SessionResult | undefined;
     suppressedTargetIndex?: number;
-    expectedStatus?: "running" | "cancelled";
+    expectedStatus?: "running" | "cancelled" | "timed_out";
     attemptId?: string;
     concurrencyId?: string | undefined;
     requireUnacknowledged?: boolean;
@@ -556,6 +556,7 @@ export class DynamoPlaneStorageBase {
     timedOutAssignmentConnectionId?: string;
     infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
     terminalHookHandoff?: SessionRecord["terminalHookHandoff"];
+    expectedTerminalHookHandoffAbsent?: boolean;
   }): Promise<boolean> {
     return mainCheckout.releaseMainCheckoutSession(this.ctx, opts);
   }
@@ -890,6 +891,7 @@ export class DynamoPlaneStorageBase {
     timedOutAssignmentConnectionId?: string;
     infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
     terminalHookHandoff?: SessionRecord["terminalHookHandoff"];
+    expectedTerminalHookHandoffAbsent?: boolean;
     expectedStatus?: string;
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);

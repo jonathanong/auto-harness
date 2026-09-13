@@ -25,6 +25,29 @@ const item = {
 };
 
 describe("session terminal cleanup branches", () => {
+  it("fences a first deferred handoff write on the absence of an existing handoff", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      finishSession(ctx(send), {
+        sessionId: "session",
+        worktreeId: null,
+        attemptId: "attempt",
+        status: "timed_out",
+        expectedStatus: "timed_out",
+        queueShard: 0,
+        expectedTerminalHookHandoffAbsent: true,
+      }),
+    ).resolves.toBe(true);
+    const transaction = send.mock.calls
+      .map(([command]) => command.input as { TransactItems?: unknown })
+      .find((input) => input.TransactItems !== undefined);
+    const items = transaction?.TransactItems as Array<{
+      Update?: { TableName?: string; ConditionExpression?: string };
+    }>;
+    expect(
+      items.find((entry) => entry.Update?.TableName === "Sessions")?.Update?.ConditionExpression,
+    ).toContain("attribute_not_exists(terminalHookHandoff)");
+  });
   it("skips drain cleanup once a drain already cancelled the session", async () => {
     const send = vi.fn().mockResolvedValueOnce({ Item: item }).mockResolvedValueOnce({});
     await expect(
