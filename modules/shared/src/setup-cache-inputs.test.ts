@@ -17,12 +17,18 @@ describe("parseSetupCacheInputs", () => {
       parseSetupCacheInputs(["pnpm-lock.yaml", "pnpm-lock.yaml", "Cargo.lock"], "setupCacheInputs"),
     ).toEqual(["pnpm-lock.yaml", "Cargo.lock"]);
     expect(isSetupCacheInputPath("subdir/pnpm-lock.yaml")).toBe(true);
+    expect(isSetupCacheInputPath("")).toBe(false);
+    expect(isSetupCacheInputPath("C:foo")).toBe(false);
+    expect(isSetupCacheInputPath("C:/lock")).toBe(false);
+    expect(isSetupCacheInputPath("foo\u007fbar")).toBe(false);
+    expect(isSetupCacheInputPath("foo//bar")).toBe(false);
   });
 
   it("rejects undeclared-style discovery and unsafe paths", () => {
     expect(() => parseSetupCacheInputs("pnpm-lock.yaml", "setupCacheInputs")).toThrow(
       "string array",
     );
+    expect(() => parseSetupCacheInputs([1], "setupCacheInputs")).toThrow("string array");
     expect(() => parseSetupCacheInputs([""], "setupCacheInputs")).toThrow("non-empty");
     expect(() => parseSetupCacheInputs(["/etc/passwd"], "setupCacheInputs")).toThrow("relative");
     expect(() => parseSetupCacheInputs(["C:\\lock"], "setupCacheInputs")).toThrow("relative");
@@ -56,5 +62,7 @@ describe("parseSetupCacheInputs", () => {
       "pnpm-lock.yaml",
     ]);
     expect(presentSetupCacheInputs([], "setupCacheInputs")).toBeUndefined();
+    expect(presentSetupCacheInputs(undefined, "setupCacheInputs")).toBeUndefined();
+    expect(parseSetupCacheInputsField("", "setupCacheInputs")).toEqual([]);
   });
 });

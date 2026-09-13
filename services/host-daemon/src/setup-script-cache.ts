@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { readDeclaredSetupFiles } from "./setup-script-cache-file.ts";
 
-export { MAX_SETUP_CACHE_INPUT_BYTES, readDeclaredSetupFiles } from "./setup-script-cache-file.ts";
+export { readDeclaredSetupFiles };
 
 export function defaultSetupCacheDir(home = homedir()): string {
   return join(home, ".auto-harness", "setup-cache");

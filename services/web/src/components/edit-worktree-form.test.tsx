@@ -60,6 +60,14 @@ describe("EditWorktreeForm", () => {
     pressCancel();
     expect(document.querySelector('[data-pw="form-edit-worktree"]')).toBeNull();
     view.unmount();
+
+    const withCache = mountForm(form({ ...worktree, setupCacheInputs: ["Cargo.lock"] }));
+    press(field(withCache.container, "worktree-edit-open"));
+    expect(field<HTMLTextAreaElement>(document, "worktree-edit-setup-cache-inputs").value).toBe(
+      "Cargo.lock",
+    );
+    pressCancel();
+    withCache.unmount();
   });
 
   it("requires an absolute path", () => {
@@ -127,6 +135,15 @@ describe("EditWorktreeForm", () => {
     });
     expect(router.refresh).toHaveBeenCalledOnce();
     expect(document.querySelector('[data-pw="form-edit-worktree"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("rejects invalid setup cache inputs before saving", () => {
+    const view = mountForm(form());
+    press(field(view.container, "worktree-edit-open"));
+    setValue(field(document, "worktree-edit-setup-cache-inputs"), "/etc/passwd");
+    submit(field(document, "form-edit-worktree"));
+    expect(field(document, "worktree-edit-error").textContent).toContain("relative");
     view.unmount();
   });
 

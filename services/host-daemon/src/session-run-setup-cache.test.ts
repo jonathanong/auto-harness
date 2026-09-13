@@ -122,4 +122,24 @@ describe("runSetupIfNeeded setup cache", () => {
     await runCachedSetup(baseAssign(), claimed, second.runner, cacheDir);
     expect(second.calls()).toBe(1);
   });
+
+  it("hashes host extras and falls back to repository extras", async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-scopes-"));
+    const { cwd, claimed } = await claimSetupCache({
+      worktreeSetup: "pnpm install",
+      hostCacheInputs: ["host.lock"],
+      repositoryCacheInputs: ["repo.lock"],
+      files: { "host.lock": "host-1", "repo.lock": "repo-1" },
+    });
+    await runCachedSetup(baseAssign(), claimed, countingSetupRunner().runner, cacheDir);
+    const hit = countingSetupRunner();
+    expect((await runCachedSetup(baseAssign(), claimed, hit.runner, cacheDir)).system).toContain(
+      "Setup unchanged; skipping.",
+    );
+    expect(hit.calls()).toBe(0);
+    await writeFile(join(cwd, "host.lock"), "host-2");
+    const hostChanged = countingSetupRunner();
+    await runCachedSetup(baseAssign(), claimed, hostChanged.runner, cacheDir);
+    expect(hostChanged.calls()).toBe(1);
+  });
 });

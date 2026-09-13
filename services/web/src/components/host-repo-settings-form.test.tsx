@@ -274,6 +274,24 @@ describe("HostRepoSettingsForm", () => {
     view.unmount();
   });
 
+  it("rejects invalid setup cache inputs before saving", () => {
+    const persistence = inMemoryInventory(inventory);
+    const view = mountForm(
+      <HostRepoSettingsForm
+        hostId="host"
+        repo={repo}
+        canWriteExecConfig
+        mutate={persistence.mutate}
+      />,
+    );
+    press(field(view.container, "repo-settings-open-repo-1"));
+    setValue(field(document, "repo-settings-setup-cache-inputs-repo-1"), "/etc/passwd");
+    submit(field(document, "form-repo-settings-repo-1"));
+    expect(field(document, "repo-settings-error-repo-1").textContent).toContain("relative");
+    expect(persistence.mutate).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
   it("shows an aggregate requirement limit error from the fresh inventory", async () => {
     const persistence = inMemoryInventory({
       ...inventory,

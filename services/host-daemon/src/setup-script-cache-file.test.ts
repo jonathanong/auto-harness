@@ -1,5 +1,5 @@
-import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, symlink, truncate, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -34,15 +34,27 @@ describe("declared setup cache extra files", () => {
     expect(cache.skip).toBe(false);
   });
 
-  it("treats a FIFO or symlink-to-nonfile as a cache miss", async () => {
+  it("treats a socket, symlink-to-nonfile, or directory as a cache miss", async () => {
     if (process.platform === "win32") return;
     const cwd = await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-special-"));
-    execFileSync("mkfifo", [join(cwd, "fifo.lock")], { stdio: "ignore" });
-    expect(await readDeclaredSetupFiles(cwd, ["fifo.lock"])).toBeUndefined();
-    await symlink("/dev/null", join(cwd, "device.lock"));
-    expect(await readDeclaredSetupFiles(cwd, ["device.lock"])).toBeUndefined();
-    await mkdir(join(cwd, "dir.lock"));
-    expect(await readDeclaredSetupFiles(cwd, ["dir.lock"])).toBeUndefined();
+    const socketPath = join(cwd, "socket.lock");
+    const server = createServer();
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(socketPath, resolve);
+    });
+    try {
+      expect(await readDeclaredSetupFiles(cwd, ["socket.lock"])).toBeUndefined();
+      expect(await readBoundedRegularFile(join(cwd, "missing.lock"))).toBeUndefined();
+      await symlink("/dev/null", join(cwd, "device.lock"));
+      expect(await readDeclaredSetupFiles(cwd, ["device.lock"])).toBeUndefined();
+      await mkdir(join(cwd, "dir.lock"));
+      expect(await readDeclaredSetupFiles(cwd, ["dir.lock"])).toBeUndefined();
+    } finally {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
+    }
   });
 
   it("does not skip when the session abort fires during a declared-file read", async () => {

@@ -142,6 +142,7 @@ describe("HostSetupScriptForm", () => {
       <HostSetupScriptForm
         hostId="host/one"
         setupScript="old"
+        setupCacheInputs={["old.lock"]}
         allowedRoots={["/opt/harness"]}
         mutateExec={mutateExec}
         mutateInv={mutateInv}
@@ -152,6 +153,9 @@ describe("HostSetupScriptForm", () => {
       "fleet:exec-config",
     );
     expect(field<HTMLTextAreaElement>(view.container, "host-setup-script").value).toBe("old");
+    expect(field<HTMLTextAreaElement>(view.container, "host-setup-cache-inputs").value).toBe(
+      "old.lock",
+    );
     expect(field<HTMLTextAreaElement>(view.container, "host-allowed-roots").value).toBe(
       "/opt/harness",
     );
@@ -349,6 +353,7 @@ describe("HostSetupScriptForm", () => {
   it("preserves dirty exec fields across an unrelated inventory refresh", () => {
     const view = mount(<UnrelatedRefreshHarness />);
     setValue(field(view.container, "host-setup-script"), "new script");
+    setValue(field(view.container, "host-setup-cache-inputs"), "new.lock");
     setValue(field(view.container, "host-allowed-roots"), "/new-root");
     setValue(field(view.container, "host-required-environment"), "LOCAL_TOKEN");
 
@@ -356,6 +361,9 @@ describe("HostSetupScriptForm", () => {
 
     expect(field<HTMLTextAreaElement>(view.container, "host-setup-script").value).toBe(
       "new script",
+    );
+    expect(field<HTMLTextAreaElement>(view.container, "host-setup-cache-inputs").value).toBe(
+      "new.lock",
     );
     expect(field<HTMLTextAreaElement>(view.container, "host-allowed-roots").value).toBe(
       "/new-root",
@@ -507,6 +515,32 @@ describe("HostSetupScriptForm", () => {
     await act(async () => resolveSave?.({ ok: true }));
     expect(field<HTMLTextAreaElement>(view.container, "host-setup-script").value).toBe(
       "typed-while-pending",
+    );
+    view.unmount();
+  });
+
+  it("keeps setup cache inputs dirty when they change during an in-flight save", async () => {
+    let resolveSave: ((result: { ok: true }) => void) | undefined;
+    const mutateExec: typeof mutateExecConfig = async () =>
+      await new Promise((resolve) => {
+        resolveSave = resolve;
+      });
+    const view = mount(
+      <HostSetupScriptForm
+        hostId="host"
+        setupCacheInputs={["old.lock"]}
+        mutateExec={mutateExec}
+        canWriteExecConfig
+        canWriteInventory={false}
+      />,
+    );
+    setValue(field(view.container, "host-setup-cache-inputs"), "submitted.lock");
+    await submit(field(view.container, "form-host-setup-script"));
+    expect(resolveSave).toBeDefined();
+    setValue(field(view.container, "host-setup-cache-inputs"), "typed.lock");
+    await act(async () => resolveSave?.({ ok: true }));
+    expect(field<HTMLTextAreaElement>(view.container, "host-setup-cache-inputs").value).toBe(
+      "typed.lock",
     );
     view.unmount();
   });

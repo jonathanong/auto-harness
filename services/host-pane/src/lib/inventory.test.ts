@@ -36,6 +36,20 @@ describe("loadHostInventoryWithVersion", () => {
     });
   });
 
+  it("omits setup cache inputs that are not a string array", async () => {
+    setApiTransportForTests(async () =>
+      Response.json({
+        setupCacheInputs: [1],
+        repositories: [],
+        providerAccounts: [],
+      }),
+    );
+    await expect(loadHostInventoryWithVersion("host-a")).resolves.toEqual({
+      inventory: { repositories: [], providerAccounts: [] },
+      version: 0,
+    });
+  });
+
   it("reads a pre-versioning record's missing version as 0", async () => {
     setApiTransportForTests(async () => Response.json({ repositories: [], providerAccounts: [] }));
 

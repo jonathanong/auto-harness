@@ -11,6 +11,8 @@ import { runSetupIfNeeded, type ClaimedWorktree } from "../src/session-run-setup
 export async function claimSetupCache(extras?: {
   worktreeSetup?: string;
   worktreeCacheInputs?: string[];
+  repositoryCacheInputs?: string[];
+  hostCacheInputs?: string[];
   files?: Record<string, string>;
 }): Promise<{ cwd: string; claimed: ClaimedWorktree }> {
   const cwd = await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-run-"));
@@ -21,7 +23,15 @@ export async function claimSetupCache(extras?: {
   return {
     cwd,
     claimed: {
-      repository: { id: "repo-1", path: cwd, defaultBranch: "main", worktrees: [] },
+      repository: {
+        id: "repo-1",
+        path: cwd,
+        defaultBranch: "main",
+        worktrees: [],
+        ...(extras?.repositoryCacheInputs
+          ? { setupCacheInputs: extras.repositoryCacheInputs }
+          : {}),
+      },
       worktree: {
         id: "wt-1",
         name: "wt-1",
@@ -31,6 +41,7 @@ export async function claimSetupCache(extras?: {
         ...(extras?.worktreeCacheInputs ? { setupCacheInputs: extras.worktreeCacheInputs } : {}),
       },
       cwd,
+      ...(extras?.hostCacheInputs ? { hostSetupCacheInputs: extras.hostCacheInputs } : {}),
       currentHookTarget: async () => null,
     },
   };

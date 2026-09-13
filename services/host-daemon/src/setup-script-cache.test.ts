@@ -9,6 +9,7 @@ import {
   mergeSetupCacheInputs,
   readDeclaredSetupFiles,
   readStoredSetupCache,
+  resolveSetupCacheState,
   sanitizeCapturedSetupEnvironment,
   setupCacheFileName,
   writeStoredSetupCache,
@@ -77,16 +78,68 @@ describe("setup script fingerprint", () => {
     expect(await readFile(join(cwd, "abc"), "utf8").catch(() => "missing")).toBe("missing");
     expect(sanitizeCapturedSetupEnvironment(["nope"])).toBeUndefined();
     expect(sanitizeCapturedSetupEnvironment(null)).toBeUndefined();
-    expect(sanitizeCapturedSetupEnvironment({ HARNESS_X: "y", OK: "z", n: 1 })).toEqual({
-      OK: "z",
-    });
+    expect(sanitizeCapturedSetupEnvironment(1)).toBeUndefined();
+    expect(sanitizeCapturedSetupEnvironment("nope")).toBeUndefined();
+    expect(sanitizeCapturedSetupEnvironment(undefined)).toBeUndefined();
+    expect(
+      sanitizeCapturedSetupEnvironment({ HARNESS_X: "y", harness_z: "n", OK: "z", n: 1 }),
+    ).toEqual({ OK: "z" });
     expect(await readStoredSetupCache(cacheDir, "wt-1", join(cwd, "missing"))).toBeUndefined();
+    await writeFile(sidecar, "{");
+    expect(await readStoredSetupCache(cacheDir, "wt-1", cwd)).toBeUndefined();
+    await writeFile(sidecar, "null");
+    expect(await readStoredSetupCache(cacheDir, "wt-1", cwd)).toBeUndefined();
+    await writeFile(sidecar, "1");
+    expect(await readStoredSetupCache(cacheDir, "wt-1", cwd)).toBeUndefined();
     await writeFile(sidecar, JSON.stringify(["abc"]));
     expect(await readStoredSetupCache(cacheDir, "wt-1", cwd)).toBeUndefined();
     await writeFile(sidecar, JSON.stringify({ fingerprint: "", environment: {} }));
     expect(await readStoredSetupCache(cacheDir, "wt-1", cwd)).toBeUndefined();
     await writeFile(sidecar, JSON.stringify({ fingerprint: 1, environment: {} }));
     expect(await readStoredSetupCache(cacheDir, "wt-1", cwd)).toBeUndefined();
+    await writeFile(sidecar, JSON.stringify({ fingerprint: "abc" }));
+    expect(await readStoredSetupCache(cacheDir, "wt-1", cwd)).toBeUndefined();
+    await writeFile(sidecar, JSON.stringify({ fingerprint: "abc", environment: null }));
+    expect(await readStoredSetupCache(cacheDir, "wt-1", cwd)).toBeUndefined();
+  });
+
+  it("skips only when the stored fingerprint still matches", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-hit-"));
+    const cacheDir = await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-store-"));
+    await writeFile(join(cwd, "pnpm-lock.yaml"), "lock-a");
+    const first = await resolveSetupCacheState({
+      cacheDir,
+      checkoutSha: "abc",
+      cwd,
+      worktreeId: "wt-1",
+      scripts: ["pnpm install"],
+      extraPaths: ["pnpm-lock.yaml"],
+    });
+    expect(first).toMatchObject({ skip: false, fingerprintToStore: expect.any(String) });
+    if (first.skip || !first.fingerprintToStore) throw new Error("expected a fingerprint");
+    await writeStoredSetupCache(cacheDir, "wt-1", cwd, first.fingerprintToStore, { TOKEN: "x" });
+    expect(
+      await resolveSetupCacheState({
+        cacheDir,
+        checkoutSha: "abc",
+        cwd,
+        worktreeId: "wt-1",
+        scripts: ["pnpm install"],
+        extraPaths: ["pnpm-lock.yaml"],
+      }),
+    ).toEqual({ skip: true, environment: { TOKEN: "x" } });
+    await writeFile(join(cwd, "pnpm-lock.yaml"), "lock-b");
+    const miss = await resolveSetupCacheState({
+      cacheDir,
+      checkoutSha: "abc",
+      cwd,
+      worktreeId: "wt-1",
+      scripts: ["pnpm install"],
+      extraPaths: ["pnpm-lock.yaml"],
+    });
+    expect(miss.skip).toBe(false);
+    expect(miss).toMatchObject({ fingerprintToStore: expect.any(String) });
+    expect(miss).not.toEqual(first);
   });
 
   it("merges host extras ahead of a scoped override without inventing paths", () => {
@@ -95,6 +148,8 @@ describe("setup script fingerprint", () => {
       "scoped.lock",
     ]);
     expect(mergeSetupCacheInputs(undefined, [])).toEqual([]);
+    expect(mergeSetupCacheInputs(["host.lock"], undefined)).toEqual(["host.lock"]);
+    expect(mergeSetupCacheInputs(undefined, undefined)).toEqual([]);
     expect(defaultSetupCacheDir("/home/harness")).toBe("/home/harness/.auto-harness/setup-cache");
   });
 });

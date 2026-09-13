@@ -718,6 +718,30 @@ describe("WorktreeManager", () => {
     );
   });
 
+  it("keeps a claimed worktree valid when setup cache inputs are unchanged", async () => {
+    const cfg = parseDaemonConfig({
+      ...config,
+      setupCacheInputs: ["host.lock"],
+      repositories: [
+        {
+          ...config.repositories[0],
+          setupCacheInputs: ["pnpm-lock.yaml"],
+          worktrees: [
+            {
+              ...config.repositories[0]!.worktrees[0],
+              setupCacheInputs: ["Cargo.lock"],
+            },
+          ],
+        },
+      ],
+    });
+    const mgr = new WorktreeManager(cfg, fakeGit());
+    const claimed = await mgr.claim("repo-1", "wt-1");
+    mgr.noteInventoryChange();
+    await expect(claimed.currentExecutionTarget()).resolves.toBeUndefined();
+    mgr.release("wt-1");
+  });
+
   it("rejects an execution target whose claimed paths moved after inventory refresh", async () => {
     const cfg = structuredClone(config);
     const mgr = new WorktreeManager(cfg, fakeGit());

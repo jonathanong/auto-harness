@@ -5,7 +5,7 @@ import type { ChangeEventHandler } from "react";
 import { Label } from "./label.tsx";
 import { Textarea } from "./textarea.tsx";
 
-export const SETUP_CACHE_INPUTS_TIP =
+const SETUP_CACHE_INPUTS_TIP =
   "Relative checkout paths whose contents must stay unchanged to reuse the last successful setup. One path per line. The host never auto-detects lockfiles or manifests.";
 
 export function SetupCacheInputsField({
