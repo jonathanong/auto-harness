@@ -381,7 +381,8 @@ Numeric
 repository and comment IDs form the existing session concurrency identity, so concurrent or
 active-session redelivery is deduplicated, including when a catalog deletion marker is acquired after
 that lock owner already committed, and including when the integration version/generation fence loses
-in the same transaction as the lock Put. Marker-only conflicts with no active lock owner still fail
+in the same transaction as the lock Put. The storage-less local path checks the in-memory GitHub
+comment lock before rejecting a stale fence, matching that 202 dedupe. Marker-only conflicts with no active lock owner still fail
 closed. Terminal sessions release that identity and a later
 redelivery can start a new run; ingress adds no second receipt store and does not promise
 exactly-once execution. Secret rotation, disablement, and deletion are version-fenced against
