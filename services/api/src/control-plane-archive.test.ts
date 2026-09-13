@@ -534,19 +534,25 @@ describe("archive retry state", () => {
       retryOrder: "old-claim",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
+    let logReads = 0;
     const originalGet = state.logs.get.bind(state.logs);
     state.logs.get = ((sessionId: string) => {
-      state.archives.set(key, {
-        key,
-        contentType: "application/x-ndjson",
-        bodyBytes: 42,
-        status: "pending",
-        objectStored: false,
-        retryState: "processing",
-        retryOrder: "new-claim",
-        capturedRetryOrder: "new-claim",
-        updatedAt: "2026-01-08T00:00:00.000Z",
-      });
+      logReads += 1;
+      // archiveBody reads logs before the empty-expiry fence. Mutate only on the
+      // later retention probe so the live-claim re-check after that await is hit.
+      if (logReads >= 2) {
+        state.archives.set(key, {
+          key,
+          contentType: "application/x-ndjson",
+          bodyBytes: 42,
+          status: "pending",
+          objectStored: false,
+          retryState: "processing",
+          retryOrder: "new-claim",
+          capturedRetryOrder: "new-claim",
+          updatedAt: "2026-01-08T00:00:00.000Z",
+        });
+      }
       return originalGet(sessionId);
     }) as typeof state.logs.get;
     await retrySessionArchiveIfNeeded(state, "empty-latest", {
@@ -558,6 +564,80 @@ describe("archive retry state", () => {
       retryOrder: "new-claim",
       bodyBytes: 42,
     });
+  });
+
+  it("does not let an empty retry expire a captured nonempty claim of the same order", async () => {
+    let uploaded = 0;
+    const key = "sessions/empty-captured/logs.jsonl";
+    const state = createControlPlaneState({
+      now: () => "2026-01-08T00:00:00.000Z",
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+    });
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 42,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "claim-order",
+      capturedRetryOrder: "claim-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await retrySessionArchiveIfNeeded(state, "empty-captured", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(uploaded).toBe(0);
+    expect(state.archives.get(key)).toMatchObject({
+      retryOrder: "claim-order",
+      bodyBytes: 42,
+      status: "pending",
+    });
+  });
+
+  it("does not let an empty retry expire an expired or idle in-memory claim", async () => {
+    let uploaded = 0;
+    const state = createControlPlaneState({
+      now: () => "2026-01-08T00:00:00.000Z",
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+    });
+    const expiredKey = "sessions/empty-expired/logs.jsonl";
+    state.archives.set(expiredKey, {
+      key: expiredKey,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "expired",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "claim-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await archiveSessionLogs(state, "empty-expired", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    const idleKey = "sessions/empty-idle/logs.jsonl";
+    state.archives.set(idleKey, {
+      key: idleKey,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "pending",
+      retryOrder: "claim-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await retrySessionArchiveIfNeeded(state, "empty-idle", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(state.archives.get(expiredKey)?.status).toBe("expired");
+    expect(state.archives.get(idleKey)).toMatchObject({
+      status: "pending",
+      retryState: "pending",
+    });
+    expect(uploaded).toBe(0);
   });
 
   it("does not upload a nonempty in-memory retry against an expired claim", async () => {

@@ -271,7 +271,8 @@ replace the data-loss state with an empty transcript. An in-flight processing re
 already captured nonempty logs for the current retry generation is not expired out from under
 its upload. Memory-only expiry re-reads the live in-memory row before writing that fence, so a
 stale pending snapshot cannot expire a claim that already recorded captured bytes. Memory-only
-retries also check the live claim against the owned retry before empty expiry or the object PUT.
+retries also check the live claim against the owned retry before empty expiry or the object PUT,
+and again after the retention log probe.
 Empty processing claims, reclaimed generations, and empty completes against an already-expired row
 stay rejected.
 Queued and running sessions always remain in the recent/not-archived state, even if stale complete
