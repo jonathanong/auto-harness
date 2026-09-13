@@ -399,7 +399,7 @@ Admin `POST` creates and `PUT` replaces routing with a body containing `secret`,
 `target`, and `timeout`, plus optional `fallbacks`, `queueTtlSeconds`, `priority`, `requiredLabels`,
 and `enabled`. `POST` requires `secret`. `PUT` may omit `secret` to retain the encrypted value,
 supplying it rotates the secret, and requires the last observed positive integer `version` plus
-opaque `generation`. `DELETE` requires those fences in `If-Match` and `If-Match-Generation`;
+opaque `generation` (`legacy` when the stored row has none). `DELETE` requires those fences in `If-Match` and `If-Match-Generation`;
 stale writes and deletes (including a delete/recreate of the same integration ID) return `409`.
 
 Outbound HTTP deliveries use the same raw-body HMAC format in `x-auto-harness-signature-256`, plus

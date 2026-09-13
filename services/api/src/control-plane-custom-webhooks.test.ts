@@ -227,6 +227,18 @@ describe("custom webhook integration lifecycle", () => {
     });
   });
 
+  it("returns a public legacy generation sentinel for rows stored without one", async () => {
+    const value = plane();
+    await value.createCustomWebhookIntegration(config());
+    const record = await value.getCustomWebhookIntegrationRecord("deploy");
+    if (!record) throw new Error("expected record");
+    delete record.generation;
+    value.state.customWebhookIntegrations.set("deploy", record);
+    await expect(value.getCustomWebhookIntegration("deploy")).resolves.toMatchObject({
+      generation: "legacy",
+    });
+  });
+
   it("accepts an explicitly empty fallback list", async () => {
     await expect(
       plane().createCustomWebhookIntegration(config({ fallbacks: [] })),
