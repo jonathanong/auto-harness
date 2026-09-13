@@ -61,7 +61,8 @@ metadata in DynamoDB. That metadata contains only bounded pointer/retry state, n
 pending first-time uploads are retried idempotently at the same object key. Complete metadata with
 a stored object version is not discarded until a replacement version is committed. A legacy complete
 row with no `versionId` records fenced pending retry metadata before the replacement PUT, and only
-while that exact legacy generation still wins. Authorized session reads use a durable metadata point
+while that exact legacy generation still wins. An empty transcript on that path re-checks the live
+claim before the object PUT. Authorized session reads use a durable metadata point
 lookup, verify the canonical S3 object's expected bytes and content type, and mint a short-lived
 direct download. The private lifecycle-managed bucket grants writes only to REST/Cron and reads
 only to REST; WebSocket has neither permission.

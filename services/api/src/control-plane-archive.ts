@@ -133,25 +133,27 @@ export async function archiveSessionLogs(
       retryOrder,
     };
   }
-  if (ownedRetry && pending.bodyBytes === 0 && !replacement) {
+  if (ownedRetry && pending.bodyBytes === 0) {
     const claimed = state.archives.get(object.key);
     if (!state.storage && liveInMemoryClaimBlocksEmptyExpiry(claimed, ownedRetry.retryOrder)) {
       return object;
     }
-    const existing = state.storage ? await state.storage.getArchive(object.key) : claimed;
-    if (archiveRetentionElapsed(state.now(), [existing?.updatedAt])) {
-      const logsRemain = await recentLogsRemain(state, sessionId);
-      const latest = state.archives.get(object.key);
-      if (!state.storage && liveInMemoryClaimBlocksEmptyExpiry(latest, ownedRetry.retryOrder)) {
+    if (!replacement) {
+      const existing = state.storage ? await state.storage.getArchive(object.key) : claimed;
+      if (archiveRetentionElapsed(state.now(), [existing?.updatedAt])) {
+        const logsRemain = await recentLogsRemain(state, sessionId);
+        const latest = state.archives.get(object.key);
+        if (!state.storage && liveInMemoryClaimBlocksEmptyExpiry(latest, ownedRetry.retryOrder)) {
+          return object;
+        }
+        if (logsRemain) return object;
+        await persistExpiredArchive(state, object.key, {
+          ...pending,
+          retryState: "processing",
+          retryOrder: ownedRetry.retryOrder,
+        });
         return object;
       }
-      if (logsRemain) return object;
-      await persistExpiredArchive(state, object.key, {
-        ...pending,
-        retryState: "processing",
-        retryOrder: ownedRetry.retryOrder,
-      });
-      return object;
     }
   }
   if (ownedRetry && pending.bodyBytes > 0) {
