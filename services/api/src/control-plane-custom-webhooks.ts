@@ -190,6 +190,12 @@ export async function deleteCustomWebhookIntegration(
     ) {
       return conflict();
     }
+    if (!state.storage) {
+      const observedCatalog = inMemoryWebhookCatalogFingerprint(state, current);
+      await Promise.resolve();
+      if (state.customWebhookIntegrations.get(id) !== current) return conflict();
+      if (inMemoryWebhookCatalogFingerprint(state, current) !== observedCatalog) return conflict();
+    }
     state.customWebhookIntegrations.delete(id);
     return { ok: true };
   });
@@ -384,6 +390,23 @@ function conflict(): Failure {
     error: "custom webhook integration changed concurrently; retry",
     conflict: true,
   };
+}
+
+function inMemoryWebhookCatalogFingerprint(
+  state: ControlPlaneState,
+  record: CustomWebhookIntegrationRecord,
+): string {
+  const parts = [
+    `repository:${record.repositoryId}:${state.repositories.has(record.repositoryId)}`,
+  ];
+  for (const route of [record.target, ...record.fallbacks]) {
+    parts.push(
+      "providerId" in route
+        ? `provider:${route.providerId}:${state.providers.has(route.providerId)}`
+        : `command:${route.commandId}:${state.commands.has(route.commandId)}`,
+    );
+  }
+  return parts.join("|");
 }
 
 /** Keep configuration and catalog deletes on the same durable ownership fences. */

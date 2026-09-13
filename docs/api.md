@@ -407,6 +407,8 @@ and `enabled`. `POST` requires `secret`. `PUT` may omit `secret` to retain the e
 supplying it rotates the secret, and requires the last observed positive integer `version` plus
 opaque `generation` (`legacy` when the stored row has none). `DELETE` requires those fences in `If-Match` and `If-Match-Generation`;
 stale writes and deletes (including a delete/recreate of the same integration ID) return `409`.
+In-memory control-plane deletes re-check the live webhook row and its catalog references immediately
+before mutation, and return the same concurrent-change conflict when either observation moved.
 
 Outbound HTTP deliveries use the same raw-body HMAC format in `x-auto-harness-signature-256`, plus
 stable `x-auto-harness-event` and `x-auto-harness-delivery` headers. HTTPS is the secure default;
