@@ -118,14 +118,23 @@ The user can change their password after first login.
 
 Service accounts are for machines — CI/CD systems, VPS agents, and external integrations. Created by admins.
 
-| Property    | Value                                                                                                                                |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Format      | `hns_` prefix + 48 random characters                                                                                                 |
-| Storage     | SHA-256 hash stored in DynamoDB. Plain key shown once on creation.                                                                   |
-| Rotation    | Create a new key, update consumers, delete the old key                                                                               |
-| Auth method | `Authorization: Bearer <api-key>` header (REST and host WebSocket). Browser login, session cookies, and viewer tickets are rejected. |
+| Property    | Value                                                                                                                                               |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Format      | `hns_` prefix + 48 random characters                                                                                                                |
+| Storage     | SHA-256 hash stored in DynamoDB. Plain key shown once on creation.                                                                                  |
+| Rotation    | Create a new key, update consumers, then delete the old key. Schedules and unreleased principal session drains stay on the old account — see below. |
+| Auth method | `Authorization: Bearer <api-key>` header (REST and host WebSocket). Browser login, session cookies, and viewer tickets are rejected.                |
 
 Service accounts have the same role system as user accounts (`read-only`, `author`, `operator`, `maintainer`, `agent`, `admin`) and can optionally be scoped to specific repositories. `agent` additionally requires `boundHostId`.
+
+Rotating an `operator` or `maintainer` key creates a **new** account. Schedules keep
+the old `principalId`; they are not rewritten onto the replacement. An unreleased
+[principal session drain](api.md#principal-session-drains) likewise stays on the old
+principal. `DELETE` of the old account therefore returns `409 CONFLICT` until those
+schedules are deleted and recreated under the new account and every unreleased drain
+for that principal is [released](api.md#principal-session-drains). Only then can the
+old key be revoked. The Settings rotation dialog still requires confirming consumers
+were updated; it does not move schedule ownership or release drains.
 
 ```json
 {
