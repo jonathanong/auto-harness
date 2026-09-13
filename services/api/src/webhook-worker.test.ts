@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- processor timing and lease outcomes share one focused fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import type { WebhookTransportRequest } from "./webhook-delivery-types.ts";
@@ -94,7 +95,23 @@ describe("webhook outbox processor", () => {
       ),
     ).resolves.toBe("lease-lost");
 
-    const lostFailure = webhookProcessStore({ failWebhookDelivery: vi.fn(async () => null) });
+    const terminal = vi.fn(async () => true);
+    const permanent = webhookProcessStore({ deadLetterWebhookDelivery: terminal });
+    await expect(
+      processWebhookOutboxOnce(
+        permanent,
+        { deliver: async () => ({ ok: false, failureCode: "delivery-rejected" }) },
+        { now: () => webhookTestNow },
+      ),
+    ).resolves.toBe("dead");
+    expect(terminal).toHaveBeenCalledWith(
+      expect.objectContaining({ failureCode: "delivery-rejected" }),
+    );
+    expect(permanent.failWebhookDelivery).not.toHaveBeenCalled();
+
+    const lostFailure = webhookProcessStore({
+      deadLetterWebhookDelivery: vi.fn(async () => false),
+    });
     await expect(
       processWebhookOutboxOnce(
         lostFailure,
@@ -107,6 +124,22 @@ describe("webhook outbox processor", () => {
     await expect(
       processWebhookOutboxOnce(skipped, { deliver: vi.fn() }, { now: () => webhookTestNow }),
     ).resolves.toBe("idle");
+  });
+
+  it("uses settlement time when permanently rejecting a slow delivery", async () => {
+    const terminal = vi.fn(async () => true);
+    const store = webhookProcessStore({ deadLetterWebhookDelivery: terminal });
+    const nowValues = [webhookTestNow, "2026-08-15T12:00:10.000Z"];
+    await expect(
+      processWebhookOutboxOnce(
+        store,
+        { deliver: async () => ({ ok: false, failureCode: "delivery-rejected" }) },
+        { now: () => nowValues.shift()! },
+      ),
+    ).resolves.toBe("dead");
+    expect(terminal).toHaveBeenCalledWith(
+      expect.objectContaining({ now: "2026-08-15T12:00:10.000Z" }),
+    );
   });
 
   it("dead-letters exhausted due rows before claiming and validates bounds", async () => {
@@ -146,5 +179,50 @@ describe("webhook outbox processor", () => {
 
     await processWebhookOutboxBatch(store, { deliver: vi.fn() }, {}, () => false);
     expect(store.deadLetterExhaustedWebhookDelivery).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the default clock when processing a live batch candidate", async () => {
+    const store = webhookProcessStore();
+    await expect(
+      processWebhookOutboxBatch(store, { deliver: async () => ({ ok: true }) }, {}, () => true),
+    ).resolves.toBeUndefined();
+    expect(store.claimWebhookDelivery).toHaveBeenCalledOnce();
+  });
+
+  it("claims sequential batch candidates using their current time", async () => {
+    const first = webhookTestDelivery({ id: "first", dueAt: webhookTestNow });
+    const second = webhookTestDelivery({ id: "second", dueAt: webhookTestNow });
+    const claimed: Array<{ id: string; now: string; leaseExpiresAt: string }> = [];
+    const store = webhookProcessStore({
+      listDueWebhookDeliveries: vi.fn(async ({ state }) =>
+        state === "pending" ? [first, second] : [],
+      ),
+      claimWebhookDelivery: vi.fn(async (input) => {
+        claimed.push(input);
+        return webhookTestDelivery({ id: input.id, attemptCount: 1, state: "leased" });
+      }),
+    });
+    const nowValues = [webhookTestNow, "2026-08-15T12:00:01.000Z", "2026-08-15T12:00:10.000Z"];
+    await processWebhookOutboxBatch(
+      store,
+      { deliver: async () => ({ ok: true }) },
+      { now: () => nowValues.shift()!, leaseMs: 30_000 },
+      () => true,
+    );
+    expect(claimed).toMatchObject([
+      { id: "first", now: "2026-08-15T12:00:01.000Z", leaseExpiresAt: "2026-08-15T12:00:31.000Z" },
+      { id: "second", now: "2026-08-15T12:00:10.000Z", leaseExpiresAt: "2026-08-15T12:00:40.000Z" },
+    ]);
+  });
+
+  it("reports a lease loss when retry settlement no longer owns the delivery", async () => {
+    const store = webhookProcessStore({ failWebhookDelivery: vi.fn(async () => null) });
+    await expect(
+      processWebhookOutboxOnce(
+        store,
+        { deliver: async () => ({ ok: false, failureCode: "transient-failure" }) },
+        { now: () => webhookTestNow },
+      ),
+    ).resolves.toBe("lease-lost");
   });
 });

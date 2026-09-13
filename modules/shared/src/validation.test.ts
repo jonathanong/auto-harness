@@ -577,6 +577,24 @@ describe("validateCreateSessionInput", () => {
       validateCreateSessionInput({ ...base, concurrencyId: "session-spawn:parent:digest" }),
     ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
     expect(
+      validateCreateSessionInput({ ...base, concurrencyId: "webhook:deploy:delivery-1" }),
+    ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
+    expect(
+      validateCreateSessionInput(
+        { ...base, concurrencyId: "webhook:deploy:delivery-1" },
+        { allowCustomWebhookConcurrencyId: true },
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      validateCreateSessionInput({ ...base, concurrencyId: "github-comment:issue_comment:42:99" }),
+    ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
+    expect(
+      validateCreateSessionInput(
+        { ...base, concurrencyId: "github-comment:issue_comment:42:99" },
+        { allowGitHubCommentConcurrencyId: true },
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
       validateCreateSessionInput({
         ...base,
         concurrencyId: "x".repeat(MAX_CONCURRENCY_ID_BYTES + 1),

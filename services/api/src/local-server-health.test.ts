@@ -85,6 +85,7 @@ describe("createLocalApp health and sessions", () => {
       "scheduleId=",
       "source=",
       "source=other",
+      "sort=unsupported",
       "repositoryId=r1&repositoryId=r2",
       "hostId=h1&hostId=h2",
       "concurrencyId=c1&concurrencyId=c2",

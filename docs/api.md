@@ -372,6 +372,32 @@ Delete a service account and revoke its API key. **Admin only.**
 
 ---
 
+### Generic inbound webhooks
+
+`POST /api/v1/webhooks/custom/:integrationId` is the public, unauthenticated ingress for an
+operator-configured custom webhook. The request body is strictly limited to `prompt`,
+`idempotencyKey`, and optional `ref`; repository and target routing are never accepted from the
+caller. Send `x-auto-harness-signature-256: sha256=<64 lowercase hex characters>`, where the
+digest is HMAC-SHA256 of the exact request bytes using the integration secret. Valid requests
+create (or find) a `source: "webhook"` session using an integration-generation-scoped concurrency key and
+return a small `202` acknowledgment (`accepted`, `sessionId`, and `created`). Assignment dispatch
+is asynchronous after the durable session write. The concurrency key follows the session API's
+normal lifecycle: it deduplicates while active, then releases at terminal so a later delivery can
+start a new run. Admin configuration is at
+`/api/v1/integrations/custom/:integrationId`; secrets are KMS-encrypted and never returned.
+
+Admin `POST` creates and `PUT` replaces routing with a body containing `secret`, `repositoryId`,
+`target`, and `timeout`, plus optional `fallbacks`, `queueTtlSeconds`, `priority`, `requiredLabels`,
+and `enabled`. `POST` requires `secret`. `PUT` may omit `secret` to retain the encrypted value,
+supplying it rotates the secret, and requires the last observed positive integer `version` plus
+opaque `generation`. `DELETE` requires those fences in `If-Match` and `If-Match-Generation`;
+stale writes and deletes (including a delete/recreate of the same integration ID) return `409`.
+
+Outbound HTTP deliveries use the same raw-body HMAC format in `x-auto-harness-signature-256`, plus
+stable `x-auto-harness-event` and `x-auto-harness-delivery` headers. HTTPS is the secure default;
+plain HTTP needs an explicit non-production development/test escape. Redirects are rejected, and
+408/429/5xx responses are retried by the bounded outbox.
+
 ### Integrations — Slack
 
 Slack configuration is the singleton `/integrations/slack`. Every method
@@ -1068,7 +1094,8 @@ Results are always ascending by the durable `timestampSeq` key (timestamp then
 agent sequence). Filters apply before `limit`. Invalid query parameters return
 `400 VALIDATION_ERROR`; a missing or inaccessible session returns `404 NOT_FOUND`.
 Storage failures return `500 INTERNAL_ERROR`. This endpoint is historical only:
-it neither opens a WebSocket live tail nor reads S3 archives in the current release.
+it neither opens a WebSocket live tail nor reads S3 archives. Use the archive endpoint below for
+the durable terminal transcript.
 
 **Response:** `200 OK`
 
@@ -1088,6 +1115,55 @@ it neither opens a WebSocket live tail nor reads S3 archives in the current rele
   ]
 }
 ```
+
+#### `GET /sessions/:id/archive`
+
+Resolve the durable terminal transcript's availability. Any authenticated principal may read an
+in-scope session, using the same repository and host scoping as `GET /sessions/:id/logs`. Missing
+and inaccessible sessions both return `404 NOT_FOUND`. Every successful response is
+`Cache-Control: no-store`.
+
+The response is one of:
+
+```json
+{ "state": "dynamodb" }
+```
+
+```json
+{
+  "state": "archived",
+  "downloadUrl": "https://…",
+  "expiresAt": "2026-08-01T12:05:00.000Z",
+  "contentType": "application/x-ndjson",
+  "bodyBytes": 12345
+}
+```
+
+```json
+{ "state": "unavailable" }
+```
+
+```json
+{ "state": "incomplete", "reason": "content-length-mismatch" }
+```
+
+```json
+{ "state": "expired" }
+```
+
+`dynamodb` means the transcript remains on the recent-log path or archival is still pending. It is
+also returned for queued and running sessions even if stale or pre-existing complete archive
+metadata is present; archived retrieval is exposed only after the authoritative session is terminal.
+`archived` means S3 metadata was verified against the durable archive record and `downloadUrl` is
+a fresh five-minute presigned attachment URL for `session-logs.jsonl`. `incomplete` means the
+version-pinned S3 object was found, but its immutable version, content length, or content type differs
+from the verified DynamoDB metadata; `reason` is `version-id-missing`, `version-id-mismatch`,
+`content-length-mismatch`, `content-type-mismatch`, or `content-length-and-type-mismatch`. `expired` means archival did not complete before the terminal
+session's seven-day recent-log retention elapsed and a strongly consistent bounded probe found no
+recent log row remaining. `unavailable` means an archive record exists but
+the object cannot currently be retrieved, including a cold Glacier object that has not been
+restored. The API does not initiate restores. Clients must request a new URL immediately before
+each download and must not persist or log it.
 
 ---
 

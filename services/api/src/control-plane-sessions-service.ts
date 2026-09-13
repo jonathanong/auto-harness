@@ -1,6 +1,10 @@
 /* eslint-disable max-lines -- session create/list/assign/resume/cancel/log/usage reads share one facade. */
 import { createHash, timingSafeEqual } from "node:crypto";
-import type { HostToServerMessage, SessionStatus } from "@auto-harness/shared";
+import type {
+  HostToServerMessage,
+  SessionArchiveReadResponse,
+  SessionStatus,
+} from "@auto-harness/shared";
 
 import type {
   ArchiveMetadata,
@@ -10,6 +14,7 @@ import type {
   PublicSession,
 } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
+import type { IntegrationSessionFence } from "./db/plane-storage-types.ts";
 import { toPublic } from "./control-plane-state.ts";
 import * as assign from "./control-plane-assign.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
@@ -58,9 +63,23 @@ export class ControlPlaneSessionsService {
 
   createSessionDurable(
     body: unknown,
-    options: { principalId?: string } = {},
+    options: { principalId?: string; integrationFence?: IntegrationSessionFence } = {},
   ): Promise<Awaited<ReturnType<typeof durableSessions.createSessionDurable>>> {
     return durableSessions.createSessionDurable(this.state, body, options);
+  }
+
+  createCustomWebhookSessionDurable(
+    body: unknown,
+    options: { integrationFence?: IntegrationSessionFence } = {},
+  ): ReturnType<typeof durableSessions.createCustomWebhookSessionDurable> {
+    return durableSessions.createCustomWebhookSessionDurable(this.state, body, options);
+  }
+
+  createGitHubIngressSessionDurable(
+    body: unknown,
+    options: { integrationFence?: IntegrationSessionFence } = {},
+  ): ReturnType<typeof durableSessions.createGitHubIngressSessionDurable> {
+    return durableSessions.createGitHubIngressSessionDurable(this.state, body, options);
   }
 
   getSession(id: string): PublicSession | null {
@@ -313,6 +332,13 @@ export class ControlPlaneSessionsService {
 
   getArchive(sessionId: string): ArchiveMetadata | null {
     return lifecycle.getArchive(this.state, sessionId);
+  }
+
+  getArchiveDownloadDurable(
+    sessionId: string,
+    terminalAt?: string,
+  ): Promise<SessionArchiveReadResponse> {
+    return lifecycle.getArchiveDownloadDurable(this.state, sessionId, terminalAt);
   }
 
   listArchives(): ArchiveMetadata[] {

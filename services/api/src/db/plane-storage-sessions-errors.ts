@@ -49,6 +49,13 @@ export class SessionDescendantBudgetExceededError extends Error {
   }
 }
 
+export class IntegrationChangedError extends Error {
+  constructor() {
+    super("inbound integration changed concurrently");
+    this.name = "IntegrationChangedError";
+  }
+}
+
 class SessionDrainActiveError extends Error {
   readonly operationId: string;
 
@@ -84,5 +91,6 @@ export function isCreateSessionConflict(err: unknown): boolean {
     "CatalogDeletionInProgressError",
     "ParentSessionAttemptEndedError",
     "SessionDescendantBudgetExceededError",
+    "IntegrationChangedError",
   ].includes(err.name);
 }

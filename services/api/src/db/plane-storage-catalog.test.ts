@@ -166,7 +166,7 @@ describe("archive retry storage", () => {
     await expect(
       completeArchiveRetry(
         ctx,
-        { ...archive, objectKey: "archives/session.jsonl" },
+        { ...archive, objectKey: "archives/session.jsonl", versionId: "archive-v1" },
         "claimed-order",
       ),
     ).resolves.toBe(true);
@@ -188,6 +188,7 @@ describe("archive retry storage", () => {
         UpdateExpression: expect.stringContaining("objectKey = :objectKey"),
         ExpressionAttributeValues: expect.objectContaining({
           ":objectKey": "archives/session.jsonl",
+          ":versionId": "archive-v1",
         }),
       },
     });

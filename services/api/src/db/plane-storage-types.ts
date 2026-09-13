@@ -40,6 +40,37 @@ export type ProviderRecord = Provider;
 export type ProviderAccountRecord = ProviderAccount & { version?: number };
 export type CommandRecord = Command;
 
+/** Operator-owned routing and secret metadata for a generic inbound webhook. */
+export type CustomWebhookIntegrationRecord = {
+  id: string;
+  type: "custom-webhook";
+  /** Absent only on rows written before recreate fencing was introduced. */
+  generation?: string;
+  encryptedSecret: string;
+  repositoryId: string;
+  target: TargetRef;
+  fallbacks: TargetRef[];
+  queueTtlSeconds: number;
+  timeout: number;
+  priority: number;
+  requiredLabels: string[];
+  enabled: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Version fence included in the same session transaction as an inbound integration. */
+export type IntegrationSessionFence = {
+  id: string;
+  type: "custom-webhook";
+  storageId: string;
+  /** Undefined fences a legacy row and requires the attribute to remain absent. */
+  generation?: string;
+  version: number;
+  enabled: boolean;
+};
+
 /** Hashed one-time browser viewer ticket. The raw ticket is never persisted. */
 export type ViewerTicketRecord = {
   ticketHash: string;
@@ -145,6 +176,8 @@ export type LogQuery = {
   since?: string;
   /** Exact durable cursor used by viewer reconnects. */
   after?: string;
+  /** Internal only: use a strongly consistent read for security/retention decisions. */
+  consistentRead?: boolean;
   limit: number;
   /** Internal read shape only — never exposed via `parseLogQuery`. Ignored when `after`
    * is set (a viewer reconnect cursor is always forward). Defaults to ascending. */
@@ -173,6 +206,8 @@ export type HostLogFence = {
 export type ArchiveMetadata = {
   key: string;
   objectKey?: string;
+  /** S3's immutable object version returned by PutObject. */
+  versionId?: string;
   contentType: string;
   bodyBytes: number;
   status: "pending" | "complete";

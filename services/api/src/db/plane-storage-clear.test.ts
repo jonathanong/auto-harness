@@ -22,6 +22,18 @@ describe("clearAll session-drain cleanup", () => {
               ],
             };
           }
+          if (command.input.TableName === "integrations" && "ConsistentRead" in command.input) {
+            return {
+              Items: [
+                {
+                  id: "custom-webhook:deploy",
+                  type: "custom-webhook",
+                  generation: "generation",
+                  encryptedSecret: "ciphertext",
+                },
+              ],
+            };
+          }
           return {};
         },
       },
@@ -60,5 +72,11 @@ describe("clearAll session-drain cleanup", () => {
       { scopeKey: "repo#principal", recordKey: "CURRENT" },
       { scopeKey: "repo#principal", recordKey: "ACT#session" },
     ]);
+    expect(commands.map((command) => command.input)).toContainEqual(
+      expect.objectContaining({
+        TableName: "integrations",
+        Key: { id: "custom-webhook:deploy" },
+      }),
+    );
   });
 });

@@ -203,6 +203,19 @@ describe("DynamoDB storage pagination", () => {
     expect(send.mock.calls[0]?.[0].input.IndexName).toBeUndefined();
   });
 
+  it("passes internal consistency through bounded log queries", async () => {
+    const send = vi.fn().mockResolvedValue({ Items: [] });
+    const ctx = {
+      doc: { send },
+      tables: { sessionLogs: "SessionLogs" },
+    } as unknown as PlaneStorageCtx;
+
+    await queryLogs(ctx, "session-1", { limit: 1, consistentRead: true });
+    expect(send.mock.calls[0]?.[0].input).toMatchObject({ ConsistentRead: true, Limit: 1 });
+    await queryLogs(ctx, "session-1", { after: "cursor", limit: 1, consistentRead: true });
+    expect(send.mock.calls[1]?.[0].input).toMatchObject({ ConsistentRead: true, Limit: 1 });
+  });
+
   it("pages worktrees with a bounded Scan or repository Query", async () => {
     const send = vi.fn().mockResolvedValue({
       Items: [{ id: "wt-1" }],

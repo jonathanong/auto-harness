@@ -1,4 +1,5 @@
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+/* eslint-disable max-lines -- admission conflict matrix shares one transaction fixture. */
+import { DeleteCommand, GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
 import { createSession } from "./plane-storage-sessions.ts";
@@ -38,6 +39,7 @@ function ctx(send: (command: unknown) => Promise<unknown>): PlaneStorageCtx {
     tables: {
       sessions: "Sessions",
       concurrencyLocks: "Locks",
+      integrations: "Integrations",
       repositories: "Repositories",
       users: "Users",
       sessionDrains: "SessionDrains",
@@ -79,5 +81,199 @@ describe("concurrent session admission conflicts", () => {
       name: "SessionDrainActiveError",
       operationId: "drain-op",
     });
+  });
+
+  it("includes legacy and generation integration fences in the transaction", async () => {
+    for (const generation of [undefined, "generation"]) {
+      const send = async (command: unknown) => {
+        expect(command).toBeInstanceOf(TransactWriteCommand);
+        const items = (command as TransactWriteCommand).input.TransactItems ?? [];
+        const integration = items.find(
+          (item) => "ConditionCheck" in item && item.ConditionCheck?.TableName === "Integrations",
+        );
+        expect(integration).toMatchObject({
+          ConditionCheck: {
+            Key: { id: "custom-webhook:deploy" },
+            ExpressionAttributeValues: {
+              ":type": "custom-webhook",
+              ":version": 2,
+              ":enabled": true,
+            },
+          },
+        });
+        if (generation === undefined) {
+          expect(integration?.ConditionCheck?.ExpressionAttributeValues).not.toHaveProperty(
+            ":generation",
+          );
+        } else {
+          expect(integration).toMatchObject({
+            ConditionCheck: { ExpressionAttributeValues: { ":generation": generation } },
+          });
+        }
+        return {};
+      };
+      await expect(
+        createSession(ctx(send), { ...session, concurrencyId: undefined }, [], undefined, {
+          id: "deploy",
+          type: "custom-webhook",
+          storageId: "custom-webhook:deploy",
+          ...(generation === undefined ? {} : { generation }),
+          version: 2,
+          enabled: true,
+        }),
+      ).resolves.toMatchObject({ created: true });
+    }
+  });
+
+  it("maps integration fence loss before lock resolution", async () => {
+    await expect(
+      createSession(
+        ctx(async (command) => {
+          expect(command).toBeInstanceOf(TransactWriteCommand);
+          throw cancelled(3);
+        }),
+        { ...session, concurrencyId: undefined },
+        [],
+        undefined,
+        {
+          id: "deploy",
+          type: "custom-webhook",
+          storageId: "custom-webhook:deploy",
+          generation: "generation",
+          version: 2,
+          enabled: true,
+        },
+      ),
+    ).rejects.toMatchObject({ name: "IntegrationChangedError" });
+  });
+
+  it("maps the exact integration condition loss when transaction positions shift", async () => {
+    const integrationFence = {
+      id: "deploy",
+      type: "custom-webhook" as const,
+      storageId: "custom-webhook:deploy",
+      generation: "generation",
+      version: 2,
+      enabled: true,
+    };
+    await expect(
+      createSession(
+        ctx(async (command) => {
+          expect(command).toBeInstanceOf(TransactWriteCommand);
+          const items = (command as TransactWriteCommand).input.TransactItems ?? [];
+          const integrationIndex = items.findIndex(
+            (item) => "ConditionCheck" in item && item.ConditionCheck?.TableName === "Integrations",
+          );
+          expect(integrationIndex).toBeGreaterThanOrEqual(0);
+          throw cancelled(integrationIndex);
+        }),
+        session,
+        [],
+        undefined,
+        integrationFence,
+      ),
+    ).rejects.toMatchObject({ name: "IntegrationChangedError" });
+  });
+
+  it("applies the integration fence to concurrent session admission", async () => {
+    const fence = {
+      id: "deploy",
+      type: "custom-webhook" as const,
+      storageId: "custom-webhook:deploy",
+      generation: "generation",
+      version: 2,
+      enabled: true,
+    };
+    await expect(
+      createSession(
+        ctx(async (command) => {
+          expect(command).toBeInstanceOf(TransactWriteCommand);
+          const items = (command as TransactWriteCommand).input.TransactItems ?? [];
+          expect(
+            items.some(
+              (item) =>
+                "ConditionCheck" in item && item.ConditionCheck?.TableName === "Integrations",
+            ),
+          ).toBe(true);
+          return {};
+        }),
+        session,
+        [],
+        undefined,
+        fence,
+      ),
+    ).resolves.toMatchObject({ created: true });
+  });
+
+  it("continues lock conflict resolution when the concurrent integration fence holds", async () => {
+    const fence = {
+      id: "deploy",
+      type: "custom-webhook" as const,
+      storageId: "custom-webhook:deploy",
+      generation: "generation",
+      version: 2,
+      enabled: true,
+    };
+    await expect(
+      createSession(
+        ctx(async (command) => {
+          if (command instanceof TransactWriteCommand) throw cancelled(4);
+          expect(command).toBeInstanceOf(GetCommand);
+          return {};
+        }),
+        session,
+        [],
+        undefined,
+        fence,
+      ),
+    ).rejects.toMatchObject({ name: "CreateSessionRetryExhaustedError" });
+  });
+
+  it("distinguishes lock retries, active duplicates, and stale lock collisions", async () => {
+    await expect(
+      createSession(
+        ctx(async (command) => {
+          if (command instanceof TransactWriteCommand) throw cancelled(3);
+          expect(command).toBeInstanceOf(GetCommand);
+          return {};
+        }),
+        session,
+      ),
+    ).rejects.toMatchObject({ name: "CreateSessionRetryExhaustedError" });
+
+    let activeRead = false;
+    await expect(
+      createSession(
+        ctx(async (command) => {
+          if (command instanceof TransactWriteCommand) throw cancelled(3);
+          expect(command).toBeInstanceOf(GetCommand);
+          if (!activeRead) {
+            activeRead = true;
+            return { Item: { sessionId: "active" } };
+          }
+          return { Item: { id: "active", status: "running" } };
+        }),
+        session,
+      ),
+    ).resolves.toMatchObject({ created: false, session: { id: "active", status: "running" } });
+
+    let calls = 0;
+    await expect(
+      createSession(
+        ctx(async (command) => {
+          calls += 1;
+          if (command instanceof TransactWriteCommand) {
+            if (calls === 1) throw cancelled(3);
+            return {};
+          }
+          if (command instanceof DeleteCommand) return {};
+          expect(command).toBeInstanceOf(GetCommand);
+          if (calls === 2) return { Item: { sessionId: "terminal" } };
+          if (calls === 3) return { Item: { id: "terminal", status: "completed" } };
+          return {};
+        }),
+        session,
+      ),
+    ).resolves.toMatchObject({ created: true });
   });
 });

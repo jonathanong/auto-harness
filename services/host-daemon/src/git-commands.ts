@@ -173,7 +173,7 @@ export async function runGit(
   cwd: string,
   args: string[],
   signal?: AbortSignal,
-  environment: NodeJS.ProcessEnv = createChildEnv(),
+  environment: NodeJS.ProcessEnv = { ...createChildEnv(), GIT_NO_REPLACE_OBJECTS: "1" },
   platform: NodeJS.Platform = process.platform,
   stdoutLimitBytes = MAX_CAPTURED_GIT_STDOUT_BYTES,
 ): Promise<GitResult> {

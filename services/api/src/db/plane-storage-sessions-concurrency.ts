@@ -1,5 +1,10 @@
-/* eslint-disable max-lines -- admission, parent, lock, and session transaction indexes stay co-located. */
-import { DeleteCommand, GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+/* eslint-disable max-lines -- admission, parent, integration, lock, and session transaction indexes stay co-located. */
+import {
+  DeleteCommand,
+  GetCommand,
+  TransactWriteCommand,
+  type TransactWriteCommandInput,
+} from "@aws-sdk/lib-dynamodb";
 
 import {
   markerConditions,
@@ -27,6 +32,7 @@ import {
   ParentSessionAttemptEndedError,
   SessionDescendantBudgetExceededError,
   type CreateSessionResult,
+  IntegrationChangedError,
   RepositoryAdmissionClosedError,
   SessionIdCollisionError,
 } from "./plane-storage-sessions-errors.ts";
@@ -38,6 +44,7 @@ type CreateSessionAdmissionParts = {
   activityPut: ReturnType<typeof sessionDrainActivityPut>;
   principalCheck: ReturnType<typeof principalExistsCheck>;
   parentFence?: { id: string; rootSessionId?: string; sessionApiKeyHash?: string };
+  integrationCheck?: NonNullable<TransactWriteCommandInput["TransactItems"]>[number] | undefined;
 };
 
 /** Conservative root-wide bound for direct and indirect child sessions. */
@@ -68,7 +75,7 @@ async function throwIfCreateAdmissionConflict(
   parts: CreateSessionAdmissionParts,
 ): Promise<void> {
   if (!isConditionalTransactionFailed(err)) throw err;
-  const { drainCheck, principalCheck } = parts;
+  const { drainCheck, principalCheck, integrationCheck } = parts;
   if (
     markers.length > 0 &&
     Array.from({ length: markers.length }, (_, index) => index).some((index) =>
@@ -96,6 +103,10 @@ async function throwIfCreateAdmissionConflict(
     isConditionalTransactionFailureAt(err, parentIndex)
   ) {
     throw new ParentSessionAttemptEndedError();
+  }
+  const integrationIndex = parentIndex + Number(hasSeparateParentCheck(parts.parentFence));
+  if (integrationCheck && isConditionalTransactionFailureAt(err, integrationIndex)) {
+    throw new IntegrationChangedError();
   }
 }
 
@@ -171,7 +182,7 @@ export async function createSessionWithConcurrency(
   parts: CreateSessionAdmissionParts,
 ): Promise<CreateSessionResult> {
   const concurrencyId = session.concurrencyId!;
-  const { drainCheck, activityPut, principalCheck, parentFence } = parts;
+  const { drainCheck, activityPut, principalCheck, parentFence, integrationCheck } = parts;
   const separateParentCheck = hasSeparateParentCheck(parentFence);
   const markerChecks = withMarkerTable(ctx, markerConditions([...markers]));
   const parentCheck =
@@ -243,6 +254,7 @@ export async function createSessionWithConcurrency(
     1 +
     Number(!!drainCheck) +
     Number(!!parentCheck) +
+    Number(!!integrationCheck) +
     2 +
     Number(!!activityPut) +
     Number(!!rootBudgetUpdate);
@@ -255,7 +267,8 @@ export async function createSessionWithConcurrency(
     Number(!!principalCheck) +
     1 +
     Number(!!drainCheck) +
-    Number(!!parentCheck);
+    Number(!!parentCheck) +
+    Number(!!integrationCheck);
   for (let attempt = 0; attempt < MAX_CREATE_SESSION_ATTEMPTS; attempt += 1) {
     try {
       await ctx.doc.send(
@@ -282,6 +295,7 @@ export async function createSessionWithConcurrency(
                 },
             ...(drainCheck ? [drainCheck] : []),
             ...(parentCheck ? [parentCheck] : []),
+            ...(integrationCheck ? [integrationCheck] : []),
             {
               Put: {
                 TableName: ctx.tables.concurrencyLocks,

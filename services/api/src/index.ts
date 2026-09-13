@@ -8,7 +8,9 @@ export function getServiceName(): string {
 
 export { MemorySessionStore } from "./memory-store.ts";
 export { configuredArchiveWriter, S3ArchiveWriter } from "./archive-writer.ts";
-export type { ArchiveWriter } from "./archive-writer.ts";
+export type { ArchiveWriteResult, ArchiveWriter } from "./archive-writer.ts";
+export { configuredArchiveReader, S3ArchiveReader } from "./archive-reader.ts";
+export type { ArchiveReader, ArchiveReaderResult } from "./archive-reader.ts";
 export type { StoredSession } from "./memory-store.ts";
 export { createLocalApp, startLocalServer } from "./local-server.ts";
 export { DEFAULT_LOCAL_SCHEDULER_INTERVAL_MS, LocalScheduler } from "./local-scheduler.ts";
@@ -62,4 +64,17 @@ export type {
   WebhookTransportRequest,
   WebhookTransportResult,
 } from "./webhook-delivery-types.ts";
+export {
+  WEBHOOK_EVENT_HEADER,
+  WEBHOOK_DELIVERY_HEADER,
+  WEBHOOK_SIGNATURE_256_HEADER,
+  createSignedWebhookTransport,
+  signWebhookBody,
+} from "./webhook-delivery-types.ts";
+export type { WebhookDestinationConfig } from "./webhook-delivery-types.ts";
+export type {
+  CustomWebhookConfigInput,
+  PublicCustomWebhookIntegration,
+} from "./custom-webhook-types.ts";
+export type { IntegrationSessionFence } from "./db/plane-storage-types.ts";
 export { main as apiCliMain } from "./cli.ts";

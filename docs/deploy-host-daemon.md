@@ -259,19 +259,20 @@ On the agent host:
 5. Set daemon identity/runtime values and only explicitly allowlisted child credentials on the host.
    Inventory remains in the control plane, not this file:
 
-| Variable                      | Role                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `HARNESS_HOST_ID`             | Required agent id                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `HARNESS_API_URL`             | Control plane base — the CloudFront `WebUrl` from the deploy output ([deploy-aws.md](deploy-aws.md#stack-parameters-and-outputs)) on AWS, or `http://127.0.0.1:7420` locally. **Never** a raw `RestApiUrl`/`WebSocketUrl` `*.execute-api.*.amazonaws.com` value — see [aws.md](aws.md#websocket-wss)                                                                                                               |
-| `HARNESS_API_KEY`             | Service account `hns_…`                                                                                                                                                                                                                                                                                                                                                                                            |
-| `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`). Every listed name must also be defined in the persisted service environment; installation and daemon startup reject malformed, reserved, duplicate, or undefined names without printing their values. Empty defined values are allowed.                                                             |
-| `HARNESS_GITHUB_APP_CONFIG`   | Optional absolute path to a host-local GitHub App config JSON file. It is not a child allowlist entry: the daemon mints and injects the per-session `GH_TOKEN` itself.                                                                                                                                                                                                                                             |
-| `HARNESS_UPDATE_MANIFEST_URL` | Optional HTTPS signed-update manifest. Set this and `HARNESS_UPDATE_PUBLIC_KEY` together to enable updates.                                                                                                                                                                                                                                                                                                        |
-| `HARNESS_UPDATE_PUBLIC_KEY`   | Ed25519 PEM used to verify the update manifest. In an EnvironmentFile, encode line breaks as literal `\\n`.                                                                                                                                                                                                                                                                                                        |
-| `HARNESS_UPDATE_INSTALL_DIR`  | Optional persistent signed-update root. It must be an absolute path on every platform. On Linux it defaults to `/opt/auto-harness`; every path component through a custom root must be a root-owned, non-writable, non-symlink directory. Its `current`/`releases` contents stay root-owned while only `incoming` is writable by `harness`. The writable deployment checkout is `staging/` beneath that same root. |
-| `HARNESS_UPDATE_POLL_MS`      | Optional integer poll interval in milliseconds. `0` checks once on startup; the maximum is `2147483647` (Node's largest timer delay).                                                                                                                                                                                                                                                                              |
-| `HARNESS_DAEMON_VERSION`      | Optional fallback current version before an activated `current` tree supplies its persisted marker.                                                                                                                                                                                                                                                                                                                |
-| `HARNESS_HOST_SENTRY_DSN`     | Optional Sentry DSN for daemon process errors. Leave blank to disable. `install-service` persists it; an explicit empty value clears a previously stored DSN. Never forwarded to repository commands.                                                                                                                                                                                                              |
+| Variable                         | Role                                                                                                                                                                                                                                                                                                                                                                                                               |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `HARNESS_HOST_ID`                | Required agent id                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `HARNESS_API_URL`                | Control plane base — the CloudFront `WebUrl` from the deploy output ([deploy-aws.md](deploy-aws.md#stack-parameters-and-outputs)) on AWS, or `http://127.0.0.1:7420` locally. **Never** a raw `RestApiUrl`/`WebSocketUrl` `*.execute-api.*.amazonaws.com` value — see [aws.md](aws.md#websocket-wss)                                                                                                               |
+| `HARNESS_API_KEY`                | Service account `hns_…`                                                                                                                                                                                                                                                                                                                                                                                            |
+| `HARNESS_CHILD_ENV_ALLOWLIST`    | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`). Every listed name must also be defined in the persisted service environment; installation and daemon startup reject malformed, reserved, duplicate, or undefined names without printing their values. Empty defined values are allowed.                                                             |
+| `HARNESS_GITHUB_APP_CONFIG`      | Optional absolute path to a host-local GitHub App config JSON file. It is not a child allowlist entry: the daemon mints and injects the per-session `GH_TOKEN` itself.                                                                                                                                                                                                                                             |
+| `HARNESS_GITHUB_PULL_REF_CONFIG` | Optional absolute path to host-local immutable pull-request fetch policy. Required to run sessions against `refs/pull/<number>/head`; never add it to the child allowlist.                                                                                                                                                                                                                                         |
+| `HARNESS_UPDATE_MANIFEST_URL`    | Optional HTTPS signed-update manifest. Set this and `HARNESS_UPDATE_PUBLIC_KEY` together to enable updates.                                                                                                                                                                                                                                                                                                        |
+| `HARNESS_UPDATE_PUBLIC_KEY`      | Ed25519 PEM used to verify the update manifest. In an EnvironmentFile, encode line breaks as literal `\\n`.                                                                                                                                                                                                                                                                                                        |
+| `HARNESS_UPDATE_INSTALL_DIR`     | Optional persistent signed-update root. It must be an absolute path on every platform. On Linux it defaults to `/opt/auto-harness`; every path component through a custom root must be a root-owned, non-writable, non-symlink directory. Its `current`/`releases` contents stay root-owned while only `incoming` is writable by `harness`. The writable deployment checkout is `staging/` beneath that same root. |
+| `HARNESS_UPDATE_POLL_MS`         | Optional integer poll interval in milliseconds. `0` checks once on startup; the maximum is `2147483647` (Node's largest timer delay).                                                                                                                                                                                                                                                                              |
+| `HARNESS_DAEMON_VERSION`         | Optional fallback current version before an activated `current` tree supplies its persisted marker.                                                                                                                                                                                                                                                                                                                |
+| `HARNESS_HOST_SENTRY_DSN`        | Optional Sentry DSN for daemon process errors. Leave blank to disable. `install-service` persists it; an explicit empty value clears a previously stored DSN. Never forwarded to repository commands.                                                                                                                                                                                                              |
 
 The Host Advanced **Host daemon updates** form accepts a normal multiline PEM and stores its line
 breaks as literal `\n`, so the same setting remains valid when `install-service` writes the
@@ -393,6 +394,62 @@ after assignment and therefore are not advertised as ambient host environment ca
   "botUserId": 12345678,
   "repositories": {
     "catalog-repository-id": { "installationId": 12345678, "repositoryId": 123456789 }
+  }
+}
+```
+
+### GitHub pull-ref checkout policy
+
+To enable `refs/pull/<number>/head`, create a root-owned mode-`0644` policy file, or a root-owned
+`root:harness` mode-`0640` policy file, outside every checkout and set its absolute path as
+`HARNESS_GITHUB_PULL_REF_CONFIG`. Every parent directory and the file itself must be root-owned,
+non-group/world-writable, and free of symlinks.
+Create one immutable bare materializer for each Git object format before enabling this policy. The
+directories, every descendant (including `config` and `info/`), and every ancestor must be
+root-owned, symlink-free, and non-writable; the materializers are read-only Git metadata, not
+session scratch space.
+
+```sh
+sudo install -d -o root -g root -m 0755 /etc/auto-harness/pull-ref-materializers
+sudo git init --bare /etc/auto-harness/pull-ref-materializers/sha1.git
+sudo git init --bare --object-format=sha256 /etc/auto-harness/pull-ref-materializers/sha256.git
+sudo chmod -R a-w /etc/auto-harness/pull-ref-materializers
+```
+
+Keys are canonical repository paths. Each `remoteUrl` must be credential-free HTTPS without a query
+string or fragment. The optional
+transport fields preserve only the explicit HTTPS settings needed by that host. `credentialHelper`
+names a helper such as `manager-core`; policy load resolves `git-credential-manager-core` from the
+daemon's PATH and pins the resulting absolute executable. That executable and every ancestor must
+be root-owned, non-writable, regular-file/directory-only, and symlink-free, so do not place it in a
+daemon-user-writable PATH directory. `httpProxy` must
+also be credential-free and have no query string or fragment so proxy secrets are never exposed in
+a Git command line; URL rewrites and shell helpers are deliberately unsupported.
+The remote's advertised default `HEAD` must already be a complete local object in the mapped
+repository and share ancestry with each pull head the host will accept. Shallow and partial/promisor
+repositories are rejected for pull-head checkout; update the normal repository clone first. An
+unrelated or orphan pull head is rejected before its objects are imported into the claimed
+repository. Because Git cannot prove ancestry for a remote-only pull head before negotiation, that
+isolated rejected transfer can still contain the pull head's complete graph.
+
+Pull-ref policy is currently unsupported on Windows: Auto Harness fails closed rather than relying
+on POSIX ownership checks that cannot prove equivalent native ACL immutability.
+
+```json
+{
+  "materializerGitDirs": {
+    "sha1": "/etc/auto-harness/pull-ref-materializers/sha1.git",
+    "sha256": "/etc/auto-harness/pull-ref-materializers/sha256.git"
+  },
+  "repositories": {
+    "/srv/repos/example": {
+      "remoteUrl": "https://github.com/example/project.git",
+      "transport": {
+        "credentialHelper": "manager-core",
+        "httpProxy": "https://proxy.example",
+        "sslCAInfo": "/etc/ssl/private/example-ca.pem"
+      }
+    }
   }
 }
 ```

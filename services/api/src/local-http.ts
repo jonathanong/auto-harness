@@ -102,38 +102,14 @@ export type RouteCtx = {
 };
 
 export function readJson(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    let rejected = false;
-    req.on("data", (c: Buffer) => {
-      size += c.length;
-      if (size > MAX_JSON_BODY_BYTES) {
-        rejected = true;
-        req.destroy();
-        reject(new Error("request body exceeds 1 MiB"));
-        return;
-      }
-      chunks.push(c);
-    });
-    req.on("end", () => {
-      if (rejected) return;
-      if (chunks.length === 0) {
-        resolve({});
-        return;
-      }
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown);
-      } catch (err) {
-        reject(err);
-      }
-    });
-    req.on("error", reject);
+  return readRawBody(req).then((body) => {
+    if (body.length === 0) return {};
+    return JSON.parse(body.toString("utf8")) as unknown;
   });
 }
 
 /** Reads unmodified bytes for signature schemes; callers choose a route-specific cap. */
-export function readRawBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
+export function readRawBody(req: IncomingMessage, maxBytes = MAX_JSON_BODY_BYTES): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -147,7 +123,13 @@ export function readRawBody(req: IncomingMessage, maxBytes: number): Promise<Buf
         // data listener remains installed until the request ends, but no further chunks are
         // retained after the bounded prefix has been read.
         req.resume();
-        reject(new Error("request body exceeds route limit"));
+        reject(
+          new Error(
+            maxBytes === MAX_JSON_BODY_BYTES
+              ? "request body exceeds 1 MiB"
+              : "request body exceeds route limit",
+          ),
+        );
         return;
       }
       chunks.push(chunk);

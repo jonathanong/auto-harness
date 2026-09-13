@@ -70,6 +70,11 @@ that host. Do not install it organization-wide, put it in prompts, or move it to
 | DynamoDB  | Encrypted at rest (AWS managed keys)                     |
 | S3        | Encrypted at rest (SSE-S3), bucket policy denies non-TLS |
 
+Archived terminal transcripts are downloaded directly from the private S3 bucket with a
+five-minute presigned `GetObject` URL. The REST Lambda verifies the canonical object key, length,
+content type, and cold-storage state before signing. Treat the URL as a short-lived bearer secret:
+clients fetch it immediately before download, and neither the API nor UI persists or logs it.
+
 ## CORS policy
 
 The Web UI domain is the only allowed origin for browser requests. Configure via CDK:
@@ -183,12 +188,13 @@ an unaudited success.
 
 ## Integration secrets
 
-The Slack bot token and optional signing secret are the narrow exception to the
-control plane's usual no-secret rule. They are encrypted with the KMS key named
+The Slack bot token, optional signing secret, and generic custom-webhook HMAC
+secrets are the narrow exception to the control plane's usual no-secret rule.
+They are encrypted with the KMS key named
 by `KMS_KEY_ID` before they are stored in the Integrations table, and ciphertext
-is bound to a stable Slack-specific encryption context. Plaintext is never
+is bound to a stable integration-specific encryption context. Plaintext is never
 retained in REST responses, logs, audit metadata, or durable records. If KMS is
-unavailable, Slack configuration writes fail closed. Repository, SSH, and AI
+unavailable, integration configuration writes fail closed. Repository, SSH, and AI
 provider credentials remain agent-held and are never accepted by this API.
 
 ## VPS hardening recommendations

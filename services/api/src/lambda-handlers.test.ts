@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- Lambda ingress fencing and delivery lifecycle share one fixture. */
 import { DeleteConnectionCommand } from "@aws-sdk/client-apigatewaymanagementapi";
+import { LambdaClient } from "@aws-sdk/client-lambda";
 import { ParameterNotFound, SSMClient } from "@aws-sdk/client-ssm";
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
@@ -2299,6 +2300,33 @@ describe("Lambda runtime adapters", () => {
     expect(fixture.plane.state.slackOAuthClient).toBe(slackOAuthClient);
     expect(fixture.plane.state.slackIdentityClient).toBe(slackIdentityClient);
     expect(fixture.plane.state.slackInboundEnabled).toBe(true);
+  });
+
+  it("bounds deployed assignment invocation requests", async () => {
+    const fixture = runtimeFixture();
+    const previousFunction = process.env.ASSIGNMENT_FUNCTION_NAME;
+    const previousWs = process.env.WS_API_ENDPOINT;
+    const send = vi.spyOn(LambdaClient.prototype, "send").mockResolvedValue({});
+    try {
+      process.env.ASSIGNMENT_FUNCTION_NAME = "assignment-function";
+      process.env.WS_API_ENDPOINT = "https://example.execute-api.us-east-1.amazonaws.com/prod";
+      await createLambdaRuntime({
+        auth: fixture.auth as never,
+        created: { plane: fixture.plane, storage: fixture.storage } as never,
+        management: fixture.management,
+      });
+      await fixture.plane.enqueueAssignment();
+      expect(send).toHaveBeenCalledOnce();
+      expect(send.mock.calls[0]?.[1]).toMatchObject({
+        abortSignal: expect.any(AbortSignal),
+      });
+    } finally {
+      send.mockRestore();
+      if (previousFunction === undefined) delete process.env.ASSIGNMENT_FUNCTION_NAME;
+      else process.env.ASSIGNMENT_FUNCTION_NAME = previousFunction;
+      if (previousWs === undefined) delete process.env.WS_API_ENDPOINT;
+      else process.env.WS_API_ENDPOINT = previousWs;
+    }
   });
 
   it("logs when enqueueing an assignment sweep fails", async () => {

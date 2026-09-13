@@ -1,6 +1,9 @@
 /* eslint-disable max-lines -- archive retry fencing and direct archive reads share one lifecycle. */
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { ArchiveMetadata, ArchiveObject } from "./control-plane-types.ts";
+import type { SessionArchiveReadResponse } from "@auto-harness/shared";
+import type { ArchiveWriteResult } from "./archive-writer.ts";
+import { SESSION_LOGS_TTL_SECONDS } from "./db/dynamo.ts";
 
 async function rewriteWinningArchive(
   state: ControlPlaneState,
@@ -11,9 +14,23 @@ async function rewriteWinningArchive(
     state.storage && typeof state.storage.getArchive === "function"
       ? await state.storage.getArchive(key)
       : state.archives.get(key);
-  if (!current || current.status !== "complete" || !current.objectStored) return;
+  if (!current || current.status !== "complete" || !current.objectStored || current.versionId)
+    return;
   const body = await archiveBody(state, sessionId);
-  await state.archiveWriter?.putArchive({ key, body, contentType: current.contentType });
+  const result = await state.archiveWriter?.putArchive({
+    key,
+    body,
+    contentType: current.contentType,
+  });
+  if (!result || !("versionId" in result)) return;
+  const repaired = {
+    ...current,
+    bodyBytes: Buffer.byteLength(body),
+    updatedAt: state.now(),
+    versionId: result.versionId,
+  };
+  if (state.storage) await state.storage.putArchive(repaired);
+  state.archives.set(key, repaired);
 }
 
 export async function archiveSessionLogs(
@@ -73,7 +90,8 @@ export async function archiveSessionLogs(
     state.archives.set(object.key, complete);
     return object;
   }
-  await state.archiveWriter.putArchive(object);
+  const writeResult = await state.archiveWriter.putArchive(object);
+  const versionId = archiveVersionId(writeResult);
   const storedMetadata = { ...pending };
   delete storedMetadata.retryState;
   delete storedMetadata.retryOrder;
@@ -82,6 +100,7 @@ export async function archiveSessionLogs(
     status: "complete",
     objectStored: state.archiveWriter !== undefined,
     updatedAt: state.now(),
+    ...(versionId ? { versionId } : {}),
     ...(state.archiveWriter
       ? {}
       : { retryState: "pending" as const, retryOrder: `${state.now()}#${key}` }),
@@ -104,6 +123,25 @@ export async function archiveSessionLogs(
     state.archives.set(object.key, complete);
   }
   return object;
+}
+
+function archiveVersionId(result: ArchiveWriteResult | void | undefined): string | undefined {
+  return result && typeof result.versionId === "string" && result.versionId.length > 0
+    ? result.versionId
+    : undefined;
+}
+
+/** A TTL cutoff is only evidence of expiry after a bounded read confirms no log remains. */
+async function recentLogsRemain(state: ControlPlaneState, sessionId: string): Promise<boolean> {
+  if (!state.storage) return (state.logs.get(sessionId)?.length ?? 0) > 0;
+  try {
+    return (
+      (await state.storage.queryLogs(sessionId, { limit: 1, consistentRead: true })).length > 0
+    );
+  } catch {
+    // A failed existence check must retain the conservative recent state.
+    return true;
+  }
 }
 
 async function archiveBody(state: ControlPlaneState, sessionId: string): Promise<string> {
@@ -233,6 +271,54 @@ export function queueSessionArchive(state: ControlPlaneState, sessionId: string)
 
 export function getArchive(state: ControlPlaneState, sessionId: string): ArchiveMetadata | null {
   return state.archives.get(`${state.archivePrefix}${sessionId}/logs.jsonl`) ?? null;
+}
+
+/** Resolve durable archive state and mint a fresh verified download when one is available. */
+export async function getArchiveDownloadDurable(
+  state: ControlPlaneState,
+  sessionId: string,
+  terminalAt?: string,
+): Promise<SessionArchiveReadResponse> {
+  const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
+  const metadata = state.storage ? await state.storage.getArchive(key) : state.archives.get(key);
+  if (metadata) state.archives.set(key, metadata);
+  if (!metadata || metadata.status !== "complete") {
+    const parsedAnchors = [metadata?.updatedAt, terminalAt]
+      .filter((anchor): anchor is string => anchor !== undefined)
+      .map(Date.parse)
+      .filter(Number.isFinite);
+    const retainedAtMs = parsedAnchors.length ? Math.max(...parsedAnchors) : Number.NaN;
+    const nowMs = Date.parse(state.now());
+    if (
+      Number.isFinite(retainedAtMs) &&
+      Number.isFinite(nowMs) &&
+      nowMs >= retainedAtMs + SESSION_LOGS_TTL_SECONDS * 1_000
+    ) {
+      if (!(await recentLogsRemain(state, sessionId))) return { state: "expired" };
+    }
+    return { state: "dynamodb" };
+  }
+  if (!metadata.objectStored || !state.archiveReader) return { state: "unavailable" };
+  if (!metadata.versionId) return { state: "incomplete", reason: "version-id-missing" };
+  const result = await state.archiveReader.createDownload({
+    key,
+    contentType: metadata.contentType,
+    bodyBytes: metadata.bodyBytes,
+    versionId: metadata.versionId,
+    now: state.now(),
+  });
+  if (result.available) {
+    return {
+      state: "archived",
+      downloadUrl: result.downloadUrl,
+      expiresAt: result.expiresAt,
+      contentType: metadata.contentType,
+      bodyBytes: metadata.bodyBytes,
+    };
+  }
+  return "reason" in result
+    ? { state: "incomplete", reason: result.reason }
+    : { state: "unavailable" };
 }
 
 export function listArchives(state: ControlPlaneState): ArchiveMetadata[] {

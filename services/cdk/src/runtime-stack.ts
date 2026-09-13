@@ -53,6 +53,7 @@ export class AutoHarnessRuntimeStack extends Stack {
     const slackApp = slackAppParam(this);
     const ingressSecret = cloudFrontIngressSecret(this);
     const commonEnvironment = {
+      NODE_ENV: "production",
       HARNESS_ADMINS_SSM_PARAM: admins.param.valueAsString,
       HARNESS_CURSOR_SECRET_SSM_PARAM: cursorSecret.param.valueAsString,
       HARNESS_DDB_PREFIX: props.tablePrefix,
@@ -66,7 +67,7 @@ export class AutoHarnessRuntimeStack extends Stack {
       KMS_KEY_ID: props.foundation.integrationKey.keyArn,
     };
     const functionProps = {
-      bundling: { minify: true, sourceMap: true },
+      bundling: { minify: true, nodeModules: ["@aws-sdk/s3-request-presigner"], sourceMap: true },
       entry: lambdaEntry,
       memorySize: 256,
       runtime: lambda.Runtime.NODEJS_22_X,

@@ -23,6 +23,7 @@ import { SpawnProcessRunner } from "./executor.ts";
 import { PtyProcessRunner } from "./pty-runner.ts";
 import { UsageCapturingProcessRunner } from "./usage-adapter.ts";
 import { createGitClient } from "./git.ts";
+import { loadGitHubPullRefConfigs } from "./github-pull-ref-config.ts";
 import { configureConnectionEvents } from "./daemon-connection-events.ts";
 import {
   applyDaemonInventory,
@@ -349,7 +350,10 @@ export class DaemonLoop {
     const commandRunner = options.commandRunner
       ? innerCommandRunner
       : new UsageCapturingProcessRunner(innerCommandRunner, this.now);
-    const git = createGitClient(processRunner);
+    const git = createGitClient(
+      processRunner,
+      loadGitHubPullRefConfigs(options.childEnvSource ?? process.env),
+    );
     this.worktrees = new WorktreeManager(options.config, git);
     this.workspaces = new WorkspaceManager(options.config);
     this.runner = new SessionRunner({

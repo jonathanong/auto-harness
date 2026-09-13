@@ -77,7 +77,7 @@ describe("createGitClient ensureWorktree", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("ignores malformed and unrelated porcelain records", async () => {
+  it("ignores malformed, empty-path, and unrelated porcelain records", async () => {
     const git = gitWithListedWorktrees(
       "not-worktree /repo/wt\nworktree\nworktree \nworktree /repo/wt-old\nHEAD abc\n",
       [

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- session creation and lifecycle transitions share validation state. */
 import {
   isActiveSessionStatus,
   isTerminalSessionStatus,
@@ -27,7 +28,11 @@ export {
 export function createSession(
   state: ControlPlaneState,
   body: unknown,
-  options: { allowScheduleId?: boolean } = {},
+  options: {
+    allowScheduleId?: boolean;
+    allowCustomWebhookConcurrencyId?: boolean;
+    allowGitHubCommentConcurrencyId?: boolean;
+  } = {},
 ):
   | { ok: true; session: PublicSession; created: boolean }
   | { ok: false; error: string; code?: string } {
@@ -35,25 +40,31 @@ export function createSession(
     return { ok: false, error: "body must be an object" };
   }
   const record = body as Record<string, unknown>;
-  const validated = validateCreateSessionInput({
-    repositoryId: record.repositoryId,
-    prompt: record.prompt,
-    target: record.target,
-    fallbacks: record.fallbacks,
-    queueTtlSeconds: record.queueTtlSeconds,
-    timeout: record.timeout,
-    priority: record.priority,
-    requiredLabels: record.requiredLabels,
-    ref: record.ref,
-    concurrencyId: record.concurrencyId,
-    metadata: record.metadata,
-    type: record.type,
-    source: record.source,
-    workspacePoolId: record.workspacePoolId,
-    setupProfileId: record.setupProfileId,
-    destroyWorkspaceAfter: record.destroyWorkspaceAfter,
-    setupScript: record.setupScript,
-  });
+  const validated = validateCreateSessionInput(
+    {
+      repositoryId: record.repositoryId,
+      prompt: record.prompt,
+      target: record.target,
+      fallbacks: record.fallbacks,
+      queueTtlSeconds: record.queueTtlSeconds,
+      timeout: record.timeout,
+      priority: record.priority,
+      requiredLabels: record.requiredLabels,
+      ref: record.ref,
+      concurrencyId: record.concurrencyId,
+      metadata: record.metadata,
+      type: record.type,
+      source: record.source,
+      workspacePoolId: record.workspacePoolId,
+      setupProfileId: record.setupProfileId,
+      destroyWorkspaceAfter: record.destroyWorkspaceAfter,
+      setupScript: record.setupScript,
+    },
+    {
+      ...(options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {}),
+      ...(options.allowGitHubCommentConcurrencyId ? { allowGitHubCommentConcurrencyId: true } : {}),
+    },
+  );
   if (!validated.ok) {
     return validated;
   }

@@ -13,7 +13,11 @@ import { listCommands, listProviders } from "./plane-storage-catalog-providers.t
 import { listProviderAccounts } from "./plane-storage-provider-accounts.ts";
 import { deleteAuthAccount, listAuthAccounts } from "./plane-storage-auth.ts";
 import { listAllAuditLogs } from "./plane-storage-audit.ts";
-import { getSlackIntegration } from "./plane-storage-integrations.ts";
+import {
+  customWebhookStorageId,
+  getSlackIntegration,
+  listCustomWebhookIntegrations,
+} from "./plane-storage-integrations.ts";
 import { listAllWebhookDeliveries } from "./plane-storage-webhook-outbox.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 import { nextPageKey } from "./plane-storage-types.ts";
@@ -145,6 +149,14 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
   if (await getSlackIntegration(ctx)) {
     await ctx.doc.send(
       new DeleteCommand({ TableName: ctx.tables.integrations, Key: { id: "slack" } }),
+    );
+  }
+  for (const integration of await listCustomWebhookIntegrations(ctx)) {
+    await ctx.doc.send(
+      new DeleteCommand({
+        TableName: ctx.tables.integrations,
+        Key: { id: customWebhookStorageId(integration.id) },
+      }),
     );
   }
   for (const delivery of await listAllWebhookDeliveries(ctx)) {

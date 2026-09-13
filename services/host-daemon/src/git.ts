@@ -1,7 +1,8 @@
-/* eslint-disable max-lines -- Git client operations share checkout safety invariants. */
+/* eslint-disable max-lines -- checkout preparation, exact ref resolution, and verification share one client. */
 import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { createChildEnv } from "./child-env.ts";
 import type { ProcessRunner } from "./executor.ts";
 import {
   checkoutFetchFailure,
@@ -10,12 +11,23 @@ import {
   runGit,
 } from "./git-commands.ts";
 import {
-  claimedLinkedWorktreeCommonDir,
+  deleteGitHubPullRequestRef,
+  fetchGitHubPullRequestRef,
+  gitObjectFormat,
+  isGitHubPullRequestRef,
+  materializeGitHubPullRequestRef,
+  nullGlobalGitConfigPath,
+  type GitHubPullRequestFetch,
+} from "./git-github-pull-ref.ts";
+import {
+  claimedLinkedWorktree,
   checkoutDetached,
+  hasInterruptedWorktreeOperation,
   removeStaleIndexLock,
   resetClaimedWorktree,
 } from "./git-worktree-checkout.ts";
 import { resetInitializedSubmodules } from "./git-worktree-reset.ts";
+import { type GitHubPullRefConfigs } from "./github-pull-ref-config.ts";
 
 export type GitClient = {
   ensureRepo(path: string): Promise<void>;
@@ -54,7 +66,35 @@ async function listedWorktreePaths(output: string, repoPath: string): Promise<Se
   return paths;
 }
 
-export function createGitClient(runner: ProcessRunner): GitClient {
+function isolatedPullCheckoutEnvironment(): NodeJS.ProcessEnv {
+  return {
+    ...createChildEnv(),
+    GIT_CONFIG_COUNT: "3",
+    GIT_CONFIG_GLOBAL: nullGlobalGitConfigPath(),
+    GIT_CONFIG_KEY_0: "core.hooksPath",
+    // A pull head controls .gitmodules. Keep normal checkout commands from honoring a prior
+    // session's recursive-submodule preference before the pull-ref-specific guard can reject it.
+    GIT_CONFIG_KEY_1: "submodule.recurse",
+    // A prior session can configure an executable fsmonitor. Keep it disabled for every command
+    // that still targets the claimed Git directory; materialization itself uses a separate one.
+    GIT_CONFIG_KEY_2: "core.fsmonitor",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_VALUE_0: nullGlobalGitConfigPath(),
+    GIT_CONFIG_VALUE_1: "false",
+    GIT_CONFIG_VALUE_2: "false",
+    GIT_NO_REPLACE_OBJECTS: "1",
+  };
+}
+
+export function createGitClient(
+  runner: ProcessRunner,
+  pullRefConfigs: GitHubPullRefConfigs | undefined = undefined,
+): GitClient {
+  async function pullRefConfig(path: string) {
+    const key = await canonicalPath(path);
+    return pullRefConfigs?.get(key) ?? pullRefConfigs?.get(resolve(path));
+  }
+
   return {
     async ensureRepo(path: string) {
       const probe = await runGit(runner, path, ["rev-parse", "--is-inside-work-tree"]);
@@ -92,12 +132,32 @@ export function createGitClient(runner: ProcessRunner): GitClient {
     },
 
     async checkoutRef({ cwd, repoPath, ref, signal }) {
-      const claimedCommonDir = await claimedLinkedWorktreeCommonDir(repoPath, cwd);
-      if (claimedCommonDir === null) {
+      const isPullRequestRef = isGitHubPullRequestRef(ref);
+      const pullCheckoutEnvironment = isPullRequestRef
+        ? isolatedPullCheckoutEnvironment()
+        : undefined;
+      const pullConfig = isPullRequestRef ? await pullRefConfig(repoPath) : undefined;
+      if (isPullRequestRef && pullConfig === undefined) {
+        throw new Error("Configured pull-ref checkout has no operator policy");
+      }
+      const claimedWorktree = await claimedLinkedWorktree(repoPath, cwd);
+      if (claimedWorktree === null) {
         throw new Error("Configured checkout is not the claimed linked worktree");
       }
-      await removeStaleIndexLock(runner, cwd, claimedCommonDir, signal);
-      if (!(await resetClaimedWorktree(runner, cwd, claimedCommonDir, signal))) {
+      if (isPullRequestRef && (await hasInterruptedWorktreeOperation(claimedWorktree.gitDir))) {
+        throw new Error("Configured pull-ref checkout has interrupted worktree state");
+      }
+      await removeStaleIndexLock(
+        runner,
+        cwd,
+        claimedWorktree.commonDir,
+        signal,
+        pullCheckoutEnvironment,
+      );
+      if (
+        !isPullRequestRef &&
+        !(await resetClaimedWorktree(runner, cwd, claimedWorktree.commonDir, signal))
+      ) {
         throw new Error("Configured checkout is not the claimed linked worktree");
       }
       // Prefer detached checkout so a branch already used by the main repo
@@ -107,92 +167,180 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       // as a pathspec instead of a revision ("Needed a single revision"), so this is
       // the git-native separator here rather than `--` (see `switch -- ref` below,
       // which does accept plain `--`).
-      const commitRef = `${ref}^{commit}`;
-      let resolved = await runGit(
-        runner,
-        cwd,
-        ["rev-parse", "--verify", "--end-of-options", commitRef],
-        signal,
-      );
-      if (resolved.exitCode !== 0) {
-        let fetched: Awaited<ReturnType<typeof runGit>>;
-        try {
-          fetched = await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
-        } catch (error) {
-          throw checkoutFetchFailure(
-            `Failed to fetch ref ${ref}`,
-            error instanceof Error ? error.message : String(error),
-          );
+      let pullRequestFetch: GitHubPullRequestFetch | null = null;
+      let sha = "";
+      try {
+        const objectFormat =
+          isPullRequestRef && pullConfig !== undefined
+            ? await runGit(
+                runner,
+                cwd,
+                ["rev-parse", "--show-object-format=storage"],
+                signal,
+                pullCheckoutEnvironment,
+              )
+            : undefined;
+        const targetObjectFormat =
+          objectFormat?.exitCode === 0 ? gitObjectFormat(objectFormat.stdout.trim()) : undefined;
+        pullRequestFetch = isPullRequestRef
+          ? targetObjectFormat === undefined
+            ? null
+            : await fetchGitHubPullRequestRef(
+                runner,
+                cwd,
+                ref,
+                pullConfig,
+                resolve(claimedWorktree.commonDir, "objects"),
+                signal,
+                targetObjectFormat,
+              )
+          : null;
+        if (isPullRequestRef && pullRequestFetch === null) {
+          throw new Error(`Failed to fetch GitHub pull-request ref ${ref}`);
         }
-        if (fetched.exitCode !== 0) {
+        let resolved = isPullRequestRef
+          ? undefined
+          : await runGit(
+              runner,
+              cwd,
+              ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`],
+              signal,
+            );
+        if (resolved !== undefined && resolved.exitCode !== 0) {
+          let fetched: Awaited<ReturnType<typeof runGit>>;
+          try {
+            fetched = await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
+          } catch (error) {
+            throw checkoutFetchFailure(
+              `Failed to fetch ref ${ref}`,
+              error instanceof Error ? error.message : String(error),
+            );
+          }
           resolved = await runGit(
             runner,
             cwd,
-            ["rev-parse", "--verify", "--end-of-options", commitRef],
+            ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`],
             signal,
           );
-          if (resolved.exitCode !== 0) {
+          if (fetched.exitCode !== 0 && resolved.exitCode !== 0) {
             throw checkoutFetchFailure(`Failed to fetch ref ${ref}`, fetched.stderr);
           }
         }
-        if (fetched.exitCode === 0) {
-          resolved = await runGit(
+        if (resolved !== undefined && resolved.exitCode !== 0) {
+          throw gitFailure(`Failed to resolve ref ${ref}`, resolved.stderr);
+        }
+        sha = isPullRequestRef ? pullRequestFetch!.sha : resolved!.stdout.trim();
+        if (isPullRequestRef) {
+          const materialized = await materializeGitHubPullRequestRef(
             runner,
+            pullConfig!.materializerGitDirs[targetObjectFormat!],
             cwd,
-            ["rev-parse", "--verify", "--end-of-options", commitRef],
+            sha,
+            resolve(claimedWorktree.commonDir, "objects"),
+            resolve(claimedWorktree.gitDir, "index"),
+            targetObjectFormat!,
             signal,
           );
-        }
-      }
-      if (resolved.exitCode !== 0) {
-        throw gitFailure(`Failed to resolve ref ${ref}`, resolved.stderr);
-      }
-      const sha = resolved.stdout.trim();
-      let co = await checkoutDetached(runner, cwd, sha, signal);
-      if (co.exitCode !== 0 && co.stderr.includes("index.lock")) {
-        if (await removeStaleIndexLock(runner, cwd, claimedCommonDir, signal)) {
-          co = await checkoutDetached(runner, cwd, sha, signal);
-        }
-      }
-      if (co.exitCode !== 0) {
-        // A regular fetch can treat the locally-present commit as complete
-        // while its graph is missing an object. Repair only that condition,
-        // rather than masking ordinary checkout failures with a network retry.
-        const connectivity = await runGit(
-          runner,
-          cwd,
-          ["fsck", "--connectivity-only", sha],
-          signal,
-        );
-        if (connectivity.exitCode !== 0) {
-          let refetchFailure;
-          const refetched = await refetchConfiguredRemotes(
+          if (!materialized) {
+            throw new Error("Failed to materialize GitHub pull-request ref");
+          }
+          const detached = await runGit(
             runner,
             cwd,
+            ["update-ref", "--no-deref", "HEAD", sha],
             signal,
-            false,
-            (failure) => {
-              refetchFailure = failure;
-            },
+            pullCheckoutEnvironment,
           );
-          co = await checkoutDetached(runner, cwd, sha, signal);
-          if (co.exitCode !== 0 && refetchFailure) throw refetchFailure;
-          if (!refetched && co.exitCode !== 0) {
-            throw new Error("Failed to fetch required checkout objects");
+          if (detached.exitCode !== 0) {
+            throw new Error("Failed to detach GitHub pull-request checkout");
+          }
+        } else {
+          let co = await checkoutDetached(runner, cwd, sha, signal);
+          if (co.exitCode !== 0 && co.stderr.includes("index.lock")) {
+            if (await removeStaleIndexLock(runner, cwd, claimedWorktree.commonDir, signal)) {
+              co = await checkoutDetached(runner, cwd, sha, signal);
+            }
+          }
+          if (co.exitCode !== 0) {
+            // A regular fetch can treat the locally-present commit as complete
+            // while its graph is missing an object. Repair only that condition,
+            // rather than masking ordinary checkout failures with a network retry.
+            const connectivity = await runGit(
+              runner,
+              cwd,
+              ["fsck", "--connectivity-only", sha],
+              signal,
+            );
+            if (connectivity.exitCode !== 0) {
+              let refetchFailure;
+              const refetched = await refetchConfiguredRemotes(
+                runner,
+                cwd,
+                signal,
+                false,
+                (failure) => {
+                  refetchFailure = failure;
+                },
+              );
+              co = await checkoutDetached(runner, cwd, sha, signal);
+              if (co.exitCode !== 0 && refetchFailure) throw refetchFailure;
+              if (!refetched && co.exitCode !== 0) {
+                throw new Error("Failed to fetch required checkout objects");
+              }
+            }
+          }
+          if (co.exitCode !== 0) {
+            throw gitFailure("Failed to checkout resolved ref", co.stderr);
           }
         }
-      }
-      if (co.exitCode !== 0) {
-        throw gitFailure("Failed to checkout resolved ref", co.stderr);
-      }
-      await resetInitializedSubmodules(runner, cwd, signal);
-      const head = await runGit(runner, cwd, ["rev-parse", "HEAD"], signal);
-      if (head.exitCode !== 0 || head.stdout.trim() !== sha) {
-        throw new Error("Failed to verify detached checkout");
-      }
-      const detached = await runGit(runner, cwd, ["symbolic-ref", "--quiet", "HEAD"], signal);
-      if (detached.exitCode !== 1) {
-        throw new Error("Failed to verify detached checkout");
+        if (isPullRequestRef) {
+          // A pull head controls .gitmodules. Do not sync or update even an already initialized
+          // submodule from that untrusted tree; status only reads the checked-out gitlinks, then
+          // rejects them before the session can run against stale or newly materialized contents.
+          const submodules = await runGit(
+            runner,
+            cwd,
+            ["submodule", "status", "--recursive"],
+            signal,
+            pullCheckoutEnvironment,
+          );
+          if (submodules.exitCode !== 0 || submodules.stdout.trim().length > 0) {
+            throw new Error("Configured pull-ref checkout contains submodules");
+          }
+        } else {
+          await resetInitializedSubmodules(runner, cwd, signal);
+        }
+        const head = await runGit(
+          runner,
+          cwd,
+          ["rev-parse", "HEAD"],
+          signal,
+          pullCheckoutEnvironment,
+        );
+        if (head.exitCode !== 0 || head.stdout.trim() !== sha) {
+          throw new Error("Failed to verify detached checkout");
+        }
+        const detached = await runGit(
+          runner,
+          cwd,
+          ["symbolic-ref", "--quiet", "HEAD"],
+          signal,
+          pullCheckoutEnvironment,
+        );
+        if (detached.exitCode !== 1) {
+          throw new Error("Failed to verify detached checkout");
+        }
+      } finally {
+        if (pullRequestFetch !== null) {
+          // Cleanup must run even after the execution deadline aborts the checkout signal.
+          await deleteGitHubPullRequestRef(
+            runner,
+            cwd,
+            pullRequestFetch.ref,
+            ref,
+            AbortSignal.timeout(10_000),
+          );
+        }
       }
       return sha;
     },

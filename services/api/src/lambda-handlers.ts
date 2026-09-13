@@ -114,6 +114,7 @@ type BootstrapSecrets = { admins: string; cursorSecret: string; sessionSecret: s
  */
 const MANAGEMENT_API_CONNECTION_TIMEOUT_MS = 3_000;
 const MANAGEMENT_API_REQUEST_TIMEOUT_MS = 5_000;
+const ASSIGNMENT_INVOKE_TIMEOUT_MS = 5_000;
 
 /**
  * The three secrets AuthService and the session-cursor signer need. Lambda's environment
@@ -468,12 +469,19 @@ export async function createLambdaRuntime(
         return;
       }
       /* v8 ignore start -- @preserve production Event invoke is an SDK boundary */
-      await new LambdaClient({}).send(
+      await new LambdaClient({
+        requestHandler: new NodeHttpHandler({
+          connectionTimeout: MANAGEMENT_API_CONNECTION_TIMEOUT_MS,
+          requestTimeout: ASSIGNMENT_INVOKE_TIMEOUT_MS,
+          throwOnRequestTimeout: true,
+        }),
+      }).send(
         new InvokeCommand({
           FunctionName: functionName,
           InvocationType: "Event",
           Payload: Buffer.from(JSON.stringify({ source: "enqueue" })),
         }),
+        { abortSignal: AbortSignal.timeout(ASSIGNMENT_INVOKE_TIMEOUT_MS) },
       );
       /* v8 ignore stop -- @preserve */
     });

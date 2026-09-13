@@ -54,10 +54,13 @@ Explicitly out of scope for this project, regardless of how easy any individual 
 - **API-metered agent farms.** This is a subscription-capacity scheduler, not a pay-per-token
   agent platform. See [why.md](why.md), [costs.md](costs.md).
 - **Replacing interactive IDE/chat use.** Auto Harness is for unattended, queued work.
-- **Owning a target repo's GitHub policy.** Trigger filtering, CI-failure triage, deduplication,
-  comment-author authorization, and prompt content stay in the target repo
-  ([harness.md](harness.md)). Auto Harness receives a rendered prompt and a target; it does not
-  decide _whether_ to run.
+- **Owning a target repo's GitHub policy, except comment-trigger authorization.** CI-failure triage
+  and prompt content stay in the target repo ([harness.md](harness.md)); Auto Harness does not
+  render, template, or rewrite a prompt. For App-mediated `issue_comment` and
+  `pull_request_review_comment` triggers only, Auto Harness owns comment-author authorization,
+  trigger deduplication, and repository-to-command resolution: one tested centralized gate is safer
+  than N drifting public-repository workflow copies. Every other ingress path still receives a
+  rendered prompt and does not decide _whether_ to run.
 - **Multi-tenant SaaS.** Single-org control plane; `allowedRepositories` scoping is the extent of
   multi-tenancy, not a hard security boundary between untrusted customers.
 - **Per-session containerization** (see D9).
@@ -548,7 +551,10 @@ archived object versions). That is not a long-running CLI fleet E2E. New Session
 TTL on that attribute. Rows written before this change omit `ttl` and are not backfilled, so
 they do not expire through TTL. Terminal archival retains bounded pointer/status metadata in the
 DynamoDB Archives table and writes JSONL objects to S3 when `ARCHIVE_BUCKET` configures the
-archive writer. The local store is DynamoDB Local via `pnpm local:dynamodb` (official image).
+archive writer. Authorized session readers can resolve archive availability through a durable
+point lookup; the REST runtime verifies the S3 object and returns a five-minute presigned download
+without proxying transcript bytes. Cold Glacier objects remain unavailable until restored outside
+Auto Harness. The local store is DynamoDB Local via `pnpm local:dynamodb` (official image).
 
 **Migration marker:** none — cloud plumbing only, no live agent assignment loop yet.
 
@@ -705,7 +711,9 @@ rewrite (account cooldown/fallback routing is now Phase 3, not Phase 5):
 terminal logs to `sessions/{sessionId}/logs.jsonl`, retains archive metadata in DynamoDB, and uses
 the private S3 writer when `ARCHIVE_BUCKET` is configured. Metadata is bounded and records a
 pending upload before the PUT so a repeated terminal message can retry safely. The bucket name and
-scoped archive policy are wired into the synthesized runtime functions. The 2026-08-18 `qa`
+scoped archive policy are wired into the synthesized runtime functions. The REST runtime separately
+has canonical-prefix `GetObject` access for verified presigned archive downloads; Cron and
+WebSocket do not. The 2026-08-18 `qa`
 purge in `us-west-2` emptied 3 archived object versions after 3 short test sessions completed;
 byte-size and monthly-cost measurements still come from the modelled workload in
 [costs.md](costs.md), not from that run. An opt-in local webhook worker reconciles terminal session snapshots

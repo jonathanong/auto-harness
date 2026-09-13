@@ -1,8 +1,14 @@
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 export type ArchiveWriter = {
-  putArchive(object: { key: string; body: string; contentType: string }): Promise<void>;
+  putArchive(object: {
+    key: string;
+    body: string;
+    contentType: string;
+  }): Promise<ArchiveWriteResult | void>;
 };
+
+export type ArchiveWriteResult = { versionId: string };
 
 type ArchiveS3Client = {
   send(command: PutObjectCommand): Promise<unknown>;
@@ -17,11 +23,15 @@ export class S3ArchiveWriter implements ArchiveWriter {
     this.bucket = bucket;
   }
 
-  async putArchive(object: { key: string; body: string; contentType: string }): Promise<void> {
+  async putArchive(object: {
+    key: string;
+    body: string;
+    contentType: string;
+  }): Promise<ArchiveWriteResult> {
     if (!/^sessions\/[^/]+\/logs(?:\.[^/]+)?\.jsonl$/.test(object.key)) {
       throw new Error(`Refusing unexpected archive key: ${object.key}`);
     }
-    await this.client.send(
+    const result = (await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
         Key: object.key,
@@ -29,7 +39,11 @@ export class S3ArchiveWriter implements ArchiveWriter {
         ContentType: object.contentType,
         ServerSideEncryption: "AES256",
       }),
-    );
+    )) as { VersionId?: unknown };
+    if (typeof result.VersionId !== "string" || result.VersionId.length === 0) {
+      throw new Error("S3 archive upload did not return a version id");
+    }
+    return { versionId: result.VersionId };
   }
 }
 

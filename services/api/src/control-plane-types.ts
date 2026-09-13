@@ -4,6 +4,7 @@ import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 import type { ArchiveWriter } from "./archive-writer.ts";
+import type { ArchiveReader } from "./archive-reader.ts";
 import type { SlackIdentityClient, SlackOAuthClient } from "./slack-oauth-types.ts";
 
 export type { ConnectionRecord } from "./db/plane-storage-types.ts";
@@ -48,6 +49,8 @@ export type ArchiveObject = {
 export type ArchiveMetadata = {
   key: string;
   objectKey?: string;
+  /** S3's immutable object version returned by PutObject. */
+  versionId?: string;
   contentType: string;
   bodyBytes: number;
   status: "pending" | "complete";
@@ -92,6 +95,8 @@ export type ControlPlaneOptions = {
   archivePrefix?: string;
   /** Optional object-store boundary. Dynamo archive metadata remains durable separately. */
   archiveWriter?: ArchiveWriter | undefined;
+  /** Optional object-store read boundary for verified, short-lived archive downloads. */
+  archiveReader?: ArchiveReader | undefined;
   /** HMAC secret used to sign stable list cursors across API workers. */
   sessionCursorSecret?: string;
   onHostMessage?: (hostId: string, msg: HostWireMessage) => void;

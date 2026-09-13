@@ -37,6 +37,10 @@ export type {
   SessionTerminalStatus,
 } from "./session.ts";
 export type { SessionResult } from "./session-result.ts";
+export type {
+  SessionArchiveIncompleteReason,
+  SessionArchiveReadResponse,
+} from "./session-archive.ts";
 export {
   SESSION_RESULT_PROTOCOL_VERSION,
   MAX_SESSION_RESULT_BYTES,
@@ -142,6 +146,8 @@ export {
   MAX_PROMPT_BYTES,
   MAX_CONCURRENCY_ID_BYTES,
   MAX_FALLBACKS,
+  MAX_REQUIRED_LABELS,
+  MAX_REQUIRED_LABEL_LENGTH,
   MAX_SESSION_PRIORITY,
   MAX_SESSION_TIMEOUT_SECONDS,
   promptByteLengthError,
@@ -260,6 +266,7 @@ export {
   type RepositoryAdmissionState,
 } from "./repository-admission.ts";
 export {
+  isValidSessionRef,
   isValidScheduledBranchRef,
   MAX_SCHEDULED_BRANCH_REF_BYTES,
 } from "./scheduled-branch-ref.ts";

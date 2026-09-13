@@ -1,6 +1,11 @@
 "use client";
 
-import { SessionActions, SessionDetail, type SessionSummary } from "@auto-harness/ui";
+import {
+  SessionActions,
+  SessionArchiveStatus,
+  SessionDetail,
+  type SessionSummary,
+} from "@auto-harness/ui";
 import { isTerminalSessionStatus } from "@auto-harness/shared";
 import { type ReactNode, useEffect, useState } from "react";
 
@@ -25,6 +30,7 @@ export function SessionLiveDetail({
 }) {
   const [session, setSession] = useState(initialSession);
   const [refreshFailed, setRefreshFailed] = useState(false);
+  const [archiveRefresh, setArchiveRefresh] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -52,16 +58,29 @@ export function SessionLiveDetail({
     <SessionDetail
       session={session}
       breadcrumbs={[{ label: "Sessions", href: "/sessions" }, { label: session.id }]}
-      actions={<SessionActions sessionId={session.id} status={session.status} />}
+      actions={
+        <SessionActions
+          sessionId={session.id}
+          status={session.status}
+          onArchiveSuccess={() => setArchiveRefresh((current) => current + 1)}
+        />
+      }
       repoHrefBase="/repositories"
       worktreeHrefBase="/worktrees"
       defaultTab={defaultTab}
       notices={
-        refreshFailed ? (
-          <p className="text-sm text-amber-800" data-pw="session-live-state-error" role="status">
-            Session status refresh paused; retrying…
-          </p>
-        ) : null
+        <>
+          <SessionArchiveStatus
+            sessionId={session.id}
+            terminal={isTerminalSessionStatus(session.status)}
+            refreshToken={archiveRefresh}
+          />
+          {refreshFailed ? (
+            <p className="text-sm text-amber-800" data-pw="session-live-state-error" role="status">
+              Session status refresh paused; retrying…
+            </p>
+          ) : null}
+        </>
       }
     >
       {children}
