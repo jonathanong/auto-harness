@@ -277,6 +277,23 @@ describe("GitHub ingress config", () => {
     }
   });
 
+  it("does not commit in-memory bindings deleted after post-encryption validation", async () => {
+    const plane = createPlane();
+    const originalGet = plane.state.repositories.get.bind(plane.state.repositories);
+    let reads = 0;
+    plane.state.repositories.get = ((id: string) => {
+      const value = originalGet(id);
+      reads += 1;
+      if (reads >= 2) plane.state.repositories.delete("repo");
+      return value;
+    }) as typeof plane.state.repositories.get;
+
+    await expect(
+      plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: false });
+    await expect(plane.getGitHubIngressConfig()).resolves.toBeNull();
+  });
+
   it("allows only one concurrent in-memory create after delayed encryption", async () => {
     let release!: () => void;
     let ready!: () => void;
@@ -622,6 +639,30 @@ describe("GitHub ingress config", () => {
       { key: "command:command", owner: expect.any(String), now: expect.any(String) },
     ]);
     expect(released).toEqual(["command:command", "repository:repo"]);
+  });
+
+  it("does not refresh the durable target catalog twice per write", async () => {
+    let catalogReads = 0;
+    const storage = {
+      getRepository: async () => ({ id: "repo" }),
+      listProviders: async () => {
+        catalogReads += 1;
+        return [];
+      },
+      listCommands: async () => [
+        { id: "command", name: "command", argv: ["echo"], providerId: null },
+      ],
+      listProviderAccounts: async () => [],
+      getGitHubIngressConfig: async () => null,
+      acquireDeletionMarker: async () => true,
+      releaseDeletionMarker: async () => undefined,
+      putGitHubIngressConfig: async () => true,
+    };
+    const plane = new ControlPlane({ secretEncryptor: encryptor, storage: storage as never });
+    await expect(
+      plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(catalogReads).toBe(1);
   });
 
   it("returns durable create, update, and delete CAS conflicts", async () => {

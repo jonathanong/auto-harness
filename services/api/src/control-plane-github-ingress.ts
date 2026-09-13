@@ -75,7 +75,7 @@ export async function createGitHubIngressConfig(
     const record = await makeRecord(state, input, randomUUID(), 1, now, now);
     const size = configSizeError(record);
     if (size) return { ok: false, error: size };
-    const catalogAfter = await validateConfiguredBindings(state, input);
+    const catalogAfter = await revalidateInMemoryBindings(state, input);
     if (!catalogAfter.ok) return catalogAfter;
     if (!state.storage && state.githubIngressConfig) return conflict();
     if (state.storage && !(await state.storage.putGitHubIngressConfig(record, null, markers)))
@@ -118,7 +118,7 @@ export async function updateGitHubIngressConfig(
     );
     const size = configSizeError(record);
     if (size) return { ok: false, error: size };
-    const catalogAfter = await validateConfiguredBindings(state, input);
+    const catalogAfter = await revalidateInMemoryBindings(state, input);
     if (!catalogAfter.ok) return catalogAfter;
     if (
       !state.storage &&
@@ -343,6 +343,30 @@ async function validateConfiguredBindings(
   for (const binding of input.bindings) {
     const repository = await getRepositoryDurable(state, binding.repositoryId);
     if (!repository) return { ok: false, error: "repository not found" };
+    const candidate = validateSessionTargetCatalog(state, binding.target, binding.fallbacks ?? []);
+    if (!candidate.ok) return { ok: false, error: candidate.error };
+  }
+  return { ok: true };
+}
+
+async function revalidateInMemoryBindings(
+  state: ControlPlaneState,
+  input: GitHubIngressConfigInput,
+): Promise<{ ok: true } | Failure> {
+  if (state.storage) return { ok: true };
+  const catalogAfter = await validateConfiguredBindings(state, input);
+  if (!catalogAfter.ok) return catalogAfter;
+  return configuredBindingsPresent(state, input);
+}
+
+function configuredBindingsPresent(
+  state: ControlPlaneState,
+  input: GitHubIngressConfigInput,
+): { ok: true } | Failure {
+  for (const binding of input.bindings) {
+    if (!state.repositories.has(binding.repositoryId)) {
+      return { ok: false, error: "repository not found" };
+    }
     const candidate = validateSessionTargetCatalog(state, binding.target, binding.fallbacks ?? []);
     if (!candidate.ok) return { ok: false, error: candidate.error };
   }
