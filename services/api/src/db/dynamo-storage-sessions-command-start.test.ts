@@ -65,6 +65,14 @@ describe("DynamoDB Local primary command-start authorization", () => {
     expect(await authorizePrimaryCommandStart(ctx, commandStart)).toBe(true);
     expect((await getSession(ctx, "session"))?.primaryCommandStartState).toBe("authorized");
     expect(await authorizePrimaryCommandStart(ctx, commandStart)).toBe(true);
+    expect(
+      await tryAcquireHostLock(ctx, {
+        hostId: "host",
+        connectionId: "replacement-connection",
+        replaceExisting: true,
+      }),
+    ).toBe(true);
+    expect(await authorizePrimaryCommandStart(ctx, commandStart)).toBe(false);
     expect(await authorizePrimaryCommandStart(ctx, { ...commandStart, attemptId: "stale" })).toBe(
       false,
     );

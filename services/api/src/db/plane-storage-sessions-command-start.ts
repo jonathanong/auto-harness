@@ -1,4 +1,4 @@
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
 import { getSession } from "./plane-storage-sessions-query.ts";
 import { isConditionalTransactionFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
@@ -59,6 +59,12 @@ export async function authorizePrimaryCommandStart(
     return true;
   } catch (err) {
     if (!isConditionalTransactionFailed(err)) throw err;
+    if (
+      opts.fence &&
+      !(await hostLockMatchesFence(ctx, opts.fence.hostId, opts.fence.connectionId))
+    ) {
+      return false;
+    }
     const current = await getSession(ctx, opts.sessionId, true);
     return Boolean(
       current?.status === "running" &&
@@ -71,4 +77,20 @@ export async function authorizePrimaryCommandStart(
             current.assignmentConnectionId === opts.fence.connectionId))),
     );
   }
+}
+
+/** The replay path must verify that this connection still owns the host. */
+async function hostLockMatchesFence(
+  ctx: PlaneStorageCtx,
+  hostId: string,
+  connectionId: string,
+): Promise<boolean> {
+  const lock = await ctx.doc.send(
+    new GetCommand({
+      TableName: ctx.tables.hostLocks,
+      Key: { hostId },
+      ConsistentRead: true,
+    }),
+  );
+  return lock.Item?.connectionId === connectionId && lock.Item.disconnected !== true;
 }

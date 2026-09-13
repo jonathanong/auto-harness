@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- shutdown races share one durable-handoff lifecycle fixture. */
 import { describe, expect, it, vi } from "vitest";
+import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
 import { flushMacrotask, makeRepo } from "../test-helpers/daemon-loop-test-helpers.ts";
@@ -125,6 +126,66 @@ describe("DaemonLoop terminal-hook shutdown", () => {
       expect(idle).toBe(true);
       expect(internals.pendingTerminalHookHandoffs.has("expired-waiter")).toBe(false);
       expect(logs).toContainEqual(expect.stringContaining("at the control-plane expiry"));
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("leaves a handoff queued when shutdown starts behind earlier target work", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const sent: HostToServerMessage[] = [];
+      const hookStarted = vi.fn();
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => void sent.push(message),
+      });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      (
+        loop as unknown as { processRunner: { run(): Promise<{ exitCode: number }> } }
+      ).processRunner = {
+        run: async () => {
+          hookStarted();
+          return { exitCode: 0 };
+        },
+      };
+      const internals = loop as unknown as {
+        worktreeAssignmentTails: Map<string, Promise<void>>;
+        pendingTerminalHookHandoffs: Map<string, { executing: boolean }>;
+      };
+      let releaseEarlierWork!: () => void;
+      const earlierWork = new Promise<void>((resolve) => {
+        releaseEarlierWork = resolve;
+      });
+      internals.worktreeAssignmentTails.set("worktree\0demo\0wt-1", earlierWork);
+
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
+      transport.deliver({
+        type: "session:terminal-hook",
+        handoffId: "shutdown-waiter",
+        sessionId: "lost",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      });
+      await waitFor(
+        () => internals.pendingTerminalHookHandoffs.get("shutdown-waiter")?.executing === true,
+      );
+
+      loop.prepareForShutdown();
+      releaseEarlierWork();
+      await loop.waitForIdle();
+
+      expect(hookStarted).not.toHaveBeenCalled();
+      expect(sent).not.toContainEqual(
+        expect.objectContaining({
+          type: "session:terminal-hook-complete",
+          handoffId: "shutdown-waiter",
+        }),
+      );
+      expect(internals.pendingTerminalHookHandoffs.has("shutdown-waiter")).toBe(true);
       loop.stop();
     } finally {
       cleanup();

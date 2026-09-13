@@ -1203,6 +1203,11 @@ export class DaemonLoop {
     this.worktreeAssignmentTails.set(targetKey, targetWork);
     try {
       if (previousTargetWork) await previousTargetWork.catch(() => undefined);
+      // Shutdown may begin while this handoff is waiting behind an earlier
+      // assignment on the same target. Recheck after the target fence so a
+      // hook cannot start after shutdown has handed ownership back to the
+      // control plane.
+      if (this.settleDeferredOnCompletion) return;
       // This hook may have spent its entire control-plane lease behind a
       // preceding session on the same physical target. Drop it here rather
       // than merely returning: waitForIdle() restarts incomplete handoffs,

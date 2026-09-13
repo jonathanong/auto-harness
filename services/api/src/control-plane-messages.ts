@@ -916,12 +916,25 @@ export async function handleHostMessageDurable(
         : msg.type === "session:terminal-hook-complete"
           ? await storage.getSession(msg.sessionId, true)
           : (state.sessions.get(msg.sessionId) ?? (await storage.getSession(msg.sessionId)));
+    // A timeout detaches its assignment before the daemon can necessarily
+    // report its terminal cleanup: `hostId` is cleared, while
+    // `timedOutHostId` remembers the only host entitled to retain a deferred
+    // terminal hook. Do not extend that ownership to ordinary reports (or a
+    // stale attempt): only this exact terminal report may use the remembered
+    // owner as its durable connection fence.
+    const timedOutTerminalOwner =
+      msg.type === "session:status" &&
+      isTerminalSessionStatus(msg.status) &&
+      loaded?.status === "timed_out" &&
+      loaded.attemptId === msg.attemptId
+        ? loaded.timedOutHostId
+        : undefined;
     const hostId =
       msg.type === "host:keepalive" || msg.type === "host:status"
         ? msg.hostId
         : msg.type === "session:terminal-hook-complete"
           ? (loaded?.terminalHookHandoff?.hostId ?? loaded?.terminalHookHandoffSettled?.hostId)
-          : loaded?.hostId;
+          : (loaded?.hostId ?? timedOutTerminalOwner);
     // Distinct from a lock mismatch below: this session has no host claim at
     // all, which only happens once some transition has already cleared it.
     const noHostClaim = !hostId;
