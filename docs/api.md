@@ -382,8 +382,9 @@ digest is HMAC-SHA256 of the exact request bytes using the integration secret. V
 create (or find) a `source: "webhook"` session using an integration-generation-scoped concurrency key and
 return a small `202` acknowledgment (`accepted`, `sessionId`, and `created`). Assignment dispatch
 is asynchronous after the durable session write. The concurrency key follows the session API's
-normal lifecycle: it deduplicates while active, then releases at terminal so a later delivery can
-start a new run. Admin configuration is at
+normal lifecycle: it deduplicates while active, including when a catalog deletion marker is acquired
+after that lock owner already committed, then releases at terminal so a later delivery can
+start a new run. Marker-only conflicts with no active lock owner still fail closed. Admin configuration is at
 `/api/v1/integrations/custom/:integrationId`; secrets are KMS-encrypted and never returned.
 
 Admin `POST` creates and `PUT` replaces routing with a body containing `secret`, `repositoryId`,
@@ -416,9 +417,10 @@ fixed routing. `PUT` may omit `secret` to retain it and requires the last observ
 default ref is used for issue comments; pull-request comments use `refs/pull/<number>/head`.
 
 The numeric repository and comment ID form a reserved session concurrency identity. Concurrent or
-active-session redelivery returns the existing session, while terminal sessions release the
-identity so a later redelivery can create a new run. This endpoint does not provide exactly-once
-execution or maintain a separate durable receipt.
+active-session redelivery returns the existing session, including when a catalog deletion marker is
+acquired after that lock owner already committed. Marker-only conflicts with no active lock owner
+still fail closed. Terminal sessions release the identity so a later redelivery can create a new
+run. This endpoint does not provide exactly-once execution or maintain a separate durable receipt.
 
 The ingress App is separate from the host credential App. The control plane stores only the
 ingress webhook secret. It never receives the credential App private key or installation tokens.

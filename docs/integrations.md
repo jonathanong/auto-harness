@@ -336,7 +336,9 @@ x-auto-harness-signature-256: sha256=<lowercase hex digest>
 Unknown fields and invalid signatures are rejected. A successful request returns a small `202`
 acknowledgment after the durable session write; assignment is detached from that response.
 `idempotencyKey` is scoped to the integration generation and uses the existing atomic session concurrency lock to make concurrent or
-active-session redelivery safe. Terminal sessions release that identity, so a later delivery can
+active-session redelivery safe. An already-active lock owner is acknowledged even when a catalog
+deletion marker is acquired after that owner committed; marker-only conflicts still fail closed.
+Terminal sessions release that identity, so a later delivery can
 intentionally start a new run; ingress does not add a second receipt store. The endpoint is
 intentionally unauthenticated because the HMAC secret is its credential.
 
@@ -365,7 +367,9 @@ allowlisted per binding.
 Inline review comments run against `refs/pull/<number>/head`. Issue comments on pull requests use
 the same pull ref; issue comments on ordinary issues use the configured default ref. Numeric
 repository and comment IDs form the existing session concurrency identity, so concurrent or
-active-session redelivery is deduplicated. Terminal sessions release that identity and a later
+active-session redelivery is deduplicated, including when a catalog deletion marker is acquired after
+that lock owner already committed. Marker-only conflicts with no active lock owner still fail
+closed. Terminal sessions release that identity and a later
 redelivery can start a new run; ingress adds no second receipt store and does not promise
 exactly-once execution. Secret rotation, disablement, and deletion are version-fenced against
 session creation with an immutable creation generation. Configuration updates carry the operator's

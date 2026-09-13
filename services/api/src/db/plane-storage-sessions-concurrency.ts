@@ -67,6 +67,17 @@ function parentFenceIsValid(
   return ["running", "completed", "failed", "cancelled", "timed_out"].includes(parent.status);
 }
 
+async function acknowledgeActiveLockWinner(
+  ctx: PlaneStorageCtx,
+  err: unknown,
+  session: SessionRecord,
+  lockIndex: number,
+): Promise<CreateSessionResult | undefined> {
+  if (!isConditionalTransactionFailureAt(err, lockIndex)) return undefined;
+  const resolved = await resolveConcurrencyLockConflict(ctx, err, session, lockIndex);
+  return resolved === "retry" ? undefined : resolved;
+}
+
 async function throwIfCreateAdmissionConflict(
   ctx: PlaneStorageCtx,
   err: unknown,
@@ -76,32 +87,35 @@ async function throwIfCreateAdmissionConflict(
 ): Promise<CreateSessionResult | undefined> {
   if (!isConditionalTransactionFailed(err)) throw err;
   const { drainCheck, principalCheck, integrationCheck } = parts;
-  if (
-    markers.length > 0 &&
-    Array.from({ length: markers.length }, (_, index) => index).some((index) =>
-      isConditionalTransactionFailureAt(err, index),
-    )
-  ) {
-    throw new CatalogDeletionInProgressError();
-  }
   const principalIndex = markers.length;
-  if (principalCheck && isConditionalTransactionFailureAt(err, principalIndex)) {
-    throw new CatalogDeletionInProgressError();
-  }
   const resourceIndex = principalIndex + Number(!!principalCheck);
-  const resourceFailed = isConditionalTransactionFailureAt(err, resourceIndex);
   const drainIndex = resourceIndex + 1;
   const parentIndex = drainIndex + Number(!!drainCheck);
   const integrationIndex = parentIndex + Number(hasSeparateParentCheck(parts.parentFence));
   const lockIndex = integrationIndex + Number(!!integrationCheck);
-  if (resourceFailed && isConditionalTransactionFailureAt(err, lockIndex)) {
+  const markerFailed =
+    markers.length > 0 &&
+    Array.from({ length: markers.length }, (_, index) => index).some((index) =>
+      isConditionalTransactionFailureAt(err, index),
+    );
+  if (markerFailed) {
+    // Dynamo evaluates every TransactWrite item. A duplicate ingress can lose
+    // both the deletion-marker check and the lock Put after the original owner
+    // already committed. The active lock is the durable fact to acknowledge.
+    const winner = await acknowledgeActiveLockWinner(ctx, err, session, lockIndex);
+    if (winner) return winner;
+    throw new CatalogDeletionInProgressError();
+  }
+  if (principalCheck && isConditionalTransactionFailureAt(err, principalIndex)) {
+    throw new CatalogDeletionInProgressError();
+  }
+  const resourceFailed = isConditionalTransactionFailureAt(err, resourceIndex);
+  if (resourceFailed) {
     // A concurrent redelivery may lose both resource admission and the lock
     // condition. The lock's active session is the authoritative winner; resolve
     // it before reporting the resource's later admission state.
-    const resolved = await resolveConcurrencyLockConflict(ctx, err, session, lockIndex);
-    if (resolved !== "retry") return resolved;
-  }
-  if (resourceFailed) {
+    const winner = await acknowledgeActiveLockWinner(ctx, err, session, lockIndex);
+    if (winner) return winner;
     if (session.repositoryId) throw new RepositoryAdmissionClosedError();
     throw new CatalogDeletionInProgressError();
   }
