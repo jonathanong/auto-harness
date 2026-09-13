@@ -4,6 +4,7 @@ import {
   isTerminalSessionStatus,
   normalizeSessionResult,
   SESSION_RESULT_PROTOCOL_VERSION,
+  TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION,
   type HostToServerMessage,
 } from "@auto-harness/shared";
 
@@ -16,6 +17,7 @@ import {
   trackLogPersist,
 } from "./control-plane-state.ts";
 import { sessionLogsTtlEpochSeconds } from "./db/dynamo.ts";
+import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import {
   heartbeat,
   heartbeatDurable,
@@ -37,6 +39,8 @@ import {
 } from "./control-plane-workspace-slot-retirement.ts";
 import {
   emitCooldown,
+  emitInfrastructureRetry,
+  emitInfrastructureRetryExhausted,
   emitLogDrops,
   emitLogSeqGap,
   emitStaleAttemptLogDrop,
@@ -70,6 +74,10 @@ import { requestAssignment } from "./request-assignment.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import { reconcileHostOwnedSessions } from "./control-plane-reconnect-omitted.ts";
 import { ingestUsage, ingestUsageDurable } from "./control-plane-usage.ts";
+import {
+  pendingTerminalHookHandoffs,
+  settleTerminalHookHandoff,
+} from "./control-plane-terminal-hook-handoff.ts";
 
 const MAX_LOG_CHUNK_BYTES = 32 * 1024;
 
@@ -227,14 +235,113 @@ function hostStatusEvent(
   };
 }
 
+function isFirstCheckoutFetchFailure(
+  msg: Extract<HostToServerMessage, { type: "session:status" }>,
+  session: SessionRecord | undefined,
+): boolean {
+  return (
+    msg.status === "failed" &&
+    msg.errorCode === "checkout_fetch_failed" &&
+    (session?.infrastructureRetryCount ?? 0) === 0
+  );
+}
+
+function deferredTerminalHookHandoff(
+  state: ControlPlaneState,
+  session: SessionRecord,
+  msg: Extract<HostToServerMessage, { type: "session:status" }>,
+): SessionRecord["terminalHookHandoff"] | undefined {
+  const hostId = session.hostId ?? session.timedOutHostId;
+  if (!hostId) return undefined;
+  return {
+    handoffId: state.idFactory(),
+    attemptId: msg.attemptId,
+    hostId,
+    repositoryId: session.repositoryId,
+    worktreeId: session.worktreeId ?? null,
+    ...(session.mainCheckoutLease ? { mainCheckoutLease: true as const } : {}),
+    status: msg.status as Extract<
+      SessionRecord["status"],
+      "completed" | "failed" | "cancelled" | "timed_out"
+    >,
+    ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
+    expiresAt: new Date(Date.parse(state.now()) + 24 * 60 * 60 * 1000).toISOString(),
+    ...(session.ref !== undefined ? { ref: session.ref } : {}),
+    ...(session.metadata !== undefined ? { metadata: session.metadata } : {}),
+  };
+}
+
+/**
+ * A terminal-status transaction may lose its conditional write to an
+ * overlapping copy of the same status report. `finishSession` treats that as
+ * success once the row has the requested terminal status, but the winning
+ * invocation may have generated a different handoff id. Read the durable row
+ * before acknowledging so the daemon can only complete the handoff that was
+ * actually stored.
+ */
+async function committedDeferredCheckoutFailureHandoff(
+  state: ControlPlaneState,
+  sessionId: string,
+  proposed: NonNullable<SessionRecord["terminalHookHandoff"]>,
+): Promise<NonNullable<SessionRecord["terminalHookHandoff"]> | undefined> {
+  const current = await state.storage?.getSession(sessionId, true);
+  const handoff = current?.terminalHookHandoff;
+  return handoff?.attemptId === proposed.attemptId &&
+    handoff?.hostId === proposed.hostId &&
+    handoff.status === proposed.status
+    ? handoff
+    : undefined;
+}
+
+/** Keep a deferred hook's retry decision stable across a resent moot report. */
+function settledCheckoutFetchRetryDisposition(
+  msg: Extract<HostToServerMessage, { type: "session:status" }>,
+  session: SessionRecord | null | undefined,
+): boolean | undefined {
+  if (msg.status !== "failed" || msg.errorCode !== "checkout_fetch_failed") return undefined;
+  // The retry is a property of the logical session, not of the particular
+  // failure report that arrived first. A disconnected daemon may report a
+  // checkout failure after reconnect-deadline recovery has already consumed
+  // the one retry as `host_lost`; that still means this old attempt's deferred
+  // hook must be settled as accepted.
+  return session?.infrastructureRetryAttemptId === msg.attemptId;
+}
+
+/** Return the durable handoff that must accompany a replayed deferred failure. */
+function deferredTerminalHookHandoffId(
+  msg: Extract<HostToServerMessage, { type: "session:status" }>,
+  session: SessionRecord | null | undefined,
+): string | undefined {
+  const handoff = session?.terminalHookHandoff;
+  return msg.deferTerminalHookResult === true && handoff?.attemptId === msg.attemptId
+    ? handoff.handoffId
+    : undefined;
+}
+
+/** Return the exact durable expiry for a replayed deferred failure handoff. */
+function deferredTerminalHookHandoffExpiresAt(
+  msg: Extract<HostToServerMessage, { type: "session:status" }>,
+  session: SessionRecord | null | undefined,
+  protocolVersion: number,
+): string | undefined {
+  return protocolVersion < TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION ||
+    deferredTerminalHookHandoffId(msg, session) === undefined
+    ? undefined
+    : session?.terminalHookHandoff?.expiresAt;
+}
+
 function plannerContext(
   state: ControlPlaneState,
   source: SessionTransitionContext["source"],
   providerAccount?: SessionTransitionContext["providerAccount"],
+  protocolVersion?: number,
+  deferTerminalHookResult?: boolean,
 ): SessionTransitionContext {
   return {
     now: state.now(),
     source,
+    ...(protocolVersion !== undefined ? { protocolVersion } : {}),
+    ...(deferTerminalHookResult === true ? { deferTerminalHookResult: true } : {}),
     ...(providerAccount !== undefined ? { providerAccount } : {}),
   };
 }
@@ -442,7 +549,7 @@ export function handleHostMessage(
   state: ControlPlaneState,
   msg: HostToServerMessage,
   sourceConnectionId?: string,
-): { ok: boolean; error?: string } {
+): { ok: boolean; error?: string; retryAccepted?: boolean | undefined } {
   switch (msg.type) {
     case "host:register": {
       const r = registerHost(state, {
@@ -477,7 +584,27 @@ export function handleHostMessage(
         runtime: msg.runtime ?? legacyHostRuntime(),
         ...(msg.draining ? { draining: true } : {}),
       });
-      return r.ok ? { ok: true } : { ok: false, error: r.error };
+      if (!r.ok) return { ok: false, error: r.error };
+      for (const session of connectionProtocolVersion(state.connections.get(r.connectionId)) >=
+      TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
+        ? state.sessions.values()
+        : []) {
+        const handoff = session.terminalHookHandoff;
+        if (!handoff || handoff.hostId !== msg.hostId) continue;
+        state.onHostMessage?.(msg.hostId, {
+          type: "session:terminal-hook",
+          handoffId: handoff.handoffId,
+          sessionId: session.id,
+          repositoryId: handoff.repositoryId,
+          worktreeId: handoff.worktreeId,
+          status: handoff.status,
+          expiresAt: handoff.expiresAt,
+          ...(handoff.errorCode !== undefined ? { errorCode: handoff.errorCode } : {}),
+          ...(handoff.ref !== undefined ? { ref: handoff.ref } : {}),
+          ...(handoff.metadata !== undefined ? { metadata: handoff.metadata } : {}),
+        });
+      }
+      return { ok: true };
     }
     case "session:ack": {
       const session = state.sessions.get(msg.sessionId);
@@ -503,6 +630,27 @@ export function handleHostMessage(
       }
       return { ok: true };
     }
+    case "session:command-start": {
+      const session = state.sessions.get(msg.sessionId);
+      if (!session) return { ok: false, error: "session not found" };
+      const plan = planSessionTransition(
+        session,
+        { type: "command_start", worktreeId: msg.worktreeId, attemptId: msg.attemptId },
+        plannerContext(state, "local"),
+      );
+      const accepted = !transitionEffect(plan, "ignore") && !transitionEffect(plan, "reject");
+      if (accepted && transitionEffect(plan, "authorize_command_start")) {
+        session.primaryCommandStartState = "authorized";
+      }
+      if (accepted && session.hostId && session.primaryCommandStartState === "authorized") {
+        state.onHostMessage?.(session.hostId, {
+          type: "session:command-start-acknowledged",
+          sessionId: session.id,
+          attemptId: msg.attemptId,
+        });
+      }
+      return { ok: true };
+    }
     case "session:status": {
       // Captured before mutation: a terminal report can clear session.hostId.
       const owner = state.sessions.get(msg.sessionId)?.hostId;
@@ -512,12 +660,40 @@ export function handleHostMessage(
           type: "session:status-acknowledged",
           sessionId: msg.sessionId,
           attemptId: msg.attemptId,
+          ...(result.retryAccepted !== undefined ? { retryAccepted: result.retryAccepted } : {}),
         });
       }
-      return result;
+      return result.error === undefined
+        ? { ok: result.ok }
+        : { ok: result.ok, error: result.error };
     }
     case "session:usage": {
       return ingestUsage(state, msg);
+    }
+    case "session:terminal-hook-complete": {
+      const handoff = state.sessions.get(msg.sessionId)?.terminalHookHandoff;
+      if (!handoff) return { ok: false, error: "terminal hook handoff not found" };
+      const completedResult =
+        msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
+      if (msg.result !== undefined && completedResult === undefined) {
+        return { ok: false, error: "invalid session result" };
+      }
+      void settleTerminalHookHandoff(state, {
+        sessionId: msg.sessionId,
+        handoffId: msg.handoffId,
+        hostId: handoff.hostId,
+        ...(sourceConnectionId ? { connectionId: sourceConnectionId } : {}),
+        ...(completedResult ? { result: completedResult } : {}),
+      }).then((settled) => {
+        if (settled) {
+          state.onHostMessage?.(handoff.hostId, {
+            type: "session:terminal-hook-acknowledged",
+            sessionId: msg.sessionId,
+            handoffId: msg.handoffId,
+          });
+        }
+      });
+      return { ok: true };
     }
     case "session:log": {
       if (Buffer.byteLength(msg.content) > MAX_LOG_CHUNK_BYTES) {
@@ -574,8 +750,22 @@ export async function handleHostMessageDurable(
   connectionId?: string;
   /** Present only after the durable ack transaction committed. */
   sessionAcknowledged?: string;
+  /** Present only after command launch is durably authorized. */
+  sessionCommandStartAcknowledged?: { sessionId: string; attemptId: string };
   /** Present only after a `session:status` report was durably applied. */
-  sessionStatusAcknowledged?: { sessionId: string; attemptId: string };
+  sessionStatusAcknowledged?: {
+    sessionId: string;
+    attemptId: string;
+    retryAccepted?: boolean | undefined;
+    terminalHookHandoffId?: string | undefined;
+    terminalHookHandoffExpiresAt?: string | undefined;
+  };
+  /** Present only after a replacement daemon durably settles its hook handoff. */
+  sessionTerminalHookAcknowledged?: { sessionId: string; handoffId: string };
+  /** Pending hooks to deliver after this daemon's socket becomes current. */
+  terminalHookHandoffs?: Array<
+    Extract<import("@auto-harness/shared").HostWireMessage, { type: "session:terminal-hook" }>
+  >;
   /** Present only after the host's drain flag committed. */
   hostDraining?: string;
 }> {
@@ -615,15 +805,23 @@ export async function handleHostMessageDurable(
       ...(sourceConnectionId ? { connectionId: sourceConnectionId } : {}),
       ...(consumePendingConnection ? { consumePendingConnection: true } : {}),
     });
-    return result.ok
-      ? { ok: true, connectionId: result.connectionId }
-      : { ok: false, error: result.error };
+    if (!result.ok) return { ok: false, error: result.error };
+    const handoffs = await pendingTerminalHookHandoffs(state, msg.hostId, {
+      connectionId: result.connectionId,
+      protocolVersion: connectionProtocolVersion(state.connections.get(result.connectionId)),
+    });
+    return {
+      ok: true,
+      connectionId: result.connectionId,
+      ...(handoffs.length > 0 ? { terminalHookHandoffs: handoffs } : {}),
+    };
   }
   if (
     msg.type === "session:status" &&
     msg.result !== undefined &&
     sourceConnectionId !== undefined &&
-    (sourceProtocolVersion ?? state.connections.get(sourceConnectionId)?.protocolVersion ?? 0) <
+    (sourceProtocolVersion ??
+      connectionProtocolVersion(state.connections.get(sourceConnectionId))) <
       SESSION_RESULT_PROTOCOL_VERSION
   ) {
     return { ok: false, error: "session result requires host protocol 3" };
@@ -646,14 +844,22 @@ export async function handleHostMessageDurable(
       // timestamp; run the same keepalive-time reconciliation the durable
       // path gets via `heartbeatDurable`, so a non-durable control plane also
       // bounds a lost/orphaned session to one keepalive interval.
+      const terminalHookHandoffSessionIds: string[] = [];
       const requeued = await reconcileHostOwnedSessions(
         state,
         msg.hostId,
         state.hostConnection.get(msg.hostId),
         new Set(msg.runningSessions),
         "daemon no longer reports session as running; requeued",
+        terminalHookHandoffSessionIds,
       );
       if (requeued.length > 0) await requestAssignment(state);
+      if (terminalHookHandoffSessionIds.length > 0) {
+        const handoffs = await pendingTerminalHookHandoffs(state, msg.hostId, {
+          sessionIds: terminalHookHandoffSessionIds,
+        });
+        return { ...result, ...(handoffs.length > 0 ? { terminalHookHandoffs: handoffs } : {}) };
+      }
     }
     return result;
   }
@@ -702,17 +908,40 @@ export async function handleHostMessageDurable(
   }
   let fence: { hostId: string; connectionId: string } | undefined;
   if (sourceConnectionId) {
+    const acknowledgedProtocolVersion =
+      sourceProtocolVersion ?? connectionProtocolVersion(state.connections.get(sourceConnectionId));
+    const loaded =
+      msg.type === "host:keepalive" || msg.type === "host:status"
+        ? undefined
+        : msg.type === "session:terminal-hook-complete"
+          ? await storage.getSession(msg.sessionId, true)
+          : (state.sessions.get(msg.sessionId) ?? (await storage.getSession(msg.sessionId)));
+    // A timeout detaches its assignment before the daemon can necessarily
+    // report its terminal cleanup: `hostId` is cleared, while
+    // `timedOutHostId` remembers the only host entitled to retain a deferred
+    // terminal hook. Do not extend that ownership to ordinary reports (or a
+    // stale attempt): only this exact terminal report may use the remembered
+    // owner as its durable connection fence.
+    const timedOutTerminalOwner =
+      msg.type === "session:status" &&
+      isTerminalSessionStatus(msg.status) &&
+      loaded?.status === "timed_out" &&
+      loaded.attemptId === msg.attemptId
+        ? loaded.timedOutHostId
+        : undefined;
     const hostId =
       msg.type === "host:keepalive" || msg.type === "host:status"
         ? msg.hostId
-        : (state.sessions.get(msg.sessionId)?.hostId ??
-          (await storage.getSession(msg.sessionId))?.hostId);
+        : msg.type === "session:terminal-hook-complete"
+          ? (loaded?.terminalHookHandoff?.hostId ?? loaded?.terminalHookHandoffSettled?.hostId)
+          : (loaded?.hostId ?? timedOutTerminalOwner);
     // Distinct from a lock mismatch below: this session has no host claim at
     // all, which only happens once some transition has already cleared it.
     const noHostClaim = !hostId;
     if (noHostClaim || (await storage.getHostLock(hostId)) !== sourceConnectionId) {
       if (
         (msg.type === "session:ack" ||
+          msg.type === "session:command-start" ||
           msg.type === "session:status" ||
           msg.type === "session:usage") &&
         msg.attemptId
@@ -729,7 +958,29 @@ export async function handleHostMessageDurable(
             // rather than resending it every keepalive for up to 24h.
             return {
               ok: true,
-              sessionStatusAcknowledged: { sessionId: msg.sessionId, attemptId: msg.attemptId },
+              sessionStatusAcknowledged: {
+                sessionId: msg.sessionId,
+                attemptId: msg.attemptId,
+                ...(settledCheckoutFetchRetryDisposition(msg, session) !== undefined
+                  ? { retryAccepted: settledCheckoutFetchRetryDisposition(msg, session) }
+                  : {}),
+                ...(deferredTerminalHookHandoffId(msg, session) !== undefined
+                  ? { terminalHookHandoffId: deferredTerminalHookHandoffId(msg, session) }
+                  : {}),
+                ...(deferredTerminalHookHandoffExpiresAt(
+                  msg,
+                  session,
+                  acknowledgedProtocolVersion,
+                ) !== undefined
+                  ? {
+                      terminalHookHandoffExpiresAt: deferredTerminalHookHandoffExpiresAt(
+                        msg,
+                        session,
+                        acknowledgedProtocolVersion,
+                      ),
+                    }
+                  : {}),
+              },
             };
           }
           return { ok: true };
@@ -748,7 +999,29 @@ export async function handleHostMessageDurable(
           // stop retrying a status the control plane never durably recorded.
           return {
             ok: true,
-            sessionStatusAcknowledged: { sessionId: msg.sessionId, attemptId: msg.attemptId },
+            sessionStatusAcknowledged: {
+              sessionId: msg.sessionId,
+              attemptId: msg.attemptId,
+              ...(settledCheckoutFetchRetryDisposition(msg, session) !== undefined
+                ? { retryAccepted: settledCheckoutFetchRetryDisposition(msg, session) }
+                : {}),
+              ...(deferredTerminalHookHandoffId(msg, session) !== undefined
+                ? { terminalHookHandoffId: deferredTerminalHookHandoffId(msg, session) }
+                : {}),
+              ...(deferredTerminalHookHandoffExpiresAt(
+                msg,
+                session,
+                acknowledgedProtocolVersion,
+              ) !== undefined
+                ? {
+                    terminalHookHandoffExpiresAt: deferredTerminalHookHandoffExpiresAt(
+                      msg,
+                      session,
+                      acknowledgedProtocolVersion,
+                    ),
+                  }
+                : {}),
+            },
           };
         }
       }
@@ -757,21 +1030,89 @@ export async function handleHostMessageDurable(
     fence = { hostId, connectionId: sourceConnectionId };
   }
   if (msg.type === "host:keepalive") {
-    return (await heartbeatDurable(
+    const terminalHookHandoffSessionIds: string[] = [];
+    const heartbeatAccepted = await heartbeatDurable(
       state,
       msg.hostId,
       msg.at,
       fence?.connectionId,
       msg.runningSessions,
-    ))
-      ? { ok: true }
-      : { ok: false, error: "agent not connected" };
+      terminalHookHandoffSessionIds,
+    );
+    if (!heartbeatAccepted) return { ok: false, error: "agent not connected" };
+    // Re-list every still-pending handoff on each modern keepalive. Registration
+    // commits the handoff before the first PostToConnection delivery, so a
+    // transient delivery failure must not strand it until a replacement
+    // registration. The result is bounded by TERMINAL_HOOK_HANDOFF_DELIVERY_LIMIT
+    // and the daemon deduplicates an already-retained handoff.
+    const handoffOptions = {
+      ...(fence?.connectionId ? { connectionId: fence.connectionId } : {}),
+      ...(sourceProtocolVersion !== undefined ? { protocolVersion: sourceProtocolVersion } : {}),
+    };
+    const handoffs = await pendingTerminalHookHandoffs(state, msg.hostId, handoffOptions);
+    // A reconciliation pass can create a new handoff while an earlier one is
+    // still pending. Some storage adapters return the pre-reconciliation page
+    // for the broad host query, so explicitly include the newly-created IDs as
+    // well and de-duplicate by handoff ID.
+    if (terminalHookHandoffSessionIds.length > 0) {
+      const newlyCreated = await pendingTerminalHookHandoffs(state, msg.hostId, {
+        ...handoffOptions,
+        sessionIds: terminalHookHandoffSessionIds,
+      });
+      const byId = new Map(handoffs.map((handoff) => [handoff.handoffId, handoff]));
+      for (const handoff of newlyCreated) byId.set(handoff.handoffId, handoff);
+      return {
+        ok: true,
+        ...(byId.size > 0 ? { terminalHookHandoffs: [...byId.values()] } : {}),
+      };
+    }
+    return { ok: true, ...(handoffs.length > 0 ? { terminalHookHandoffs: handoffs } : {}) };
   }
   if (msg.type === "host:status") {
     const result = await drainHostDurable(state, msg.hostId, sourceConnectionId);
     return result.ok
       ? { ok: true, hostDraining: msg.hostId }
       : { ok: false, error: "stale host connection" };
+  }
+  if (msg.type === "session:terminal-hook-complete") {
+    const session = await storage.getSession(msg.sessionId, true);
+    const handoff = session?.terminalHookHandoff;
+    if (!handoff) {
+      return session?.terminalHookHandoffSettled?.handoffId === msg.handoffId &&
+        session.terminalHookHandoffSettled.hostId === fence?.hostId
+        ? {
+            ok: true,
+            sessionTerminalHookAcknowledged: {
+              sessionId: msg.sessionId,
+              handoffId: msg.handoffId,
+            },
+          }
+        : { ok: false, error: "terminal hook handoff not found" };
+    }
+    if (handoff.handoffId !== msg.handoffId || handoff.hostId !== fence?.hostId) {
+      return { ok: false, error: "terminal hook handoff not found" };
+    }
+    const completedResult =
+      msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
+    if (msg.result !== undefined && completedResult === undefined) {
+      return { ok: false, error: "invalid session result" };
+    }
+    const settled = await settleTerminalHookHandoff(state, {
+      sessionId: msg.sessionId,
+      handoffId: msg.handoffId,
+      hostId: handoff.hostId,
+      ...(fence?.connectionId ? { connectionId: fence.connectionId } : {}),
+      ...(completedResult ? { result: completedResult } : {}),
+    });
+    return settled
+      ? {
+          ok: true,
+          sessionTerminalHookAcknowledged: {
+            sessionId: msg.sessionId,
+            handoffId: msg.handoffId,
+          },
+        }
+      : { ok: false, error: "terminal hook handoff not found" };
   }
   if (msg.type === "session:ack") {
     // Any API node can receive this frame. The process map is only a cache;
@@ -804,8 +1145,41 @@ export async function handleHostMessageDurable(
     }
     return { ok: true };
   }
+  if (msg.type === "session:command-start") {
+    const session = await state.storage.getSession(msg.sessionId);
+    if (!session) return { ok: false, error: "session not found" };
+    const plan = planSessionTransition(
+      session,
+      { type: "command_start", worktreeId: msg.worktreeId, attemptId: msg.attemptId },
+      plannerContext(state, "durable"),
+    );
+    state.sessions.set(msg.sessionId, session);
+    const authorized =
+      !transitionEffect(plan, "ignore") &&
+      !transitionEffect(plan, "reject") &&
+      (session.primaryCommandStartState === "authorized" ||
+        (transitionEffect(plan, "authorize_command_start") &&
+          (await state.storage.authorizePrimaryCommandStart({
+            sessionId: msg.sessionId,
+            worktreeId: msg.worktreeId,
+            attemptId: msg.attemptId,
+            ...(fence ? { fence } : {}),
+          }))));
+    if (!authorized) return { ok: true };
+    state.sessions.set(msg.sessionId, { ...session, primaryCommandStartState: "authorized" });
+    return {
+      ok: true,
+      sessionCommandStartAcknowledged: { sessionId: msg.sessionId, attemptId: msg.attemptId },
+    };
+  }
   if (msg.type === "session:status") {
-    const { applied, ...result } = await applySessionStatusDurable(state, msg, storage, fence);
+    const { applied, ...result } = await applySessionStatusDurable(
+      state,
+      msg,
+      storage,
+      fence,
+      sourceProtocolVersion,
+    );
     // The daemon retries an unacknowledged terminal status on every keepalive; this
     // is the signal it stops. `ok: true` alone is not enough: several branches inside
     // applySessionStatusDurable return it even when their own conditional write lost a
@@ -816,7 +1190,17 @@ export async function handleHostMessageDurable(
     return result.ok && applied
       ? {
           ...result,
-          sessionStatusAcknowledged: { sessionId: msg.sessionId, attemptId: msg.attemptId },
+          sessionStatusAcknowledged: {
+            sessionId: msg.sessionId,
+            attemptId: msg.attemptId,
+            ...(result.retryAccepted !== undefined ? { retryAccepted: result.retryAccepted } : {}),
+            ...(result.terminalHookHandoffId !== undefined
+              ? { terminalHookHandoffId: result.terminalHookHandoffId }
+              : {}),
+            ...(result.terminalHookHandoffExpiresAt !== undefined
+              ? { terminalHookHandoffExpiresAt: result.terminalHookHandoffExpiresAt }
+              : {}),
+          },
         }
       : result;
   }
@@ -831,6 +1215,7 @@ async function applySessionStatusDurable(
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
   storage: NonNullable<ControlPlaneState["storage"]>,
   fence?: { hostId: string; connectionId: string },
+  sourceProtocolVersion?: number,
 ): Promise<{
   ok: boolean;
   error?: string;
@@ -841,7 +1226,21 @@ async function applySessionStatusDurable(
    * the caller withholds sessionStatusAcknowledged and the daemon retries.
    */
   applied?: boolean;
+  /** The durable disposition for a first checkout-fetch failure's deferred hook. */
+  retryAccepted?: boolean | undefined;
+  terminalHookHandoffId?: string | undefined;
+  terminalHookHandoffExpiresAt?: string | undefined;
 }> {
+  // An absent source connection is a direct/internal durable transition, not
+  // evidence about whether the reporting assignment deferred its hook. The
+  // planner uses the report's durable deferral proof rather than this current
+  // connection's protocol version to decide whether checkout may be replayed.
+  const knownProtocolVersion =
+    sourceProtocolVersion ??
+    (fence && state.connections.has(fence.connectionId)
+      ? connectionProtocolVersion(state.connections.get(fence.connectionId))
+      : undefined);
+  const protocolVersion = knownProtocolVersion ?? 0;
   const reportedResult = msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
   if (msg.usage) {
     const usageResult = await ingestUsageDurable(
@@ -867,6 +1266,212 @@ async function applySessionStatusDurable(
     return { ok: false, error: "session not found" };
   }
   state.sessions.set(session.id, session);
+  if (
+    msg.deferTerminalHookResult === true &&
+    session.terminalHookHandoff?.attemptId === msg.attemptId
+  ) {
+    const handoff = session.terminalHookHandoff;
+    const owned = handoff.status === msg.status && (!fence || handoff.hostId === fence.hostId);
+    const retryAccepted = settledCheckoutFetchRetryDisposition(msg, session);
+    return {
+      ok: true,
+      applied: true,
+      ...(retryAccepted !== undefined ? { retryAccepted } : {}),
+      ...(owned ? { terminalHookHandoffId: handoff.handoffId } : {}),
+      ...(owned && protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
+        ? { terminalHookHandoffExpiresAt: handoff.expiresAt }
+        : {}),
+    };
+  }
+  const retainedLateTerminalHandoff =
+    msg.deferTerminalHookResult === true &&
+    protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
+    (session.status === "cancelled" || session.status === "timed_out") &&
+    isTerminalSessionStatus(msg.status) &&
+    !session.terminalHookHandoff &&
+    session.attemptId === msg.attemptId
+      ? deferredTerminalHookHandoff(state, session, msg)
+      : undefined;
+  // Durable timeout intentionally detaches the assignment before the daemon
+  // exits (`worktreeId`/`hostId` are null, `timedOutHostId` remains). Retain
+  // the hook against that remembered owner without reclaiming its freed
+  // worktree or main-checkout lease.
+  if (
+    retainedLateTerminalHandoff &&
+    session.status === "timed_out" &&
+    !session.worktreeId &&
+    !session.workspaceSlotId &&
+    !session.mainCheckoutLease
+  ) {
+    const retained = await storage.finishSession({
+      sessionId: session.id,
+      worktreeId: null,
+      attemptId: msg.attemptId,
+      status: "timed_out",
+      expectedStatus: "timed_out",
+      queueShard: session.queueShard,
+      completedAt: session.completedAt ?? state.now(),
+      ...(fence ? { fence } : {}),
+      ...(session.providerAccountLease
+        ? { providerAccountLease: session.providerAccountLease }
+        : {}),
+      ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+      terminalHookHandoff: retainedLateTerminalHandoff,
+      expectedTerminalHookHandoffAbsent: true,
+    });
+    if (!retained) return { ok: true };
+    const committedHandoff = await committedDeferredCheckoutFailureHandoff(
+      state,
+      session.id,
+      retainedLateTerminalHandoff,
+    );
+    if (!committedHandoff) return { ok: true };
+    state.sessions.set(session.id, { ...session, terminalHookHandoff: committedHandoff });
+    state.pendingAcks.delete(session.id);
+    return {
+      ok: true,
+      applied: true,
+      terminalHookHandoffId: committedHandoff.handoffId,
+      terminalHookHandoffExpiresAt: committedHandoff.expiresAt,
+    };
+  }
+  // Cancellation and timeout mark a session terminal before the daemon's
+  // setup process necessarily exits. A modern daemon can retain that
+  // process's hook until this cleanup write commits, so use the same
+  // worktree-reserving terminal transaction as a running terminal report.
+  if (
+    retainedLateTerminalHandoff &&
+    session.mainCheckoutLease &&
+    session.hostId &&
+    session.assignmentConnectionId
+  ) {
+    const retained = await storage.releaseMainCheckoutSession({
+      sessionId: session.id,
+      hostId: session.hostId,
+      repositoryId: session.repositoryId,
+      connectionId: session.assignmentConnectionId,
+      attemptId: msg.attemptId,
+      status: session.status,
+      expectedStatus: session.status === "cancelled" ? "cancelled" : "timed_out",
+      queueShard: session.queueShard,
+      completedAt: session.completedAt ?? state.now(),
+      ...(session.status === "cancelled" && session.concurrencyId
+        ? { concurrencyId: session.concurrencyId }
+        : {}),
+      ...(session.providerAccountLease
+        ? { providerAccountLease: session.providerAccountLease }
+        : {}),
+      ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+      terminalHookHandoff: retainedLateTerminalHandoff,
+      expectedTerminalHookHandoffAbsent: true,
+    });
+    if (!retained) return { ok: true };
+    const committedHandoff = await committedDeferredCheckoutFailureHandoff(
+      state,
+      session.id,
+      retainedLateTerminalHandoff,
+    );
+    if (!committedHandoff) return { ok: true };
+    state.sessions.set(session.id, {
+      ...session,
+      worktreeId: null,
+      terminalHookHandoff: committedHandoff,
+    });
+    state.pendingAcks.delete(session.id);
+    return {
+      ok: true,
+      applied: true,
+      terminalHookHandoffId: committedHandoff.handoffId,
+      terminalHookHandoffExpiresAt: committedHandoff.expiresAt,
+    };
+  }
+  if (retainedLateTerminalHandoff && session.workspaceSlotId) {
+    const slotId = session.workspaceSlotId;
+    const retained = await storage.finishSession({
+      sessionId: session.id,
+      worktreeId: null,
+      workspaceSlotId: slotId,
+      attemptId: msg.attemptId,
+      status: session.status,
+      expectedStatus: session.status,
+      queueShard: session.queueShard,
+      completedAt: session.completedAt ?? state.now(),
+      ...(fence ? { fence } : {}),
+      ...(session.status === "cancelled" && session.concurrencyId
+        ? { concurrencyId: session.concurrencyId }
+        : {}),
+      ...(session.providerAccountLease
+        ? { providerAccountLease: session.providerAccountLease }
+        : {}),
+      ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+      terminalHookHandoff: retainedLateTerminalHandoff,
+      expectedTerminalHookHandoffAbsent: true,
+    });
+    if (!retained) return { ok: true };
+    const committedHandoff = await committedDeferredCheckoutFailureHandoff(
+      state,
+      session.id,
+      retainedLateTerminalHandoff,
+    );
+    if (!committedHandoff) return { ok: true };
+    const next = { ...session, workspaceSlotId: null, terminalHookHandoff: committedHandoff };
+    delete next.workspaceSlotLease;
+    state.sessions.set(session.id, next);
+    state.pendingAcks.delete(session.id);
+    return {
+      ok: true,
+      applied: true,
+      terminalHookHandoffId: committedHandoff.handoffId,
+      terminalHookHandoffExpiresAt: committedHandoff.expiresAt,
+    };
+  }
+  if (retainedLateTerminalHandoff && session.worktreeId) {
+    const retained = await storage.finishSession({
+      sessionId: session.id,
+      worktreeId: retainedLateTerminalHandoff.worktreeId,
+      attemptId: msg.attemptId,
+      status: session.status,
+      expectedStatus: session.status,
+      queueShard: session.queueShard,
+      completedAt: session.completedAt ?? state.now(),
+      ...(fence ? { fence } : {}),
+      ...(session.status === "cancelled" && session.concurrencyId
+        ? { concurrencyId: session.concurrencyId }
+        : {}),
+      ...(session.providerAccountLease
+        ? { providerAccountLease: session.providerAccountLease }
+        : {}),
+      ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+      terminalHookHandoff: retainedLateTerminalHandoff,
+      expectedTerminalHookHandoffAbsent: true,
+    });
+    if (!retained) return { ok: true };
+    const committedHandoff = await committedDeferredCheckoutFailureHandoff(
+      state,
+      session.id,
+      retainedLateTerminalHandoff,
+    );
+    if (!committedHandoff) return { ok: true };
+    const next = {
+      ...session,
+      worktreeId: null,
+      terminalHookHandoff: committedHandoff,
+    };
+    delete next.assignmentConnectionId;
+    delete next.assignmentSentAt;
+    delete next.ackReceivedAt;
+    delete next.reconnectDeadlineAt;
+    state.sessions.set(session.id, next);
+    state.pendingAcks.delete(session.id);
+    return {
+      ok: true,
+      applied: true,
+      terminalHookHandoffId: committedHandoff.handoffId,
+      ...(protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
+        ? { terminalHookHandoffExpiresAt: committedHandoff.expiresAt }
+        : {}),
+    };
+  }
   if (
     session.status === "timed_out" &&
     isTerminalSessionStatus(msg.status) &&
@@ -945,7 +1550,13 @@ async function applySessionStatusDurable(
   const plan = planSessionTransition(
     session,
     hostStatusEvent(msg),
-    plannerContext(state, "durable", providerAccount),
+    plannerContext(
+      state,
+      "durable",
+      providerAccount,
+      knownProtocolVersion,
+      msg.deferTerminalHookResult,
+    ),
   );
   const rejected = transitionEffect(plan, "reject");
   if (rejected) return { ok: false, error: rejected.error };
@@ -958,7 +1569,25 @@ async function applySessionStatusDurable(
     // again — either it no longer owns the current attempt, or the durable
     // path never retries non-terminal reports in the first place. Safe to stop
     // the daemon's retry loop.
-    return { ok: true, applied: true };
+    const retryAccepted = settledCheckoutFetchRetryDisposition(msg, session);
+    return {
+      ok: true,
+      applied: true,
+      ...(retryAccepted !== undefined ? { retryAccepted } : {}),
+      ...(deferredTerminalHookHandoffId(msg, session) !== undefined
+        ? { terminalHookHandoffId: deferredTerminalHookHandoffId(msg, session) }
+        : {}),
+      ...(protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
+      deferredTerminalHookHandoffExpiresAt(msg, session, protocolVersion) !== undefined
+        ? {
+            terminalHookHandoffExpiresAt: deferredTerminalHookHandoffExpiresAt(
+              msg,
+              session,
+              protocolVersion,
+            ),
+          }
+        : {}),
+    };
   }
   if (
     session.status === "cancelled" &&
@@ -1093,12 +1722,65 @@ async function applySessionStatusDurable(
   if (session.status !== "running") {
     // The session row is already durably resolved to a non-running status by
     // some other transition; this report cannot change it further.
-    return { ok: true, applied: true };
+    return {
+      ok: true,
+      applied: true,
+      ...(isFirstCheckoutFetchFailure(msg, session) ? { retryAccepted: false } : {}),
+      ...(deferredTerminalHookHandoffId(msg, session) !== undefined
+        ? { terminalHookHandoffId: deferredTerminalHookHandoffId(msg, session) }
+        : {}),
+      ...(protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
+      deferredTerminalHookHandoffExpiresAt(msg, session, protocolVersion) !== undefined
+        ? {
+            terminalHookHandoffExpiresAt: deferredTerminalHookHandoffExpiresAt(
+              msg,
+              session,
+              protocolVersion,
+            ),
+          }
+        : {}),
+    };
   }
   const cooldown = transitionEffect(plan, "cooldown");
   const requeue = transitionEffect(plan, "requeue");
   const suppress = transitionEffect(plan, "suppress_target");
+  const finish = transitionEffect(plan, "finish");
   if (session.mainCheckoutLease && session.hostId && session.assignmentConnectionId) {
+    if (requeue?.reason === "infrastructure") {
+      const code = requeue.errorCode as "checkout_fetch_failed" | "host_lost";
+      const requeued = await storage.releaseMainCheckoutSession({
+        sessionId: session.id,
+        hostId: session.hostId,
+        repositoryId: session.repositoryId,
+        connectionId: session.assignmentConnectionId,
+        attemptId: msg.attemptId,
+        status: "queued",
+        queueShard: session.queueShard,
+        reason: requeue.errorMessage ?? "infrastructure retry",
+        infrastructureErrorCode: code,
+        ...providerAccountLeaseWriteOpts(session),
+      });
+      if (!requeued) return { ok: true };
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+      releaseScheduledLeaseLocal(state, session);
+      releaseProviderAccountLease(state, session);
+      state.sessions.set(session.id, {
+        ...queueReconnectSession(session, requeue.errorMessage ?? "infrastructure retry"),
+        infrastructureRetryCount: (session.infrastructureRetryCount ?? 0) + 1,
+        lastInfrastructureErrorCode: code,
+        infrastructureRetryAttemptId: msg.attemptId,
+      });
+      emitInfrastructureRetry();
+      state.pendingAcks.delete(session.id);
+      await requestAssignmentAfterHostEvent(state, fence?.connectionId);
+      return {
+        ok: true,
+        applied: true,
+        ...(code === "checkout_fetch_failed" && isFirstCheckoutFetchFailure(msg, session)
+          ? { retryAccepted: true }
+          : {}),
+      };
+    }
     const providerAccountId = session.resolvedRoute?.providerAccountId;
     if (requeue?.reason === "missing_account" && providerAccountId) {
       state.providerAccounts.delete(providerAccountId);
@@ -1217,38 +1899,59 @@ async function applySessionStatusDurable(
       await requestAssignmentAfterHostEvent(state, fence?.connectionId);
       return { ok: true, applied: true };
     }
-    const completedAt = state.now();
+    const completedAt = finish?.completedAt ?? state.now();
+    const terminalStatus = finish?.status ?? msg.status;
+    const terminalErrorCode = finish?.errorCode ?? msg.errorCode;
+    const terminalErrorMessage = finish?.errorMessage ?? msg.errorMessage;
+    const deferredHandoff =
+      msg.deferTerminalHookResult === true &&
+      protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
+      finish !== undefined
+        ? deferredTerminalHookHandoff(state, session, msg)
+        : undefined;
     const committed = await storage.releaseMainCheckoutSession({
       sessionId: session.id,
       hostId: session.hostId,
       repositoryId: session.repositoryId,
       connectionId: session.assignmentConnectionId,
       attemptId: msg.attemptId,
-      status: msg.status,
+      status: terminalStatus,
       queueShard: session.queueShard,
       completedAt,
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
-      ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
+      ...(terminalErrorCode ? { errorCode: terminalErrorCode } : {}),
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
       ...(reportedResult ? { result: reportedResult } : {}),
-      ...(msg.errorMessage ? { reason: msg.errorMessage } : {}),
+      ...(terminalErrorMessage ? { reason: terminalErrorMessage } : {}),
       ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
       ...providerAccountLeaseWriteOpts(session),
+      ...(deferredHandoff ? { terminalHookHandoff: deferredHandoff } : {}),
     });
     if (!committed) return { ok: true };
+    const committedDeferredHandoff = deferredHandoff
+      ? await committedDeferredCheckoutFailureHandoff(state, session.id, deferredHandoff)
+      : undefined;
+    if (deferredHandoff && !committedDeferredHandoff) return { ok: true };
     await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     releaseScheduledLeaseLocal(state, session);
     releaseProviderAccountLease(state, session);
+    if (
+      terminalErrorCode === "checkout_fetch_failed" &&
+      (session.infrastructureRetryCount ?? 0) >= 1
+    ) {
+      emitInfrastructureRetryExhausted();
+    }
     const { mainCheckoutLease: _, ...next } = {
       ...session,
-      status: msg.status,
+      status: terminalStatus,
       worktreeId: null,
       completedAt,
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
-      ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
-      ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
+      ...(terminalErrorCode ? { errorCode: terminalErrorCode } : {}),
+      ...(terminalErrorMessage ? { errorMessage: terminalErrorMessage } : {}),
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
       ...(reportedResult ? { result: reportedResult } : {}),
+      ...(committedDeferredHandoff ? { terminalHookHandoff: committedDeferredHandoff } : {}),
     };
     delete next.assignmentConnectionId;
     delete next.assignmentSentAt;
@@ -1256,9 +1959,22 @@ async function applySessionStatusDurable(
     delete next.reconnectDeadlineAt;
     state.sessions.set(session.id, next);
     state.pendingAcks.delete(session.id);
-    await archiveSessionLogs(state, session.id, undefined, true);
+    if (!committedDeferredHandoff) await archiveSessionLogs(state, session.id, undefined, true);
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
-    return { ok: true, applied: true };
+    return {
+      ok: true,
+      applied: true,
+      ...(isFirstCheckoutFetchFailure(msg, session) || committedDeferredHandoff
+        ? { retryAccepted: false }
+        : {}),
+      ...(committedDeferredHandoff
+        ? { terminalHookHandoffId: committedDeferredHandoff.handoffId }
+        : {}),
+      ...(committedDeferredHandoff &&
+      protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
+        ? { terminalHookHandoffExpiresAt: committedDeferredHandoff.expiresAt }
+        : {}),
+    };
   }
   if (cooldown && requeue && (session.worktreeId || session.workspaceSlotId)) {
     const now = state.now();
@@ -1309,6 +2025,40 @@ async function applySessionStatusDurable(
     state.pendingAcks.delete(session.id);
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
     return { ok: true, applied: true };
+  }
+  if (requeue?.reason === "infrastructure" && session.worktreeId) {
+    const code = requeue.errorCode as "checkout_fetch_failed" | "host_lost";
+    const committed = await storage.tryRequeueSession({
+      sessionId: session.id,
+      worktreeId: session.worktreeId,
+      attemptId: msg.attemptId,
+      queueShard: session.queueShard,
+      reason: requeue.errorMessage ?? "infrastructure retry",
+      ...(fence ? { fence } : {}),
+      ...providerAccountLeaseWriteOpts(session),
+      infrastructureErrorCode: code,
+    });
+    if (!committed) return { ok: true };
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+    releaseProviderAccountLease(state, session);
+    const wt = state.worktrees.get(session.worktreeId);
+    if (wt) state.worktrees.set(wt.id, { ...wt, status: "idle", currentSessionId: null });
+    state.sessions.set(session.id, {
+      ...queueReconnectSession(session, requeue.errorMessage ?? "infrastructure retry"),
+      infrastructureRetryCount: (session.infrastructureRetryCount ?? 0) + 1,
+      lastInfrastructureErrorCode: code,
+      infrastructureRetryAttemptId: msg.attemptId,
+    });
+    emitInfrastructureRetry();
+    state.pendingAcks.delete(session.id);
+    await requestAssignmentAfterHostEvent(state, fence?.connectionId);
+    return {
+      ok: true,
+      applied: true,
+      ...(code === "checkout_fetch_failed" && isFirstCheckoutFetchFailure(msg, session)
+        ? { retryAccepted: true }
+        : {}),
+    };
   }
   const shouldSuppressTarget = suppress !== undefined;
   if (shouldSuppressTarget && (session.worktreeId || session.workspaceSlotId)) {
@@ -1373,15 +2123,30 @@ async function applySessionStatusDurable(
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
     return { ok: true, applied: true };
   }
-  const committed = await storage.finishSession(
-    finishSessionOptsFromPlan(session, plan, {
+  const deferredHandoff =
+    msg.deferTerminalHookResult === true &&
+    protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
+    finish !== undefined
+      ? deferredTerminalHookHandoff(state, session, msg)
+      : undefined;
+  const committed = await storage.finishSession({
+    ...finishSessionOptsFromPlan(session, plan, {
       attemptId: msg.attemptId,
       ...(fence ? { fence } : {}),
       ...(msg.workspaceSlotError ? { workspaceSlotError: msg.workspaceSlotError } : {}),
     }),
-  );
-  if (!committed) {
-    return { ok: true };
+    ...(deferredHandoff ? { terminalHookHandoff: deferredHandoff } : {}),
+  });
+  if (!committed) return { ok: true };
+  const committedDeferredHandoff = deferredHandoff
+    ? await committedDeferredCheckoutFailureHandoff(state, session.id, deferredHandoff)
+    : undefined;
+  if (deferredHandoff && !committedDeferredHandoff) return { ok: true };
+  if (
+    finish?.errorCode === "checkout_fetch_failed" &&
+    (session.infrastructureRetryCount ?? 0) >= 1
+  ) {
+    emitInfrastructureRetryExhausted();
   }
   await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
   releaseProviderAccountLease(state, session);
@@ -1409,7 +2174,7 @@ async function applySessionStatusDurable(
     }
     await removeReleasedRetiredWorkspaceSlotDurable(state, workspaceSlotId);
   }
-  const nextStatus = shouldSuppressTarget ? "queued" : msg.status;
+  const nextStatus = shouldSuppressTarget ? "queued" : (finish?.status ?? msg.status);
   const nextSession = {
     ...session,
     status: nextStatus,
@@ -1418,10 +2183,15 @@ async function applySessionStatusDurable(
     workspaceSlotId: null,
     hostId: null,
     ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
-    ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
-    ...(msg.errorMessage !== undefined ? { errorMessage: msg.errorMessage } : {}),
+    ...((finish?.errorCode ?? msg.errorCode) !== undefined
+      ? { errorCode: finish?.errorCode ?? msg.errorCode }
+      : {}),
+    ...((finish?.errorMessage ?? msg.errorMessage) !== undefined
+      ? { errorMessage: finish?.errorMessage ?? msg.errorMessage }
+      : {}),
     ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
     ...(reportedResult !== undefined && !shouldSuppressTarget ? { result: reportedResult } : {}),
+    ...(committedDeferredHandoff ? { terminalHookHandoff: committedDeferredHandoff } : {}),
     ...(shouldSuppressTarget && suppress
       ? {
           suppressedTargetIndexes: [
@@ -1433,18 +2203,30 @@ async function applySessionStatusDurable(
   };
   state.sessions.set(msg.sessionId, nextSession);
   state.pendingAcks.delete(msg.sessionId);
-  if (!shouldSuppressTarget) {
+  if (!shouldSuppressTarget && !committedDeferredHandoff) {
     await archiveSessionLogs(state, msg.sessionId, undefined, true);
     noteSlackSessionLifecycle(state, nextSession);
   }
   await requestAssignmentAfterHostEvent(state, fence?.connectionId);
-  return { ok: true, applied: true };
+  return {
+    ok: true,
+    applied: true,
+    ...(isFirstCheckoutFetchFailure(msg, session) || committedDeferredHandoff
+      ? { retryAccepted: false }
+      : {}),
+    ...(committedDeferredHandoff
+      ? { terminalHookHandoffId: committedDeferredHandoff.handoffId }
+      : {}),
+    ...(committedDeferredHandoff && protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
+      ? { terminalHookHandoffExpiresAt: committedDeferredHandoff.expiresAt }
+      : {}),
+  };
 }
 
 function applySessionStatus(
   state: ControlPlaneState,
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
-): { ok: boolean; error?: string } {
+): { ok: boolean; error?: string; retryAccepted?: boolean | undefined } {
   const reportedResult = msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
   if (msg.usage) {
     const usageResult = ingestUsage(state, {
@@ -1458,6 +2240,7 @@ function applySessionStatus(
   }
   const session = state.sessions.get(msg.sessionId);
   if (!session) return { ok: false, error: "session not found" };
+  const firstCheckoutFetchFailure = isFirstCheckoutFetchFailure(msg, session);
   if (
     session.status === "timed_out" &&
     isTerminalSessionStatus(msg.status) &&
@@ -1479,9 +2262,47 @@ function applySessionStatus(
   const plan = planSessionTransition(
     session,
     hostStatusEvent(msg),
-    plannerContext(state, "local", cachedProviderAccount(state, session)),
+    plannerContext(
+      state,
+      "local",
+      cachedProviderAccount(state, session),
+      undefined,
+      msg.deferTerminalHookResult,
+    ),
   );
   if (transitionEffect(plan, "ignore")) return { ok: true };
+
+  const infrastructureRetry = transitionEffect(plan, "requeue");
+  if (infrastructureRetry?.reason === "infrastructure") {
+    const code = infrastructureRetry.errorCode as "checkout_fetch_failed" | "host_lost";
+    const released = session.mainCheckoutLease
+      ? releaseScheduledLeaseLocal(state, session)
+      : session.worktreeId
+        ? (releaseWorktree(state, session.worktreeId), true)
+        : false;
+    if (!released) return { ok: true };
+    releaseProviderAccountLease(state, session);
+    state.sessions.set(session.id, {
+      ...queueReconnectSession(session, infrastructureRetry.errorMessage ?? "infrastructure retry"),
+      infrastructureRetryCount: (session.infrastructureRetryCount ?? 0) + 1,
+      lastInfrastructureErrorCode: code,
+      infrastructureRetryAttemptId: msg.attemptId,
+    });
+    emitInfrastructureRetry();
+    state.pendingAcks.delete(session.id);
+    const reschedule = transitionEffect(plan, "reschedule");
+    if (reschedule?.kind === "scheduled") {
+      void assignScheduledQueuedDurable(state).catch(() => undefined);
+    } else if (reschedule) {
+      void assignQueued(state);
+    }
+    return {
+      ok: true,
+      ...(code === "checkout_fetch_failed" && firstCheckoutFetchFailure
+        ? { retryAccepted: true }
+        : {}),
+    };
+  }
 
   const terminal = isTerminalSessionStatus(msg.status);
   const patch = transitionEffect(plan, "patch_report");
@@ -1598,6 +2419,14 @@ function applySessionStatus(
         void assignQueued(state);
       }
     } else if (finish) {
+      if (
+        finish.errorCode === "checkout_fetch_failed" &&
+        (session.infrastructureRetryCount ?? 0) >= 1
+      ) {
+        emitInfrastructureRetryExhausted();
+      }
+      if (finish.errorCode !== undefined) session.errorCode = finish.errorCode;
+      if (finish.errorMessage !== undefined) session.errorMessage = finish.errorMessage;
       session.worktreeId = null;
       session.workspaceSlotId = null;
       // A continuation reference is single-use: a resumed command must report
@@ -1609,5 +2438,8 @@ function applySessionStatus(
     }
   }
   persistSession(state, session);
-  return { ok: true };
+  return {
+    ok: true,
+    ...(firstCheckoutFetchFailure ? { retryAccepted: false } : {}),
+  };
 }

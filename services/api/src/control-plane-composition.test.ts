@@ -12,6 +12,9 @@ describe("composed control-plane services", () => {
       connectionId: "connection",
     });
     expect(plane.state.connections.get("connection")?.protocolVersion).toBe(HOST_PROTOCOL_VERSION);
+    expect(plane.state.connections.get("connection")?.negotiatedProtocolVersion).toBe(
+      HOST_PROTOCOL_VERSION,
+    );
   });
 
   it("exposes domain services and keeps facade method compatibility", async () => {

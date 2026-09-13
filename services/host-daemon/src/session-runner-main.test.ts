@@ -28,6 +28,7 @@ describe("SessionRunner main checkout", () => {
           exitCode: 1,
           stderr: "fatal: https://oauth:session-secret@example.com/repo.git",
         },
+        { match: ["switch", "--", "feature"], exitCode: 1 },
       ]),
     );
     const sessionRunner = new SessionRunner({
@@ -51,7 +52,7 @@ describe("SessionRunner main checkout", () => {
 
     expect(result).toMatchObject({
       status: "failed",
-      errorCode: "setup_failed",
+      errorCode: "checkout_fetch_failed",
     });
     expect(result.errorMessage).toContain("Failed to fetch branch feature");
     expect(result.errorMessage).not.toContain("session-secret");

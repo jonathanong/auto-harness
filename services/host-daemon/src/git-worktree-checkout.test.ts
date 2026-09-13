@@ -218,6 +218,22 @@ describe("stale worktree index lock safety", () => {
     await expect(claimedLinkedWorktreeCommonDir(repoPath, wrongShapeCwd)).resolves.toBeNull();
   });
 
+  it("rejects an unreadable linked-worktree administration directory", async () => {
+    if (process.platform === "win32") return;
+    const root = mkdtempSync(join(tmpdir(), "ah-lock-unreadable-"));
+    roots.push(root);
+    const repoPath = join(root, "repo");
+    const cwd = join(root, "cwd");
+    const gitDir = join(repoPath, ".git", "worktrees", "one");
+    writeWorktreeIdentity(cwd, gitDir);
+    chmodSync(gitDir, 0o000);
+    try {
+      await expect(claimedLinkedWorktreeCommonDir(repoPath, cwd)).resolves.toBeNull();
+    } finally {
+      chmodSync(gitDir, 0o755);
+    }
+  });
+
   it("resolves a linked configured repository and rejects unsafe repository metadata", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-repo-identity-"));
     roots.push(root);

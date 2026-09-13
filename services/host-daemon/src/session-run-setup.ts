@@ -6,6 +6,7 @@ import { createCrlfNormalizer } from "./crlf-normalize.ts";
 import type { ProcessResult, ProcessRunner } from "./executor.ts";
 import type { LogStreamer } from "./log-streamer.ts";
 import { finishClaimedSession, type SessionRunResult } from "./session-outcome.ts";
+import type { GitHubAppConfig } from "./github-app.ts";
 import { runSetupScript } from "./setup-script.ts";
 
 export type { ClaimedWorktree } from "./worktree-manager.ts";
@@ -29,6 +30,9 @@ export async function runSetupIfNeeded(
   baseline?: string,
   terminalProcessRunner: ProcessRunner = processRunner,
   terminalChildEnvSource: NodeJS.ProcessEnv = childEnvSource,
+  deferTerminalHook = false,
+  githubApp?: GitHubAppConfig,
+  nowMs?: () => number,
 ): Promise<SessionSetupResult> {
   let environment = createChildEnv(childEnvSource);
   const scopedSetupScript =
@@ -48,27 +52,44 @@ export async function runSetupIfNeeded(
       outcome,
       terminalChildEnvSource,
       baseline,
+      false,
+      githubApp,
+      nowMs,
     );
   const abortedFailure = () =>
-    finish({ status: timedOut() ? "timed_out" : "cancelled", exitCode: null });
+    finish({
+      status: timedOut() ? "timed_out" : "cancelled",
+      exitCode: null,
+      ...(deferTerminalHook ? { deferTerminalHook: true } : {}),
+    });
   const revalidationFailure = (error: unknown) =>
     finish({
       status: "failed",
       exitCode: null,
       errorCode: "setup_failed",
       errorMessage: thrownMessage(error),
+      ...(deferTerminalHook ? { deferTerminalHook: true } : {}),
     });
   const stepFailure = (step: ProcessResult, failureMessage: string) => {
     if (step.timedOut || timedOut())
-      return finish({ status: "timed_out", exitCode: step.exitCode });
+      return finish({
+        status: "timed_out",
+        exitCode: step.exitCode,
+        ...(deferTerminalHook ? { deferTerminalHook: true } : {}),
+      });
     if (step.cancelled || signal?.aborted)
-      return finish({ status: "cancelled", exitCode: step.exitCode });
+      return finish({
+        status: "cancelled",
+        exitCode: step.exitCode,
+        ...(deferTerminalHook ? { deferTerminalHook: true } : {}),
+      });
     if (step.exitCode !== 0) {
       return finish({
         status: "failed",
         exitCode: step.exitCode,
         errorCode: "setup_failed",
         errorMessage: failureMessage,
+        ...(deferTerminalHook ? { deferTerminalHook: true } : {}),
       });
     }
     return null;

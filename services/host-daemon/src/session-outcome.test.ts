@@ -325,4 +325,115 @@ describe("finishClaimedSession", () => {
       HARNESS_METADATA: JSON.stringify({ trigger: "schedule" }),
     });
   });
+
+  it("settles a deferred hook after revalidating the live claim", async () => {
+    const logs: Array<{ content: string }> = [];
+    const runner: ProcessRunner = {
+      run: vi.fn(async () => ({ exitCode: 0, timedOut: false, signal: null })),
+    };
+    let mode: "none" | "null" | "hook" | "throw" = "none";
+    const claimed = {
+      worktree: { id: "wt-1" },
+      cwd: "/repo/wt-1",
+      repository: { terminalHookScript: "/repo/hook.sh" },
+      currentHookTarget: async () => {
+        if (mode === "throw") throw new Error("claim disappeared");
+        if (mode === "null") return null;
+        if (mode === "hook") {
+          return {
+            cwd: process.cwd(),
+            repository: { terminalHookScript: "AGENTS.md" },
+            allowedRoots: [process.cwd()],
+          };
+        }
+        return { cwd: "/repo/wt-1", repository: {} };
+      },
+    };
+    const streamer = new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk));
+    const result = await finishClaimedSession(
+      runner,
+      streamer,
+      [],
+      baseAssign({ ref: "feature/test", metadata: { source: "deferred" } }),
+      claimed,
+      {
+        status: "failed",
+        exitCode: null,
+        errorCode: "checkout_fetch_failed",
+        deferTerminalHook: true,
+      },
+      process.env,
+      "baseline",
+    );
+
+    // A retry disposition can discard the hook without another probe; a
+    // terminal disposition revalidates the claim before invoking it.
+    await result.settleDeferredTerminalHook?.(false);
+    expect(runner.run).not.toHaveBeenCalled();
+
+    mode = "null";
+    await result.settleDeferredTerminalHook?.(true);
+    expect(runner.run).not.toHaveBeenCalled();
+
+    mode = "hook";
+    const postHookResult = await result.settleDeferredTerminalHook?.(true);
+    expect(postHookResult).toEqual({
+      summary: "Session failed; 0 files changed",
+      summarySource: "harness",
+      filesChanged: [],
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        argv: ["/bin/sh", `${process.cwd()}/AGENTS.md`],
+        cwd: process.cwd(),
+        env: expect.objectContaining({
+          HARNESS_ERROR_CODE: "checkout_fetch_failed",
+          HARNESS_REF: "feature/test",
+          HARNESS_METADATA: JSON.stringify({ source: "deferred" }),
+        }),
+      }),
+    );
+
+    mode = "throw";
+    await result.settleDeferredTerminalHook?.(true);
+    expect(logs.map((chunk) => chunk.content)).toContain(
+      "terminal hook revalidation failed for session sess-1: claim disappeared",
+    );
+  });
+
+  it("omits optional hook fields when the failed run has no error code or ref", async () => {
+    const calls: Array<{ argv: string[]; env?: NodeJS.ProcessEnv }> = [];
+    const runner: ProcessRunner = {
+      async run(options) {
+        calls.push({ argv: options.argv, env: options.env });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const result = await finishClaimedSession(
+      runner,
+      new LogStreamer("session-1", "attempt-1", () => undefined),
+      [],
+      baseAssign(),
+      {
+        worktree: { id: "wt-1" },
+        cwd: process.cwd(),
+        repository: { terminalHookScript: "AGENTS.md" },
+        currentHookTarget: async () => ({
+          cwd: process.cwd(),
+          repository: { terminalHookScript: "AGENTS.md" },
+        }),
+      },
+      {
+        status: "failed",
+        exitCode: null,
+        deferTerminalHook: true,
+      },
+    );
+
+    await result.settleDeferredTerminalHook?.(true);
+    const hook = calls[0];
+    expect(hook?.argv).toEqual(["/bin/sh", `${process.cwd()}/AGENTS.md`]);
+    expect(hook?.env).not.toHaveProperty("HARNESS_ERROR_CODE");
+    expect(hook?.env).not.toHaveProperty("HARNESS_REF");
+  });
 });

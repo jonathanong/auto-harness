@@ -306,6 +306,29 @@ describe("createGitClient checkout and revParse", () => {
     await git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
   });
 
+  it("retries ref resolution after a failed fetch because partial fetches may succeed", async () => {
+    const git = createGitClient(
+      scripted([
+        ...resetsPriorState(),
+        {
+          match: ["rev-parse", "--verify", "--end-of-options", "main^{commit}"],
+          exitCode: 1,
+        },
+        { match: ["fetch", "--all", "--tags"], exitCode: 1, stderr: "temporary failure" },
+        resolvesCommit("main", "partial-sha"),
+        { match: ["switch", "--discard-changes", "--detach", "partial-sha"], exitCode: 0 },
+        hardReset("partial-sha"),
+        syncsSubmodules(),
+        updatesSubmodules(),
+        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "partial-sha\n" },
+        { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
+      ]),
+    );
+    await expect(
+      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" }),
+    ).resolves.toBe("partial-sha");
+  });
+
   it("checkoutRef fetches an exact GitHub pull-request ref without shared FETCH_HEAD", async () => {
     const ref = "refs/pull/123/head";
     const remoteUrl = "https://github.com/example/repository.git";
@@ -885,6 +908,55 @@ describe("createGitClient checkout and revParse", () => {
     ).rejects.toThrow(/Failed to resolve ref/);
   });
 
+  it.each([
+    ["primitive", "offline", "offline"],
+    ["Error", new Error("offline error"), "offline error"],
+  ])(
+    "brands thrown %s fetch errors while resolving a checkout ref",
+    async (_kind, thrown, detail) => {
+      const base = scripted([
+        ...resetsPriorState(),
+        {
+          match: ["rev-parse", "--verify", "--end-of-options", "main^{commit}"],
+          exitCode: 1,
+        },
+      ]);
+      const runner = {
+        async run(options: Parameters<typeof base.run>[0]) {
+          if (options.argv[1] === "fetch") throw thrown;
+          return await base.run(options);
+        },
+      };
+
+      await expect(
+        createGitClient(runner).checkoutRef({
+          cwd: checkoutCwd,
+          repoPath: checkoutRepo,
+          ref: "main",
+        }),
+      ).rejects.toThrow(`Failed to fetch ref main: ${detail}`);
+    },
+  );
+
+  it("fails closed when a partial fetch leaves the requested ref unresolved", async () => {
+    await expect(
+      createGitClient(
+        scripted([
+          ...resetsPriorState(),
+          {
+            match: ["rev-parse", "--verify", "--end-of-options", "main^{commit}"],
+            exitCode: 1,
+          },
+          { match: ["fetch", "--all", "--tags"], exitCode: 1, stderr: "partial failure" },
+          {
+            match: ["rev-parse", "--verify", "--end-of-options", "main^{commit}"],
+            exitCode: 1,
+          },
+        ]),
+      ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" }),
+    ).rejects.toThrow("Failed to fetch ref main: partial failure");
+  });
+
   it("checkoutRef peels an annotated tag to its commit", async () => {
     const git = createGitClient(
       scripted([
@@ -978,12 +1050,54 @@ describe("createGitClient checkout and revParse", () => {
           exitCode: 1,
           stderr: "fatal: https://oauth:secret-token@example.com/repo.git",
         },
+        { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 1 },
+        { match: ["checkout", "--force", "--detach", "abc"], exitCode: 1, stderr: "still missing" },
       ]),
     ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
     const error = await checkout.catch((reason: unknown) => reason);
     expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toBe("Failed to fetch required checkout objects");
+    expect((error as Error).message).toContain("Failed to refetch remote origin");
     expect((error as Error).message).not.toContain("secret-token");
+  });
+
+  it("continues when a failed refetch still leaves checkout usable", async () => {
+    const checkout = createGitClient(
+      scripted([
+        ...resetsPriorState(),
+        resolvesCommit("main"),
+        { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 1 },
+        { match: ["checkout", "--force", "--detach", "abc"], exitCode: 1 },
+        { match: ["fsck", "--connectivity-only", "abc"], exitCode: 1 },
+        { match: ["remote"], exitCode: 0, stdout: "origin\n" },
+        { match: ["fetch", "--tags", "--refetch", "origin"], exitCode: 1 },
+        { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
+        hardReset("abc"),
+        syncsSubmodules(),
+        updatesSubmodules(),
+        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc\n" },
+        { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
+      ]),
+    );
+    await expect(
+      checkout.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" }),
+    ).resolves.toBe("abc");
+  });
+
+  it("fails closed when no remote can be refetched and checkout remains incomplete", async () => {
+    await expect(
+      createGitClient(
+        scripted([
+          ...resetsPriorState(),
+          resolvesCommit("main"),
+          { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 1 },
+          { match: ["checkout", "--force", "--detach", "abc"], exitCode: 1 },
+          { match: ["fsck", "--connectivity-only", "abc"], exitCode: 1 },
+          { match: ["remote"], exitCode: 0, stdout: "" },
+          { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 1 },
+          { match: ["checkout", "--force", "--detach", "abc"], exitCode: 1 },
+        ]),
+      ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" }),
+    ).rejects.toThrow("Failed to fetch required checkout objects");
   });
 
   it("checkoutRef fails after one missing-object recovery attempt", async () => {

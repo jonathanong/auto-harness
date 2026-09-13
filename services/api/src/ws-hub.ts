@@ -4,6 +4,7 @@ import type { Duplex } from "node:stream";
 
 import {
   ATTEMPT_FENCED_PROTOCOL_VERSION,
+  DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
   HOST_PROTOCOL_VERSION,
   SESSION_RESULT_PROTOCOL_VERSION,
   MAX_SESSION_LOG_DROPPED,
@@ -27,6 +28,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { AuthService, Principal } from "./auth.ts";
 import type { ControlPlane } from "./control-plane.ts";
 import { handleHostLogBatchDurable, MAX_DURABLE_LOG_BATCH_SIZE } from "./control-plane-messages.ts";
+import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import { emitWsMessagesDiscarded } from "./operational-metrics.ts";
 import type { RateLimitEvent } from "./rate-limit.ts";
 import { validateUsage } from "./usage.ts";
@@ -208,6 +210,10 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
                 protocolVersion: HOST_PROTOCOL_VERSION,
               }),
             );
+            for (const handoff of result.terminalHookHandoffs ?? []) {
+              if (socket.readyState !== socket.OPEN) break;
+              socket.send(JSON.stringify(handoff));
+            }
             await plane.requestAssignment();
           } else if (
             msg.type === "session:ack" &&
@@ -225,6 +231,18 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
               }),
             );
           } else if (
+            msg.type === "session:command-start" &&
+            result.sessionCommandStartAcknowledged?.sessionId === msg.sessionId &&
+            socket.readyState === socket.OPEN
+          ) {
+            socket.send(
+              JSON.stringify({
+                type: "session:command-start-acknowledged",
+                sessionId: result.sessionCommandStartAcknowledged.sessionId,
+                attemptId: result.sessionCommandStartAcknowledged.attemptId,
+              }),
+            );
+          } else if (
             msg.type === "session:status" &&
             result.sessionStatusAcknowledged?.sessionId === msg.sessionId &&
             socket.readyState === socket.OPEN
@@ -236,6 +254,32 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
                 type: "session:status-acknowledged",
                 sessionId: result.sessionStatusAcknowledged.sessionId,
                 attemptId: result.sessionStatusAcknowledged.attemptId,
+                ...(result.sessionStatusAcknowledged.retryAccepted !== undefined
+                  ? { retryAccepted: result.sessionStatusAcknowledged.retryAccepted }
+                  : {}),
+                ...(result.sessionStatusAcknowledged.terminalHookHandoffId !== undefined
+                  ? {
+                      terminalHookHandoffId: result.sessionStatusAcknowledged.terminalHookHandoffId,
+                    }
+                  : {}),
+                ...(result.sessionStatusAcknowledged.terminalHookHandoffExpiresAt !== undefined
+                  ? {
+                      terminalHookHandoffExpiresAt:
+                        result.sessionStatusAcknowledged.terminalHookHandoffExpiresAt,
+                    }
+                  : {}),
+              }),
+            );
+          } else if (
+            msg.type === "session:terminal-hook-complete" &&
+            result.sessionTerminalHookAcknowledged?.sessionId === msg.sessionId &&
+            socket.readyState === socket.OPEN
+          ) {
+            socket.send(
+              JSON.stringify({
+                type: "session:terminal-hook-acknowledged",
+                sessionId: msg.sessionId,
+                handoffId: result.sessionTerminalHookAcknowledged.handoffId,
               }),
             );
           } else if (
@@ -255,6 +299,19 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
                 at: msg.at,
               }),
             );
+            // Keepalive reconciliation can discover a terminal session while
+            // this daemon is still connected. Deliver that handoff on the
+            // exact fenced socket that submitted the keepalive; a hostId-only
+            // lookup could race a replacement registration.
+            if (
+              boundConnectionId &&
+              plane.state.hostConnection.get(msg.hostId) === boundConnectionId
+            ) {
+              for (const handoff of result.terminalHookHandoffs ?? []) {
+                if (socket.readyState !== socket.OPEN) break;
+                socket.send(JSON.stringify(handoff));
+              }
+            }
           }
         };
         type LogMessage = Extract<HostToServerMessage, { type: "session:log" }>;
@@ -343,7 +400,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
           }
           const protocolVersion =
             boundConnectionId !== null
-              ? (plane.state.connections.get(boundConnectionId)?.protocolVersion ?? 0)
+              ? connectionProtocolVersion(plane.state.connections.get(boundConnectionId))
               : ATTEMPT_FENCED_PROTOCOL_VERSION;
           const msg = parseHostMessage(raw, { protocolVersion });
           if (!msg) {
@@ -544,6 +601,13 @@ export function parseHostMessage(
         ? (message as HostToServerMessage)
         : null;
     }
+    if (message.type === "session:command-start") {
+      return boundedText(message.sessionId) &&
+        (message.worktreeId === null || boundedText(message.worktreeId)) &&
+        boundedText(message.attemptId)
+        ? (message as HostToServerMessage)
+        : null;
+    }
     if (message.type === "session:status") {
       const exitCode = message.exitCode;
       const validExitCode =
@@ -562,7 +626,10 @@ export function parseHostMessage(
         (message.result === undefined ||
           (isTerminalSessionStatus(message.status) &&
             (options?.protocolVersion ?? 0) >= SESSION_RESULT_PROTOCOL_VERSION &&
-            normalizeSessionResult(message.result) !== undefined))
+            normalizeSessionResult(message.result) !== undefined)) &&
+        (message.deferTerminalHookResult === undefined ||
+          ((options?.protocolVersion ?? 0) >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
+            message.deferTerminalHookResult === true))
         ? (message as HostToServerMessage)
         : null;
     }
@@ -606,6 +673,15 @@ export function parseHostMessage(
         ? (message as HostToServerMessage)
         : null;
     }
+    if (message.type === "session:terminal-hook-complete") {
+      return boundedText(message.sessionId) &&
+        boundedText(message.handoffId) &&
+        (message.result === undefined ||
+          ((options?.protocolVersion ?? 0) >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
+            normalizeSessionResult(message.result) !== undefined))
+        ? (message as HostToServerMessage)
+        : null;
+    }
     return message.type === "host:keepalive" &&
       boundedText(message.hostId) &&
       boundedText(message.at, 128) &&
@@ -642,6 +718,16 @@ function isAllowedMessage(
   if (msg.type === "host:keepalive" || msg.type === "host:status") return msg.hostId === hostId;
   const session = plane.getSession(msg.sessionId);
   if (!session) return false;
+  if (
+    msg.type === "session:terminal-hook-complete" &&
+    ((session.terminalHookHandoff?.hostId === hostId &&
+      session.terminalHookHandoff.handoffId === msg.handoffId) ||
+      (session.terminalHookHandoffSettled?.hostId === hostId &&
+        session.terminalHookHandoffSettled.handoffId === msg.handoffId))
+  ) {
+    return true;
+  }
+  if (msg.type === "session:terminal-hook-complete") return false;
   if (session.hostId === hostId) return true;
   return (
     "attemptId" in msg &&

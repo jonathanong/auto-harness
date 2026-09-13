@@ -34,7 +34,7 @@ type ReleaseMainCheckoutOptions = {
   result?: SessionResult | undefined;
   suppressedTargetIndex?: number;
   queueOrder?: string;
-  expectedStatus?: "running" | "cancelled";
+  expectedStatus?: "running" | "cancelled" | "timed_out";
   attemptId?: string;
   concurrencyId?: string | undefined;
   /** Used by the assignment ACK deadline only: do not release a run whose
@@ -48,6 +48,9 @@ type ReleaseMainCheckoutOptions = {
   preserveHostAssignmentLease?: boolean;
   timedOutHostId?: string;
   timedOutAssignmentConnectionId?: string;
+  infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
+  terminalHookHandoff?: import("./types.ts").SessionRecord["terminalHookHandoff"];
+  expectedTerminalHookHandoffAbsent?: boolean;
 };
 
 async function queueOrderForSession(ctx: PlaneStorageCtx, sessionId: string): Promise<string> {
@@ -69,6 +72,7 @@ export async function releaseMainCheckoutSession(
   opts: ReleaseMainCheckoutOptions,
 ): Promise<boolean> {
   const isQueued = opts.status === "queued";
+  const retainsMainCheckoutLease = opts.terminalHookHandoff?.mainCheckoutLease === true;
   const queueOrder = isQueued
     ? opts.queueOrder && opts.queueOrder.length > 0
       ? opts.queueOrder
@@ -87,33 +91,79 @@ export async function releaseMainCheckoutSession(
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
-          {
-            Update: {
-              TableName: ctx.tables.hostLocks,
-              Key: { hostId: opts.hostId },
-              UpdateExpression:
-                (opts.hostAssignmentLease ? "SET assignmentCount = assignmentCount - :one " : "") +
-                "REMOVE mainCheckoutLeases.#repo",
-              ConditionExpression:
-                "mainCheckoutLeases.#repo.sessionId = :sessionId AND mainCheckoutLeases.#repo.connectionId = :connectionId" +
-                (opts.hostAssignmentLease ? " AND assignmentCount >= :one" : ""),
-              ExpressionAttributeNames: { "#repo": opts.repositoryId },
-              ExpressionAttributeValues: {
-                ":sessionId": opts.sessionId,
-                ":connectionId": opts.connectionId,
-                ...(opts.hostAssignmentLease ? { ":one": 1 } : {}),
-              },
-            },
-          },
+          ...(retainsMainCheckoutLease
+            ? opts.hostAssignmentLease
+              ? [
+                  {
+                    Update: {
+                      TableName: ctx.tables.hostLocks,
+                      Key: { hostId: opts.hostId },
+                      UpdateExpression: "SET assignmentCount = assignmentCount - :one",
+                      ConditionExpression:
+                        "mainCheckoutLeases.#repo.sessionId = :sessionId AND mainCheckoutLeases.#repo.connectionId = :connectionId AND assignmentCount >= :one",
+                      ExpressionAttributeNames: { "#repo": opts.repositoryId },
+                      ExpressionAttributeValues: {
+                        ":sessionId": opts.sessionId,
+                        ":connectionId": opts.connectionId,
+                        ":one": 1,
+                      },
+                    },
+                  },
+                ]
+              : [
+                  {
+                    ConditionCheck: {
+                      TableName: ctx.tables.hostLocks,
+                      Key: { hostId: opts.hostId },
+                      ConditionExpression:
+                        "mainCheckoutLeases.#repo.sessionId = :sessionId AND mainCheckoutLeases.#repo.connectionId = :connectionId",
+                      ExpressionAttributeNames: { "#repo": opts.repositoryId },
+                      ExpressionAttributeValues: {
+                        ":sessionId": opts.sessionId,
+                        ":connectionId": opts.connectionId,
+                      },
+                    },
+                  },
+                ]
+            : [
+                {
+                  Update: {
+                    TableName: ctx.tables.hostLocks,
+                    Key: { hostId: opts.hostId },
+                    UpdateExpression:
+                      (opts.hostAssignmentLease
+                        ? "SET assignmentCount = assignmentCount - :one "
+                        : "") + "REMOVE mainCheckoutLeases.#repo",
+                    ConditionExpression:
+                      "mainCheckoutLeases.#repo.sessionId = :sessionId AND mainCheckoutLeases.#repo.connectionId = :connectionId" +
+                      (opts.hostAssignmentLease ? " AND assignmentCount >= :one" : ""),
+                    ExpressionAttributeNames: { "#repo": opts.repositoryId },
+                    ExpressionAttributeValues: {
+                      ":sessionId": opts.sessionId,
+                      ":connectionId": opts.connectionId,
+                      ...(opts.hostAssignmentLease ? { ":one": 1 } : {}),
+                    },
+                  },
+                },
+              ]),
           {
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression: updateExpression(opts, isQueued),
+              UpdateExpression: updateExpression(opts, isQueued, retainsMainCheckoutLease),
               ConditionExpression:
                 "#s = :expectedStatus AND hostId = :hostId AND assignmentConnectionId = :connectionId AND mainCheckoutLease = :true" +
                 (opts.attemptId ? " AND attemptId = :attemptId" : "") +
+                (opts.expectedTerminalHookHandoffAbsent
+                  ? " AND attribute_not_exists(terminalHookHandoff)"
+                  : "") +
                 (opts.requireUnacknowledged ? " AND attribute_not_exists(ackReceivedAt)" : "") +
+                (opts.infrastructureErrorCode
+                  ? " AND (attribute_not_exists(infrastructureRetryCount) OR infrastructureRetryCount < :maxInfrastructureRetries)"
+                  : "") +
+                (opts.infrastructureErrorCode === "host_lost"
+                  ? " AND primaryCommandStartState = :pendingCommandStart"
+                  : "") +
                 (requireNoDrainCancellation
                   ? " AND attribute_not_exists(cancelledByDrainOperationId)"
                   : ""),
@@ -166,7 +216,11 @@ export async function releaseMainCheckoutSession(
   }
 }
 
-function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): string {
+function updateExpression(
+  opts: ReleaseMainCheckoutOptions,
+  isQueued: boolean,
+  retainsMainCheckoutLease: boolean,
+): string {
   return (
     "SET #s = :status, statusShard = :statusShard" +
     (isQueued ? ", queueOrder = :queueOrder" : "") +
@@ -182,11 +236,23 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
     (opts.errorCode ? ", errorCode = :errorCode" : "") +
     (opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : "") +
     (opts.result && !isQueued ? ", #result = if_not_exists(#result, :result)" : "") +
+    (opts.terminalHookHandoff ? ", terminalHookHandoff = :terminalHookHandoff" : "") +
     (opts.suppressedTargetIndex !== undefined
       ? ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)"
       : "") +
-    " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt, sessionApiKeyHash" +
-    (opts.preserveHostAssignmentLease ? "" : ", activeHostId, activeHostOrder") +
+    (opts.infrastructureErrorCode
+      ? ", infrastructureRetryCount = if_not_exists(infrastructureRetryCount, :zero) + :one, lastInfrastructureErrorCode = :infrastructureErrorCode" +
+        (opts.attemptId ? ", infrastructureRetryAttemptId = :attemptId" : "")
+      : "") +
+    " REMOVE " +
+    (retainsMainCheckoutLease
+      ? "primaryCommandStartState"
+      : "assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt, primaryCommandStartState") +
+    ", sessionApiKeyHash" +
+    (opts.terminalHookHandoff ? ", terminalHookHandoffSettled" : "") +
+    (opts.preserveHostAssignmentLease || opts.terminalHookHandoff
+      ? ""
+      : ", activeHostId, activeHostOrder") +
     (opts.preserveHostAssignmentLease ? "" : ", hostAssignmentLease") +
     (opts.preserveProviderAccountLease ? "" : ", providerAccountLease") +
     (isQueued ? ", startedAt, #result" : "")
@@ -216,9 +282,19 @@ function expressionValues(
     ...(opts.errorCode ? { ":errorCode": opts.errorCode } : {}),
     ...(opts.cliResumeRef ? { ":cliResumeRef": opts.cliResumeRef } : {}),
     ...(opts.result && opts.status !== "queued" ? { ":result": opts.result } : {}),
+    ...(opts.terminalHookHandoff ? { ":terminalHookHandoff": opts.terminalHookHandoff } : {}),
     ...(opts.suppressedTargetIndex !== undefined
       ? { ":empty": [], ":index": [opts.suppressedTargetIndex] }
       : {}),
     ...(opts.attemptId ? { ":attemptId": opts.attemptId } : {}),
+    ...(opts.infrastructureErrorCode
+      ? {
+          ":zero": 0,
+          ":one": 1,
+          ":maxInfrastructureRetries": 1,
+          ":infrastructureErrorCode": opts.infrastructureErrorCode,
+        }
+      : {}),
+    ...(opts.infrastructureErrorCode === "host_lost" ? { ":pendingCommandStart": "pending" } : {}),
   };
 }

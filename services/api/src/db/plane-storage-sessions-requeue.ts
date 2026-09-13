@@ -28,6 +28,8 @@ type RequeueOpts = {
   requireUnacknowledged?: boolean;
   providerAccountLease?: ProviderAccountLeaseKey | undefined;
   hostAssignmentLease?: HostAssignmentLease | undefined;
+  /** Bounded safe-replay marker for an infrastructure failure. */
+  infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
 };
 
 function hostLockChecks(ctx: PlaneStorageCtx, opts: RequeueOpts): Array<Record<string, unknown>> {
@@ -47,7 +49,11 @@ function hostLockChecks(ctx: PlaneStorageCtx, opts: RequeueOpts): Array<Record<s
       ConditionCheck: {
         TableName: ctx.tables.hostLocks,
         Key: { hostId: opts.requireNoHostLock },
-        ConditionExpression: "attribute_not_exists(hostId)",
+        // A disconnect retains its row for alerts and reconnect bookkeeping.
+        // Treat that retained row as absent, but let a concurrent replacement
+        // registration make this transition lose its fence.
+        ConditionExpression: "attribute_not_exists(hostId) OR disconnected = :true",
+        ExpressionAttributeValues: { ":true": true },
       },
     });
   }
@@ -91,6 +97,13 @@ function requeueSessionCondition(opts: RequeueOpts): string {
     condition +=
       " AND (attribute_not_exists(assignmentConnectionId) OR assignmentConnectionId = :connectionId)";
   }
+  if (opts.infrastructureErrorCode) {
+    condition +=
+      " AND (attribute_not_exists(infrastructureRetryCount) OR infrastructureRetryCount < :maxInfrastructureRetries)";
+  }
+  if (opts.infrastructureErrorCode === "host_lost") {
+    condition += " AND primaryCommandStartState = :pendingCommandStart";
+  }
   return condition;
 }
 
@@ -101,7 +114,11 @@ function requeueSessionUpdate(ctx: PlaneStorageCtx, opts: RequeueOpts, queueOrde
       Key: { id: opts.sessionId },
       UpdateExpression:
         "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
-        ", worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId, activeHostId, activeHostOrder, providerAccountLease, hostAssignmentLease, sessionApiKeyHash",
+        ", worktreeId = :null, hostId = :null, errorMessage = :reason" +
+        (opts.infrastructureErrorCode
+          ? ", infrastructureRetryCount = if_not_exists(infrastructureRetryCount, :zero) + :one, lastInfrastructureErrorCode = :infrastructureErrorCode, infrastructureRetryAttemptId = :attemptId"
+          : "") +
+        " REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId, activeHostId, activeHostOrder, providerAccountLease, hostAssignmentLease, primaryCommandStartState, sessionApiKeyHash",
       ConditionExpression: requeueSessionCondition(opts),
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: {
@@ -118,6 +135,17 @@ function requeueSessionUpdate(ctx: PlaneStorageCtx, opts: RequeueOpts, queueOrde
         ...(opts.expectedConnectionId ? { ":connectionId": opts.expectedConnectionId } : {}),
         ":worktreeId": opts.worktreeId,
         ":attemptId": opts.attemptId,
+        ...(opts.infrastructureErrorCode
+          ? {
+              ":zero": 0,
+              ":one": 1,
+              ":maxInfrastructureRetries": 1,
+              ":infrastructureErrorCode": opts.infrastructureErrorCode,
+            }
+          : {}),
+        ...(opts.infrastructureErrorCode === "host_lost"
+          ? { ":pendingCommandStart": "pending" }
+          : {}),
       },
     },
   };

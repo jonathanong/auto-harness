@@ -1,19 +1,19 @@
 /* eslint-disable max-lines -- attempt-fenced reconnect claims stay with this table. */
 import type { HostRunningAttempt } from "@auto-harness/shared";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import {
   removeReleasedRetiredWorkspaceSlot,
   removeReleasedRetiredWorkspaceSlotDurable,
 } from "./control-plane-workspace-slot-retirement.ts";
 import { reconcileHostOwnedSessions } from "./control-plane-reconnect-omitted.ts";
+import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
+import { reclaimScheduledReconnect } from "./control-plane-reconnect-scheduled.ts";
 import {
   confirmScheduledReconnect,
-  reclaimScheduledReconnect,
   restoreScheduledReconnects,
   type ScheduledReconnectConfirmation,
-} from "./control-plane-reconnect-scheduled.ts";
+} from "./control-plane-reconnect-scheduled-confirm.ts";
 import {
   confirmReportedWorkspaceSession,
   confirmReportedSession,
@@ -28,6 +28,16 @@ import {
   restoreConfirmedSessions,
   type ReconnectConfirmation,
 } from "./control-plane-reconnect-rollback.ts";
+import {
+  canRetryHostLoss,
+  finishHostLostSession,
+  finishHostLostWorkspaceSession,
+  hostLostTerminalHookHandoff,
+  HOST_LOSS_RETRY_REASON,
+  HOST_LOSS_TERMINAL_REASON,
+  queueHostLossRetry,
+} from "./control-plane-infrastructure-retry.ts";
+import { expireTerminalHookHandoffIfNeeded } from "./control-plane-terminal-hook-handoff.ts";
 
 export async function reconcileHostRunningSessions(
   state: ControlPlaneState,
@@ -143,6 +153,7 @@ export async function reclaimReconnectDeadlines(
     ? await state.storage.listAllSessions()
     : [...state.sessions.values()];
   for (const session of sessions) {
+    if (await expireTerminalHookHandoffIfNeeded(state, session, nowMs)) continue;
     const reclaimableStatus =
       session.status === "running" ||
       (session.status === "cancelled" &&
@@ -164,12 +175,20 @@ export async function reclaimReconnectDeadlines(
       if (!slot || !ownerHostId || slot.currentSessionId !== session.id) continue;
       const cancelled = session.status === "cancelled";
       const timedOut = session.status === "timed_out";
+      const retryableHostLoss =
+        !cancelled && !timedOut && Boolean(session.ackReceivedAt) && canRetryHostLoss(session);
+      const terminalHostLoss =
+        !cancelled && !timedOut && Boolean(session.ackReceivedAt) && !canRetryHostLoss(session);
       if (!state.storage) {
         releaseProviderAccountLease(state, session);
         const next =
           cancelled || timedOut
             ? { ...session, workspaceSlotId: null, hostId: null }
-            : queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued");
+            : retryableHostLoss
+              ? queueHostLossRetry(session)
+              : terminalHostLoss
+                ? finishHostLostWorkspaceSession(state, session)
+                : queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued");
         delete next.workspaceSlotLease;
         delete next.assignmentConnectionId;
         delete next.assignmentSentAt;
@@ -186,7 +205,7 @@ export async function reclaimReconnectDeadlines(
         });
         removeReleasedRetiredWorkspaceSlot(state, slot.id);
         state.pendingAcks.delete(session.id);
-        if (!cancelled && !timedOut) requeued.push(session.id);
+        if (!cancelled && !timedOut && !terminalHostLoss) requeued.push(session.id);
         continue;
       }
       const released = await state.storage.finishSession({
@@ -194,13 +213,27 @@ export async function reclaimReconnectDeadlines(
         worktreeId: null,
         workspaceSlotId: slot.id,
         attemptId: session.attemptId!,
-        status: cancelled ? "cancelled" : timedOut ? "timed_out" : "queued",
+        status: cancelled
+          ? "cancelled"
+          : timedOut
+            ? "timed_out"
+            : terminalHostLoss
+              ? "failed"
+              : "queued",
         expectedStatus: session.status,
         expectedReconnectDeadlineAt: session.reconnectDeadlineAt,
         queueShard: session.queueShard,
         ...(!cancelled && !timedOut
-          ? { errorMessage: "daemon reconnect deadline exceeded; requeued" }
+          ? {
+              errorMessage: terminalHostLoss
+                ? HOST_LOSS_TERMINAL_REASON
+                : retryableHostLoss
+                  ? HOST_LOSS_RETRY_REASON
+                  : "daemon reconnect deadline exceeded; requeued",
+            }
           : {}),
+        ...(terminalHostLoss ? { errorCode: "host_lost", completedAt: state.now() } : {}),
+        ...(retryableHostLoss ? { infrastructureErrorCode: "host_lost" as const } : {}),
         ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
         ...providerAccountLeaseWriteOpts(session),
         ...(session.hostAssignmentLease
@@ -213,7 +246,11 @@ export async function reclaimReconnectDeadlines(
       const next =
         cancelled || timedOut
           ? { ...session, workspaceSlotId: null, hostId: null }
-          : queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued");
+          : retryableHostLoss
+            ? queueHostLossRetry(session)
+            : terminalHostLoss
+              ? finishHostLostWorkspaceSession(state, session)
+              : queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued");
       delete next.workspaceSlotLease;
       delete next.assignmentConnectionId;
       delete next.assignmentSentAt;
@@ -230,7 +267,7 @@ export async function reclaimReconnectDeadlines(
       });
       await removeReleasedRetiredWorkspaceSlotDurable(state, slot.id);
       state.pendingAcks.delete(session.id);
-      if (!cancelled && !timedOut) requeued.push(session.id);
+      if (!cancelled && !timedOut && !terminalHostLoss) requeued.push(session.id);
       continue;
     }
     // The guard above allows a mainCheckoutLease session with no worktreeId through; the
@@ -246,20 +283,53 @@ export async function reclaimReconnectDeadlines(
       : undefined;
     if (!state.storage) {
       releaseProviderAccountLease(state, session);
-      state.sessions.set(
-        session.id,
-        queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued"),
-      );
+      if (canRetryHostLoss(session)) {
+        state.sessions.set(session.id, queueHostLossRetry(session));
+        requeued.push(session.id);
+      } else {
+        state.sessions.set(session.id, finishHostLostSession(state, session));
+      }
       releaseWorktree(state, worktree.id);
       state.pendingAcks.delete(session.id);
-      requeued.push(session.id);
+    } else if (!canRetryHostLoss(session)) {
+      if (typeof state.storage.finishSession !== "function") continue;
+      const handoff = hostLostTerminalHookHandoff(state, session);
+      const finished = await state.storage.finishSession({
+        sessionId: session.id,
+        worktreeId: worktree.id,
+        attemptId: session.attemptId!,
+        status: "failed",
+        queueShard: session.queueShard,
+        completedAt: state.now(),
+        errorCode: "host_lost",
+        errorMessage: HOST_LOSS_TERMINAL_REASON,
+        ...(handoff ? { terminalHookHandoff: handoff } : {}),
+        expectedReconnectDeadlineAt: session.reconnectDeadlineAt,
+        ...(session.assignmentConnectionId
+          ? { expectedConnectionId: session.assignmentConnectionId }
+          : {}),
+        ...(connectionId ? { fence: { hostId: session.hostId, connectionId } } : {}),
+        ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+        ...providerAccountLeaseWriteOpts(session),
+      });
+      if (!finished) continue;
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+      releaseProviderAccountLease(state, session);
+      state.sessions.set(session.id, finishHostLostSession(state, session, handoff));
+      state.worktrees.set(worktree.id, {
+        ...worktree,
+        status: "idle",
+        currentSessionId: null,
+        online: false,
+      });
+      state.pendingAcks.delete(session.id);
     } else if (
       await state.storage.tryRequeueSession({
         sessionId: session.id,
         worktreeId: worktree.id,
         attemptId: session.attemptId!,
         queueShard: session.queueShard,
-        reason: "daemon reconnect deadline exceeded; requeued",
+        reason: HOST_LOSS_RETRY_REASON,
         forceOffline: true,
         expectedHostId: session.hostId,
         expectedReconnectDeadlineAt: session.reconnectDeadlineAt,
@@ -269,14 +339,12 @@ export async function reclaimReconnectDeadlines(
         ...(connectionId ? { fence: { hostId: session.hostId, connectionId } } : {}),
         ...(!connectionId ? { requireNoHostLock: session.hostId } : {}),
         ...providerAccountLeaseWriteOpts(session),
+        infrastructureErrorCode: "host_lost",
       })
     ) {
       await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
-      state.sessions.set(
-        session.id,
-        queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued"),
-      );
+      state.sessions.set(session.id, queueHostLossRetry(session));
       state.worktrees.set(worktree.id, {
         ...worktree,
         status: "idle",

@@ -19,7 +19,8 @@ const session = (id: string, status: SessionRecord["status"], ack = false): Sess
   createdAt: "t",
   hostId: "h",
   worktreeId: `w-${id}`,
-  ...(ack ? { ackReceivedAt: "t" } : {}),
+  attemptId: `${id}-attempt`,
+  ...(ack ? { ackReceivedAt: "t", primaryCommandStartState: "pending" as const } : {}),
 });
 const worktree = (
   id: string,
@@ -142,5 +143,33 @@ describe("durable disconnect worktree reconciliation", () => {
       currentSessionId: null,
       online: false,
     });
+  });
+
+  it("does not requeue a newer acknowledged attempt after its reconnect mark loses", async () => {
+    const plane = new ControlPlane();
+    const row = worktree("ack-race", "ack-race");
+    const original = session("ack-race", "running", true);
+    const replacement = {
+      ...original,
+      attemptId: "ack-race-replacement-attempt",
+      ackReceivedAt: "later",
+    };
+    let reads = 0;
+    let requeues = 0;
+    plane.state.storage = {
+      listWorktreesByHost: async () => [row],
+      getSession: async () => (reads++ === 0 ? original : replacement),
+      getWorktree: async () => row,
+      markReconnectPending: async () => false,
+      tryRequeueSession: async () => {
+        requeues++;
+        return true;
+      },
+    } as never;
+
+    expect(await offlineHostAndRequeueDurable(plane.state, "h", "c", "bye")).toEqual([]);
+    expect(requeues).toBe(0);
+    expect(plane.state.sessions.get("ack-race")).toEqual(replacement);
+    expect(plane.state.worktrees.get(row.id)).toEqual(row);
   });
 });

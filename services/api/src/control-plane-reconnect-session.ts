@@ -15,7 +15,8 @@ export function queueReconnectSession(session: SessionRecord, reason: string): S
     activeHostId: ________,
     activeHostOrder: _________,
     result: __________,
-    sessionApiKeyHash: ___________,
+    primaryCommandStartState: _primaryCommandStartState,
+    sessionApiKeyHash: _sessionApiKeyHash,
     ...next
   } = session;
   return {

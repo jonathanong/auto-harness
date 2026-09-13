@@ -31,14 +31,22 @@ type ProbeDeadline = {
   dispose: () => void;
 };
 
-function createProbeDeadline(): ProbeDeadline {
+function createProbeDeadline(deadlineAtMs?: number): ProbeDeadline {
   const controller = new AbortController();
-  const expiresAt = Date.now() + SESSION_RESULT_PROBE_DEADLINE_MS;
-  const timer = setTimeout(() => controller.abort(), SESSION_RESULT_PROBE_DEADLINE_MS);
+  const absoluteDeadline =
+    deadlineAtMs !== undefined && Number.isFinite(deadlineAtMs)
+      ? deadlineAtMs
+      : Number.POSITIVE_INFINITY;
+  const expiresAt = Math.min(Date.now() + SESSION_RESULT_PROBE_DEADLINE_MS, absoluteDeadline);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  if (expiresAt <= Date.now()) controller.abort();
+  else timer = setTimeout(() => controller.abort(), expiresAt - Date.now());
   return {
     signal: controller.signal,
     remainingMs: () => Math.max(1, expiresAt - Date.now()),
-    dispose: () => clearTimeout(timer),
+    dispose: () => {
+      if (timer !== undefined) clearTimeout(timer);
+    },
   };
 }
 
@@ -278,6 +286,8 @@ export async function collectSessionResult(options: {
   environment: NodeJS.ProcessEnv;
   /** Setup has already applied the child allowlist; do not apply it a second time. */
   environmentIsChild?: boolean;
+  /** Optional absolute deadline (milliseconds since epoch) for the result probes. */
+  deadlineAtMs?: number;
 }): Promise<SessionResult> {
   // Result probes execute inside a repository checkout, so they receive the
   // same deliberately small environment as every other repository-owned
@@ -295,7 +305,7 @@ export async function collectSessionResult(options: {
         : { summary: `Session ${options.status}`, summarySource: "harness" },
     )!;
   }
-  const deadline = createProbeDeadline();
+  const deadline = createProbeDeadline(options.deadlineAtMs);
   try {
     const branch = await branchFor(options.runner, deadline, options.cwd, environment);
     const files =

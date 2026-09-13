@@ -47,6 +47,7 @@ export async function tryAssignSession(
     hostAssignmentLease?: HostAssignmentLease | undefined;
     hostAssignmentCap?: number;
     legacyAssignmentCount?: number;
+    primaryCommandStartState?: "pending" | "authorized";
     queueShard: number;
     sessionApiKeyHash?: string;
   },
@@ -64,6 +65,7 @@ export async function tryAssignSession(
     "resolvedArgv = :argv",
     "resolvedRoute = :route",
     "assignmentConnectionId = :connectionId",
+    "primaryCommandStartState = :primaryCommandStartState",
   ];
   const sessionValues: Record<string, unknown> = {
     ":running": "running",
@@ -77,6 +79,7 @@ export async function tryAssignSession(
     ":attemptId": opts.attemptId,
     ":argv": opts.resolvedArgv,
     ":connectionId": opts.connectionId,
+    ":primaryCommandStartState": opts.primaryCommandStartState ?? "pending",
     ":route": opts.resolvedRoute,
   };
   const hostAssignmentLease = opts.hostAssignmentLease ?? { hostId: opts.hostId };
@@ -146,7 +149,7 @@ export async function tryAssignSession(
       Update: {
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
-        UpdateExpression: `SET ${sessionSets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt, retryAfter, retryCount`,
+        UpdateExpression: `SET ${sessionSets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt, retryAfter, retryCount, errorCode, errorMessage`,
         ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: sessionValues,

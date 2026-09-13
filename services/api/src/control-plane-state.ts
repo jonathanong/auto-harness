@@ -353,6 +353,7 @@ export function toPublic(
     cancelledByDrainOperationId: _cancelledByDrainOperationId,
     activeHostId: _activeHostId,
     activeHostOrder: _activeHostOrder,
+    primaryCommandStartState: _primaryCommandStartState,
     descendantCount: _descendantCount,
     ...publicSession
   } = session;

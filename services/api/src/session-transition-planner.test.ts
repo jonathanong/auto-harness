@@ -142,6 +142,125 @@ describe("session-transition planner", () => {
     expect(transitionEffect(plan, "reschedule")).toEqual({ type: "reschedule", kind: "prompt" });
   });
 
+  it("replays only one safe infrastructure failure and fences command authorization", () => {
+    const first = planSessionTransition(
+      session(),
+      status({ status: "failed", errorCode: "checkout_fetch_failed" }),
+      ctx({ deferTerminalHookResult: true }),
+    );
+    expect(first.effects.map((effect) => effect.type)).toEqual([
+      "release_worktree",
+      "requeue",
+      "reschedule",
+    ]);
+    expect(transitionEffect(first, "requeue")).toMatchObject({
+      reason: "infrastructure",
+      errorCode: "checkout_fetch_failed",
+    });
+    const exhaustedCheckout = planSessionTransition(
+      session({ infrastructureRetryCount: 1 }),
+      status({
+        status: "failed",
+        errorCode: "checkout_fetch_failed",
+        exitCode: 1,
+        cliResumeRef: "resume-after-checkout-failure",
+        result: { summary: "checkout failed", summarySource: "harness" },
+      }),
+      ctx({ deferTerminalHookResult: true }),
+    );
+    expect(transitionEffect(exhaustedCheckout, "finish")).toMatchObject({
+      status: "failed",
+      errorCode: "checkout_fetch_failed",
+      errorMessage: "checkout fetch failed; automatic retry exhausted",
+      exitCode: 1,
+      cliResumeRef: "resume-after-checkout-failure",
+      result: { summary: "checkout failed", summarySource: "harness" },
+    });
+    const exhausted = planSessionTransition(
+      session({ infrastructureRetryCount: 1, primaryCommandStartState: "pending" }),
+      { type: "infrastructure_failure", code: "host_lost" },
+      ctx(),
+    );
+    expect(exhausted.effects.map((effect) => effect.type)).toEqual([
+      "release_worktree",
+      "finish",
+      "archive",
+    ]);
+    expect(transitionEffect(exhausted, "finish")).toMatchObject({
+      status: "failed",
+      errorCode: "host_lost",
+      errorMessage: "host was lost before command launch; automatic retry exhausted",
+    });
+    expect(
+      types(
+        { type: "infrastructure_failure", code: "host_lost" },
+        session({ primaryCommandStartState: "authorized" }),
+      ),
+    ).toEqual(["release_worktree", "finish", "archive"]);
+    expect(
+      types(
+        { type: "command_start", worktreeId: "wt", attemptId: "attempt" },
+        session({ primaryCommandStartState: "pending" }),
+      ),
+    ).toEqual(["authorize_command_start"]);
+    expect(
+      types(
+        { type: "command_start", worktreeId: "wt", attemptId: "attempt" },
+        session({ primaryCommandStartState: "authorized" }),
+      ),
+    ).toEqual([]);
+    expect(types({ type: "command_start", worktreeId: "wt", attemptId: "stale" })).toEqual([
+      "ignore",
+    ]);
+    expect(
+      planSessionTransition(
+        session({ primaryCommandStartState: undefined }),
+        { type: "command_start", worktreeId: "wt", attemptId: "attempt" },
+        ctx(),
+      ),
+    ).toEqual({
+      effects: [{ type: "reject", error: "command start is not enabled for this assignment" }],
+    });
+    expect(
+      types(
+        { type: "infrastructure_failure", code: "host_lost" },
+        session({ status: "completed" }),
+      ),
+    ).toEqual(["ignore"]);
+  });
+
+  it("does not replay a checkout failure unless its reporting assignment deferred the hook", () => {
+    const plan = planSessionTransition(
+      session(),
+      status({ status: "failed", errorCode: "checkout_fetch_failed" }),
+      // A v3-plane assignment can be reported after this host reconnects at
+      // v7. Its current connection protocol is not proof the old assignment
+      // deferred the hook, so it must still terminalize.
+      ctx({ protocolVersion: 7 }),
+    );
+
+    expect(plan.effects.map((effect) => effect.type)).toEqual([
+      "release_worktree",
+      "finish",
+      "archive",
+    ]);
+    expect(transitionEffect(plan, "finish")).toMatchObject({
+      status: "failed",
+      errorCode: "checkout_fetch_failed",
+      errorMessage: "checkout fetch failed; terminal hook was not durably deferred",
+    });
+  });
+
+  it("keeps checkout failure replay enabled only with durable deferral proof", () => {
+    expect(
+      types(
+        status({ status: "failed", errorCode: "checkout_fetch_failed" }),
+        session(),
+        ctx({ protocolVersion: 6, deferTerminalHookResult: true }),
+      ),
+    ).toEqual(["release_worktree", "requeue", "reschedule"]);
+  });
+
   it("usage_limit with no fallback stays queued until the original deadline", () => {
     const plan = planSessionTransition(
       session({

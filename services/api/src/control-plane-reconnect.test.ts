@@ -55,6 +55,7 @@ function durableRunning(id: string, worktreeId: string, assignmentConnectionId?:
     hostId: "h",
     worktreeId,
     ackReceivedAt: "t",
+    primaryCommandStartState: "pending" as const,
     reconnectDeadlineAt: "2000-01-01T00:00:00.000Z",
     ...(assignmentConnectionId ? { assignmentConnectionId } : {}),
   };
@@ -104,6 +105,8 @@ describe("reconnect reconciliation", () => {
     expect(await plane.reclaimReconnectDeadlines(deadline - 1)).toEqual([]);
     expect(await plane.reclaimReconnectDeadlines(deadline)).toEqual(["s"]);
     expect(plane.getSession("s")?.status).toBe("queued");
+    expect(plane.getSession("s")?.infrastructureRetryCount).toBe(1);
+    expect(plane.getSession("s")?.lastInfrastructureErrorCode).toBe("host_lost");
 
     const second = runningPlane();
     // A stale local deadline tracker must be removed when the durable/local
@@ -122,6 +125,19 @@ describe("reconnect reconciliation", () => {
     expect(second.getSession("s")?.ackReceivedAt).toBeUndefined();
     expect(second.getSession("s")?.startedAt).toBeUndefined();
     expect(second.state.pendingAcks.has("s")).toBe(false);
+  });
+
+  it("fails an authorized command rather than replaying it after reconnect grace", async () => {
+    const plane = runningPlane();
+    const internal = plane.state.sessions.get("s")!;
+    internal.primaryCommandStartState = "authorized";
+    const deadline = Date.parse(internal.reconnectDeadlineAt!);
+
+    expect(await plane.reclaimReconnectDeadlines(deadline)).toEqual([]);
+    expect(plane.getSession("s")).toMatchObject({
+      status: "failed",
+      errorCode: "host_lost",
+    });
   });
 
   it("expires a reconnecting workspace attempt by releasing its exact slot", async () => {
@@ -148,6 +164,7 @@ describe("reconnect reconciliation", () => {
       worktreeId: null,
       attemptId: "attempt",
       ackReceivedAt: "t",
+      primaryCommandStartState: "pending" as const,
       reconnectDeadlineAt: "2000-01-01T00:00:00.000Z",
     };
     const slot = {
@@ -176,6 +193,7 @@ describe("reconnect reconciliation", () => {
         workspaceSlotId: slot.id,
         expectedReconnectDeadlineAt: session.reconnectDeadlineAt,
         status: "queued",
+        infrastructureErrorCode: "host_lost",
       }),
     );
     expect(plane.state.workspaceSlots.get(slot.id)).toMatchObject({
@@ -265,6 +283,7 @@ describe("reconnect reconciliation", () => {
       hostId: "h",
       worktreeId: "w",
       ackReceivedAt: "t",
+      primaryCommandStartState: "pending" as const,
       reconnectDeadlineAt: "2000-01-01T00:00:00.000Z",
     };
     const worktree = {
@@ -356,6 +375,33 @@ describe("reconnect reconciliation", () => {
     ]);
     expect(calls.some((call) => call.expectedConnectionId === "old" && call.fence)).toBe(true);
     expect(calls.some((call) => call.sessionId === "failed")).toBe(true);
+  });
+
+  it("fences terminal host-loss reclaim to the observed reconnect deadline and connection", async () => {
+    const plane = new ControlPlane();
+    const terminal = {
+      ...durableRunning("terminal", "wt", "expired-connection"),
+      primaryCommandStartState: "authorized" as const,
+    };
+    const worktree = durableWorktree("wt", terminal.id);
+    let finishOptions: Record<string, unknown> | undefined;
+    plane.state.storage = {
+      listAllSessions: async () => [terminal],
+      getWorktree: async () => worktree,
+      getHostLock: async () => "replacement-connection",
+      finishSession: async (options: Record<string, unknown>) => {
+        finishOptions = options;
+        return false;
+      },
+    } as never;
+
+    expect(await reclaimReconnectDeadlines(plane.state, Date.now())).toEqual([]);
+    expect(finishOptions).toMatchObject({
+      sessionId: terminal.id,
+      expectedReconnectDeadlineAt: terminal.reconnectDeadlineAt,
+      expectedConnectionId: "expired-connection",
+      fence: { hostId: "h", connectionId: "replacement-connection" },
+    });
   });
 
   it("restores earlier durable confirmations when a later reported session loses reconciliation", async () => {
@@ -613,5 +659,63 @@ describe("reconnect reconciliation", () => {
     local.state.worktrees.set("lw", durableWorktree("lw", "local"));
     expect(await reconcileHostRunningSessions(local.state, "h", ["local"])).toEqual([]);
     expect(local.state.worktrees.get("lw")?.connectionId).toBeUndefined();
+  });
+
+  it("skips a scheduled deadline that cannot be reclaimed without its assignment", async () => {
+    const plane = new ControlPlane();
+    const scheduled = {
+      ...durableRunning("missing-assignment", "unused"),
+      mainCheckoutLease: true,
+      worktreeId: undefined,
+    };
+    delete scheduled.assignmentConnectionId;
+    plane.state.storage = {
+      listAllSessions: async () => [scheduled],
+      getWorktree: async (id: string) => {
+        expect(id).toBe("");
+        return null;
+      },
+    } as never;
+    await expect(reclaimReconnectDeadlines(plane.state, Date.now())).resolves.toEqual([]);
+  });
+
+  it("finishes durable terminal loss with optional fence fields omitted", async () => {
+    const plane = new ControlPlane();
+    const terminal = {
+      ...durableRunning("terminal-no-options", "wt"),
+      primaryCommandStartState: "authorized" as const,
+      concurrencyId: "concurrency",
+    };
+    const worktree = durableWorktree("wt", terminal.id);
+    let finishOptions: Record<string, unknown> | undefined;
+    plane.state.storage = {
+      listAllSessions: async () => [terminal],
+      getWorktree: async () => worktree,
+      getHostLock: async () => null,
+      finishSession: async (options: Record<string, unknown>) => {
+        finishOptions = options;
+        return true;
+      },
+    } as never;
+    expect(await reclaimReconnectDeadlines(plane.state, Date.now())).toEqual([]);
+    expect(finishOptions).toMatchObject({ concurrencyId: "concurrency" });
+    expect(finishOptions).not.toHaveProperty("expectedConnectionId");
+    expect(finishOptions).not.toHaveProperty("fence");
+    expect(plane.state.sessions.get(terminal.id)).toMatchObject({ status: "failed" });
+  });
+
+  it("skips durable terminal loss when the finish operation is unavailable", async () => {
+    const plane = new ControlPlane();
+    const terminal = {
+      ...durableRunning("terminal-no-finish", "wt"),
+      primaryCommandStartState: "authorized" as const,
+    };
+    plane.state.storage = {
+      listAllSessions: async () => [terminal],
+      getWorktree: async () => durableWorktree("wt", terminal.id),
+      getHostLock: async () => null,
+    } as never;
+    await expect(reclaimReconnectDeadlines(plane.state, Date.now())).resolves.toEqual([]);
+    expect(plane.state.sessions.has(terminal.id)).toBe(false);
   });
 });

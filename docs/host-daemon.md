@@ -161,7 +161,8 @@ On validation failure (missing repo path, bad JSON, missing key), the process ex
 - Sends `host:register` immediately after open, including `protocolVersion` and
   attempt-fenced `runningAttempts` (plus `runningSessions` for older control planes)
 - Routes inbound messages by protocol command (`session:assign`, `session:cancel`,
-  `session:acknowledged`, `session:status-acknowledged`, drain). In-flight state is keyed by
+  `session:acknowledged`, `session:command-start-acknowledged`, `session:status-acknowledged`, drain).
+  In-flight state is keyed by
   `{sessionId, attemptId}`, not session id alone, so a delayed cancel/ACK/log from an old attempt
   cannot touch a newer assignment
 - Auto-reconnect with exponential backoff: 1s → 2s → 4s → … → **max 60s**
@@ -173,7 +174,8 @@ On validation failure (missing repo path, bad JSON, missing key), the process ex
   send-based re-arm so a daemon-first deploy does not reconnect-loop.
 - Handles `post` failures only as disconnect (server detects stale connections separately)
 
-Outbound message types: `host:register`, `session:ack`, `session:log`, `session:status`, `worktree:status`, `host:keepalive`.
+Outbound message types: `host:register`, `session:ack`, `session:command-start`, `session:log`,
+`session:status`, `worktree:status`, `host:keepalive`.
 
 Each daemon process reports one opaque UUID and process start time on every registration. The UUID
 remains unchanged across socket reconnects and inventory refreshes. A control plane with a prior
@@ -262,7 +264,7 @@ Orchestrates a single session after `session:assign`:
    - **Resume** (`resume: true`): skip every host/repository/worktree setup script; the assigned worktree still checks out the session `ref` (or default branch) before the native CLI resume command starts
 6. Spawn primary command via Executor (resume-aware argv when `resume: true`)
 7. Pipe output to Log Streamer
-8. On exit / timeout / cancel, run the terminal hook, collect the structured result, then send `session:status`, release claim/lock, and emit worktree status
+8. On exit / timeout / cancel, run the terminal hook, collect the structured result, then send `session:status`, release claim/lock, and emit worktree status. For a v6 first-attempt `checkout_fetch_failed`, the daemon instead retains the hook until the durable `session:status-acknowledged` disposition arrives: it discards it only when `retryAccepted: true`. When the disposition is terminal, the control plane atomically persists a host-owned hook handoff and withholds archival; the daemon runs the hook, recollects the structured result, and completes that handoff before archival is queued. A lost status acknowledgement replays the same handoff id, and a daemon lost between disposition and completion leaves the durable handoff for its replacement. The retry runs its own hook if it fails and exhausts the budget. Once a retry is durably queued, a later `queue_expired` is the normal control-plane-only queued terminal path; queued sessions have no daemon hook owner. For a non-replay-safe or exhausted `host_lost` outcome, a v5 control plane likewise persists a bounded hook handoff to the original host. Its replacement daemon claims the original target, resolves its current local hook policy, runs (or fail-closed no-ops) the hook, and durably acknowledges it before the terminal session is archived. If that host never returns, the handoff expires after 24 hours and records the no-op rather than retaining an active-host index indefinitely.
 9. If the CLI prints a resumable conversation/session id, capture and send it in status metadata as `cliResumeRef` for later resumes
 
 Concurrent sessions: one runner instance per claimed worktree (and at most one main-lock session per repo).
@@ -329,7 +331,7 @@ A fresh route has no CLI conversation state to resume into — the new run start
 1. After setup scripts run (or are skipped) and before spawning the CLI, calls `GET /sessions/<this session's id>/prior-context` — **the new session's id, not `sourceSessionId`** — using the same bearer credential it uses for every other control-plane request.
 2. Writes the response's `content` to `.auto-harness/prior-session.md` in the assigned worktree, alongside a `.auto-harness/.gitignore` containing `*` so the directory (including the ignore file itself) is invisible to `git status` and cannot be committed. This runs after setup deliberately: a setup script may `git clean -xfd`, which would otherwise delete the file before the CLI ever saw it.
 3. Sets `HARNESS_PRIOR_CONTEXT_FILE` to the file's absolute path in the child process environment.
-4. Removes the file after the CLI process exits, before reporting terminal status.
+4. Removes the file after the CLI process exits, before terminal hooks run or terminal status is reported.
 
 The resumed session's prompt already carries a fixed pointer sentence naming `.auto-harness/prior-session.md`, appended by the control plane — the model finds the file by reading its own prompt, not by an env var (a Command configured with `appendPrompt: false` never receives the prompt at all, so `HARNESS_PRIOR_CONTEXT_FILE` is that case's only channel). Every step here is best-effort: a fetch failure, a 404 (the source session's logs may have expired under the 7-day `SessionLogs` TTL), or a byte cap being hit all degrade to "no file written," logged as a `system` line — never a failed session. Advertise `prior-session-context` only from a daemon build that implements this; an older daemon simply ignores the unknown `priorContext` field and starts with no file, so the pointer sentence is a hedge ("may be available"), not a promise.
 
@@ -350,6 +352,15 @@ The resumed session's prompt already carries a fixed pointer sentence naming `.a
 | Environment       | Small baseline (`PATH`, home/temp/locale/terminal fields) plus explicit `HARNESS_CHILD_ENV_ALLOWLIST`; control-plane `HARNESS_*` credentials are never inherited. Repo-local env files may be sourced only inside trusted setup scripts. **This includes CLI credential env vars** — `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `CURSOR_API_KEY`, and similar are silently dropped unless explicitly added to `HARNESS_CHILD_ENV_ALLOWLIST`. A CLI configured for API-key auth (rather than a logged-in subscription CLI, which reads its own credential file under `$HOME`) will fail with what looks like a CLI-side auth error, not an obviously harness-side config problem — check the allowlist first. Per-account execution profiles override `HOME`/`USERPROFILE` for the assigned CLI only so two accounts can use different local CLI homes. |
 | Timeout           | A single deadline covers checkout checks, setup, and the primary command. On POSIX, running processes receive SIGTERM, then SIGKILL after a 5-second grace period; report `timed_out`. On Windows, `SpawnProcessRunner` (git, setup scripts, terminal hooks) kills the full descendant process tree via a single forceful `taskkill /PID <pid> /T /F` instead — Windows has no signal-ignoring equivalent to escalate past, and a delayed second `taskkill` against the same numeric pid risks hitting a process Windows has since recycled that pid to.                                                                                                                                                                                                                                                                                           |
 | Cancel            | `session:cancel { sessionId, attemptId }` aborts only that attempt through the same platform-specific termination path described under Timeout; delayed cancels for an old attempt are ignored. Report exactly one `cancelled` terminal status.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+
+For protocol version 4, the daemon sends `session:command-start { sessionId, worktreeId,
+attemptId }` after checkout, setup, execution-profile validation, and prior-context preparation,
+but immediately before `commandRunner.run`. It must not spawn the primary CLI until the control
+plane durably replies `session:command-start-acknowledged { sessionId, attemptId }`; duplicate
+requests and acknowledgements for an old attempt are ignored. The daemon retains the pending
+request across reconnects and cancels without spawning if the session deadline or cancellation
+arrives first. Protocol v3 and legacy daemons do not participate in this checkpoint, so their
+ambiguous host loss is never automatically retried.
 
 A repository-principal session drain uses this same cancel path. The control plane fences the
 exact assignment attempt before sending `session:cancel`; the daemon reports its normal terminal
@@ -613,7 +624,10 @@ be mutated concurrently by operator Git processes.
 If both detached-checkout forms still fail, the daemon checks that target
 commit's object connectivity. Only an incomplete graph gets one repair
 attempt: refetch every configured remote with `--refetch`, then retry the
-detached checkout. Ordinary checkout failures do not trigger a network retry.
+detached checkout. If that exact checkout-stage fetch/refetch operation fails, report
+`errorCode: checkout_fetch_failed` so the control plane may consume its single bounded
+infrastructure retry. Do not classify other checkout, setup, or CLI failures as this code, and
+never inspect Git stderr text to decide retryability.
 The terminal failure includes a bounded, credential-redacted Git diagnostic.
 
 ### Labels

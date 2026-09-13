@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- fallback context lifecycle scenarios share a worktree fixture. */
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -177,6 +178,64 @@ describe("prior-session context on a fallback resume assignment", () => {
     );
     expect(sawEnv.HARNESS_PRIOR_CONTEXT_FILE).toBe(join(cwd, ".auto-harness", "prior-session.md"));
   });
+
+  it.each([
+    ["completed", { exitCode: 0, timedOut: false, signal: null }],
+    ["failed", { exitCode: 1, timedOut: false, signal: null }],
+    ["timed_out", { exitCode: null, timedOut: true, signal: "SIGTERM" }],
+    ["cancelled", { exitCode: null, timedOut: false, cancelled: true, signal: "SIGTERM" }],
+  ] as const)(
+    "removes context before the terminal hook for a %s session",
+    async (status, result) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify({ content: "prior transcript" }), { status: 200 }),
+        ),
+      );
+      let contextExistsDuringHook = false;
+      const hookRunner: ProcessRunner = {
+        async run(options) {
+          expect(options.argv).toEqual(["/bin/sh", join(cwd, "hook.sh")]);
+          contextExistsDuringHook = await stat(join(cwd, ".auto-harness", "prior-session.md"))
+            .then(() => true)
+            .catch(() => false);
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      };
+      const commandRunner: ProcessRunner = {
+        async run() {
+          return result;
+        },
+      };
+      const logs: unknown[] = [];
+
+      const outcome = await runClaimedSession(
+        hookRunner,
+        new LogStreamer("sess-2", "attempt-1", (chunk) => logs.push(chunk)),
+        logs as never,
+        baseAssign({ priorContext: { sourceSessionId: "sess-1" } }),
+        {
+          ...claimedAt(cwd),
+          currentHookTarget: async () => ({
+            cwd,
+            repository: { terminalHookScript: join(cwd, "hook.sh") },
+          }),
+        },
+        undefined,
+        () => false,
+        () => 1_000,
+        commandRunner,
+        process.env,
+        undefined,
+        identity,
+      );
+
+      expect(outcome.status).toBe(status);
+      expect(contextExistsDuringHook).toBe(false);
+    },
+  );
 
   it("still runs to completion when the prior-context fetch fails", async () => {
     vi.stubGlobal(

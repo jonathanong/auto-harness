@@ -3,10 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   archiveSessionLogs,
+  queueSessionArchive,
   retryPendingArchives,
   retrySessionArchiveIfNeeded,
 } from "./control-plane-archive.ts";
-import { createControlPlaneState, trackLogPersist } from "./control-plane-state.ts";
+import { createControlPlaneState, settleStorage, trackLogPersist } from "./control-plane-state.ts";
 
 describe("archive retry state", () => {
   it("stays disabled without a writer and skips a completed cached object", async () => {
@@ -106,6 +107,19 @@ describe("archive retry state", () => {
     releaseLog?.();
     await expect(archive).resolves.toMatchObject({ key: "sessions/later-session/logs.jsonl" });
     expect(uploaded).toEqual(["sessions/later-session/logs.jsonl"]);
+  });
+
+  it("observes queued archive rejection until storage settlement propagates it", async () => {
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          throw new Error("temporary archive outage");
+        },
+      },
+    });
+
+    queueSessionArchive(state, "failed");
+    await expect(settleStorage(state)).rejects.toThrow("temporary archive outage");
   });
 
   it("sweeps a bounded page and isolates one failed upload from later archives", async () => {
@@ -421,6 +435,44 @@ describe("archive retry state", () => {
       } as never,
     });
     await expect(retryPendingArchives(state)).resolves.toBe(0);
+  });
+
+  it("preserves a newer local claim when a stale upload fails", async () => {
+    const key = "sessions/local-fenced/logs.jsonl";
+    const state = createControlPlaneState({
+      now: () => "2026-01-01T00:00:00.000Z",
+      archiveWriter: {
+        putArchive: async () => {
+          state.archives.set(key, {
+            key,
+            contentType: "application/x-ndjson",
+            bodyBytes: 0,
+            status: "pending",
+            objectStored: false,
+            retryState: "pending",
+            retryOrder: "new-claim",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          });
+          throw new Error("stale upload failed");
+        },
+      },
+    });
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "pending",
+      retryOrder: "old-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    await expect(retryPendingArchives(state)).resolves.toBe(0);
+    expect(state.archives.get(key)).toMatchObject({
+      retryState: "pending",
+      retryOrder: "new-claim",
+    });
   });
 
   it("does not rewrite a newer pending generation when a stale upload loses its fence", async () => {

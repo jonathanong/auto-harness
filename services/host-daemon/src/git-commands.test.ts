@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  CheckoutFetchError,
   gitFailure,
   MAX_CAPTURED_GIT_STDOUT_BYTES,
   MAX_GIT_DIAGNOSTIC_BYTES,
@@ -416,5 +417,67 @@ describe("refetchConfiguredRemotes", () => {
         "/repo",
       ),
     ).resolves.toBe(false);
+  });
+
+  it("brands an exact refetch failure only when checkout recovery requests it", async () => {
+    await expect(
+      refetchConfiguredRemotes(
+        runner([{ exitCode: 0, stdout: "origin\n" }, { exitCode: 1 }]),
+        "/repo",
+        undefined,
+        true,
+      ),
+    ).rejects.toBeInstanceOf(CheckoutFetchError);
+    await expect(
+      refetchConfiguredRemotes(
+        runner([{ exitCode: 0, stdout: "origin\n" }, { exitCode: 1 }]),
+        "/repo",
+      ),
+    ).resolves.toBe(false);
+  });
+
+  it("normalizes thrown non-Error refetch failures and reports them to recovery", async () => {
+    const failures: CheckoutFetchError[] = [];
+    const throwingRunner = {
+      async run(options: Parameters<Parameters<typeof runGit>[0]["run"]>[0]) {
+        if (options.argv[1] === "remote") {
+          options.onChunk({ stream: "stdout", data: "origin\n" });
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        throw "network unavailable";
+      },
+    };
+
+    await expect(
+      refetchConfiguredRemotes(throwingRunner, "/repo", undefined, false, (failure) => {
+        failures.push(failure);
+      }),
+    ).resolves.toBe(false);
+    expect(failures.map((failure) => failure.message)).toEqual([
+      "Failed to refetch remote origin: network unavailable",
+    ]);
+
+    await expect(
+      refetchConfiguredRemotes(throwingRunner, "/repo", undefined, true),
+    ).rejects.toThrow("Failed to refetch remote origin: network unavailable");
+  });
+
+  it("preserves thrown Error diagnostics in both refetch failure modes", async () => {
+    const throwingRunner = {
+      async run(options: Parameters<Parameters<typeof runGit>[0]["run"]>[0]) {
+        if (options.argv[1] === "remote") {
+          options.onChunk({ stream: "stdout", data: "origin\n" });
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        throw new Error("remote unavailable");
+      },
+    };
+
+    await expect(refetchConfiguredRemotes(throwingRunner, "/repo", undefined, false)).resolves.toBe(
+      false,
+    );
+    await expect(
+      refetchConfiguredRemotes(throwingRunner, "/repo", undefined, true),
+    ).rejects.toThrow("Failed to refetch remote origin: remote unavailable");
   });
 });

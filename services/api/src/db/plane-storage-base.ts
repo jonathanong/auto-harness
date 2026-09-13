@@ -405,6 +405,7 @@ export class DynamoPlaneStorageBase {
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
     hostAssignmentCap?: number;
     legacyAssignmentCount?: number;
+    primaryCommandStartState?: "pending" | "authorized";
     queueShard: number;
   }): Promise<AssignmentWriteResult> {
     return sessions.tryAssignSession(this.ctx, opts);
@@ -513,6 +514,7 @@ export class DynamoPlaneStorageBase {
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
     hostAssignmentCap?: number;
     legacyAssignmentCount?: number;
+    primaryCommandStartState?: "pending" | "authorized";
     queueShard: number;
     attemptId: string;
   }): Promise<AssignmentWriteResult> {
@@ -547,7 +549,7 @@ export class DynamoPlaneStorageBase {
     cliResumeRef?: string | undefined;
     result?: SessionResult | undefined;
     suppressedTargetIndex?: number;
-    expectedStatus?: "running" | "cancelled";
+    expectedStatus?: "running" | "cancelled" | "timed_out";
     attemptId?: string;
     concurrencyId?: string | undefined;
     requireUnacknowledged?: boolean;
@@ -558,6 +560,9 @@ export class DynamoPlaneStorageBase {
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
     timedOutHostId?: string;
     timedOutAssignmentConnectionId?: string;
+    infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
+    terminalHookHandoff?: SessionRecord["terminalHookHandoff"];
+    expectedTerminalHookHandoffAbsent?: boolean;
   }): Promise<boolean> {
     return mainCheckout.releaseMainCheckoutSession(this.ctx, opts);
   }
@@ -686,6 +691,7 @@ export class DynamoPlaneStorageBase {
     requireUnacknowledged?: boolean;
     providerAccountLease?: SessionRecord["providerAccountLease"];
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+    infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
   }): Promise<boolean> {
     return sessions.tryRequeueSession(this.ctx, opts);
   }
@@ -854,6 +860,15 @@ export class DynamoPlaneStorageBase {
     return sessions.acknowledgeSession(this.ctx, arg);
   }
 
+  authorizePrimaryCommandStart(opts: {
+    sessionId: string;
+    worktreeId: string | null;
+    attemptId: string;
+    fence?: { hostId: string; connectionId: string };
+  }): Promise<boolean> {
+    return sessions.authorizePrimaryCommandStart(this.ctx, opts);
+  }
+
   finishSession(opts: {
     sessionId: string;
     worktreeId?: string | null;
@@ -869,17 +884,49 @@ export class DynamoPlaneStorageBase {
     cliResumeRef?: string;
     result?: SessionResult;
     fence?: { hostId: string; connectionId: string };
+    expectedReconnectDeadlineAt?: string;
+    expectedConnectionId?: string;
     concurrencyId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
     preserveProviderAccountLease?: boolean;
     preserveHostAssignmentLease?: boolean;
+    preserveWorkspaceSlotLease?: boolean;
+    preserveReconnectDeadlineAt?: boolean;
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
     timedOutHostId?: string;
     timedOutAssignmentConnectionId?: string;
+    infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
+    terminalHookHandoff?: SessionRecord["terminalHookHandoff"];
+    expectedTerminalHookHandoffAbsent?: boolean;
     expectedStatus?: string;
-    expectedReconnectDeadlineAt?: string;
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);
+  }
+
+  settleTerminalHookHandoff(opts: {
+    sessionId: string;
+    handoffId: string;
+    hostId: string;
+    connectionId: string;
+    result?: SessionResult;
+    worktreeId?: string | null;
+    mainCheckoutRepositoryId?: string;
+    archive?: ArchiveMetadata;
+  }): Promise<boolean> {
+    return sessions.settleTerminalHookHandoff(this.ctx, opts);
+  }
+
+  expireTerminalHookHandoff(opts: {
+    sessionId: string;
+    handoffId: string;
+    expiresAt: string;
+    worktreeId?: string | null;
+    hostId?: string;
+    connectionId?: string;
+    mainCheckoutRepositoryId?: string;
+    archive?: ArchiveMetadata;
+  }): Promise<boolean> {
+    return sessions.expireTerminalHookHandoff(this.ctx, opts);
   }
 
   releaseWorktree(worktreeId: string, opts?: { forceOffline?: boolean }): Promise<void> {

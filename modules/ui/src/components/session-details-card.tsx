@@ -1,4 +1,4 @@
-/* eslint-disable max-lines -- repository/workspace location and lineage share one details card. */
+/* eslint-disable max-lines -- session detail rendering spans execution targets and lineage. */
 "use client";
 
 import type { ReactNode } from "react";
@@ -9,6 +9,7 @@ import { SessionDetailTiming } from "./session-detail-timing.tsx";
 import type { SessionSummary } from "./session-detail-types.ts";
 import { SessionQueueDeadline } from "./session-queue-deadline.tsx";
 import { SessionRouteSummary } from "./session-route-summary.tsx";
+import { sessionInfrastructureRetryReason } from "./session-status-cell.tsx";
 import { SessionTimeoutDetail } from "./session-timeout-progress.tsx";
 
 export function SessionDetailsCard({
@@ -40,6 +41,24 @@ export function SessionDetailsCard({
               {s.concurrencyId ?? "—"}
             </dd>
           </div>
+          {s.infrastructureRetryCount != null || s.lastInfrastructureErrorCode ? (
+            <>
+              <div>
+                <dt className="text-xs uppercase text-muted-foreground">Infrastructure retries</dt>
+                <dd className="text-sm" data-pw="session-detail-infrastructure-retry-count">
+                  {s.infrastructureRetryCount ?? 0} of 1
+                </dd>
+              </div>
+              {s.lastInfrastructureErrorCode ? (
+                <div>
+                  <dt className="text-xs uppercase text-muted-foreground">Last retry reason</dt>
+                  <dd className="text-sm" data-pw="session-detail-infrastructure-retry-reason">
+                    {sessionInfrastructureRetryReason(s.lastInfrastructureErrorCode)}
+                  </dd>
+                </div>
+              ) : null}
+            </>
+          ) : null}
         </DetailGroup>
         {s.parentSessionId || s.rootSessionId ? (
           <DetailGroup title="Lineage">

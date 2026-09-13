@@ -43,6 +43,10 @@ export type SessionSummary = {
   exitCode?: number | null;
   errorCode?: string | null;
   errorMessage?: string | null;
+  /** Number of bounded infrastructure retries already consumed (maximum one). */
+  infrastructureRetryCount?: number | null;
+  /** Most recent infrastructure failure that caused an automatic retry. */
+  lastInfrastructureErrorCode?: "checkout_fetch_failed" | "host_lost" | string | null;
   metadata?: { createdBy?: unknown } | null;
   parentSessionId?: string | null;
   rootSessionId?: string | null;

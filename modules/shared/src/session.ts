@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- wire session contracts stay colocated for protocol compatibility. */
 import type {
   LogStream,
   SessionErrorCode,
@@ -5,6 +6,12 @@ import type {
   SessionStatus,
   SessionType,
 } from "./types.ts";
+import type {
+  TerminalHookAcknowledgedMessage,
+  TerminalHookCompleteMessage,
+  TerminalHookHandoffMessage,
+  TerminalStatusAcknowledgedMessage,
+} from "./terminal-hook-handoff.ts";
 import type { CommandResumeSpec } from "./command-resume.ts";
 import type { HostCapability, HostCapabilitiesAdvertisement } from "./host-capabilities.ts";
 import type { HostRuntimeReport } from "./host-runtime.ts";
@@ -36,6 +43,8 @@ export type SessionAssign = {
   resolvedArgv: string[];
   timeout: number;
   worktreeId: string | null;
+  /** Automatic infrastructure retries consumed before this assignment. */
+  infrastructureRetryCount?: number;
   /** Present only for a workspace session; the assigned slot is host-local. */
   workspacePoolId?: string;
   workspaceSlotId?: string;
@@ -133,6 +142,8 @@ export type HostWireMessage =
       resolvedArgv: string[];
       timeout: number;
       worktreeId: string | null;
+      /** Automatic infrastructure retries consumed before this assignment. */
+      infrastructureRetryCount?: number;
       workspacePoolId?: string;
       workspaceSlotId?: string;
       setupProfileId?: string;
@@ -159,10 +170,11 @@ export type HostWireMessage =
   /** Sent only after the control plane durably commits `session:ack` for the
    * current host connection. A successful WebSocket write is not an ACK. */
   | { type: "session:acknowledged"; sessionId: string; attemptId?: string | undefined }
-  /** Sent only after the control plane durably applies a `session:status`
-   * report. A successful WebSocket write is not delivery: the daemon retains
-   * and retries an unacknowledged terminal status until this arrives. */
-  | { type: "session:status-acknowledged"; sessionId: string; attemptId?: string | undefined }
+  /** Sent only after the control plane durably authorizes the primary CLI to launch. */
+  | { type: "session:command-start-acknowledged"; sessionId: string; attemptId: string }
+  | TerminalStatusAcknowledgedMessage
+  | TerminalHookHandoffMessage
+  | TerminalHookAcknowledgedMessage
   | { type: "session:cancel"; sessionId: string; attemptId?: string | undefined }
   /** Durable acknowledgement of an agent-initiated drain request. */
   | { type: "host:draining"; hostId: string }
@@ -219,6 +231,13 @@ export type HostToServerMessage =
       draining?: true;
     }
   | { type: "session:ack"; sessionId: string; worktreeId: string | null; attemptId: string }
+  /** Host asks the control plane to durably mark the primary CLI launch boundary. */
+  | {
+      type: "session:command-start";
+      sessionId: string;
+      worktreeId: string | null;
+      attemptId: string;
+    }
   | {
       type: "session:status";
       sessionId: string;
@@ -233,6 +252,7 @@ export type HostToServerMessage =
       cliResumeRef?: string;
       usage?: SessionUsage;
       result?: SessionResult;
+      deferTerminalHookResult?: true;
     }
   | {
       type: "session:usage";
@@ -241,6 +261,7 @@ export type HostToServerMessage =
       attemptId: string;
       usage: SessionUsage;
     }
+  | TerminalHookCompleteMessage
   | {
       type: "session:log";
       sessionId: string;

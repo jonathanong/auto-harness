@@ -390,6 +390,7 @@ export async function tryAssignWorkspaceSession(
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"];
     hostAssignmentCap?: number;
     legacyAssignmentCount?: number;
+    primaryCommandStartState?: "pending" | "authorized";
     queueShard: number;
   },
 ): Promise<AssignmentWriteResult> {
@@ -408,6 +409,7 @@ export async function tryAssignWorkspaceSession(
     ":true": true,
     ":hostAssignmentLease": opts.hostAssignmentLease ?? { hostId: opts.hostId },
     ":activeHostOrder": activeHostOrder(opts.now, opts.sessionId),
+    ":primaryCommandStartState": opts.primaryCommandStartState ?? "pending",
   };
   const sets = [
     "#s = :running",
@@ -426,6 +428,7 @@ export async function tryAssignWorkspaceSession(
     "resolvedRoute = :route",
     "assignmentConnectionId = :connectionId",
     "hostAssignmentLease = :hostAssignmentLease",
+    "primaryCommandStartState = :primaryCommandStartState",
   ];
   values[":null"] = null;
   if (opts.providerAccountLease) {
@@ -466,7 +469,7 @@ export async function tryAssignWorkspaceSession(
       Update: {
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
-        UpdateExpression: `SET ${sets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt, retryAfter, retryCount`,
+        UpdateExpression: `SET ${sets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt, retryAfter, retryCount, errorCode, errorMessage`,
         ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: values,

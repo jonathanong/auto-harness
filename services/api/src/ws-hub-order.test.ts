@@ -11,10 +11,12 @@ async function registeredSocket(
   bridge: ReturnType<typeof createPlaneWsBridge>,
   plane: ControlPlane,
   hostId: string,
+  protocolVersion?: number,
 ): Promise<{
   ws: WebSocket;
   hub: ReturnType<typeof bridge.attach>;
   server: ReturnType<typeof createServer>;
+  origin: string;
 }> {
   const server = createServer();
   const hub = bridge.attach(server, plane);
@@ -25,7 +27,13 @@ async function registeredSocket(
   await new Promise<void>((resolve, reject) => {
     ws.on("open", () =>
       ws.send(
-        JSON.stringify({ type: "host:register", hostId, worktrees: [], commandProfiles: [] }),
+        JSON.stringify({
+          type: "host:register",
+          hostId,
+          worktrees: [],
+          commandProfiles: [],
+          ...(protocolVersion !== undefined ? { protocolVersion } : {}),
+        }),
       ),
     );
     const onMessage = (raw: WebSocket.RawData) => {
@@ -36,7 +44,7 @@ async function registeredSocket(
     ws.on("message", onMessage);
     ws.on("error", reject);
   });
-  return { ws, hub, server };
+  return { ws, hub, server, origin: `ws://127.0.0.1:${address.port}` };
 }
 
 async function closeHub(
@@ -62,6 +70,108 @@ const wireLog = (sessionId: string, seq = 1) =>
   });
 
 describe("createPlaneWsBridge message ordering", () => {
+  it("fences a detached timeout's deferred terminal report to its original host", async () => {
+    const bridge = createPlaneWsBridge();
+    const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
+    const session = {
+      id: "timed-out-session",
+      repositoryId: "repo",
+      prompt: "run",
+      target: { commandId: "command" },
+      fallbacks: [],
+      targetDisplayNames: [],
+      queueTtlSeconds: 60,
+      queueExpiresAt: "2026-01-01T01:00:00.000Z",
+      timeout: 60,
+      priority: 0,
+      requiredLabels: [],
+      status: "timed_out" as const,
+      queueShard: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:00:00.000Z",
+      hostId: null,
+      worktreeId: null,
+      timedOutHostId: "timeout-host",
+      attemptId: "attempt",
+    };
+    let durable = session;
+    plane.state.sessions.set(session.id, session);
+    const opened = await registeredSocket(bridge, plane, "timeout-host", 7);
+    const stale = new WebSocket(`${opened.origin}/ws`);
+    await new Promise<void>((resolve, reject) => {
+      stale.once("open", resolve);
+      stale.once("error", reject);
+    });
+    const registered = new Promise<void>((resolve) => {
+      stale.on("message", (raw) => {
+        if (JSON.parse(String(raw)).type === "host:registered") resolve();
+      });
+    });
+    stale.send(
+      JSON.stringify({
+        type: "host:register",
+        hostId: "different-host",
+        worktrees: [],
+        commandProfiles: [],
+        protocolVersion: 7,
+      }),
+    );
+    await registered;
+    const connectionId = plane.state.hostConnection.get("timeout-host")!;
+    plane.state.storage = {
+      getSession: async () => durable,
+      getHostLock: async (hostId: string) => (hostId === "timeout-host" ? connectionId : null),
+      deleteConnection: async () => undefined,
+      finishSession: async (input: { terminalHookHandoff?: unknown }) => {
+        durable = { ...durable, terminalHookHandoff: input.terminalHookHandoff } as typeof durable;
+        return true;
+      },
+    } as never;
+    try {
+      const acknowledged = new Promise<Record<string, unknown>>((resolve) => {
+        opened.ws.on("message", (raw) => resolve(JSON.parse(String(raw))));
+      });
+      opened.ws.send(
+        JSON.stringify({
+          type: "session:status",
+          sessionId: session.id,
+          worktreeId: null,
+          attemptId: "attempt",
+          status: "failed",
+          errorCode: "checkout_fetch_failed",
+          deferTerminalHookResult: true,
+        }),
+      );
+      await expect(acknowledged).resolves.toMatchObject({
+        type: "session:status-acknowledged",
+        sessionId: session.id,
+        attemptId: "attempt",
+        terminalHookHandoffId: expect.any(String),
+      });
+
+      const closed = new Promise<{ code: number; reason: string }>((resolve) => {
+        stale.once("close", (code, reason) => resolve({ code, reason: String(reason) }));
+      });
+      stale.send(
+        JSON.stringify({
+          type: "session:status",
+          sessionId: session.id,
+          worktreeId: null,
+          attemptId: "attempt",
+          status: "failed",
+          errorCode: "checkout_fetch_failed",
+          deferTerminalHookResult: true,
+        }),
+      );
+      await expect(closed).resolves.toEqual({ code: 1008, reason: "message not authorized" });
+    } finally {
+      // The fixture only models the durable writes under test. Let the normal
+      // in-memory disconnect path clean up the owner socket.
+      plane.state.storage = undefined;
+      await closeHub(opened.ws, opened.hub, opened.server);
+    }
+  });
+
   it("reports a fenced batch rejection after the default coalescing window", async () => {
     const bridge = createPlaneWsBridge();
     const plane = new ControlPlane({ onHostMessage: bridge.onHostMessage });

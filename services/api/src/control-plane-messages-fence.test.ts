@@ -158,6 +158,53 @@ describe("durable host-message fencing", () => {
     await expectAcknowledgedStatusRetry(state, "stale-connection");
   });
 
+  it("replays the durable handoff id on a warm deferred-status retry", async () => {
+    const state = createControlPlaneState({ now: () => "now" });
+    const replayed = {
+      ...running(),
+      status: "failed" as const,
+      hostId: null,
+      worktreeId: null,
+      infrastructureRetryAttemptId: "previous-attempt",
+      terminalHookHandoff: {
+        handoffId: "handoff",
+        attemptId: "a",
+        hostId: "h",
+        repositoryId: "r",
+        worktreeId: "w",
+        status: "failed" as const,
+        errorCode: "checkout_fetch_failed" as const,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      },
+    };
+    state.sessions.set("s", replayed);
+    state.storage = { getSession: async () => replayed } as never;
+
+    await expect(
+      handleHostMessageDurable(
+        state,
+        {
+          type: "session:status",
+          sessionId: "s",
+          worktreeId: "w",
+          attemptId: "a",
+          status: "failed",
+          errorCode: "checkout_fetch_failed",
+          deferTerminalHookResult: true,
+        },
+        "warm-connection",
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      sessionStatusAcknowledged: {
+        sessionId: "s",
+        attemptId: "a",
+        retryAccepted: false,
+        terminalHookHandoffId: "handoff",
+      },
+    });
+  });
+
   it("rejects a session:status retry from a superseded connection while the session is still genuinely running", async () => {
     const state = createControlPlaneState({ now: () => "now" });
     const stillRunning = running();

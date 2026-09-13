@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { disconnectScheduledMainCheckouts } from "./control-plane-worktrees-disconnect-scheduled.ts";
+import { reclaimScheduledReconnect } from "./control-plane-reconnect-scheduled.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -35,6 +36,46 @@ function state() {
 }
 
 describe("scheduled disconnect branch coverage", () => {
+  it("retries one pre-command scheduled host loss and terminates an authorized one", async () => {
+    const retrying = state();
+    const pending = session({ ackReceivedAt: NOW, primaryCommandStartState: "pending" });
+    retrying.mainCheckoutLeases.set("host\0repo", { sessionId: pending.id, connectionId: "old" });
+    const requeued: string[] = [];
+    expect(await reclaimScheduledReconnect(retrying, pending, requeued)).toBe(true);
+    expect(requeued).toEqual(["s"]);
+    expect(retrying.sessions.get("s")).toMatchObject({
+      status: "queued",
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "host_lost",
+    });
+
+    const terminal = state();
+    const authorized = session({ ackReceivedAt: NOW, primaryCommandStartState: "authorized" });
+    terminal.mainCheckoutLeases.set("host\0repo", {
+      sessionId: authorized.id,
+      connectionId: "old",
+    });
+    expect(await reclaimScheduledReconnect(terminal, authorized, [])).toBe(true);
+    expect(terminal.sessions.get("s")).toMatchObject({
+      status: "failed",
+      errorCode: "host_lost",
+      mainCheckoutLease: true,
+      assignmentConnectionId: "old",
+      ackReceivedAt: NOW,
+    });
+    expect(terminal.mainCheckoutLeases.get("host\0repo")).toEqual({
+      sessionId: "s",
+      connectionId: "old",
+    });
+    expect(terminal.sessions.get("s")?.terminalHookHandoff).toMatchObject({
+      hostId: "host",
+      worktreeId: null,
+      status: "failed",
+      errorCode: "host_lost",
+    });
+    expect(terminal.archives.has("sessions/s/logs.jsonl")).toBe(false);
+  });
+
   it("uses the active-claim query and skips unrelated sessions", async () => {
     const current = state();
     current.sessions.set("s", session({ ackReceivedAt: undefined }));

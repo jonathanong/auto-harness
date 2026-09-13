@@ -383,6 +383,7 @@ describe("scheduled reconnect fencing", () => {
       createdAt: NOW,
       startedAt: NOW,
       ackReceivedAt: NOW,
+      primaryCommandStartState: "pending",
       hostId: "host-1",
       worktreeId: null,
       assignmentConnectionId: "old",

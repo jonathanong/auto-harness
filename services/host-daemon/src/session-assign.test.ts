@@ -15,6 +15,7 @@ describe("sessionAssignFromWire", () => {
         resolvedArgv: ["echo", "p"],
         timeout: 10,
         worktreeId: "w",
+        infrastructureRetryCount: 1,
         ref: "main",
         setupScript: "true",
         resume: true,
@@ -30,6 +31,7 @@ describe("sessionAssignFromWire", () => {
     ).toMatchObject({
       sessionType: "scheduled",
       attemptId: "attempt-1",
+      infrastructureRetryCount: 1,
       ref: "main",
       setupScript: "true",
       resume: true,

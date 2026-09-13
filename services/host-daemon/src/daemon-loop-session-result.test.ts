@@ -59,6 +59,13 @@ describe("DaemonLoop structured terminal results", () => {
       const transport = createAcknowledgingLoopbackTransport({
         sendToServer: (message) => {
           sent.push(message);
+          if (message.type === "session:command-start") {
+            transport.deliver({
+              type: "session:command-start-acknowledged",
+              sessionId: message.sessionId,
+              attemptId: message.attemptId,
+            });
+          }
           if (message.type === "session:status" && message.sessionId === "v3") {
             v3StatusAttempts += 1;
             if (v3StatusAttempts === 1) throw new Error("disconnected");

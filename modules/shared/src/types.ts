@@ -20,6 +20,8 @@ export type SessionErrorCode =
   | "resume_failed"
   | "unknown_command_profile"
   | "setup_failed"
+  | "checkout_fetch_failed"
+  | "host_lost"
   | "workspace_cleanup_failed";
 
 export type UserRole = "read-only" | "author" | "operator" | "maintainer" | "agent" | "admin";

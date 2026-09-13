@@ -11,6 +11,8 @@ import type { SessionResult } from "@auto-harness/shared";
 
 import type { ProcessRunner } from "./executor.ts";
 import type { LogStreamer } from "./log-streamer.ts";
+import { createDeferredTerminalHookSettlement } from "./deferred-terminal-hook.ts";
+import type { GitHubAppConfig } from "./github-app.ts";
 import { runTerminalHook } from "./terminal-hook.ts";
 import { collectSessionResult } from "./session-result.ts";
 
@@ -22,6 +24,12 @@ export type SessionRunResult = {
   cliResumeRef?: string;
   usage?: SessionUsage;
   result?: SessionResult;
+  /** Settles a retained first-fetch-failure hook before its worktree claim releases. */
+  settleDeferredTerminalHook?: (
+    runHook: boolean,
+    /** The v7 control-plane handoff lease, when settlement is recovery-owned. */
+    deadlineAtMs?: number,
+  ) => Promise<SessionResult | undefined>;
   logs: SessionLogChunk[];
   /** Local cleanup/quarantine state; the daemon forwards the terminal failure normally. */
   workspaceSlotError?: string;
@@ -32,6 +40,9 @@ export type SessionRunResult = {
 type SessionOutcome = {
   status: SessionTerminalStatus;
   exitCode: number | null;
+  /** Do not run the terminal hook when cancellation wins before command start. */
+  suppressTerminalHook?: boolean;
+  deferTerminalHook?: boolean;
   errorCode?: SessionErrorCode;
   errorMessage?: string;
   cliResumeRef?: string;
@@ -100,7 +111,7 @@ async function finishSession(
   environmentIsChild = false,
 ): Promise<SessionRunResult> {
   streamer.flush();
-  if (hookScript) {
+  if (hookScript && !outcome.suppressTerminalHook) {
     await runTerminalHook(processRunner, {
       scriptPath: hookScript,
       cwd: worktreePath,
@@ -152,6 +163,8 @@ export async function finishClaimedSession(
   childEnvSource: NodeJS.ProcessEnv = process.env,
   baseline?: string,
   environmentIsChild = false,
+  githubApp?: GitHubAppConfig,
+  nowMs?: () => number,
 ): Promise<SessionRunResult> {
   let refreshed: Awaited<ReturnType<ClaimedHookTarget["currentHookTarget"]>> | undefined;
   try {
@@ -164,19 +177,40 @@ export async function finishClaimedSession(
     refreshed = null;
   }
   const target = refreshed;
-  return finishSession(
+  const finish = await finishSession(
     processRunner,
     streamer,
     logs,
     assign,
     claimed.worktree.id,
     target?.cwd ?? claimed.cwd,
-    target?.repository.terminalHookScript,
+    outcome.deferTerminalHook ? undefined : target?.repository.terminalHookScript,
     outcome,
     childEnvSource,
     target?.allowedRoots ?? [],
     baseline,
-    target !== null && target !== undefined,
+    // The first checkout failure must not publish pre-hook facts: a v6 peer
+    // turns the terminal disposition into a durable hook handoff and archives
+    // only its post-hook completion result.
+    !outcome.deferTerminalHook && target !== null && target !== undefined,
     environmentIsChild,
   );
+  if (!outcome.deferTerminalHook) return finish;
+  const { result: _result, ...deferredFinish } = finish;
+  return {
+    ...deferredFinish,
+    settleDeferredTerminalHook: createDeferredTerminalHookSettlement({
+      processRunner,
+      streamer,
+      assign,
+      claimed,
+      status: outcome.status,
+      errorCode: outcome.errorCode,
+      childEnvSource,
+      ...(baseline !== undefined ? { baseline } : {}),
+      environmentIsChild,
+      ...(githubApp !== undefined ? { githubApp } : {}),
+      ...(nowMs !== undefined ? { nowMs } : {}),
+    }),
+  };
 }

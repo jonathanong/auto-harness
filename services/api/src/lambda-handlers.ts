@@ -30,6 +30,7 @@ import {
 } from "./operational-metrics.ts";
 import { createSlackLifecycleWorker } from "./slack-runtime.ts";
 import { parseHostMessage } from "./ws-hub.ts";
+import { durableConnectionProtocolVersion } from "./control-plane-protocol.ts";
 import { assignQueuedAndScheduledDurable } from "./request-assignment.ts";
 import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read-catalog.ts";
 
@@ -645,7 +646,7 @@ export async function createLambdaRuntime(
           return { statusCode: 403 };
         }
         const message = parseHostMessage(event.body ?? "", {
-          protocolVersion: authenticated.protocolVersion ?? 0,
+          protocolVersion: durableConnectionProtocolVersion(authenticated),
         });
         // A parse failure or a hostId that doesn't match this connection's own
         // authenticated lease means the *sender* is misbehaving (or misconfigured
@@ -666,15 +667,28 @@ export async function createLambdaRuntime(
                 message,
                 connectionId,
                 message.type === "host:register",
-                authenticated.protocolVersion ?? 0,
+                durableConnectionProtocolVersion(authenticated),
               );
+        const sessionCommandStartAcknowledged = result.sessionCommandStartAcknowledged;
         if (result.ok && message.type === "host:register") {
-          trackDelivery(message.hostId, {
+          // Registration establishes this exact socket as the handoff owner.
+          // Keep the wire order strict: a daemon must see registration before
+          // recovery work, and neither frame may follow a newer host socket.
+          await postToConnection(created.plane, management, authenticated.hostId, connectionId, {
             type: "host:registered",
             hostId: message.hostId,
             connectionId: result.connectionId,
             protocolVersion: HOST_PROTOCOL_VERSION,
           });
+          for (const handoff of result.terminalHookHandoffs ?? []) {
+            await postToConnection(
+              created.plane,
+              management,
+              authenticated.hostId,
+              connectionId,
+              handoff,
+            );
+          }
           await created.plane.requestAssignment();
         } else if (result.ok && message.type === "host:keepalive") {
           // Same inbound-connection delivery as session:status-acknowledged:
@@ -682,13 +696,27 @@ export async function createLambdaRuntime(
           // trackDelivery's getHostConnectionId lookup misses on a warm
           // container that never saw this host's register and the protocol-2
           // daemon would stall-reconnect after a successfully committed beat.
-          track(
-            postToConnection(created.plane, management, authenticated.hostId, connectionId, {
+          const keepaliveDelivery = async (): Promise<void> => {
+            await postToConnection(created.plane, management, authenticated.hostId, connectionId, {
               type: "host:keepalive-ack",
               hostId: message.hostId,
               at: message.at,
-            }).catch(() => undefined),
-          );
+            });
+            // Keepalive reconciliation can discover a terminal session while
+            // this daemon is still connected. Use the exact inbound
+            // connection, not the warm container's hostId cache, so a
+            // replacement registration cannot receive or lose this handoff.
+            for (const handoff of result.terminalHookHandoffs ?? []) {
+              await postToConnection(
+                created.plane,
+                management,
+                authenticated.hostId,
+                connectionId,
+                handoff,
+              );
+            }
+          };
+          track(keepaliveDelivery().catch(() => undefined));
         } else if (result.sessionAcknowledged && message.type === "session:ack") {
           // An ACK confirmation permits execution, so it must reach the
           // connection that submitted this exact ACK. A warm Lambda that did
@@ -699,6 +727,22 @@ export async function createLambdaRuntime(
               type: "session:acknowledged",
               sessionId: result.sessionAcknowledged,
               attemptId: message.attemptId,
+            }).catch(() => undefined),
+          );
+        } else if (
+          message.type === "session:command-start" &&
+          sessionCommandStartAcknowledged?.sessionId === message.sessionId
+        ) {
+          // Command-start authorization is the durable fence that permits the
+          // daemon to spawn its primary CLI. Deliver the confirmation on the
+          // exact connection that submitted the command-start frame: a warm
+          // Lambda can miss the in-process hostConnection cache, and a stale
+          // cache entry would otherwise authorize a different socket.
+          track(
+            postToConnection(created.plane, management, authenticated.hostId, connectionId, {
+              type: "session:command-start-acknowledged",
+              sessionId: sessionCommandStartAcknowledged.sessionId,
+              attemptId: sessionCommandStartAcknowledged.attemptId,
             }).catch(() => undefined),
           );
         } else if (result.sessionStatusAcknowledged && message.type === "session:status") {
@@ -713,6 +757,29 @@ export async function createLambdaRuntime(
               type: "session:status-acknowledged",
               sessionId: result.sessionStatusAcknowledged.sessionId,
               attemptId: result.sessionStatusAcknowledged.attemptId,
+              ...(result.sessionStatusAcknowledged.retryAccepted !== undefined
+                ? { retryAccepted: result.sessionStatusAcknowledged.retryAccepted }
+                : {}),
+              ...(result.sessionStatusAcknowledged.terminalHookHandoffId !== undefined
+                ? { terminalHookHandoffId: result.sessionStatusAcknowledged.terminalHookHandoffId }
+                : {}),
+              ...(result.sessionStatusAcknowledged.terminalHookHandoffExpiresAt !== undefined
+                ? {
+                    terminalHookHandoffExpiresAt:
+                      result.sessionStatusAcknowledged.terminalHookHandoffExpiresAt,
+                  }
+                : {}),
+            }).catch(() => undefined),
+          );
+        } else if (
+          result.sessionTerminalHookAcknowledged &&
+          message.type === "session:terminal-hook-complete"
+        ) {
+          track(
+            postToConnection(created.plane, management, authenticated.hostId, connectionId, {
+              type: "session:terminal-hook-acknowledged",
+              sessionId: result.sessionTerminalHookAcknowledged.sessionId,
+              handoffId: result.sessionTerminalHookAcknowledged.handoffId,
             }).catch(() => undefined),
           );
         } else if (result.hostDraining) {

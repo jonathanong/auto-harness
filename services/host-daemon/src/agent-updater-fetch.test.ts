@@ -51,6 +51,22 @@ describe("HTTPS update fetcher", () => {
     );
   });
 
+  it("ignores a non-numeric content length on the legacy artifact path", async () => {
+    const fetcher = createHttpsUpdateFetcher(
+      "https://updates.example.test/manifest.json",
+      async () => ({
+        ok: true,
+        status: 200,
+        headers: { get: () => "unknown" },
+        body: null,
+        arrayBuffer: async () => new Uint8Array([9]).buffer,
+      }),
+    );
+    await expect(fetcher.fetchArtifact("https://updates.example.test/agent.tgz")).resolves.toEqual(
+      new Uint8Array([9]),
+    );
+  });
+
   it("fails closed on HTTP errors, timeouts, and http artifacts", async () => {
     const fetcher = createHttpsUpdateFetcher(
       "https://updates.example.test/manifest.json",

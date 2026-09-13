@@ -36,6 +36,7 @@ describe("linux unit rendering", () => {
     expect(renderLinuxUnit(unitTemplate, "/home/op/src")).toContain("Type=notify");
     expect(() => renderLinuxUnit(unitTemplate, "/tmp\nEvil=1")).toThrow(/single line/);
     expect(() => renderLinuxUnit("Type=notify\n", "/tmp")).toThrow(/WorkingDirectory/);
+    expect(() => renderLinuxUnit("WorkingDirectory=/tmp\n", "/tmp")).toThrow(/ExecStart/);
   });
 });
 

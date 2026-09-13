@@ -73,6 +73,8 @@ export function SessionDetail({
         errorMessage={s.errorMessage}
         resumeFallback={s.resumeFallback}
         resumedFromSessionId={s.resumedFromSessionId}
+        infrastructureRetryCount={s.infrastructureRetryCount}
+        lastInfrastructureErrorCode={s.lastInfrastructureErrorCode}
       />
 
       <TabPanels

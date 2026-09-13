@@ -115,6 +115,7 @@ export type PublicSession = Omit<
   | "cancelledByDrainOperationId"
   | "activeHostId"
   | "activeHostOrder"
+  | "primaryCommandStartState"
   | "sessionApiKeyHash"
   | "descendantCount"
 > & {

@@ -199,6 +199,9 @@ export function addRuntimeObservability(input: {
     "Cooldowns",
     "LogDrops",
     "LogSeqGaps",
+    // A retry is an expected bounded recovery. Alarm only when the one-retry budget is
+    // exhausted and the logical session still cannot proceed.
+    "InfrastructureRetryExhausted",
   ] as const) {
     addErrorAlarm(input.scope, name, operationalMetric(name, env, "Sum", cloudwatch.Unit.COUNT), 1);
   }

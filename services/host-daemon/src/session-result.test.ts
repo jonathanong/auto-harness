@@ -406,6 +406,56 @@ describe("collectSessionResult", () => {
     expect(calls.some((call) => call.argv.includes("pr"))).toBe(false);
   });
 
+  it("honors an earlier absolute deadline for recovery handoff result probes", async () => {
+    vi.useFakeTimers();
+    const calls: RunProcessOptions[] = [];
+    const runner: ProcessRunner = {
+      run(options) {
+        calls.push(options);
+        return new Promise((resolve) => {
+          options.signal?.addEventListener(
+            "abort",
+            () => resolve({ exitCode: null, timedOut: false, cancelled: true, signal: null }),
+            { once: true },
+          );
+        });
+      },
+    };
+
+    const collecting = collectSessionResult({
+      runner,
+      cwd: process.cwd(),
+      status: "completed",
+      baseline: "0123456789012345678901234567890123456789",
+      environment: process.env,
+      deadlineAtMs: Date.now() + 1_000,
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await expect(collecting).resolves.toEqual({
+      summary: "Session completed",
+      summarySource: "harness",
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.timeoutMs).toBeLessThanOrEqual(1_000);
+    expect(calls[0]?.signal?.aborted).toBe(true);
+  });
+
+  it("does not start probes after an already-expired recovery deadline", async () => {
+    const runner: ProcessRunner = { run: vi.fn() };
+    const result = await collectSessionResult({
+      runner,
+      cwd: process.cwd(),
+      status: "completed",
+      baseline: "0123456789012345678901234567890123456789",
+      environment: process.env,
+      deadlineAtMs: Date.now() - 1,
+    });
+
+    expect(result).toEqual({ summary: "Session completed", summarySource: "harness" });
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
   it("does not lose a deadline that expires while a probe registers its completion", async () => {
     vi.useFakeTimers();
     const runner: ProcessRunner = {

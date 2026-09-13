@@ -1,5 +1,10 @@
 /* eslint-disable max-lines */
-import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
+import {
+  isSessionErrorCode,
+  isTerminalSessionStatus,
+  type HostToServerMessage,
+  type HostWireMessage,
+} from "@auto-harness/shared";
 import WebSocket from "ws";
 
 import type { DaemonTransport, SendOptions } from "./daemon-transport-types.ts";
@@ -327,6 +332,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
           registered &&
           (("sessionId" in message &&
             (message.type === "session:acknowledged" ||
+              message.type === "session:command-start-acknowledged" ||
               message.type === "session:status-acknowledged" ||
               message.type === "session:cancel") &&
             typeof message.sessionId === "string" &&
@@ -335,7 +341,42 @@ export function createWsTransport(options: Options): DaemonTransport & {
             (message.attemptId === undefined ||
               (typeof message.attemptId === "string" &&
                 message.attemptId.length > 0 &&
-                message.attemptId.length <= 512))) ||
+                message.attemptId.length <= 512)) &&
+            (message.type !== "session:status-acknowledged" ||
+              !("retryAccepted" in message) ||
+              typeof message.retryAccepted === "boolean") &&
+            (message.type !== "session:status-acknowledged" ||
+              !("terminalHookHandoffId" in message) ||
+              (typeof message.terminalHookHandoffId === "string" &&
+                message.terminalHookHandoffId.length > 0 &&
+                message.terminalHookHandoffId.length <= 512)) &&
+            (message.type !== "session:status-acknowledged" ||
+              !("terminalHookHandoffExpiresAt" in message) ||
+              (typeof message.terminalHookHandoffExpiresAt === "string" &&
+                Number.isFinite(Date.parse(message.terminalHookHandoffExpiresAt)) &&
+                message.terminalHookHandoffExpiresAt.length <= 128))) ||
+            (message.type === "session:terminal-hook" &&
+              "handoffId" in message &&
+              "repositoryId" in message &&
+              "worktreeId" in message &&
+              "expiresAt" in message &&
+              boundedWireText(message.handoffId) &&
+              boundedWireText(message.sessionId) &&
+              boundedWireText(message.repositoryId) &&
+              typeof message.expiresAt === "string" &&
+              Number.isFinite(Date.parse(message.expiresAt)) &&
+              (message.worktreeId === null || boundedWireText(message.worktreeId)) &&
+              isTerminalSessionStatus(message.status) &&
+              (message.errorCode === undefined || isSessionErrorCode(message.errorCode)) &&
+              optionalWireText(message.ref, 4_096) &&
+              (message.metadata === undefined ||
+                (typeof message.metadata === "object" &&
+                  message.metadata !== null &&
+                  !Array.isArray(message.metadata)))) ||
+            (message.type === "session:terminal-hook-acknowledged" &&
+              "handoffId" in message &&
+              boundedWireText(message.handoffId) &&
+              boundedWireText(message.sessionId)) ||
             message.type === "session:assign" ||
             message.type === "host:draining" ||
             message.type === "host:drain" ||
@@ -410,4 +451,12 @@ export function createWsTransport(options: Options): DaemonTransport & {
       registeredReject?.(closeError);
     },
   };
+}
+
+function boundedWireText(candidate: unknown, max = 512): candidate is string {
+  return typeof candidate === "string" && candidate.length > 0 && candidate.length <= max;
+}
+
+function optionalWireText(candidate: unknown, max = 512): boolean {
+  return candidate === undefined || (typeof candidate === "string" && candidate.length <= max);
 }

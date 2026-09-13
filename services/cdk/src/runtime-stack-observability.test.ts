@@ -8,7 +8,7 @@ import { HTTP_THROTTLE, WEBSOCKET_THROTTLE } from "./runtime-observability.ts";
 
 /** The alarm set both the default and accessLogsEnabled stacks provision identically. */
 function assertStandardAlarms(template: Template): void {
-  template.resourceCountIs("AWS::CloudWatch::Alarm", 12);
+  template.resourceCountIs("AWS::CloudWatch::Alarm", 13);
   template.hasResourceProperties("AWS::CloudWatch::Alarm", {
     MetricName: "QueueAgeSeconds",
     Namespace: "AutoHarness",
@@ -24,6 +24,10 @@ function assertStandardAlarms(template: Template): void {
     Namespace: "AutoHarness",
   });
   template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+    MetricName: "InfrastructureRetryExhausted",
+    Namespace: "AutoHarness",
+  });
+  template.hasResourceProperties("AWS::CloudWatch::Alarm", {
     MetricName: "Errors",
     Namespace: "AWS/Lambda",
   });
@@ -34,6 +38,8 @@ function assertStandardAlarms(template: Template): void {
   const rendered = JSON.stringify(template.toJSON());
   expect(rendered).toContain("IntegrationError");
   expect(rendered).toContain("ExecutionError");
+  // Successful bounded retries are expected recovery telemetry, not an alarm signal.
+  expect(rendered).not.toContain('"MetricName":"InfrastructureRetries"');
 }
 
 describe("runtime observability", () => {

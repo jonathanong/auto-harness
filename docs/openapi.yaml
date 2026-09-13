@@ -1090,6 +1090,24 @@ components:
           type: string
           description: Stable root session for this lineage; absent on root sessions.
         result: { $ref: "#/components/schemas/SessionResult" }
+        errorCode:
+          type: string
+          description: Machine-readable terminal or routing reason, when present (including usage_limit, queue_expired, checkout_fetch_failed, and host_lost).
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+          description: Optional bounded human-readable diagnostic.
+        infrastructureRetryCount:
+          type: integer
+          minimum: 0
+          maximum: 1
+          description: Automatic infrastructure retries consumed for this logical session.
+        lastInfrastructureErrorCode:
+          type: string
+          enum: [checkout_fetch_failed, host_lost]
+          nullable: true
+          description: Most recent bounded infrastructure retry cause, if any.
       additionalProperties: true
     SessionPage:
       type: object

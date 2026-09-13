@@ -35,6 +35,7 @@ export {
 export { tryAssignSession } from "./plane-storage-sessions-assign.ts";
 export { failExpiredResumeSession } from "./plane-storage-sessions-assign-resume.ts";
 export { acknowledgeSession } from "./plane-storage-sessions-ack.ts";
+export { authorizePrimaryCommandStart } from "./plane-storage-sessions-command-start.ts";
 export {
   cancelQueuedSession,
   cancelRunningSession,
@@ -42,7 +43,11 @@ export {
 } from "./plane-storage-sessions-cancel.ts";
 export { releaseCancelledSessionWorktree } from "./plane-storage-sessions-cancel-release.ts";
 export { tryRequeueSession } from "./plane-storage-sessions-requeue.ts";
-export { finishSession } from "./plane-storage-sessions-terminal.ts";
+export {
+  expireTerminalHookHandoff,
+  finishSession,
+  settleTerminalHookHandoff,
+} from "./plane-storage-sessions-terminal.ts";
 export {
   requeueUsageLimitedSession,
   requeueUsageLimitedWorkspaceSession,

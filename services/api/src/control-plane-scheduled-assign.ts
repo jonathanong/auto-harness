@@ -15,6 +15,8 @@ import {
   hostEnvironmentReady,
 } from "./control-plane-host-environment.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
+import { commandStartStateForProtocol } from "./control-plane-command-start.ts";
+import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import { planScheduledPlacement } from "./queue-placement-planner.ts";
 import {
@@ -93,6 +95,7 @@ function wire(
     resolvedArgv: session.resolvedArgv!,
     timeout: session.timeout,
     worktreeId: null,
+    infrastructureRetryCount: session.infrastructureRetryCount ?? 0,
     assignedAt: now,
     attemptId: session.attemptId!,
     ...(session.ref ? { ref: session.ref } : {}),
@@ -215,6 +218,9 @@ export async function assignScheduledQueuedDurable(
                 : {}),
               queueShard: session.queueShard,
               attemptId,
+              primaryCommandStartState: commandStartStateForProtocol(
+                connectionProtocolVersion(connection),
+              ),
               ...(apiKey ? { sessionApiKeyHash: apiKey.hash } : {}),
             }))
           : !state.mainCheckoutLeases.has(leaseKey(hostId, session.repositoryId));
@@ -259,6 +265,9 @@ export async function assignScheduledQueuedDurable(
       assignmentConnectionId: connectionId,
       mainCheckoutLease: true,
       attemptId,
+      primaryCommandStartState: commandStartStateForProtocol(
+        connectionProtocolVersion(state.connections.get(connectionId)),
+      ),
       ...(sessionApiKey ? { sessionApiKeyHash: sessionApiKey.hash } : {}),
       ...(lease ? { providerAccountLease: lease } : {}),
       hostAssignmentLease: { hostId },

@@ -1,7 +1,9 @@
+/* eslint-disable max-lines -- SSR coverage spans terminal recovery and workspace session variants. */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { SessionDetail } from "./session-detail.tsx";
+import { SessionDetailsCard } from "./session-details-card.tsx";
 import { SESSION_QUEUED_WAIT_COPY } from "./session-status-cell.tsx";
 
 function render(node: React.ReactNode) {
@@ -9,6 +11,29 @@ function render(node: React.ReactNode) {
 }
 
 describe("SessionDetail static markup", () => {
+  it("shows a zero retry count when a recorded retry reason has no count", () => {
+    const details = render(
+      <SessionDetailsCard
+        session={{
+          id: "session/retry-reason-only",
+          status: "queued",
+          lastInfrastructureErrorCode: "host_lost",
+        }}
+      />,
+    );
+
+    expect(details).toContain('data-pw="session-detail-infrastructure-retry-count">0 of 1');
+    expect(details).toContain("Host lost before launch");
+
+    const countOnly = render(
+      <SessionDetailsCard
+        session={{ id: "session/retry-count-only", status: "queued", infrastructureRetryCount: 1 }}
+      />,
+    );
+    expect(countOnly).toContain('data-pw="session-detail-infrastructure-retry-count">1 of 1');
+    expect(countOnly).not.toContain("Last retry reason");
+  });
+
   it("renders linked, plain, and absent session relationships with full details", () => {
     const linkedSession = {
       id: "session/a",
@@ -32,6 +57,8 @@ describe("SessionDetail static markup", () => {
       errorMessage: "Retrying",
       resumeFallback: true,
       resumedFromSessionId: "session/old",
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "checkout_fetch_failed",
       parentSessionId: "session/parent",
       rootSessionId: "session/root",
     };
@@ -78,6 +105,8 @@ describe("SessionDetail static markup", () => {
     expect(details).toContain('data-pw="session-detail-worktree"');
     expect(details).toContain("30s");
     expect(details).toContain('data-pw="session-detail-priority">0');
+    expect(details).toContain('data-pw="session-detail-infrastructure-retry-count">1 of 1');
+    expect(details).toContain("Checkout fetch failed");
     expect(details).toContain('data-pw="session-usage-summary"');
     expect(details).toContain('data-pw="session-detail-parent-session"');
     expect(details).toContain('href="/sessions/session%2Fparent"');

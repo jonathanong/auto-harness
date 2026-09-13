@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- connection, rate, and close-race cases share one WebSocket harness. */
 import { createServer } from "node:http";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import type { HostToServerMessage } from "@auto-harness/shared";
@@ -140,13 +140,16 @@ describe("WebSocket hub connection guards", () => {
       await harness.close();
     }
 
-    const closedRegister = await startHarness(new SlowAcceptPlane());
+    const slowAccept = new SlowAcceptPlane();
+    const disconnect = vi.spyOn(slowAccept, "disconnectHostDurable");
+    const closedRegister = await startHarness(slowAccept);
     try {
       const socket = await open(`${closedRegister.origin}/ws`);
       socket.send(JSON.stringify(register("host-closed-register")));
       socket.close();
       expect(await waitForClose(socket)).toBe(1005);
       await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(disconnect).toHaveBeenCalledWith("late");
     } finally {
       await closedRegister.close();
     }

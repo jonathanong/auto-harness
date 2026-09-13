@@ -107,6 +107,53 @@ function providerAssignmentState() {
 }
 
 describe("assignment residual coverage", () => {
+  it("clears terminal errors when assigning a queued prompt without storage", () => {
+    const state = providerAssignmentState();
+    const queued = state.sessions.get("s")!;
+    state.commands.set("command", {
+      id: "command",
+      name: "command",
+      argv: ["tool"],
+      appendPrompt: true,
+      providerId: null,
+    });
+    queued.target = { commandId: "command" };
+    queued.targetDisplayNames = ["command"];
+    queued.errorCode = "usage_limit";
+    queued.errorMessage = "previous provider quota was exhausted";
+    queued.infrastructureRetryCount = 1;
+    const messages: unknown[] = [];
+    state.onHostMessage = (_hostId, message) => messages.push(message);
+
+    expect(assignQueued(state)).toHaveLength(1);
+    expect(state.sessions.get("s")).not.toHaveProperty("errorCode");
+    expect(state.sessions.get("s")).not.toHaveProperty("errorMessage");
+    expect(messages).toMatchObject([{ type: "session:assign", infrastructureRetryCount: 1 }]);
+  });
+
+  it("carries the consumed infrastructure retry budget to a durable prompt assignment", async () => {
+    const state = providerAssignmentState();
+    state.commands.set("command", {
+      id: "command",
+      name: "command",
+      argv: ["tool"],
+      appendPrompt: true,
+      providerId: null,
+    });
+    const queued = state.sessions.get("s")!;
+    queued.target = { commandId: "command" };
+    queued.targetDisplayNames = ["command"];
+    queued.infrastructureRetryCount = 1;
+    const messages: unknown[] = [];
+    state.onHostMessage = (_hostId, message) => messages.push(message);
+    setDurableReadStorage(state, { tryAssignSession: async () => true });
+
+    await expect(
+      assignQueuedDurable(state, undefined, { readModelLoaded: true }),
+    ).resolves.toHaveLength(1);
+    expect(messages).toMatchObject([{ type: "session:assign", infrastructureRetryCount: 1 }]);
+  });
+
   it("skips a local candidate when readiness changes after planning", () => {
     const state = providerAssignmentState();
     const connection = state.connections.get("connection")!;

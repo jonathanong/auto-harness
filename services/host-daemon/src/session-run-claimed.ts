@@ -23,9 +23,9 @@ import {
 } from "./prior-context-file.ts";
 import {
   GITHUB_APP_TOKEN_MARGIN_MS,
-  githubBotEmail,
   mintInstallationToken,
   withoutAmbientGitHubTokens,
+  withInstallationToken,
   withIsolatedGitHubConfigDir,
   type GitHubAppConfig,
   type InstallationToken,
@@ -110,35 +110,6 @@ class SessionCredentialRedactor {
   }
 }
 
-function withInstallationToken(
-  environment: NodeJS.ProcessEnv,
-  githubApp: GitHubAppConfig,
-  installationToken: InstallationToken,
-): NodeJS.ProcessEnv {
-  const allowlist = (environment.HARNESS_CHILD_ENV_ALLOWLIST ?? "")
-    .split(",")
-    .map((name) => name.trim())
-    .filter(Boolean);
-  for (const name of [
-    "GH_TOKEN",
-    "GIT_AUTHOR_NAME",
-    "GIT_AUTHOR_EMAIL",
-    "GIT_COMMITTER_NAME",
-    "GIT_COMMITTER_EMAIL",
-  ]) {
-    if (!allowlist.some((existing) => existing.toUpperCase() === name)) allowlist.push(name);
-  }
-  return {
-    ...environment,
-    GH_TOKEN: installationToken.token,
-    GIT_AUTHOR_NAME: githubApp.botLogin,
-    GIT_AUTHOR_EMAIL: githubBotEmail(githubApp),
-    GIT_COMMITTER_NAME: githubApp.botLogin,
-    GIT_COMMITTER_EMAIL: githubBotEmail(githubApp),
-    HARNESS_CHILD_ENV_ALLOWLIST: allowlist.join(","),
-  };
-}
-
 /**
  * Run setup + command for an already-claimed worktree (checkout already done).
  * argv is resolved control-plane-side (cascade walk + prompt append); the daemon
@@ -165,6 +136,10 @@ export async function runClaimedSession(
   /** HEAD captured after checkout and before setup; used for post-session facts. */
   baseline?: string,
   isolatedGitHubConfigDir?: string,
+  /** Durable control-plane authorization immediately before the primary CLI starts. */
+  authorizeCommandStart?: (assign: SessionAssign, signal?: AbortSignal) => Promise<boolean>,
+  /** A v7 peer must durably own pre-command hooks before they can run. */
+  deferPreCommandFailureHook = false,
 ): Promise<SessionRunResult> {
   const repositoryId = assign.repositoryId;
   const mappedGitHubApp = repositoryId
@@ -209,9 +184,13 @@ export async function runClaimedSession(
               exitCode: null,
               errorCode: "setup_failed",
               errorMessage: "GitHub App credential provisioning failed",
+              ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
             },
         sessionChildEnv,
         baseline,
+        false,
+        githubApp,
+        nowMs,
       );
     }
   }
@@ -232,9 +211,13 @@ export async function runClaimedSession(
         exitCode: null,
         errorCode: "setup_failed",
         errorMessage: thrownMessage(error),
+        ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       },
       authenticatedTerminalEnvironment,
       baseline,
+      false,
+      githubApp,
+      nowMs,
     );
   }
   let setup: Awaited<ReturnType<typeof runSetupIfNeeded>>;
@@ -252,6 +235,9 @@ export async function runClaimedSession(
       baseline,
       effectiveTerminalRunner,
       authenticatedTerminalEnvironment,
+      deferPreCommandFailureHook,
+      githubApp,
+      nowMs,
     );
   } catch (error) {
     return await finishClaimedSession(
@@ -265,9 +251,13 @@ export async function runClaimedSession(
         exitCode: null,
         errorCode: "setup_failed",
         errorMessage: thrownMessage(error),
+        ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       },
       authenticatedTerminalEnvironment,
       baseline,
+      false,
+      githubApp,
+      nowMs,
     );
   }
   if (setup.failure) return setup.failure;
@@ -286,9 +276,13 @@ export async function runClaimedSession(
         exitCode: null,
         errorCode: "setup_failed",
         errorMessage: thrownMessage(error),
+        ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       },
       authenticatedTerminalEnvironment,
       baseline,
+      false,
+      githubApp,
+      nowMs,
     );
   }
 
@@ -299,9 +293,16 @@ export async function runClaimedSession(
       logs,
       assign,
       claimed,
-      { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
+      {
+        status: timedOut() ? "timed_out" : "cancelled",
+        exitCode: null,
+        ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
+      },
       authenticatedTerminalEnvironment,
       baseline,
+      false,
+      githubApp,
+      nowMs,
     );
   }
 
@@ -317,10 +318,13 @@ export async function runClaimedSession(
         exitCode: null,
         errorCode: "unknown_command_profile",
         errorMessage: "no resolved command argv for this session",
+        ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       },
       setup.environment,
       baseline,
       true,
+      githubApp,
+      nowMs,
     );
   }
 
@@ -338,11 +342,13 @@ export async function runClaimedSession(
     setup.environment,
     executionProfiles,
     identity,
+    authorizeCommandStart,
     githubApp,
     nowMs,
     baseline,
     isolatedGitHubConfigDir,
     installationToken,
+    deferPreCommandFailureHook,
   );
 }
 
@@ -360,11 +366,13 @@ async function runProcessAndFinish(
   environment: NodeJS.ProcessEnv,
   executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
   identity?: PriorContextIdentity,
+  authorizeCommandStart?: (assign: SessionAssign, signal?: AbortSignal) => Promise<boolean>,
   githubApp?: GitHubAppConfig,
   nowMs: () => number = Date.now,
   baseline?: string,
   isolatedGitHubConfigDir?: string,
   installationToken?: InstallationToken,
+  deferPreCommandFailureHook = false,
 ): Promise<SessionRunResult> {
   const scrubbedTerminalEnvironment =
     assign.repositoryId && githubApp?.repositories.has(assign.repositoryId)
@@ -373,10 +381,6 @@ async function runProcessAndFinish(
   const terminalEnvironment = isolatedGitHubConfigDir
     ? withIsolatedGitHubConfigDir(scrubbedTerminalEnvironment, isolatedGitHubConfigDir)
     : scrubbedTerminalEnvironment;
-  streamer.write(
-    "system",
-    `Spawning: ${argv[0]} (argument count: ${Math.max(0, argv.length - 1)})`,
-  );
   const capturePolicy =
     commandRunner.outputStreams === "merged" && assign.resumeRefCapture
       ? { ...assign.resumeRefCapture, stream: "either" as const }
@@ -395,6 +399,7 @@ async function runProcessAndFinish(
         status: "failed",
         exitCode: null,
         errorMessage: `execution profile unavailable for ${assign.providerAccountId}`,
+        ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       },
       terminalEnvironment,
       baseline,
@@ -439,9 +444,7 @@ async function runProcessAndFinish(
   const authenticatedEnv = installationToken
     ? withInstallationToken(sessionEnv, githubApp!, installationToken)
     : sessionEnv;
-  // Terminal hooks implement repository-scoped completion/escalation policy (including GitHub
-  // issue creation), so they receive the same short-lived App identity as the assigned command.
-  // Early finish paths before successful minting continue to receive only the scrubbed environment.
+  // Terminal hooks use the same short-lived App identity as the assigned command.
   const authenticatedTerminalEnvironment = installationToken
     ? withInstallationToken(terminalEnvironment, githubApp!, installationToken)
     : terminalEnvironment;
@@ -460,8 +463,12 @@ async function runProcessAndFinish(
   const effectiveTerminalRunner = installationToken
     ? new SecretRedactingProcessRunner(processRunner, installationToken.token)
     : processRunner;
-  const finish = (outcome: Parameters<typeof finishClaimedSession>[5]) =>
-    finishClaimedSession(
+  const finish = async (outcome: Parameters<typeof finishClaimedSession>[5]) => {
+    // Terminal hooks run as part of finishClaimedSession. Do not expose the previous
+    // session's transcript to a hook, which is neither the assigned CLI nor part of
+    // its child environment.
+    await removePriorContextFile(priorContextPath);
+    return await finishClaimedSession(
       effectiveTerminalRunner,
       streamer,
       logs,
@@ -471,126 +478,152 @@ async function runProcessAndFinish(
       authenticatedTerminalEnvironment,
       baseline,
       true,
+      githubApp,
+      nowMs,
     );
-  let result: ProcessResult | undefined;
-  let runnerRejected = false;
-  let runnerError: unknown;
-  try {
-    result = await effectiveCommandRunner.run({
-      argv,
-      cwd: claimed.cwd,
-      env: spawnEnv,
-      timeoutMs,
-      ...(signal ? { signal } : {}),
-      onChunk: (c) => {
-        const redacted = credentialRedactor.push(c.stream, c.data);
-        const safeContent = resumeRef.push(c.stream, redacted);
-        if (safeContent) streamer.write(c.stream, safeContent);
-      },
-    });
-  } catch (error) {
-    runnerRejected = true;
-    runnerError = error;
-  } finally {
-    // Must run even if the process rejects — otherwise the transcript of a
-    // *different* session lingers in this (likely reused) worktree.
-    await removePriorContextFile(priorContextPath);
-  }
-  for (const trailing of credentialRedactor.drain()) {
-    const safeContent = resumeRef.push(trailing.stream as "stdout" | "stderr", trailing.content);
-    if (safeContent) streamer.write(trailing.stream as "stdout" | "stderr", safeContent);
-  }
-  if (runnerRejected) {
+  };
+  const executeAuthorized = async (): Promise<SessionRunResult> => {
+    try {
+      const authorized = (await authorizeCommandStart?.(assign, signal)) ?? !signal?.aborted;
+      if (!authorized || signal?.aborted) {
+        return await finish({
+          status: timedOut() ? "timed_out" : "cancelled",
+          exitCode: null,
+          suppressTerminalHook: true,
+        });
+      }
+    } catch (error) {
+      return await finish({
+        status: "failed",
+        exitCode: null,
+        errorCode: "setup_failed",
+        errorMessage: thrownMessage(error),
+        ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
+      });
+    }
+    streamer.write(
+      "system",
+      `Spawning: ${argv[0]} (argument count: ${Math.max(0, argv.length - 1)})`,
+    );
+    let result: ProcessResult | undefined;
+    let runnerRejected = false;
+    let runnerError: unknown;
+    try {
+      result = await effectiveCommandRunner.run({
+        argv,
+        cwd: claimed.cwd,
+        env: spawnEnv,
+        timeoutMs,
+        ...(signal ? { signal } : {}),
+        onChunk: (c) => {
+          const redacted = credentialRedactor.push(c.stream, c.data);
+          const safeContent = resumeRef.push(c.stream, redacted);
+          if (safeContent) streamer.write(c.stream, safeContent);
+        },
+      });
+    } catch (error) {
+      runnerRejected = true;
+      runnerError = error;
+    } finally {
+      // Must run even if the process rejects — otherwise the transcript of a
+      // *different* session lingers in this (likely reused) worktree.
+      await removePriorContextFile(priorContextPath);
+    }
+    for (const trailing of credentialRedactor.drain()) {
+      const safeContent = resumeRef.push(trailing.stream as "stdout" | "stderr", trailing.content);
+      if (safeContent) streamer.write(trailing.stream as "stdout" | "stderr", safeContent);
+    }
+    if (runnerRejected) {
+      const cliResumeRef = resumeRef.finish();
+      for (const trailing of resumeRef.drainTrailing()) {
+        streamer.write(trailing.stream, trailing.content);
+      }
+      streamer.write("system", "Process execution failed.");
+      return await finish({
+        status: "failed",
+        exitCode: null,
+        errorCode: "setup_failed",
+        errorMessage: thrownMessage(runnerError),
+        ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+      });
+    }
+    const completedResult = result!;
     const cliResumeRef = resumeRef.finish();
     for (const trailing of resumeRef.drainTrailing()) {
       streamer.write(trailing.stream, trailing.content);
     }
-    streamer.write("system", "Process execution failed.");
-    return await finish({
-      status: "failed",
-      exitCode: null,
-      errorCode: "setup_failed",
-      errorMessage: thrownMessage(runnerError),
-      ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
-    });
-  }
-  const completedResult = result!;
-  const cliResumeRef = resumeRef.finish();
-  for (const trailing of resumeRef.drainTrailing()) {
-    streamer.write(trailing.stream, trailing.content);
-  }
-  if (cliResumeRef) streamer.write("system", "Captured CLI resume reference");
-  streamer.write(
-    "system",
-    completedResult.exitCode === null
-      ? "Process exited without an exit code"
-      : `Process exited with code ${String(completedResult.exitCode)}`,
-  );
+    if (cliResumeRef) streamer.write("system", "Captured CLI resume reference");
+    streamer.write(
+      "system",
+      completedResult.exitCode === null
+        ? "Process exited without an exit code"
+        : `Process exited with code ${String(completedResult.exitCode)}`,
+    );
 
-  if (completedResult.timedOut || timedOut()) {
-    return await finish({
-      status: "timed_out",
-      exitCode: completedResult.exitCode,
-      ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
-      ...(completedResult.usage !== undefined ? { usage: completedResult.usage } : {}),
-      ...(completedResult.agentSummary !== undefined
-        ? { agentSummary: credentialRedactor.redact(completedResult.agentSummary) }
-        : {}),
-    });
-  }
+    if (completedResult.timedOut || timedOut()) {
+      return await finish({
+        status: "timed_out",
+        exitCode: completedResult.exitCode,
+        ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+        ...(completedResult.usage !== undefined ? { usage: completedResult.usage } : {}),
+        ...(completedResult.agentSummary !== undefined
+          ? { agentSummary: credentialRedactor.redact(completedResult.agentSummary) }
+          : {}),
+      });
+    }
 
-  if (completedResult.cancelled || signal?.aborted) {
-    return await finish({
-      status: "cancelled",
-      exitCode: completedResult.exitCode,
-      ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
-      ...(completedResult.usage !== undefined ? { usage: completedResult.usage } : {}),
-      ...(completedResult.agentSummary !== undefined
-        ? { agentSummary: credentialRedactor.redact(completedResult.agentSummary) }
-        : {}),
-    });
-  }
+    if (completedResult.cancelled || signal?.aborted) {
+      return await finish({
+        status: "cancelled",
+        exitCode: completedResult.exitCode,
+        ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+        ...(completedResult.usage !== undefined ? { usage: completedResult.usage } : {}),
+        ...(completedResult.agentSummary !== undefined
+          ? { agentSummary: credentialRedactor.redact(completedResult.agentSummary) }
+          : {}),
+      });
+    }
 
-  if (completedResult.exitCode === 0) {
-    return await finish({
-      status: "completed",
-      exitCode: 0,
-      ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
-      ...(completedResult.usage !== undefined ? { usage: completedResult.usage } : {}),
-      ...(completedResult.agentSummary !== undefined
-        ? { agentSummary: credentialRedactor.redact(completedResult.agentSummary) }
-        : {}),
+    if (completedResult.exitCode === 0) {
+      return await finish({
+        status: "completed",
+        exitCode: 0,
+        ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+        ...(completedResult.usage !== undefined ? { usage: completedResult.usage } : {}),
+        ...(completedResult.agentSummary !== undefined
+          ? { agentSummary: credentialRedactor.redact(completedResult.agentSummary) }
+          : {}),
+      });
+    }
+    const usageLimit = detectUsageLimit({
+      argv,
+      failed: true,
+      ...(assign.providerAccountId ? { providerAccountId: assign.providerAccountId } : {}),
+      ...(completedResult.usageLimit === true ? { adapterUsageLimit: true } : {}),
     });
-  }
-
-  const usageLimit = detectUsageLimit({
-    argv,
-    failed: true,
-    ...(assign.providerAccountId ? { providerAccountId: assign.providerAccountId } : {}),
-    ...(completedResult.usageLimit === true ? { adapterUsageLimit: true } : {}),
-  });
-  if (usageLimit) {
+    if (usageLimit) {
+      return await finish({
+        status: "failed",
+        exitCode: completedResult.exitCode,
+        errorCode: "usage_limit",
+        errorMessage: "Usage limit detected",
+        ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+        ...(completedResult.usage !== undefined ? { usage: completedResult.usage } : {}),
+        ...(completedResult.agentSummary !== undefined
+          ? { agentSummary: credentialRedactor.redact(completedResult.agentSummary) }
+          : {}),
+      });
+    }
     return await finish({
       status: "failed",
       exitCode: completedResult.exitCode,
-      errorCode: "usage_limit",
-      errorMessage: "Usage limit detected",
+      errorMessage: `process exited with code ${String(completedResult.exitCode)}`,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
       ...(completedResult.usage !== undefined ? { usage: completedResult.usage } : {}),
       ...(completedResult.agentSummary !== undefined
         ? { agentSummary: credentialRedactor.redact(completedResult.agentSummary) }
         : {}),
     });
-  }
-
-  return await finish({
-    status: "failed",
-    exitCode: completedResult.exitCode,
-    errorMessage: `process exited with code ${String(completedResult.exitCode)}`,
-    ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
-    ...(completedResult.usage !== undefined ? { usage: completedResult.usage } : {}),
-    ...(completedResult.agentSummary !== undefined
-      ? { agentSummary: credentialRedactor.redact(completedResult.agentSummary) }
-      : {}),
-  });
+  };
+  return await executeAuthorized();
 }

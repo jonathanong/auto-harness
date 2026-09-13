@@ -57,6 +57,13 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       }
       return true;
     },
+    async authorizePrimaryCommandStart(input: Record<string, unknown>) {
+      const sessionId = String(input.sessionId);
+      const session = sessions.get(sessionId);
+      if (!session || session.primaryCommandStartState !== "pending") return false;
+      sessions.set(sessionId, { ...session, primaryCommandStartState: "authorized" });
+      return true;
+    },
     async cancelQueuedSession(input: Record<string, unknown>) {
       const sessionId = String(input.sessionId);
       const session = sessions.get(sessionId);
@@ -127,6 +134,9 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     },
     async listAllWorktrees() {
       return [...worktrees.values()];
+    },
+    async listActiveSessionsByHost(hostId: string) {
+      return [...sessions.values()].filter((session) => session.activeHostId === hostId);
     },
     async listProviders() {
       return [];
@@ -215,6 +225,27 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       return true;
     },
     async setWorktreeOnlineFenced() {
+      return true;
+    },
+    async settleTerminalHookHandoff(input: Record<string, unknown>) {
+      const sessionId = String(input.sessionId);
+      const session = sessions.get(sessionId);
+      const handoff = session?.terminalHookHandoff as
+        | { handoffId?: string; hostId?: string }
+        | undefined;
+      if (
+        !session ||
+        !handoff ||
+        handoff.handoffId !== input.handoffId ||
+        handoff.hostId !== input.hostId ||
+        hostLocks.get(String(input.hostId)) !== input.connectionId
+      )
+        return false;
+      sessions.set(sessionId, {
+        ...session,
+        terminalHookHandoffSettled: { handoffId: input.handoffId, hostId: input.hostId },
+      });
+      delete (sessions.get(sessionId) as Record<string, unknown>).terminalHookHandoff;
       return true;
     },
     async tryAssignMainCheckoutSession(input: Record<string, unknown>) {
@@ -680,6 +711,140 @@ describe("Lambda runtime adapters", () => {
     });
   });
 
+  it("delivers v7 terminal-hook handoffs sequentially after registration on the inbound socket", async () => {
+    const fixture = runtimeFixture();
+    fixture.sessions.set("lost", {
+      ...schedulerSession("lost", "prompt"),
+      status: "failed",
+      activeHostId: "host-1",
+      activeHostOrder: "2026-08-12T00:00:00.000Z#lost",
+      terminalHookHandoff: {
+        handoffId: "handoff",
+        hostId: "host-1",
+        repositoryId: "repo-active",
+        worktreeId: "worktree-1",
+        status: "failed",
+        errorCode: "host_lost",
+        expiresAt: "2026-08-13T00:00:00.000Z",
+      },
+    });
+    await registerGatewayHost(fixture, "gateway-1", 7);
+    const messages = fixture.management.send.mock.calls
+      .map((call) => call[0].input)
+      .filter((input) => input.Data !== undefined)
+      .map((input) => ({ connectionId: input.ConnectionId, body: JSON.parse(String(input.Data)) }));
+    expect(messages.slice(-2)).toEqual([
+      expect.objectContaining({
+        connectionId: "gateway-1",
+        body: expect.objectContaining({ type: "host:registered" }),
+      }),
+      expect.objectContaining({
+        connectionId: "gateway-1",
+        body: expect.objectContaining({ type: "session:terminal-hook", handoffId: "handoff" }),
+      }),
+    ]);
+  });
+
+  it("redelivers a registration handoff on a later keepalive after a transient post failure", async () => {
+    const fixture = runtimeFixture();
+    fixture.sessions.set("lost", {
+      ...schedulerSession("lost", "prompt"),
+      status: "failed",
+      activeHostId: "host-1",
+      activeHostOrder: "2026-08-12T00:00:00.000Z#lost",
+      terminalHookHandoff: {
+        handoffId: "handoff",
+        hostId: "host-1",
+        repositoryId: "repo-active",
+        worktreeId: "worktree-1",
+        status: "failed",
+        errorCode: "host_lost",
+        expiresAt: "2026-08-13T00:00:00.000Z",
+      },
+    });
+    const runtime = await fixture.runtime;
+    await runtime.websocket({
+      requestContext: { connectionId: "gateway-1", routeKey: "$connect" },
+    });
+    fixture.management.send
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error("transient PostToConnection failure"));
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "host:register",
+          hostId: "host-1",
+          worktrees: [],
+          commandProfiles: [],
+          protocolVersion: HOST_PROTOCOL_VERSION,
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).rejects.toThrow("transient PostToConnection failure");
+
+    fixture.management.send.mockReset();
+    fixture.management.send.mockResolvedValue({});
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "host:keepalive",
+          hostId: "host-1",
+          at: "2026-08-12T00:00:20.000Z",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toEqual([
+      {
+        type: "host:keepalive-ack",
+        hostId: "host-1",
+        at: "2026-08-12T00:00:20.000Z",
+      },
+      expect.objectContaining({ type: "session:terminal-hook", handoffId: "handoff" }),
+    ]);
+  });
+
+  it("acknowledges a terminal-hook completion on its submitting connection", async () => {
+    const fixture = runtimeFixture();
+    fixture.sessions.set("lost", {
+      ...schedulerSession("lost", "prompt"),
+      status: "failed",
+      activeHostId: "host-1",
+      terminalHookHandoff: {
+        handoffId: "handoff",
+        hostId: "host-1",
+        repositoryId: "repo-active",
+        worktreeId: null,
+        status: "failed",
+        errorCode: "host_lost",
+        expiresAt: "2026-08-13T00:00:00.000Z",
+      },
+    });
+    const runtime = await registerGatewayHost(fixture, "gateway-1", 5);
+    fixture.management.send.mockClear();
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "session:terminal-hook-complete",
+          sessionId: "lost",
+          handoffId: "handoff",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toEqual([
+      {
+        type: "session:terminal-hook-acknowledged",
+        sessionId: "lost",
+        handoffId: "handoff",
+      },
+    ]);
+  });
+
   it("acks a successful host keepalive over postToConnection and skips a rejected one", async () => {
     const fixture = runtimeFixture();
     const runtime = await registerGatewayHost(fixture);
@@ -760,6 +925,71 @@ describe("Lambda runtime adapters", () => {
       hostId: "host-1",
       at: "2026-08-12T00:00:20.000Z",
     });
+  });
+
+  it("delivers a reconciliation terminal-hook handoff after the keepalive ack", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture, "gateway-1", HOST_PROTOCOL_VERSION);
+    fixture.sessions.set("lost", {
+      ...schedulerSession("lost", "prompt"),
+      status: "running",
+      hostId: "host-1",
+      activeHostId: "host-1",
+      activeHostOrder: "2026-08-12T00:00:00.000Z#lost",
+      worktreeId: "worktree-1",
+      attemptId: "attempt-1",
+      ackReceivedAt: "2026-08-12T00:00:00.000Z",
+      primaryCommandStartState: "authorized",
+    });
+    fixture.worktrees.set("worktree-1", {
+      id: "worktree-1",
+      repositoryId: "repo-active",
+      hostId: "host-1",
+      status: "busy",
+      currentSessionId: "lost",
+    });
+    (
+      fixture.storage as typeof fixture.storage & {
+        finishSession(input: Record<string, unknown>): Promise<boolean>;
+      }
+    ).finishSession = async (input) => {
+      const session = fixture.sessions.get(String(input.sessionId));
+      if (!session) return false;
+      fixture.sessions.set(String(input.sessionId), {
+        ...session,
+        status: input.status,
+        hostId: null,
+        worktreeId: null,
+        terminalHookHandoff: input.terminalHookHandoff,
+      });
+      return true;
+    };
+    fixture.management.send.mockClear();
+
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "host:keepalive",
+          hostId: "host-1",
+          at: "2026-08-12T00:00:20.000Z",
+          runningSessions: [],
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toEqual([
+      {
+        type: "host:keepalive-ack",
+        hostId: "host-1",
+        at: "2026-08-12T00:00:20.000Z",
+      },
+      expect.objectContaining({
+        type: "session:terminal-hook",
+        sessionId: "lost",
+      }),
+    ]);
   });
 
   it("swallows a failed host:keepalive-ack delivery instead of failing the invocation", async () => {
@@ -1166,6 +1396,66 @@ describe("Lambda runtime adapters", () => {
     });
   });
 
+  it("delivers session:command-start-acknowledged on the inbound connection after a host cache miss", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    fixture.plane.state.hostConnection.delete("host-1");
+    fixture.management.send.mockClear();
+    const commandStart = {
+      body: JSON.stringify({
+        type: "session:command-start",
+        sessionId: "session-command-start-cache-miss",
+        worktreeId: null,
+        attemptId: "attempt-command-start-cache-miss",
+      }),
+      requestContext: { connectionId: "gateway-1" as const, routeKey: "$default" as const },
+    };
+    fixture.sessions.set("session-command-start-cache-miss", {
+      id: "session-command-start-cache-miss",
+      repositoryId: "repository-1",
+      prompt: "test",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetDisplayNames: ["cmd"],
+      queueTtlSeconds: 3600,
+      queueExpiresAt: "2026-08-13T00:00:00.000Z",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      status: "running",
+      queueShard: 0,
+      createdAt: "2026-08-12T00:00:00.000Z",
+      hostId: "host-1",
+      worktreeId: null,
+      attemptId: "attempt-command-start-cache-miss",
+      primaryCommandStartState: "pending",
+    });
+
+    await expect(runtime.websocket(commandStart)).resolves.toEqual({ statusCode: 200 });
+
+    expect(fixture.management.send.mock.calls[0]?.[0].input.ConnectionId).toBe("gateway-1");
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({
+      type: "session:command-start-acknowledged",
+      sessionId: "session-command-start-cache-miss",
+      attemptId: "attempt-command-start-cache-miss",
+    });
+
+    fixture.sessions.set("session-command-start-cache-miss", {
+      ...fixture.sessions.get("session-command-start-cache-miss"),
+      primaryCommandStartState: "pending",
+    });
+    fixture.management.send.mockRejectedValueOnce(new Error("command-start delivery failed"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await expect(runtime.websocket(commandStart)).resolves.toEqual({ statusCode: 200 });
+      expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("postToHost failure"));
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("replies with session:status-acknowledged after a durable terminal report commits", async () => {
     const fixture = runtimeFixture();
     const runtime = await registerGatewayHost(fixture);
@@ -1215,6 +1505,47 @@ describe("Lambda runtime adapters", () => {
       type: "session:status-acknowledged",
       sessionId: "session-2",
       attemptId: "attempt-2",
+    });
+  });
+
+  it("forwards a durable terminal-hook disposition with session:status-acknowledged", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    fixture.management.send.mockClear();
+    vi.spyOn(fixture.plane, "handleHostMessageDurable").mockResolvedValue({
+      ok: true,
+      sessionStatusAcknowledged: {
+        sessionId: "retry-session",
+        attemptId: "retry-attempt",
+        retryAccepted: false,
+        terminalHookHandoffId: "handoff",
+        terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
+      },
+    });
+
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "session:status",
+          sessionId: "retry-session",
+          worktreeId: null,
+          attemptId: "retry-attempt",
+          status: "failed",
+          errorCode: "checkout_fetch_failed",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({
+      type: "session:status-acknowledged",
+      sessionId: "retry-session",
+      attemptId: "retry-attempt",
+      retryAccepted: false,
+      terminalHookHandoffId: "handoff",
+      terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
     });
   });
 

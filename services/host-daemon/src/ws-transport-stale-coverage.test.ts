@@ -42,6 +42,45 @@ it("ignores a stale rejected write callback after disconnecting", async () => {
   vi.useRealTimers();
 });
 
+it("ignores an error emitted by a socket that has already been replaced", async () => {
+  vi.useFakeTimers();
+  try {
+    const sockets: FakeSocket[] = [];
+    const errors: Error[] = [];
+    const transport = createWsTransport({
+      url: "ws://fake/ws",
+      onError: (error) => errors.push(error),
+      random: () => 0.5,
+      socketFactory: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket as unknown as WebSocket;
+      },
+    });
+    const first = sockets[0]!;
+    first.open();
+    await transport.send({
+      type: "host:register",
+      hostId: "host-1",
+      worktrees: [],
+      commandProfiles: [],
+    });
+    first.server({ type: "host:registered", hostId: "host-1" });
+    await transport.registered;
+
+    first.close();
+    await vi.advanceTimersByTimeAsync(1_000);
+    const replacement = sockets[1]!;
+    replacement.open();
+    first.emit("error", new Error("late socket error"));
+
+    expect(errors).toEqual([]);
+    transport.close();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 async function settle(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- workspace assignment routing and protocol cases share one fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import { assignWorkspaceQueuedDurable } from "./control-plane-workspace-assign.ts";
@@ -125,6 +126,69 @@ describe("workspace assignment matrix", () => {
       errorCode: "queue_expired",
     });
   });
+
+  it("clears a retry failure before a replacement workspace attempt reaches its terminal view", async () => {
+    const { plane } = workspacePlane();
+    const session = createWorkspaceSession(plane);
+    plane.state.sessions.set(session.id, {
+      ...session,
+      errorCode: "host_lost",
+      errorMessage: "host was lost before command launch; retrying once",
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "host_lost",
+    });
+
+    const [replacement] = await assignWorkspaceQueuedDurable(plane.state);
+    if (!replacement) throw new Error("workspace retry was not reassigned");
+
+    expect(replacement.session).toMatchObject({
+      status: "running",
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "host_lost",
+    });
+    expect(replacement.session).not.toHaveProperty("errorCode");
+    expect(replacement.session).not.toHaveProperty("errorMessage");
+    expect(plane.getSession(session.id)).not.toHaveProperty("errorCode");
+    expect(plane.getSession(session.id)).not.toHaveProperty("errorMessage");
+
+    expect(
+      plane.handleHostMessage({
+        type: "session:status",
+        sessionId: session.id,
+        worktreeId: null,
+        attemptId: replacement.session.attemptId!,
+        status: "completed",
+      }),
+    ).toEqual({ ok: true });
+    expect(plane.getSession(session.id)).toMatchObject({ status: "completed" });
+    expect(plane.getSession(session.id)).not.toHaveProperty("errorCode");
+    expect(plane.getSession(session.id)).not.toHaveProperty("errorMessage");
+  });
+
+  it.each([
+    [3, "authorized"],
+    [4, "pending"],
+  ] as const)(
+    "initializes workspace command-start state for protocol %s",
+    async (protocolVersion, primaryCommandStartState) => {
+      const { plane } = workspacePlane();
+      const session = createWorkspaceSession(plane);
+      const connection = plane.state.connections.get("connection-1")!;
+      connection.protocolVersion = protocolVersion;
+      connection.negotiatedProtocolVersion = protocolVersion;
+      const tryAssignWorkspaceSession = vi.fn(async () => true);
+      plane.state.storage = { tryAssignWorkspaceSession } as never;
+
+      await expect(
+        assignWorkspaceQueuedDurable(plane.state, undefined, { readModelLoaded: true }),
+      ).resolves.toHaveLength(1);
+
+      expect(tryAssignWorkspaceSession).toHaveBeenCalledWith(
+        expect.objectContaining({ primaryCommandStartState }),
+      );
+      expect(plane.state.sessions.get(session.id)).toMatchObject({ primaryCommandStartState });
+    },
+  );
 
   it("dispatches provider-account workspace routes and updates account recency", async () => {
     const { plane, messages } = workspacePlane();

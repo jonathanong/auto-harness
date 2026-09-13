@@ -65,6 +65,14 @@ describe("parseHostMessage exhaustive wire validation", () => {
         attemptId: "attempt-1",
       }),
     ).toMatchObject({ type: "session:ack" });
+    expect(
+      parseHostMessage({
+        type: "session:command-start",
+        sessionId: "session-1",
+        worktreeId: null,
+        attemptId: "attempt-1",
+      }),
+    ).toMatchObject({ type: "session:command-start" });
     expect(parseHostMessage(status)).toEqual(status);
     expect(
       parseHostMessage({
@@ -237,6 +245,9 @@ describe("parseHostMessage exhaustive wire validation", () => {
       { type: "session:ack", sessionId: "", worktreeId: null, attemptId: "a" },
       { type: "session:ack", sessionId: "s", worktreeId: 1, attemptId: "a" },
       { type: "session:ack", sessionId: "s", worktreeId: null, attemptId: "" },
+      { type: "session:command-start", sessionId: "", worktreeId: null, attemptId: "a" },
+      { type: "session:command-start", sessionId: "s", worktreeId: 1, attemptId: "a" },
+      { type: "session:command-start", sessionId: "s", worktreeId: null, attemptId: "" },
       { ...status, sessionId: "" },
       { ...status, worktreeId: 1 },
       { ...status, attemptId: "" },

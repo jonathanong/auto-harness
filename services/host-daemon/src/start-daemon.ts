@@ -418,6 +418,9 @@ function daemonStop(
     await stopInventoryPoll();
     clearInterval(keepalive);
     stopLivenessLog();
+    // Keep active commands and their transport alive while making a lost v4
+    // retry-disposition ACK fail closed instead of blocking this idle wait.
+    loop.prepareForShutdown();
     await loop.waitForIdle();
     loop.stop();
   };

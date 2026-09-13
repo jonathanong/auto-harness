@@ -9,6 +9,8 @@ import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 import type { ProcessRunner } from "./executor.ts";
 import type { ExecutionProfiles } from "./execution-profiles.ts";
 import { LogStreamer } from "./log-streamer.ts";
+import { isCheckoutFetchFailure } from "./git-commands.ts";
+import { retainClaimForDeferredTerminalHook } from "./deferred-terminal-hook.ts";
 import {
   failSession,
   finishClaimedSession,
@@ -45,7 +47,9 @@ export type SessionRunnerDeps = {
   githubApp?: GitHubAppConfig;
   onLog?: (chunk: SessionLogChunk) => void;
   now?: () => string;
+  /** Durable control-plane authorization immediately before the primary CLI starts. */
   nowMs?: () => number;
+  authorizeCommandStart?: (assign: SessionAssign, signal?: AbortSignal) => Promise<boolean>;
 };
 
 type SessionRunOptions = {
@@ -53,6 +57,10 @@ type SessionRunOptions = {
   signal?: AbortSignal;
   /** Sequence after the latest persisted log for a reassigned session. */
   initialLogSeq?: number;
+  /** A v6 peer durably coordinates retry disposition, terminal hook, and post-hook result. */
+  deferCheckoutFetchFailureHook?: boolean;
+  /** A v7 peer durably owns every pre-command terminal hook. */
+  deferPreCommandFailureHook?: boolean;
 };
 
 export class SessionRunner {
@@ -131,6 +139,7 @@ export class SessionRunner {
 
       let claimed;
       let mainClaimed = false;
+      let retainedClaim = false;
       try {
         if (assign.worktreeId) {
           claimed = await this.deps.worktrees.claim(repositoryId, assign.worktreeId, signal);
@@ -159,6 +168,18 @@ export class SessionRunner {
       }
 
       try {
+        const retainDeferredTerminalHook = (result: SessionRunResult): SessionRunResult => {
+          if (!result.settleDeferredTerminalHook) return result;
+          retainedClaim = true;
+          return retainClaimForDeferredTerminalHook(
+            result as Required<Pick<SessionRunResult, "settleDeferredTerminalHook">> &
+              SessionRunResult,
+            () => {
+              if (mainClaimed) this.deps.worktrees.releaseMain(assign.repositoryId!);
+              else this.deps.worktrees.release(assign.worktreeId!);
+            },
+          );
+        };
         streamer.write(
           "system",
           assign.worktreeId
@@ -181,16 +202,19 @@ export class SessionRunner {
               ...(expired
                 ? { errorMessage: `Session timed out while checking out ref ${checkoutRef}` }
                 : {}),
+              ...(options.deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
             },
             sessionChildEnv,
             baseline,
+            false,
+            this.deps.githubApp,
+            this.deps.nowMs,
           );
         streamer.write("system", `Checking out ref ${checkoutRef}...`);
 
         if (signal.aborted) {
-          return await finishCheckoutInterruption();
+          return retainDeferredTerminalHook(await finishCheckoutInterruption());
         }
-
         try {
           if (mainClaimed) {
             baseline = await this.deps.worktrees.prepareMainCheckout(claimed, assign.ref, signal);
@@ -206,9 +230,9 @@ export class SessionRunner {
           // requested terminal state instead of misreporting cancellation as a
           // checkout/setup failure.
           if (signal.aborted) {
-            return await finishCheckoutInterruption();
+            return retainDeferredTerminalHook(await finishCheckoutInterruption());
           }
-          return await finishClaimedSession(
+          const result = await finishClaimedSession(
             this.deps.processRunner,
             streamer,
             logs,
@@ -217,19 +241,28 @@ export class SessionRunner {
             {
               status: "failed",
               exitCode: null,
-              errorCode: "setup_failed",
+              errorCode: isCheckoutFetchFailure(err) ? "checkout_fetch_failed" : "setup_failed",
               errorMessage: thrownMessage(err),
+              deferTerminalHook: isCheckoutFetchFailure(err)
+                ? assign.infrastructureRetryCount === 0 &&
+                  options.deferCheckoutFetchFailureHook === true
+                : options.deferPreCommandFailureHook === true,
             },
             sessionChildEnv,
+            undefined,
+            false,
+            this.deps.githubApp,
+            this.deps.nowMs,
           );
+          return retainDeferredTerminalHook(result);
         }
 
         if (signal.aborted) {
-          return await finishCheckoutInterruption();
+          return retainDeferredTerminalHook(await finishCheckoutInterruption());
         }
 
         try {
-          return await runClaimedSession(
+          const result = await runClaimedSession(
             this.deps.processRunner,
             streamer,
             logs,
@@ -246,29 +279,43 @@ export class SessionRunner {
             this.deps.nowMs,
             baseline,
             isolatedGitHubConfigDir,
+            this.deps.authorizeCommandStart,
+            options.deferPreCommandFailureHook === true,
           );
+          return retainDeferredTerminalHook(result);
         } catch (error) {
           const errorMessage = thrownMessage(error);
           // A runner error can include the original argv. Keep the transcript
           // useful without copying prompts or other opaque arguments into logs.
           streamer.write("system", "Process execution failed.");
-          return await finishClaimedSession(
-            this.deps.processRunner,
-            streamer,
-            logs,
-            assign,
-            claimed,
-            { status: "failed", exitCode: null, errorCode: "setup_failed", errorMessage },
-            sessionChildEnv,
-            baseline,
+          return retainDeferredTerminalHook(
+            await finishClaimedSession(
+              this.deps.processRunner,
+              streamer,
+              logs,
+              assign,
+              claimed,
+              {
+                status: "failed",
+                exitCode: null,
+                errorCode: "setup_failed",
+                errorMessage,
+                ...(options.deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
+              },
+              sessionChildEnv,
+              baseline,
+              false,
+              this.deps.githubApp,
+              this.deps.nowMs,
+            ),
           );
         }
       } finally {
         streamer.flush();
         clearTimeout(timeoutTimer);
-        if (mainClaimed) {
+        if (!retainedClaim && mainClaimed) {
           this.deps.worktrees.releaseMain(assign.repositoryId);
-        } else if (assign.worktreeId) {
+        } else if (!retainedClaim && assign.worktreeId) {
           this.deps.worktrees.release(assign.worktreeId);
         }
       }
@@ -370,8 +417,16 @@ export class SessionRunner {
           this.deps.commandRunner ?? this.deps.processRunner,
           this.deps.childEnvSource ?? process.env,
           this.deps.executionProfiles,
-          // Workspace sessions intentionally never fetch/write prior context.
+          // Workspace validation rejects priorContext, so retaining the daemon
+          // identity here cannot fetch/write one. It does preserve the
+          // one-attempt child credential environment for the workspace CLI.
+          this.deps.identity,
+          this.deps.githubApp,
+          this.deps.nowMs,
           undefined,
+          undefined,
+          // Protocol-v4 peers must durably authorize before the workspace CLI can spawn.
+          this.deps.authorizeCommandStart,
         );
       } catch (error) {
         result = await failSession(streamer, logs, "setup_failed", thrownMessage(error), null);

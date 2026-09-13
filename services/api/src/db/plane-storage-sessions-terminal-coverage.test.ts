@@ -25,6 +25,29 @@ const item = {
 };
 
 describe("session terminal cleanup branches", () => {
+  it("fences a first deferred handoff write on the absence of an existing handoff", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      finishSession(ctx(send), {
+        sessionId: "session",
+        worktreeId: null,
+        attemptId: "attempt",
+        status: "timed_out",
+        expectedStatus: "timed_out",
+        queueShard: 0,
+        expectedTerminalHookHandoffAbsent: true,
+      }),
+    ).resolves.toBe(true);
+    const transaction = send.mock.calls
+      .map(([command]) => command.input as { TransactItems?: unknown })
+      .find((input) => input.TransactItems !== undefined);
+    const items = transaction?.TransactItems as Array<{
+      Update?: { TableName?: string; ConditionExpression?: string };
+    }>;
+    expect(
+      items.find((entry) => entry.Update?.TableName === "Sessions")?.Update?.ConditionExpression,
+    ).toContain("attribute_not_exists(terminalHookHandoff)");
+  });
   it("skips drain cleanup once a drain already cancelled the session", async () => {
     const send = vi.fn().mockResolvedValueOnce({ Item: item }).mockResolvedValueOnce({});
     await expect(
@@ -103,5 +126,38 @@ describe("session terminal cleanup branches", () => {
       items.find((transactionItem) => transactionItem.Update?.TableName === "Sessions")?.Update
         ?.UpdateExpression,
     ).not.toContain("reconnectDeadlineAt");
+  });
+
+  it("records a bounded host-loss retry while fencing the workspace slot", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      finishSession(ctx(send), {
+        sessionId: "workspace-retry",
+        worktreeId: null,
+        workspaceSlotId: "slot",
+        attemptId: "attempt",
+        status: "queued",
+        queueShard: 0,
+        errorMessage: "host was lost before command launch; retrying once",
+        infrastructureErrorCode: "host_lost",
+        expectedConnectionId: "old-connection",
+      }),
+    ).resolves.toBe(true);
+    const request = send.mock.calls[0]?.[0].input;
+    const sessionUpdate = request.TransactItems.find(
+      (transactionItem: { Update?: { TableName?: string } }) =>
+        transactionItem.Update?.TableName === "Sessions",
+    )?.Update;
+    expect(sessionUpdate?.ConditionExpression).toContain("workspaceSlotId = :workspaceSlotId");
+    expect(sessionUpdate?.ConditionExpression).toContain(
+      "primaryCommandStartState = :pendingCommandStart",
+    );
+    expect(sessionUpdate?.UpdateExpression).toContain("infrastructureRetryCount");
+    expect(sessionUpdate?.UpdateExpression).toContain("primaryCommandStartState");
+    expect(sessionUpdate?.ExpressionAttributeValues).toMatchObject({
+      ":workspaceSlotId": "slot",
+      ":infrastructureErrorCode": "host_lost",
+    });
+    expect(request.TransactItems).toHaveLength(2);
   });
 });

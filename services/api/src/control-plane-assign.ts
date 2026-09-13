@@ -23,6 +23,7 @@ import {
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import { planPromptPlacement } from "./queue-placement-planner.ts";
 import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
+import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import {
   accountHasLeaseCapacity,
   hostProviderAccountReady,
@@ -35,6 +36,7 @@ import {
   clearAbandonedUsageLimitRetryFields,
   type AssignmentWriteResult,
 } from "./db/plane-storage-types.ts";
+import { commandStartStateForProtocol } from "./control-plane-command-start.ts";
 import { createSessionApiKey } from "./control-plane-session-api-key.ts";
 
 /**
@@ -108,12 +110,19 @@ export function assignQueued(
         attemptId,
       };
       session.attemptId = attemptId;
+      session.primaryCommandStartState = commandStartStateForProtocol(
+        connectionProtocolVersion(
+          state.connections.get(state.hostConnection.get(candidate.hostId) ?? ""),
+        ),
+      );
       if (apiKey) session.sessionApiKeyHash = apiKey.hash;
       else delete session.sessionApiKeyHash;
       if (lease) session.providerAccountLease = lease;
       else delete session.providerAccountLease;
       touchAccount(state, route.providerAccountId, nowIso);
       delete session.ackReceivedAt;
+      delete session.errorCode;
+      delete session.errorMessage;
       clearAbandonedUsageLimitRetryFields(session);
       state.pendingAcks.set(session.id, {
         sessionId: session.id,
@@ -132,6 +141,7 @@ export function assignQueued(
         resolvedArgv: route.resolvedArgv,
         timeout: session.timeout,
         worktreeId: candidate.id,
+        infrastructureRetryCount: session.infrastructureRetryCount ?? 0,
         assignedAt: nowIso,
         attemptId,
         ...(session.ref !== undefined ? { ref: session.ref } : {}),
@@ -285,6 +295,9 @@ export async function assignQueuedDurable(
               }
             : {}),
           queueShard: session.queueShard,
+          primaryCommandStartState: commandStartStateForProtocol(
+            connectionProtocolVersion(state.connections.get(connectionId)),
+          ),
           ...(apiKey ? { sessionApiKeyHash: apiKey.hash } : {}),
         });
         if (won === true || !lease) break;
@@ -312,10 +325,15 @@ export async function assignQueuedDurable(
           attemptId,
         },
         attemptId,
+        primaryCommandStartState: commandStartStateForProtocol(
+          connectionProtocolVersion(state.connections.get(connectionId)),
+        ),
         ...(apiKey ? { sessionApiKeyHash: apiKey.hash } : {}),
         ...(lease ? { providerAccountLease: lease } : {}),
         hostAssignmentLease: { hostId: candidate.hostId },
       };
+      delete nextSession.errorCode;
+      delete nextSession.errorMessage;
       clearAbandonedUsageLimitRetryFields(nextSession);
       const nextWorktree = {
         ...candidate,
@@ -342,6 +360,7 @@ export async function assignQueuedDurable(
         resolvedArgv: route.resolvedArgv,
         timeout: session.timeout,
         worktreeId: candidate.id,
+        infrastructureRetryCount: nextSession.infrastructureRetryCount ?? 0,
         assignedAt: nowIso,
         attemptId,
         ...(session.ref !== undefined ? { ref: session.ref } : {}),

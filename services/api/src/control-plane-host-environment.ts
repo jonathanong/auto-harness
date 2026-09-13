@@ -1,6 +1,7 @@
 import { ATTEMPT_FENCED_PROTOCOL_VERSION } from "@auto-harness/shared";
 
 import type { ControlPlaneState } from "./control-plane-state.ts";
+import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 
 type RepositoryEnvironmentReadiness = {
   required: string[];
@@ -47,6 +48,7 @@ export function hostAcceptsNewAssignments(state: ControlPlaneState, hostId: stri
   const connectionId = state.hostConnection.get(hostId);
   if (!connectionId) return false;
   return (
-    (state.connections.get(connectionId)?.protocolVersion ?? 0) >= ATTEMPT_FENCED_PROTOCOL_VERSION
+    connectionProtocolVersion(state.connections.get(connectionId)) >=
+    ATTEMPT_FENCED_PROTOCOL_VERSION
   );
 }

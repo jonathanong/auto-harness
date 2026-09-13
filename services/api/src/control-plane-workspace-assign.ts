@@ -8,6 +8,7 @@ import type { SessionRecord, WorkspaceSlotRecord } from "./db/types.ts";
 import { buildProviderCatalog } from "./control-plane-session-target.ts";
 import { orderedQueuedSessions } from "./control-plane-ordering.ts";
 import { planWorkspacePlacement } from "./queue-placement-planner.ts";
+import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import {
   accountHasLeaseCapacity,
   hostAssignmentOccupancyCount,
@@ -19,6 +20,7 @@ import {
   listWorkspaceSlotsDurable,
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
+import { commandStartStateForProtocol } from "./control-plane-command-start.ts";
 import type { AssignmentWriteResult } from "./db/plane-storage-types.ts";
 import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 
@@ -88,8 +90,9 @@ function nextSession(
   attemptId: string,
   now: string,
   lease: SessionRecord["providerAccountLease"],
+  protocolVersion: number | undefined,
 ): SessionRecord {
-  return {
+  const assigned: SessionRecord = {
     ...session,
     status: "running",
     repositoryId: "",
@@ -111,9 +114,16 @@ function nextSession(
       workspaceSlotId: slot.id,
       attemptId,
     },
+    primaryCommandStartState: commandStartStateForProtocol(protocolVersion),
     ...(lease ? { providerAccountLease: lease } : {}),
     hostAssignmentLease: { hostId: slot.hostId },
   };
+  // A retryable infrastructure failure is useful queue history, not the
+  // outcome of the replacement attempt. Keep the retry metadata but do not
+  // surface the stale failure while this new assignment is running.
+  delete assigned.errorCode;
+  delete assigned.errorMessage;
+  return assigned;
 }
 
 function touchAccount(state: ControlPlaneState, id: string | undefined, at: string): void {
@@ -254,6 +264,9 @@ export async function assignWorkspaceQueuedDurable(
               ? { hostAssignmentCap: state.connections.get(connectionId)!.maxConcurrentAssignments }
               : {}),
             queueShard: session.queueShard,
+            primaryCommandStartState: commandStartStateForProtocol(
+              connectionProtocolVersion(state.connections.get(connectionId)),
+            ),
           });
         } else {
           won = slot.status === "idle" && slot.online;
@@ -264,7 +277,15 @@ export async function assignWorkspaceQueuedDurable(
         occupied.add(lease.slot);
       }
       if (won !== true) continue;
-      const updatedSession = nextSession(session, slot, route, attemptId, now, lease);
+      const updatedSession = nextSession(
+        session,
+        slot,
+        route,
+        attemptId,
+        now,
+        lease,
+        connectionProtocolVersion(state.connections.get(connectionId)),
+      );
       const updatedSlot: WorkspaceSlotRecord = {
         ...slot,
         status: "busy",
