@@ -1149,6 +1149,7 @@ export class DaemonLoop {
             }
           } else {
             pending.settlementOccupies = true;
+            if (this.hasSpareExecutionCapacity()) this.notifyExecutionCapacityWaiters();
           }
         }
         const settlementResult =
@@ -1302,19 +1303,40 @@ export class DaemonLoop {
     return !pending || pending.settlementOccupies === true;
   }
 
+  /**
+   * Drain resume and abortInflight can leave a settling hook without a live
+   * inflight entry. Replacement handoffs still occupy only through
+   * `activeTerminalHookHandoffs`.
+   */
+  private occupyingOrphanedDeferredSettlements(): number {
+    let count = 0;
+    for (const [key, pending] of this.pendingTerminalStatus) {
+      if (pending.settlementOccupies !== true) continue;
+      const entry = this.inflight.get(key);
+      if (entry && !entry.controller.signal.aborted) continue;
+      count += 1;
+    }
+    return count;
+  }
+
   private activeAssignmentCount(): number {
-    return [...this.inflight.values()].filter(
-      (entry) => !entry.controller.signal.aborted && this.pendingOccupiesAssignmentCapacity(entry),
-    ).length;
+    return (
+      [...this.inflight.values()].filter(
+        (entry) =>
+          !entry.controller.signal.aborted && this.pendingOccupiesAssignmentCapacity(entry),
+      ).length + this.occupyingOrphanedDeferredSettlements()
+    );
   }
 
   private executingAssignmentCount(): number {
-    return [...this.inflight.values()].filter(
-      (entry) =>
-        entry.executing &&
-        !entry.controller.signal.aborted &&
-        this.pendingOccupiesAssignmentCapacity(entry),
-    ).length;
+    return (
+      [...this.inflight.values()].filter(
+        (entry) =>
+          entry.executing &&
+          !entry.controller.signal.aborted &&
+          this.pendingOccupiesAssignmentCapacity(entry),
+      ).length + this.occupyingOrphanedDeferredSettlements()
+    );
   }
 
   private startTerminalHookHandoff(pending: PendingTerminalHookHandoff): void {
