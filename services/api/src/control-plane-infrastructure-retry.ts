@@ -74,8 +74,9 @@ export function finishHostLostSession(
 export function finishHostLostWorkspaceSession(
   state: ControlPlaneState,
   session: SessionRecord,
+  options?: { emitExhausted?: boolean },
 ): SessionRecord {
-  const next = finishHostLostSession(state, session, undefined);
+  const next = finishHostLostSession(state, session, undefined, options);
   delete next.workspaceSlotId;
   delete next.workspaceSlotLease;
   next.hostId = null;

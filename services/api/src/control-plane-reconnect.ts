@@ -249,7 +249,9 @@ export async function reclaimReconnectDeadlines(
           : retryableHostLoss
             ? queueHostLossRetry(session)
             : terminalHostLoss
-              ? finishHostLostWorkspaceSession(state, session)
+              ? finishHostLostWorkspaceSession(state, session, {
+                  emitExhausted: released === "committed",
+                })
               : queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued");
       delete next.workspaceSlotLease;
       delete next.assignmentConnectionId;

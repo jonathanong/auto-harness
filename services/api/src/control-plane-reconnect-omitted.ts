@@ -255,7 +255,9 @@ async function requeueOmittedWorkspaceSessions(
       retryableHostLoss
         ? queueHostLossRetry(session)
         : terminalHostLoss
-          ? finishHostLostWorkspaceSession(state, session)
+          ? finishHostLostWorkspaceSession(state, session, {
+              emitExhausted: released === "committed",
+            })
           : queueReconnectSession(session, reason),
     );
     const { errorMessage: _, ...cleanSlot } = slot;
