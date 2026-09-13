@@ -48,12 +48,17 @@ const HEADS_PREFIX = "refs/heads/";
 /**
  * GitHub ingress `defaultRef` is the branch used for issue comments that are not
  * pull requests. It must be a canonical `refs/heads/...` name; revision
- * expressions and tag refs are rejected.
+ * expressions and tag refs are rejected. The suffix is checked with Git
+ * branch-shape rules only — SHA-looking names and nested `refs/...` components
+ * are valid once the heads prefix has removed revision ambiguity.
  */
 export function isValidGitHubIngressDefaultRef(value: unknown): value is string {
   if (typeof value !== "string" || !value.startsWith(HEADS_PREFIX)) return false;
   if (new TextEncoder().encode(value).length > MAX_SCHEDULED_BRANCH_REF_BYTES) return false;
-  return isValidScheduledBranchRef(value.slice(HEADS_PREFIX.length));
+  const suffix = value.slice(HEADS_PREFIX.length);
+  if (suffix.length === 0 || suffix === "@" || suffix === "HEAD") return false;
+  if (hasUnsafeRefShape(suffix) || hasForbiddenBranchCharacter(suffix)) return false;
+  return hasSafeRefPathSegments(suffix);
 }
 
 /**
