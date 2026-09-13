@@ -276,8 +276,9 @@ including empty legacy unversioned replacements after the queue await, and again
 retention log probe even when recent logs remain. Durable empty replacements also re-check the
 processing claim before the object PUT. An absent in-memory claim is treated as a lost
 fence.
-Empty processing claims, reclaimed generations, and empty completes against an already-expired row
-stay rejected.
+Empty processing claims, reclaimed generations, empty completes against an already-expired row,
+and complete in-memory rows that never stored an object stay rejected or are expired so retry
+sweeps cannot reclaim them.
 Queued and running sessions always remain in the recent/not-archived state, even if stale complete
 archive metadata exists; archived retrieval is exposed only after the authoritative session is terminal.
 
