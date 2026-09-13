@@ -817,6 +817,61 @@ describe("reconnect reconciliation", () => {
     expect(plane.state.worktrees.has("w2")).toBe(false);
   });
 
+  it("releases cancelled unacked replacement-only worktrees when no newer owner wins", async () => {
+    const plane = new ControlPlane({
+      now: () => "2026-01-01T00:00:00.000Z",
+      connectionIdFactory: (() => {
+        let id = 0;
+        return () => `c${++id}`;
+      })(),
+    });
+    expect(
+      plane.registerHost({
+        hostId: "h",
+        worktrees: [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }],
+        commandProfiles: [],
+      }),
+    ).toEqual({ ok: true, connectionId: "c1" });
+    plane.state.sessions.set("s", { ...durableRunning("s", "w") });
+    plane.state.worktrees.set("w", { ...durableWorktree("w", "s"), online: true, status: "busy" });
+    loseSessionAfterValidation(plane, "s", () => {
+      const claimed = {
+        ...durableRunning("cancelled-w2", "w2"),
+        status: "cancelled" as const,
+        completedAt: "2026-01-01T00:00:00.000Z",
+      };
+      delete claimed.ackReceivedAt;
+      plane.state.sessions.set("cancelled-w2", claimed);
+      plane.state.worktrees.set("w2", {
+        ...durableWorktree("w2", "cancelled-w2"),
+        online: true,
+        status: "busy",
+      });
+    });
+    await expect(
+      plane.registerHostDurable({
+        hostId: "h",
+        worktrees: [
+          { id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] },
+          { id: "w2", name: "w2", repositoryId: "r", path: "/w2", labels: [] },
+        ],
+        commandProfiles: [],
+        runningSessions: ["s"],
+        replaceExisting: true,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "reported running session lost reconnect reconciliation",
+    });
+    expect(plane.state.hostConnection.has("h")).toBe(false);
+    expect(plane.state.sessions.get("cancelled-w2")).toMatchObject({
+      status: "cancelled",
+      worktreeId: null,
+      hostId: null,
+    });
+    expect(plane.state.worktrees.has("w2")).toBe(false);
+  });
+
   it("releases cancelled unacked replacement-only claims without requeuing them", async () => {
     const plane = new ControlPlane({
       now: () => "2026-01-01T00:00:00.000Z",

@@ -375,13 +375,13 @@ function dropReplacementOnlyCapacity(
     : new Set<string>();
   for (const [id, wt] of state.worktrees) {
     if (wt.hostId !== hostId || snapshot.worktrees.has(id) || winnerWorktrees.has(id)) continue;
-    if (winnerOwnsHost) requeueUnackedWorktree(state, wt, reason);
+    requeueUnackedWorktree(state, wt, reason);
     if (wt.status === "busy" || wt.currentSessionId) continue;
     state.worktrees.delete(id);
   }
   for (const [id, slot] of state.workspaceSlots) {
     if (slot.hostId !== hostId || snapshot.slots.has(id) || winnerSlots.has(id)) continue;
-    if (winnerOwnsHost && slot.currentSessionId) {
+    if (slot.currentSessionId) {
       const session = state.sessions.get(slot.currentSessionId);
       if (isUnackedProvisionalAssignment(session)) {
         releaseUnackedProvisionalAssignment(state, session, reason, "slot");
