@@ -307,10 +307,49 @@ describe("custom webhook integration lifecycle", () => {
       },
     },
   ])(
-    "does not delete an in-memory webhook after a concurrent $name catalog write",
+    "still deletes an in-memory webhook after a concurrent unrelated $name catalog write",
     async ({ mutate }) => {
       const value = plane();
       await expect(value.createCustomWebhookIntegration(config())).resolves.toMatchObject({
+        ok: true,
+      });
+      const pending = value.deleteCustomWebhookIntegration("deploy");
+      await Promise.resolve();
+      mutate(value);
+      await expect(pending).resolves.toEqual({ ok: true });
+      expect(value.state.customWebhookIntegrations.has("deploy")).toBe(false);
+    },
+  );
+
+  it.each([
+    {
+      name: "repository",
+      webhook: {},
+      mutate: (value: ControlPlane) => {
+        expect(value.updateRepository("repo", { url: "https://example.test/repo.git" }).ok).toBe(
+          true,
+        );
+      },
+    },
+    {
+      name: "provider",
+      webhook: {},
+      mutate: (value: ControlPlane) => {
+        expect(value.updateProvider("provider", { name: "renamed-provider" }).ok).toBe(true);
+      },
+    },
+    {
+      name: "command",
+      webhook: { target: { commandId: "command" } },
+      mutate: (value: ControlPlane) => {
+        expect(value.updateCommand("command", { name: "renamed-command" }).ok).toBe(true);
+      },
+    },
+  ])(
+    "does not delete an in-memory webhook after a concurrent referenced $name write",
+    async ({ webhook, mutate }) => {
+      const value = plane();
+      await expect(value.createCustomWebhookIntegration(config(webhook))).resolves.toMatchObject({
         ok: true,
       });
       const pending = value.deleteCustomWebhookIntegration("deploy");

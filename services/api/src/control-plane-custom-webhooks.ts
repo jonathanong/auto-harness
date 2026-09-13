@@ -392,26 +392,31 @@ function conflict(): Failure {
   };
 }
 
-function catalogIds(records: Map<string, unknown>): string {
-  return [...records.keys()].toSorted().join(",");
+const catalogRecordIds = new WeakMap<object, number>();
+let nextCatalogRecordId = 1;
+
+function catalogObservation(map: Map<string, object>, id: string): string {
+  const value = map.get(id);
+  if (value === undefined) return `${id}:missing`;
+  let token = catalogRecordIds.get(value);
+  if (token === undefined) {
+    token = nextCatalogRecordId;
+    nextCatalogRecordId += 1;
+    catalogRecordIds.set(value, token);
+  }
+  return `${id}:${String(token)}`;
 }
 
 function inMemoryWebhookCatalogFingerprint(
   state: ControlPlaneState,
   record: CustomWebhookIntegrationRecord,
 ): string {
-  const parts = [
-    `repositoryRevision:${state.repositoryRevision}`,
-    `repositories:${catalogIds(state.repositories)}`,
-    `providers:${catalogIds(state.providers)}`,
-    `commands:${catalogIds(state.commands)}`,
-    `repository:${record.repositoryId}:${state.repositories.has(record.repositoryId)}`,
-  ];
+  const parts = [`repository:${catalogObservation(state.repositories, record.repositoryId)}`];
   for (const route of [record.target, ...record.fallbacks]) {
     parts.push(
       "providerId" in route
-        ? `provider:${route.providerId}:${state.providers.has(route.providerId)}`
-        : `command:${route.commandId}:${state.commands.has(route.commandId)}`,
+        ? `provider:${catalogObservation(state.providers, route.providerId)}`
+        : `command:${catalogObservation(state.commands, route.commandId)}`,
     );
   }
   return parts.join("|");
