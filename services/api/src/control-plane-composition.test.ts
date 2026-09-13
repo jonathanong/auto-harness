@@ -61,6 +61,41 @@ describe("composed control-plane services", () => {
 
     expect(toPublic(state, session)).not.toHaveProperty("activeHostId");
     expect(toPublic(state, session)).not.toHaveProperty("activeHostOrder");
+    const withHandoff = {
+      ...session,
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "host_lost" as const,
+      infrastructureRetryAttemptId: "attempt-retry",
+      terminalHookHandoff: {
+        handoffId: "handoff",
+        hostId: "host",
+        attemptId: "attempt",
+        repositoryId: "repo",
+        worktreeId: "wt-1",
+        status: "failed",
+        expiresAt: "2026-01-01T00:02:00.000Z",
+      },
+    };
+    const publicHandoff = toPublic(state, withHandoff);
+    expect(publicHandoff).not.toHaveProperty("terminalHookHandoff");
+    expect(publicHandoff).not.toHaveProperty("infrastructureRetryAttemptId");
+    expect(publicHandoff).toMatchObject({
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "host_lost",
+    });
+    expect(
+      toPublic(state, {
+        ...session,
+        terminalHookHandoffSettled: { handoffId: "handoff", hostId: "host" },
+      }),
+    ).not.toHaveProperty("terminalHookHandoffSettled");
+    expect(
+      toPublic(
+        state,
+        { ...session, terminalHookHandoffExpiredAt: "2026-01-01T00:02:00.000Z" },
+        false,
+      ),
+    ).not.toHaveProperty("terminalHookHandoffExpiredAt");
     expect(
       sessionForPersistence({ ...session, status: "completed", completedAt: session.createdAt }),
     ).not.toHaveProperty("activeHostId");

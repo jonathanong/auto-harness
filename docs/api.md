@@ -869,6 +869,10 @@ Get session details.
 | `lastInfrastructureErrorCode`   | Most recent retry cause: `checkout_fetch_failed` or `host_lost`; retained across attempts and reset only by creating a new session |
 | `result`                        | Best-effort structured terminal outcome; absent for active, legacy, and unavailable-result sessions                                |
 
+Internal terminal-hook handoff fences (`terminalHookHandoff`, `terminalHookHandoffSettled`,
+`terminalHookHandoffExpiredAt`) and `infrastructureRetryAttemptId` are durable coordination fields
+only. They are omitted from session detail and list responses.
+
 `result` is captured after the terminal hook and is untrusted agent/worktree-derived data. Its
 `summarySource` is `agent` only when a supported structured CLI result supplied the summary;
 otherwise the daemon produces a deterministic `harness` summary. `branch`, `filesChanged`, and

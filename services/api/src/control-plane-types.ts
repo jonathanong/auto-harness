@@ -118,6 +118,10 @@ export type PublicSession = Omit<
   | "primaryCommandStartState"
   | "sessionApiKeyHash"
   | "descendantCount"
+  | "terminalHookHandoff"
+  | "terminalHookHandoffSettled"
+  | "terminalHookHandoffExpiredAt"
+  | "infrastructureRetryAttemptId"
 > & {
   repositoryId: string | null;
   url: string;
