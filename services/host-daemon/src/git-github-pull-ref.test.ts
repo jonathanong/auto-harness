@@ -555,8 +555,8 @@ describe("isolated GitHub pull-ref fetch", () => {
         "--show-object-format=storage",
       ],
       ["ls-files", "-v", "-z"],
-      ["update-index", "--no-assume-unchanged", "--", "obstructed.txt"],
-      ["update-index", "--no-skip-worktree", "--", "tracked.txt"],
+      ["update-index", "--no-assume-unchanged", "-z", "--stdin"],
+      ["update-index", "--no-skip-worktree", "-z", "--stdin"],
       ["read-tree", "--reset", "-u", "--no-sparse-checkout", pullSha],
     ]);
   });
