@@ -862,9 +862,10 @@ export class DaemonLoop {
   }
 
   private notifyExecutionCapacityWaiters(): void {
-    const waiters = [...this.executionCapacityWaiters];
-    this.executionCapacityWaiters.clear();
-    for (const wake of waiters) wake();
+    const wake = this.executionCapacityWaiters.values().next().value;
+    if (!wake) return;
+    this.executionCapacityWaiters.delete(wake);
+    wake();
   }
 
   /**
@@ -913,6 +914,7 @@ export class DaemonLoop {
     while (!signal.aborted) {
       if (this.hasSpareExecutionCapacity()) {
         entry.executing = true;
+        if (this.hasSpareExecutionCapacity()) this.notifyExecutionCapacityWaiters();
         return true;
       }
       if (!(await this.waitForExecutionCapacityChange(signal))) return false;
@@ -1125,7 +1127,14 @@ export class DaemonLoop {
       }
       // Keep the entry indexed during settlement: an overlapping durable
       // handoff must find this exact promise rather than run the hook again.
-      if (pending.settlement) return pending.settlement;
+      if (pending.settlement) {
+        return pending.settlement.finally(() => {
+          if (this.pendingTerminalStatus.get(key) === pending) {
+            this.pendingTerminalStatus.delete(key);
+          }
+          pending.resolveDeferredDisposition?.();
+        });
+      }
       const settlement = (async () => {
         // Wait unoccupied so a session that began during ACK wait can finish
         // and free the slot. Index occupancy only after the slot is acquired.
@@ -1611,24 +1620,31 @@ export class DaemonLoop {
     );
     if (matching.length === 0) return { matched: false };
     const results = await Promise.all(
-      matching.map(async ([key, pending]) => {
+      matching.map(async ([, pending]) => {
+        if (pending.settlement) {
+          try {
+            await pending.settlement;
+          } catch {
+            /* ACK settlement already fail-closed this hook. */
+          }
+          return await (pending.settlementResult ?? Promise.resolve(undefined));
+        }
         if (pending.settleDeferredTerminalHook) {
           const settlementResult =
             pending.settlementResult ?? pending.settleDeferredTerminalHook(true);
           pending.settlementResult = settlementResult;
           pending.settlementOccupies = true;
-          pending.settlement ??= settlementResult
-            .then(
-              () => undefined,
-              () => undefined,
-            )
-            .finally(() => {
-              if (this.pendingTerminalStatus.get(key) === pending) {
-                this.pendingTerminalStatus.delete(key);
-              }
-              pending.resolveDeferredDisposition?.();
-            });
-          return await settlementResult;
+          pending.settlement ??= settlementResult.then(
+            () => undefined,
+            () => undefined,
+          );
+          try {
+            return await settlementResult;
+          } catch {
+            return undefined;
+          } finally {
+            pending.resolveDeferredDisposition?.();
+          }
         } else {
           pending.resolveDeferredDisposition?.();
           return undefined;
