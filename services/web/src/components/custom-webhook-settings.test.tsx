@@ -163,6 +163,32 @@ describe("CustomWebhookSettings", () => {
     view.unmount();
   });
 
+  it("keeps a secret edited while the load is in flight", async () => {
+    let resolveLoad!: (response: Response) => void;
+    createApiFake(() => new Promise<Response>((resolve) => (resolveLoad = resolve)));
+    const view = mountForm(<CustomWebhookSettings />);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "deploy");
+    press(field(view.container, "custom-webhook-load"));
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-secret"), "typed-secret");
+    resolveLoad(json(existing));
+    await settle();
+    expect(field<HTMLInputElement>(view.container, "custom-webhook-secret").value).toBe(
+      "typed-secret",
+    );
+    view.unmount();
+  });
+
+  it("clears an untouched secret when a load succeeds", async () => {
+    createApiFake(json(existing));
+    const view = mountForm(<CustomWebhookSettings />);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "deploy");
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-secret"), "stale-secret");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    expect(field<HTMLInputElement>(view.container, "custom-webhook-secret").value).toBe("");
+    view.unmount();
+  });
+
   it("does not clear a different configuration when a delete finishes late", async () => {
     let resolveDelete!: (response: Response) => void;
     createApiFake(
