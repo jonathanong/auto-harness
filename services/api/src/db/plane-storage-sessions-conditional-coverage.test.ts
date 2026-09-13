@@ -166,7 +166,7 @@ describe("session storage conditional outcomes", () => {
         queueShard: 0,
         completedAt: "done",
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe("duplicate");
   });
 
   it("treats requeue and suppress condition losses as claim losses and rethrows other errors", async () => {
@@ -627,7 +627,7 @@ describe("session storage conditional outcomes", () => {
         queueShard: 0,
         concurrencyId: "lock",
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe("committed");
     const request = send.mock.calls.at(-1)?.[0] as { input: { TransactItems: unknown[] } };
     expect(request.input.TransactItems).toContainEqual(
       expect.objectContaining({
@@ -653,7 +653,7 @@ describe("session storage conditional outcomes", () => {
           expectedStatus,
           queueShard: 0,
         }),
-      ).resolves.toBe(true);
+      ).resolves.toBe("committed");
       const request = send.mock.calls.at(-1)?.[0] as { input: { TransactItems: unknown[] } };
       expect(request.input.TransactItems).toContainEqual(
         expect.objectContaining({

@@ -34,8 +34,11 @@ export function finishHostLostSession(
   state: ControlPlaneState,
   session: SessionRecord,
   handoff = hostLostTerminalHookHandoff(state, session),
+  options?: { emitExhausted?: boolean },
 ): SessionRecord {
-  if ((session.infrastructureRetryCount ?? 0) >= 1) emitInfrastructureRetryExhausted();
+  if ((options?.emitExhausted ?? true) && (session.infrastructureRetryCount ?? 0) >= 1) {
+    emitInfrastructureRetryExhausted();
+  }
   const next: SessionRecord = {
     ...session,
     status: "failed",
@@ -71,8 +74,9 @@ export function finishHostLostSession(
 export function finishHostLostWorkspaceSession(
   state: ControlPlaneState,
   session: SessionRecord,
+  options?: { emitExhausted?: boolean },
 ): SessionRecord {
-  const next = finishHostLostSession(state, session, undefined);
+  const next = finishHostLostSession(state, session, undefined, options);
   delete next.workspaceSlotId;
   delete next.workspaceSlotLease;
   next.hostId = null;

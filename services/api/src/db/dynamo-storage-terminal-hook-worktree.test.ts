@@ -82,7 +82,7 @@ describe("DynamoDB terminal-hook worktree reservation", () => {
         queueShard: 0,
         terminalHookHandoff: handoff,
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe("committed");
     await expect(getWorktree(ctx, worktree.id)).resolves.toMatchObject({
       status: "busy",
       currentSessionId: "reserved-settle",
@@ -134,7 +134,7 @@ describe("DynamoDB terminal-hook worktree reservation", () => {
         queueShard: 0,
         terminalHookHandoff: expiringHandoff,
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe("committed");
     await expect(getWorktree(ctx, expiringWorktree.id)).resolves.toMatchObject({
       status: "busy",
       currentSessionId: "expired",

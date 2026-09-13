@@ -486,6 +486,9 @@ export function isConditionalTransactionFailureAt(err: unknown, index: number): 
 
 export type AssignmentWriteResult = boolean | "lease_collision";
 
+/** CAS winner, idempotent already-terminal conflict, or a lost claim. */
+export type DurableWriteResult = false | "committed" | "duplicate";
+
 /** True only when the provider-account lease Put was the sole failed condition. */
 export function assignmentLeaseCollision(err: unknown, leaseIndex: number | undefined): boolean {
   if (leaseIndex === undefined || !isConditionalTransactionFailureAt(err, leaseIndex)) {

@@ -80,7 +80,7 @@ describe("DynamoDB Local terminal session lifecycle", () => {
         exitCode: 0,
         cliResumeRef: "opaque",
       }),
-    ).toBe(true);
+    ).toBe("committed");
     expect((await getWorktree(ctx, "worktree"))?.status).toBe("idle");
     await expect(getActivity("finish")).resolves.toBeUndefined();
     expect(
@@ -91,7 +91,7 @@ describe("DynamoDB Local terminal session lifecycle", () => {
         status: "completed",
         queueShard: 0,
       }),
-    ).toBe(true);
+    ).toBe("duplicate");
     await putSession(ctx, { ...base, id: "expire", principalId: "principal", status: "queued" });
     await putActivity("expire");
     expect(
@@ -146,7 +146,7 @@ describe("DynamoDB Local terminal session lifecycle", () => {
         queueShard: 0,
         preserveHostAssignmentLease: true,
       }),
-    ).toBe(true);
+    ).toBe("committed");
 
     await expect(listActiveSessionsByHost(ctx, "timed-host")).resolves.toMatchObject([
       { id: "timed", status: "timed_out" },

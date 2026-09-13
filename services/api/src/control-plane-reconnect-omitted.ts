@@ -122,7 +122,10 @@ async function requeueOmittedWorktreeSessions(
       if (!finished) continue;
       await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
-      state.sessions.set(session.id, finishHostLostSession(state, session, handoff));
+      state.sessions.set(
+        session.id,
+        finishHostLostSession(state, session, handoff, { emitExhausted: finished === "committed" }),
+      );
       if (handoff) terminalHookHandoffSessionIds?.push(session.id);
       if (handoff) {
         // finishSession leaves the matching target reservation in place until
@@ -252,7 +255,9 @@ async function requeueOmittedWorkspaceSessions(
       retryableHostLoss
         ? queueHostLossRetry(session)
         : terminalHostLoss
-          ? finishHostLostWorkspaceSession(state, session)
+          ? finishHostLostWorkspaceSession(state, session, {
+              emitExhausted: released === "committed",
+            })
           : queueReconnectSession(session, reason),
     );
     const { errorMessage: _, ...cleanSlot } = slot;

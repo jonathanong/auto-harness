@@ -71,7 +71,7 @@ describe("DynamoDB Local terminal options", () => {
         cliResumeRef: "opaque",
         fence: { hostId: "host", connectionId: "connection" },
       }),
-    ).toBe(true);
+    ).toBe("committed");
     expect((await getSession(ctx, "session"))?.status).toBe("queued");
     await putSession(ctx, {
       ...base,
@@ -95,7 +95,7 @@ describe("DynamoDB Local terminal options", () => {
         concurrencyId: "key",
         result: { summary: "terminal result", summarySource: "agent" },
       }),
-    ).toBe(true);
+    ).toBe("committed");
     expect((await getSession(ctx, "terminal"))?.result).toEqual({
       summary: "terminal result",
       summarySource: "agent",

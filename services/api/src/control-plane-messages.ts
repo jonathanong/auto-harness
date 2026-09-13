@@ -41,6 +41,7 @@ import {
   emitCooldown,
   emitInfrastructureRetry,
   emitInfrastructureRetryExhausted,
+  emitInfrastructureRetryExhaustedOnCommit,
   emitLogDrops,
   emitLogSeqGap,
   emitStaleAttemptLogDrop,
@@ -2166,7 +2167,7 @@ async function applySessionStatusDurable(
     finish?.errorCode === "checkout_fetch_failed" &&
     (session.infrastructureRetryCount ?? 0) >= 1
   ) {
-    emitInfrastructureRetryExhausted();
+    emitInfrastructureRetryExhaustedOnCommit(committed, session.infrastructureRetryCount);
   }
   await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
   releaseProviderAccountLease(state, session);

@@ -13,6 +13,7 @@ import {
   emitStaleAttemptLogDrop,
   emitWsMessagesDiscarded,
   queuedSessionAgeSeconds,
+  emitInfrastructureRetryExhaustedOnCommit,
 } from "./operational-metrics.ts";
 
 describe("operational metrics", () => {
@@ -89,5 +90,19 @@ describe("operational metrics", () => {
     // emitLogSeqGap(0) and emitWsMessagesDiscarded(0) must not emit at all.
     expect(payloads.filter((p) => "LogSeqGaps" in p)).toHaveLength(1);
     expect(payloads.filter((p) => "WsMessagesDiscarded" in p)).toHaveLength(1);
+  });
+
+  it("emits retry exhaustion only for a committed write with a spent budget", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.env[OPERATIONAL_METRIC_ENVIRONMENT_VAR] = "ReviewRuntime";
+    emitInfrastructureRetryExhaustedOnCommit(false, 1);
+    emitInfrastructureRetryExhaustedOnCommit("duplicate", 1);
+    emitInfrastructureRetryExhaustedOnCommit("committed", 0);
+    emitInfrastructureRetryExhaustedOnCommit("committed", undefined);
+    expect(log).not.toHaveBeenCalled();
+    emitInfrastructureRetryExhaustedOnCommit("committed", 1);
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
+      InfrastructureRetryExhausted: 1,
+    });
   });
 });

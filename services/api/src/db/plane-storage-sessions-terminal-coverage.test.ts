@@ -37,7 +37,7 @@ describe("session terminal cleanup branches", () => {
         queueShard: 0,
         expectedTerminalHookHandoffAbsent: true,
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe("committed");
     const transaction = send.mock.calls
       .map(([command]) => command.input as { TransactItems?: unknown })
       .find((input) => input.TransactItems !== undefined);
@@ -57,7 +57,7 @@ describe("session terminal cleanup branches", () => {
         status: "failed",
         queueShard: 0,
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe("committed");
   });
 
   it("keeps assignment leases on timeout and rethrows non-conditional failures", async () => {
@@ -78,7 +78,7 @@ describe("session terminal cleanup branches", () => {
           slot: 0,
         },
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe("committed");
     const failure = new Error("finish unavailable");
     const boom = vi.fn().mockResolvedValueOnce({}).mockRejectedValueOnce(failure);
     await expect(
@@ -113,7 +113,7 @@ describe("session terminal cleanup branches", () => {
         },
         hostAssignmentLease: { hostId: "host", connectionId: "connection" },
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe("committed");
     const items = send.mock.calls[send.mock.calls.length - 1]?.[0].input.TransactItems as Array<{
       Update?: { TableName?: string; UpdateExpression?: string };
     }>;
@@ -142,7 +142,7 @@ describe("session terminal cleanup branches", () => {
         infrastructureErrorCode: "host_lost",
         expectedConnectionId: "old-connection",
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe("committed");
     const request = send.mock.calls[0]?.[0].input;
     const sessionUpdate = request.TransactItems.find(
       (transactionItem: { Update?: { TableName?: string } }) =>
