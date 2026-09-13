@@ -167,4 +167,31 @@ describe("host session live detail", () => {
     await Promise.resolve();
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("keeps archive 401 as a local error without a control-plane login redirect", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("window", {
+      ...window,
+      location: { pathname: "/sessions/session%2Fone", search: "", assign },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo) => {
+        if (String(input).includes("/archive")) {
+          return { ok: false, status: 401, json: async () => ({}) };
+        }
+        return response(true, { ...queued, status: "completed" });
+      }),
+    );
+    const view = mount(<SessionLiveDetail initialSession={{ ...queued, status: "completed" }} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(assign).not.toHaveBeenCalled();
+    expect(
+      view.container.querySelector('[data-pw="session-archive-error"]')?.textContent,
+    ).toContain("could not");
+    view.unmount();
+  });
 });
