@@ -262,6 +262,22 @@ function reportedRunningSessionIds(opts: {
   return [...(opts.runningSessions ?? [])];
 }
 
+function reconcileReportedRunningSessions(
+  state: ControlPlaneState,
+  opts: {
+    hostId: string;
+    runningSessions?: readonly string[];
+    runningAttempts?: readonly HostRunningAttempt[];
+  },
+) {
+  return reconcileHostRunningSessions(
+    state,
+    opts.hostId,
+    reportedRunningSessionIds(opts),
+    opts.runningAttempts ?? [],
+  );
+}
+
 function ownedReportedRunningSessionIds(
   state: ControlPlaneState,
   opts: {
@@ -738,12 +754,7 @@ export function registerHost(
     }
   }
   if (!opts.deferRunningSessionReconcile) {
-    void reconcileHostRunningSessions(
-      state,
-      opts.hostId,
-      reportedRunningSessionIds(opts),
-      opts.runningAttempts ?? [],
-    );
+    void reconcileReportedRunningSessions(state, opts);
   }
   return { ok: true, connectionId };
 }
@@ -790,12 +801,7 @@ export async function registerHostDurable(
   if (!state.storage) {
     const result = registerHost(state, { ...opts, deferRunningSessionReconcile: true });
     if (!result.ok) return result;
-    await reconcileHostRunningSessions(
-      state,
-      opts.hostId,
-      reportedRunningSessionIds(opts),
-      opts.runningAttempts ?? [],
-    );
+    await reconcileReportedRunningSessions(state, opts);
     return result;
   }
   const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);

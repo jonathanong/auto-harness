@@ -225,4 +225,47 @@ describe("in-memory recovery handoff delivery", () => {
       }),
     ).resolves.toEqual({ ok: false, error: "agent not connected" });
   });
+
+  it("registers a storage-less host without listing empty recovery handoffs", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+
+    await expect(
+      handleHostMessageDurable(state, {
+        type: "host:register",
+        hostId: "host",
+        worktrees: [],
+        protocolVersion: 7,
+        runningAttempts: [],
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      connectionId: expect.any(String),
+    });
+  });
+
+  it("does not requeue a still-reported in-memory session on keepalive", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    expect(
+      handleHostMessage(state, {
+        type: "host:register",
+        hostId: "host",
+        worktrees: [],
+        protocolVersion: 7,
+      }),
+    ).toEqual({ ok: true });
+    state.sessions.set("session", pendingHandoff());
+
+    await expect(
+      handleHostMessageDurable(state, {
+        type: "host:keepalive",
+        hostId: "host",
+        at: NOW,
+        runningSessions: ["session"],
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      terminalHookHandoffs: [expect.objectContaining({ handoffId: "handoff" })],
+    });
+    expect(state.sessions.get("session")?.status).toBe("failed");
+  });
 });
