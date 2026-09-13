@@ -138,20 +138,20 @@ export async function archiveSessionLogs(
       return object;
     }
     const existing = state.storage ? await state.storage.getArchive(object.key) : claimed;
-    if (
-      archiveRetentionElapsed(state.now(), [existing?.updatedAt]) &&
-      !(await recentLogsRemain(state, sessionId))
-    ) {
+    if (archiveRetentionElapsed(state.now(), [existing?.updatedAt])) {
+      const logsRemain = await recentLogsRemain(state, sessionId);
       const latest = state.archives.get(object.key);
       if (!state.storage && liveInMemoryClaimBlocksEmptyExpiry(latest, ownedRetry.retryOrder)) {
         return object;
       }
-      await persistExpiredArchive(state, object.key, {
-        ...pending,
-        retryState: "processing",
-        retryOrder: ownedRetry.retryOrder,
-      });
-      return object;
+      if (!logsRemain) {
+        await persistExpiredArchive(state, object.key, {
+          ...pending,
+          retryState: "processing",
+          retryOrder: ownedRetry.retryOrder,
+        });
+        return object;
+      }
     }
   }
   if (ownedRetry && pending.bodyBytes > 0) {

@@ -566,6 +566,54 @@ describe("archive retry state", () => {
     });
   });
 
+  it("does not PUT an empty retry when a newer claim appears while recent logs remain", async () => {
+    let uploaded = 0;
+    const key = "sessions/empty-logs-remain/logs.jsonl";
+    const state = createControlPlaneState({
+      now: () => "2026-01-08T00:00:00.000Z",
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+    });
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "old-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    let logReads = 0;
+    const originalGet = state.logs.get.bind(state.logs);
+    state.logs.get = ((sessionId: string) => {
+      logReads += 1;
+      if (logReads >= 2) {
+        state.logs.set(sessionId, [{ timestamp: "1", stream: "stdout", content: "late" } as never]);
+        state.archives.set(key, {
+          key,
+          contentType: "application/x-ndjson",
+          bodyBytes: 42,
+          status: "pending",
+          objectStored: false,
+          retryState: "processing",
+          retryOrder: "new-claim",
+          capturedRetryOrder: "new-claim",
+          updatedAt: "2026-01-08T00:00:00.000Z",
+        });
+      }
+      return originalGet(sessionId);
+    }) as typeof state.logs.get;
+    await retrySessionArchiveIfNeeded(state, "empty-logs-remain", {
+      retryState: "processing",
+      retryOrder: "old-claim",
+    });
+    expect(uploaded).toBe(0);
+    expect(state.archives.get(key)).toMatchObject({
+      retryOrder: "new-claim",
+      bodyBytes: 42,
+    });
+  });
+
   it("does not let an empty retry expire a captured nonempty claim of the same order", async () => {
     let uploaded = 0;
     const key = "sessions/empty-captured/logs.jsonl";
@@ -945,7 +993,11 @@ describe("archive retry state", () => {
 
   it("republishes the newer winner after a stale canonical upload loses its fence", async () => {
     let releaseUpload!: () => void;
-    const uploadStarted = new Promise<void>((resolve) => {
+    let sawFirstPut!: () => void;
+    const firstPut = new Promise<void>((resolve) => {
+      sawFirstPut = resolve;
+    });
+    const continueUpload = new Promise<void>((resolve) => {
       releaseUpload = resolve;
     });
     const uploaded: string[] = [];
@@ -954,7 +1006,10 @@ describe("archive retry state", () => {
       archiveWriter: {
         putArchive: async ({ body }) => {
           uploaded.push(body);
-          if (uploaded.length === 1) await uploadStarted;
+          if (uploaded.length === 1) {
+            sawFirstPut();
+            await continueUpload;
+          }
         },
       },
       now: () => "2026-01-01T00:00:00.000Z",
@@ -977,7 +1032,7 @@ describe("archive retry state", () => {
       retryState: "processing",
       retryOrder: "old-claim",
     });
-    await Promise.resolve();
+    await firstPut;
     state.logs.set("fenced-winner", [
       { timestamp: "1", stream: "stdout", content: "new" } as never,
     ]);
@@ -992,7 +1047,10 @@ describe("archive retry state", () => {
     releaseUpload();
     await retry;
 
-    expect(uploaded).toEqual(['{"timestamp":"1","stream":"stdout","content":"new"}\n']);
+    expect(uploaded).toEqual([
+      '{"timestamp":"1","stream":"stdout","content":"old"}\n',
+      '{"timestamp":"1","stream":"stdout","content":"new"}\n',
+    ]);
   });
 
   it.each(["missing-result", "missing-version"])(
