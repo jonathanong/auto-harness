@@ -70,6 +70,7 @@ describe("SessionArchiveStatus", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/sessions/session%2Fone/archive", {
       cache: "no-store",
       credentials: "same-origin",
+      signal: expect.any(AbortSignal),
     });
 
     await act(async () => vi.advanceTimersByTimeAsync(5_000));
