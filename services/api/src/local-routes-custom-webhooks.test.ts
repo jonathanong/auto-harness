@@ -923,6 +923,33 @@ describe("custom webhook receiver", () => {
     ).toBeGreaterThanOrEqual(2);
   });
 
+  it("audits a failed DELETE lookup without fabricating repository scope", async () => {
+    const { plane } = await fixture();
+    (
+      plane as unknown as { getCustomWebhookIntegration: () => Promise<never> }
+    ).getCustomWebhookIntegration = async () => {
+      throw new Error("storage unavailable");
+    };
+    const route = directRoute(plane, "/api/v1/integrations/custom/deploy", "DELETE");
+    await expect(handleCustomWebhookConfigRoutes(route.ctx as never)).resolves.toBe(true);
+    expect(route.status()).toBe(500);
+    const page = await plane.listAuditLogs({ action: "integration:custom-webhook:delete" });
+    expect(page.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "integration:custom-webhook:delete",
+          outcome: "failed",
+        }),
+      ]),
+    );
+    expect(page.items.every((item) => item.repositoryId !== "repo")).toBe(true);
+
+    plane.appendAuditLog = auditFailure;
+    const silent = directRoute(plane, "/api/v1/integrations/custom/deploy", "DELETE");
+    await expect(handleCustomWebhookConfigRoutes(silent.ctx as never)).resolves.toBe(true);
+    expect(silent.status()).toBe(500);
+  });
+
   it("does not send a second ingress response after each denied or failed audit", async () => {
     const request = Buffer.from(JSON.stringify({ prompt: "x", idempotencyKey: "audit-failure" }));
     const signedHeaders = {
