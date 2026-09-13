@@ -365,7 +365,11 @@ MEMBER, and COLLABORATOR associations are accepted; extra bot or service logins 
 allowlisted per binding.
 
 Inline review comments run against `refs/pull/<number>/head`. Issue comments on pull requests use
-the same pull ref; issue comments on ordinary issues use the configured default ref. Numeric
+the same pull ref; issue comments on ordinary issues use the configured default ref. Provision
+every eligible host with `HARNESS_GITHUB_PULL_REF_CONFIG` **before** enabling pull-request comment
+triggers; see [GitHub pull-ref checkout policy](deploy-host-daemon.md#github-pull-ref-checkout-policy).
+Hosts without that policy fail closed with `Configured pull-ref checkout has no operator policy`.
+Numeric
 repository and comment IDs form the existing session concurrency identity, so concurrent or
 active-session redelivery is deduplicated, including when a catalog deletion marker is acquired after
 that lock owner already committed. Marker-only conflicts with no active lock owner still fail

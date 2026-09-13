@@ -400,6 +400,11 @@ after assignment and therefore are not advertised as ambient host environment ca
 
 ### GitHub pull-ref checkout policy
 
+GitHub [comment ingress](integrations.md#github-app-comment-ingress) runs pull-request comments
+against `refs/pull/<number>/head`. Every eligible host must have this policy **before** those
+triggers are enabled; otherwise checkout fails closed with
+`Configured pull-ref checkout has no operator policy`.
+
 To enable `refs/pull/<number>/head`, create a root-owned mode-`0644` policy file, or a root-owned
 `root:harness` mode-`0640` policy file, outside every checkout and set its absolute path as
 `HARNESS_GITHUB_PULL_REF_CONFIG`. Every parent directory and the file itself must be root-owned,
