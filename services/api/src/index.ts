@@ -64,4 +64,17 @@ export type {
   WebhookTransportRequest,
   WebhookTransportResult,
 } from "./webhook-delivery-types.ts";
+export {
+  WEBHOOK_EVENT_HEADER,
+  WEBHOOK_DELIVERY_HEADER,
+  WEBHOOK_SIGNATURE_256_HEADER,
+  createSignedWebhookTransport,
+  signWebhookBody,
+} from "./webhook-delivery-types.ts";
+export type { WebhookDestinationConfig } from "./webhook-delivery-types.ts";
+export type {
+  CustomWebhookConfigInput,
+  PublicCustomWebhookIntegration,
+} from "./custom-webhook-types.ts";
+export type { IntegrationSessionFence } from "./db/plane-storage-types.ts";
 export { main as apiCliMain } from "./cli.ts";

@@ -4,6 +4,7 @@ import {
   type CommandRecord,
   type ProviderAccountRecord,
   type ProviderRecord,
+  type CustomWebhookIntegrationRecord,
 } from "./plane-storage-types.ts";
 import * as catalog from "./plane-storage-catalog-providers.ts";
 import * as providerAccounts from "./plane-storage-provider-accounts.ts";
@@ -26,6 +27,7 @@ export type {
   CommandRecord,
   ProviderAccountRecord,
   ProviderRecord,
+  CustomWebhookIntegrationRecord,
   RepositoryRecord,
   WorkspacePoolRecord,
   WorkspacePoolSummary,
@@ -118,6 +120,14 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return webhookSettlement.failWebhookDelivery(this.ctx, input);
   }
 
+  deadLetterWebhookDelivery(
+    input: webhookOutbox.WebhookLeaseFence & {
+      failureCode: import("../webhook-outbox.ts").WebhookFailureCode;
+    },
+  ): Promise<boolean> {
+    return webhookSettlement.deadLetterWebhookDelivery(this.ctx, input);
+  }
+
   deadLetterExhaustedWebhookDelivery(input: { id: string; now: string }): Promise<boolean> {
     return webhookSettlement.deadLetterExhaustedWebhookDelivery(this.ctx, input);
   }
@@ -186,6 +196,42 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
 
   putSlackInboundEvent(record: import("../slack-oauth-types.ts").SlackInboundEventRecord) {
     return slackInbound.putSlackInboundEvent(this.ctx, record);
+  }
+
+  getCustomWebhookIntegration(id: string): Promise<CustomWebhookIntegrationRecord | null> {
+    return integrations.getCustomWebhookIntegration(this.ctx, id);
+  }
+
+  listCustomWebhookIntegrations(): Promise<CustomWebhookIntegrationRecord[]> {
+    return integrations.listCustomWebhookIntegrations(this.ctx);
+  }
+
+  putCustomWebhookIntegration(
+    record: CustomWebhookIntegrationRecord,
+    expectedVersion: number | null,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
+    expectedGeneration?: string | null,
+  ): Promise<boolean> {
+    return integrations.putCustomWebhookIntegration(
+      this.ctx,
+      record,
+      expectedVersion,
+      markers,
+      expectedGeneration,
+    );
+  }
+
+  deleteCustomWebhookIntegration(
+    id: string,
+    expectedVersion: number,
+    expectedGeneration?: string | null,
+  ): Promise<boolean> {
+    return integrations.deleteCustomWebhookIntegration(
+      this.ctx,
+      id,
+      expectedVersion,
+      expectedGeneration,
+    );
   }
 
   putAuditLog(record: import("../audit-types.ts").AuditLogRecord): Promise<void> {

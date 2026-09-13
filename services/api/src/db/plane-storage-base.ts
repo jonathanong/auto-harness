@@ -21,6 +21,7 @@ import {
   type SessionDrainRecord,
   type ScheduleRecord,
   type ViewerTicketRecord,
+  type IntegrationSessionFence,
 } from "./plane-storage-types.ts";
 import * as sessions from "./plane-storage-sessions.ts";
 import * as providerAccountLeases from "./plane-storage-provider-account-leases.ts";
@@ -78,8 +79,9 @@ export class DynamoPlaneStorageBase {
     session: SessionRecord,
     markers?: readonly import("./plane-storage-deletion-markers.ts").DeletionMarker[],
     parentFence?: { id: string; rootSessionId?: string; sessionApiKeyHash?: string },
+    integrationFence?: IntegrationSessionFence,
   ): Promise<sessions.CreateSessionResult> {
-    return sessions.createSession(this.ctx, session, markers, parentFence);
+    return sessions.createSession(this.ctx, session, markers, parentFence, integrationFence);
   }
 
   releaseConcurrencyLock(concurrencyId: string, sessionId: string): Promise<void> {

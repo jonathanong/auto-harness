@@ -28,6 +28,7 @@ export function requiredCapability(
     pathname === "/api/v1/integrations/slack/oauth/start"
   )
     return "integrations:write";
+  if (/^\/api\/v1\/integrations\/custom\/[^/]+$/.test(pathname)) return "integrations:write";
   if (
     matchesRoutePrefix(pathname, "/api/v1/auth/users") ||
     matchesRoutePrefix(pathname, "/api/v1/auth/service-accounts")

@@ -74,6 +74,7 @@ describe("AutoHarnessRuntimeStack", () => {
         Variables: Match.objectLike({
           HARNESS_DDB_PREFIX: "ReviewRuntime",
           HARNESS_METRIC_ENVIRONMENT: "ReviewRuntime",
+          NODE_ENV: "production",
           WS_API_ENDPOINT: Match.anyValue(),
         }),
       },
@@ -161,6 +162,7 @@ describe("AutoHarnessRuntimeStack", () => {
         .map((fn) => fn.Properties?.Environment?.Variables?.ARCHIVE_BUCKET),
     ).toEqual([undefined]);
     for (const fn of functions) {
+      expect(fn.Properties?.Environment?.Variables?.NODE_ENV).toBe("production");
       expect(fn.Properties?.Environment?.Variables?.HARNESS_CURSOR_SECRET_SSM_PARAM).toEqual({
         Ref: "HarnessCursorSecretSsmParam",
       });

@@ -40,6 +40,37 @@ export type ProviderRecord = Provider;
 export type ProviderAccountRecord = ProviderAccount & { version?: number };
 export type CommandRecord = Command;
 
+/** Operator-owned routing and secret metadata for a generic inbound webhook. */
+export type CustomWebhookIntegrationRecord = {
+  id: string;
+  type: "custom-webhook";
+  /** Absent only on rows written before recreate fencing was introduced. */
+  generation?: string;
+  encryptedSecret: string;
+  repositoryId: string;
+  target: TargetRef;
+  fallbacks: TargetRef[];
+  queueTtlSeconds: number;
+  timeout: number;
+  priority: number;
+  requiredLabels: string[];
+  enabled: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Version fence included in the same session transaction as an inbound integration. */
+export type IntegrationSessionFence = {
+  id: string;
+  type: "custom-webhook";
+  storageId: string;
+  /** Undefined fences a legacy row and requires the attribute to remain absent. */
+  generation?: string;
+  version: number;
+  enabled: boolean;
+};
+
 /** Hashed one-time browser viewer ticket. The raw ticket is never persisted. */
 export type ViewerTicketRecord = {
   ticketHash: string;

@@ -40,7 +40,8 @@ export async function processWebhookOutboxBatch(
   );
   for (const candidate of candidates) {
     if (!canContinue()) return;
-    await processCandidate(store, transport, candidate, now, options);
+    const candidateNow = (options.now ?? (() => new Date().toISOString()))();
+    await processCandidate(store, transport, candidate, candidateNow, options);
   }
 }
 
@@ -58,12 +59,13 @@ async function processCandidate(
   }
   const owner = options.owner ?? "webhook-worker";
   const leaseId = (options.leaseId ?? randomUUID)();
+  const leaseExpiresAt = addMs(now, options.leaseMs ?? 30_000);
   const claimed = await store.claimWebhookDelivery({
     id: candidate.id,
     owner,
     leaseId,
     now,
-    leaseExpiresAt: addMs(now, options.leaseMs ?? 30_000),
+    leaseExpiresAt,
   });
   if (!claimed) return null;
   const fence = { id: claimed.id, owner, leaseId, now };
@@ -74,12 +76,25 @@ async function processCandidate(
       destination: claimed.destination,
       event: claimed.event,
       body: JSON.stringify(claimed.event),
+      leaseExpiresAt,
     });
   } catch {
     result = { ok: false, failureCode: "unknown" };
   }
   if (result.ok) {
     return (await store.completeWebhookDelivery(fence)) ? "sent" : "lease-lost";
+  }
+  if (result.failureCode === "delivery-rejected") {
+    // A transport rejection may arrive after most of the lease has elapsed. Re-sample the
+    // clock so settlement cannot use the claim timestamp to renew an already-expired lease.
+    const settlementNow = (options.now ?? (() => new Date().toISOString()))();
+    return (await store.deadLetterWebhookDelivery({
+      ...fence,
+      now: settlementNow,
+      failureCode: result.failureCode,
+    }))
+      ? "dead"
+      : "lease-lost";
   }
   const settled = await store.failWebhookDelivery({
     ...fence,

@@ -104,6 +104,7 @@ const refs: DeleteReferences = {
       updatedAt: now,
     },
   ],
+  integrations: [],
 };
 
 describe("catalog delete references in every route shape", () => {
@@ -153,6 +154,43 @@ describe("catalog delete references in every route shape", () => {
         { kind: "host-inventory", id: "host" },
       ]),
     );
+  });
+
+  it("blocks deletion of every catalog reference held by a custom webhook", () => {
+    const withWebhook: DeleteReferences = {
+      ...refs,
+      integrations: [
+        {
+          id: "deploy",
+          type: "custom-webhook",
+          generation: "generation",
+          encryptedSecret: "ciphertext",
+          repositoryId: "repository",
+          target: { providerId: "provider" },
+          fallbacks: [{ commandId: "command" }],
+          queueTtlSeconds: 60,
+          timeout: 60,
+          priority: 0,
+          requiredLabels: [],
+          enabled: true,
+          version: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+    };
+    expect(dependenciesForProvider(withWebhook, "provider")).toContainEqual({
+      kind: "integration",
+      id: "deploy",
+    });
+    expect(dependenciesForCommand(withWebhook, "command")).toContainEqual({
+      kind: "integration",
+      id: "deploy",
+    });
+    expect(dependenciesForRepository(withWebhook, "repository")).toContainEqual({
+      kind: "integration",
+      id: "deploy",
+    });
   });
 
   it("treats absent override maps as no account dependency and reads in-memory references without storage", async () => {

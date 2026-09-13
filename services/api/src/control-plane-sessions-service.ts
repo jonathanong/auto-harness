@@ -14,6 +14,7 @@ import type {
   PublicSession,
 } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
+import type { IntegrationSessionFence } from "./db/plane-storage-types.ts";
 import { toPublic } from "./control-plane-state.ts";
 import * as assign from "./control-plane-assign.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
@@ -62,9 +63,16 @@ export class ControlPlaneSessionsService {
 
   createSessionDurable(
     body: unknown,
-    options: { principalId?: string } = {},
+    options: { principalId?: string; integrationFence?: IntegrationSessionFence } = {},
   ): Promise<Awaited<ReturnType<typeof durableSessions.createSessionDurable>>> {
     return durableSessions.createSessionDurable(this.state, body, options);
+  }
+
+  createCustomWebhookSessionDurable(
+    body: unknown,
+    options: { integrationFence?: IntegrationSessionFence } = {},
+  ): ReturnType<typeof durableSessions.createCustomWebhookSessionDurable> {
+    return durableSessions.createCustomWebhookSessionDurable(this.state, body, options);
   }
 
   getSession(id: string): PublicSession | null {

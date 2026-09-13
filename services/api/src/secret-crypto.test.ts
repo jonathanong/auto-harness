@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NodeHttpHandler } from "@smithy/node-http-handler";
 
 import {
   configuredSecretEncryptor,
@@ -32,6 +33,26 @@ describe("KMS integration secrets", () => {
         SLACK_SECRET_ENCRYPTION_CONTEXT,
       ),
     ).toBe("plaintext");
+  });
+
+  it("uses a throwing, bounded KMS transport for default clients", async () => {
+    const crypto = new KmsSecretEncryptor({ keyId: "key" });
+    const client = (
+      crypto as unknown as { client: { config: { requestHandler: NodeHttpHandler } } }
+    ).client;
+    const handler = client.config.requestHandler;
+
+    expect(handler).toBeInstanceOf(NodeHttpHandler);
+    const config = await (
+      handler as unknown as {
+        configProvider: Promise<ReturnType<NodeHttpHandler["httpHandlerConfigs"]>>;
+      }
+    ).configProvider;
+    expect(config).toMatchObject({
+      connectionTimeout: 3_000,
+      requestTimeout: 5_000,
+      throwOnRequestTimeout: true,
+    });
   });
 
   it("rejects incomplete KMS responses and is enabled only by KMS_KEY_ID", async () => {

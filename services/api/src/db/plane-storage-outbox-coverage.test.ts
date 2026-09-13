@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- storage branch cases share one Dynamo command fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import { claimDue, complete, enqueue } from "./plane-storage-notification-deliveries.ts";
@@ -153,6 +154,25 @@ describe("webhook delivery storage branches", () => {
   it("rethrows a duplicate enqueue when the conditional winner cannot be read", async () => {
     const send = vi.fn().mockRejectedValueOnce(conditional).mockResolvedValueOnce({});
     await expect(enqueueWebhookDelivery(ctx(send), webhookInput)).rejects.toBe(conditional);
+  });
+
+  it("returns the conditional winner when a duplicate enqueue can be read", async () => {
+    const existing = { ...webhookInput, id: "delivery" };
+    const send = vi
+      .fn()
+      .mockRejectedValueOnce(conditional)
+      .mockResolvedValueOnce({ Item: existing });
+    await expect(enqueueWebhookDelivery(ctx(send), webhookInput)).resolves.toEqual({
+      created: false,
+      delivery: existing,
+    });
+  });
+
+  it("propagates a non-conditional enqueue failure", async () => {
+    const failure = new Error("webhook table unavailable");
+    await expect(
+      enqueueWebhookDelivery(ctx(vi.fn().mockRejectedValue(failure)), webhookInput),
+    ).rejects.toBe(failure);
   });
 
   it("validates settlement fences and propagates non-conditional failures", async () => {

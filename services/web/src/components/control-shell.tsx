@@ -115,6 +115,12 @@ const NAV: NavGroup[] = [
         pw: "nav-slack",
         tip: "Admin-only Slack integration",
       },
+      {
+        href: "/settings/custom-webhooks",
+        label: "Webhooks",
+        pw: "nav-custom-webhooks",
+        tip: "Admin-only HMAC inbound webhook configuration",
+      },
     ],
   },
 ];

@@ -4,7 +4,12 @@ import { isActiveSessionStatus } from "@auto-harness/shared";
 
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
-import type { CommandRecord, ProviderAccountRecord, ProviderRecord } from "./db/plane-storage.ts";
+import type {
+  CommandRecord,
+  CustomWebhookIntegrationRecord,
+  ProviderAccountRecord,
+  ProviderRecord,
+} from "./db/plane-storage.ts";
 import {
   commandOverrideDependencies,
   deleteDependencyLabel,
@@ -17,6 +22,7 @@ export type DeleteDependency = {
     | "provider"
     | "provider-account"
     | "command"
+    | "integration"
     | "worktree"
     | "host-inventory"
     | "session-drain";
@@ -68,6 +74,7 @@ export type DeleteReferences = {
   providers: ReadonlyArray<ProviderRecord>;
   accounts: ReadonlyArray<ProviderAccountRecord>;
   commands: ReadonlyArray<CommandRecord>;
+  integrations: ReadonlyArray<CustomWebhookIntegrationRecord>;
 };
 
 export function referencesFromState(state: ControlPlaneState): DeleteReferences {
@@ -80,6 +87,7 @@ export function referencesFromState(state: ControlPlaneState): DeleteReferences 
     providers: [...state.providers.values()],
     accounts: [...state.providerAccounts.values()],
     commands: [...state.commands.values()],
+    integrations: [...state.customWebhookIntegrations.values()],
   };
 }
 
@@ -95,6 +103,7 @@ export async function refreshDeleteReferences(state: ControlPlaneState): Promise
     providers,
     accounts,
     commands,
+    integrations,
   ] = await Promise.all([
     // Account deletion must see every just-committed owned schedule after the
     // principal marker is acquired; eventual reads could miss one and leave
@@ -107,6 +116,12 @@ export async function refreshDeleteReferences(state: ControlPlaneState): Promise
     state.storage.listProviders(),
     state.storage.listProviderAccounts(),
     state.storage.listCommands(),
+    // Older narrow storage adapters and test doubles predate custom integrations. Their in-memory
+    // mirror remains authoritative for that unsupported capability; production Dynamo storage
+    // implements the strong consistent scan used by catalog deletes.
+    typeof state.storage.listCustomWebhookIntegrations === "function"
+      ? state.storage.listCustomWebhookIntegrations()
+      : [...state.customWebhookIntegrations.values()],
   ]);
   return {
     schedules,
@@ -117,6 +132,7 @@ export async function refreshDeleteReferences(state: ControlPlaneState): Promise
     providers,
     accounts,
     commands,
+    integrations,
   };
 }
 
@@ -132,6 +148,9 @@ export function dependenciesForProvider(refs: DeleteReferences, id: string): Del
   for (const session of live(refs.sessions))
     if (referencesProvider(session.target, session.fallbacks, id))
       dependencies.push(sessionDependency(session));
+  for (const integration of refs.integrations)
+    if (referencesProvider(integration.target, integration.fallbacks, id))
+      dependencies.push({ kind: "integration", id: integration.id });
   return unique(dependencies);
 }
 
@@ -168,6 +187,9 @@ export function dependenciesForCommand(refs: DeleteReferences, id: string): Dele
       session.pinnedCommandId === id
     )
       dependencies.push(sessionDependency(session));
+  for (const integration of refs.integrations)
+    if (referencesCommand(integration.target, integration.fallbacks, id))
+      dependencies.push({ kind: "integration", id: integration.id });
   return unique(dependencies);
 }
 
@@ -195,6 +217,9 @@ export function dependenciesForRepository(refs: DeleteReferences, id: string): D
     ...refs.inventories
       .filter((inventory) => inventory.repositories.some((repository) => repository.id === id))
       .map((inventory) => ({ kind: "host-inventory" as const, id: inventory.hostId })),
+    ...refs.integrations
+      .filter((integration) => integration.repositoryId === id)
+      .map((integration) => ({ kind: "integration" as const, id: integration.id })),
   ]);
 }
 

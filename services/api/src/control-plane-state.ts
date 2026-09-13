@@ -16,6 +16,7 @@ import type {
   DynamoPlaneStorage,
   ProviderAccountRecord,
   ProviderRecord,
+  CustomWebhookIntegrationRecord,
   RepositoryRecord,
   WorkspacePoolRecord,
 } from "./db/plane-storage.ts";
@@ -84,6 +85,8 @@ export type ControlPlaneState = {
   /** Local/test counterpart; deployed receipt always goes through DynamoDB. */
   slackOAuthStates: Map<string, SlackOAuthStateRecord>;
   slackInboundEvents: Map<string, SlackInboundEventRecord>;
+  /** Ciphertext-only cache for operator-owned generic webhook integrations. */
+  customWebhookIntegrations: Map<string, CustomWebhookIntegrationRecord>;
   /** True when this process (or its deployed sibling cron) can run the Slack outbox. */
   slackOutboundEnabled: boolean;
   /** OAuth signing credentials were injected into this REST runtime. */
@@ -185,6 +188,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     slackIntegration: undefined,
     slackOAuthStates: new Map(),
     slackInboundEvents: new Map(),
+    customWebhookIntegrations: new Map(),
     slackOutboundEnabled: false,
     slackInboundEnabled: false,
     slackOAuthClient: options.slackOAuthClient,
