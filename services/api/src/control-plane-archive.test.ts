@@ -665,7 +665,7 @@ describe("archive retry state", () => {
     expect(state.archives.get(key)?.status).toBe("expired");
   });
 
-  it("does not block a missing in-memory empty retry before retention elapses", async () => {
+  it("does not upload a missing in-memory empty retry", async () => {
     let uploaded = 0;
     const state = createControlPlaneState({
       now: () => "2026-01-01T00:01:00.000Z",
@@ -675,7 +675,8 @@ describe("archive retry state", () => {
       retryState: "processing",
       retryOrder: "claim-order",
     });
-    expect(uploaded).toBe(1);
+    expect(uploaded).toBe(0);
+    expect(state.archives.get("sessions/empty-missing/logs.jsonl")).toBeUndefined();
   });
 
   it("does not upload a nonempty in-memory retry that lost its claim", async () => {
@@ -693,6 +694,66 @@ describe("archive retry state", () => {
     });
     expect(uploaded).toBe(0);
     expect(state.archives.get(key)).toBeUndefined();
+  });
+
+  it("does not upload a nonempty in-memory retry against a different processing generation", async () => {
+    let uploaded = 0;
+    const key = "sessions/mismatch-memory/logs.jsonl";
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+    });
+    state.logs.set("mismatch-memory", [
+      { timestamp: "1", stream: "stdout", content: "captured" } as never,
+    ]);
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 4,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "new-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await retrySessionArchiveIfNeeded(state, "mismatch-memory", {
+      retryState: "processing",
+      retryOrder: "old-claim",
+    });
+    expect(uploaded).toBe(0);
+    expect(state.archives.get(key)).toMatchObject({
+      retryState: "processing",
+      retryOrder: "new-claim",
+    });
+  });
+
+  it("does not upload a nonempty in-memory retry against an idle matching-order claim", async () => {
+    let uploaded = 0;
+    const key = "sessions/idle-memory/logs.jsonl";
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+    });
+    state.logs.set("idle-memory", [
+      { timestamp: "1", stream: "stdout", content: "captured" } as never,
+    ]);
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 4,
+      status: "pending",
+      objectStored: false,
+      retryState: "pending",
+      retryOrder: "claim-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await retrySessionArchiveIfNeeded(state, "idle-memory", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(uploaded).toBe(0);
+    expect(state.archives.get(key)).toMatchObject({
+      retryState: "pending",
+      retryOrder: "claim-order",
+    });
   });
 
   it("writes a durable pending marker when an in-memory claim has storage but no retry fence", async () => {

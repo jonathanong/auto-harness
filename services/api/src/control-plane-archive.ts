@@ -16,12 +16,12 @@ function liveInMemoryClaimBlocksEmptyExpiry(
   claimed: ArchiveMetadata | undefined,
   retryOrder: string,
 ): boolean {
-  return Boolean(
-    claimed &&
-    (claimed.status === "expired" ||
-      claimed.retryState !== "processing" ||
-      claimed.retryOrder !== retryOrder ||
-      (claimed.bodyBytes > 0 && claimed.capturedRetryOrder === claimed.retryOrder)),
+  return (
+    claimed === undefined ||
+    claimed.status === "expired" ||
+    claimed.retryState !== "processing" ||
+    claimed.retryOrder !== retryOrder ||
+    (claimed.bodyBytes > 0 && claimed.capturedRetryOrder === claimed.retryOrder)
   );
 }
 
