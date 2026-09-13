@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
-import { tryAcquireHostLock } from "./plane-storage-locks.ts";
+import { releaseHostConnection, tryAcquireHostLock } from "./plane-storage-locks.ts";
 import { authorizePrimaryCommandStart } from "./plane-storage-sessions-command-start.ts";
 import { getSession, putSession } from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
@@ -65,6 +65,10 @@ describe("DynamoDB Local primary command-start authorization", () => {
     expect(await authorizePrimaryCommandStart(ctx, commandStart)).toBe(true);
     expect((await getSession(ctx, "session"))?.primaryCommandStartState).toBe("authorized");
     expect(await authorizePrimaryCommandStart(ctx, commandStart)).toBe(true);
+    expect(await releaseHostConnection(ctx, { hostId: "host", connectionId: "connection" })).toBe(
+      true,
+    );
+    expect(await authorizePrimaryCommandStart(ctx, commandStart)).toBe(false);
     expect(
       await tryAcquireHostLock(ctx, {
         hostId: "host",
