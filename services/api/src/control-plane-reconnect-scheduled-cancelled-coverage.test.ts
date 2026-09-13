@@ -88,4 +88,18 @@ describe("scheduled reconnect cancelled cleanup", () => {
 
     await expect(reclaimScheduledReconnect(state, session, [])).resolves.toBe(true);
   });
+
+  it("omits absent attempt and concurrency fences from a cancelled release", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const session = cancelledSession({ attemptId: undefined, concurrencyId: undefined });
+    state.storage = {
+      releaseMainCheckoutSession: async (options: Record<string, unknown>) => {
+        expect(options).not.toHaveProperty("attemptId");
+        expect(options).not.toHaveProperty("concurrencyId");
+        return false;
+      },
+    } as never;
+
+    await expect(reclaimScheduledReconnect(state, session, [])).resolves.toBe(true);
+  });
 });
