@@ -462,6 +462,91 @@ describe("archive retry state", () => {
     expect(expireArchive).not.toHaveBeenCalled();
   });
 
+  it("does not let an old empty retry expire a newer in-memory claim", async () => {
+    let uploaded = 0;
+    const key = "sessions/empty-stale/logs.jsonl";
+    const state = createControlPlaneState({
+      now: () => "2026-01-08T00:00:00.000Z",
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+    });
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 42,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "new-claim",
+      capturedRetryOrder: "new-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await retrySessionArchiveIfNeeded(state, "empty-stale", {
+      retryState: "processing",
+      retryOrder: "old-claim",
+    });
+    expect(uploaded).toBe(0);
+    expect(state.archives.get(key)).toMatchObject({
+      retryState: "processing",
+      retryOrder: "new-claim",
+      bodyBytes: 42,
+    });
+  });
+
+  it("expires a matching empty in-memory claim after retention elapses", async () => {
+    let uploaded = 0;
+    const key = "sessions/empty-memory/logs.jsonl";
+    const state = createControlPlaneState({
+      now: () => "2026-01-08T00:00:00.000Z",
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+    });
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "claim-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await retrySessionArchiveIfNeeded(state, "empty-memory", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(uploaded).toBe(0);
+    expect(state.archives.get(key)?.status).toBe("expired");
+  });
+
+  it("does not block a missing in-memory empty retry before retention elapses", async () => {
+    let uploaded = 0;
+    const state = createControlPlaneState({
+      now: () => "2026-01-01T00:01:00.000Z",
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+    });
+    await retrySessionArchiveIfNeeded(state, "empty-missing", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(uploaded).toBe(1);
+  });
+
+  it("does not upload a nonempty in-memory retry that lost its claim", async () => {
+    let uploaded = 0;
+    const key = "sessions/lost-memory/logs.jsonl";
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+    });
+    state.logs.set("lost-memory", [
+      { timestamp: "1", stream: "stdout", content: "captured" } as never,
+    ]);
+    await retrySessionArchiveIfNeeded(state, "lost-memory", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(uploaded).toBe(0);
+    expect(state.archives.get(key)).toBeUndefined();
+  });
+
   it("writes a durable pending marker when an in-memory claim has storage but no retry fence", async () => {
     const putArchive = vi.fn(async () => undefined);
     const key = "sessions/storage-claim/logs.jsonl";
@@ -819,6 +904,7 @@ describe("archive retry state", () => {
   it("releases a matching local retry claim after an upload failure", async () => {
     const key = "sessions/local-release/logs.jsonl";
     const state = createControlPlaneState({
+      now: () => "2026-01-01T00:01:00.000Z",
       archiveWriter: {
         putArchive: async () => {
           throw new Error("upload failed");
@@ -843,6 +929,7 @@ describe("archive retry state", () => {
     const key = "sessions/replaced-after-failure/logs.jsonl";
     let state: ReturnType<typeof createControlPlaneState>;
     state = createControlPlaneState({
+      now: () => "2026-01-01T00:01:00.000Z",
       archiveWriter: {
         putArchive: async () => {
           state.archives.set(key, {
