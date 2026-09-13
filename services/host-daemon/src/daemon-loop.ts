@@ -161,6 +161,11 @@ type PendingTerminalStatus = {
     | undefined;
   /** An acknowledged deferred status remains discoverable until its hook settles. */
   settlement?: Promise<void> | undefined;
+  /**
+   * True only after this settlement has claimed an execution slot. A queued
+   * waiter must not occupy, or it deadlocks itself at maxConcurrentAssignments.
+   */
+  settlementOccupies?: boolean | undefined;
   /** The shared hook result for a same-process handoff that overlaps its status ACK. */
   settlementResult?: Promise<import("@auto-harness/shared").SessionResult | undefined> | undefined;
   resolveDeferredDisposition?: (() => void) | undefined;
@@ -1122,9 +1127,8 @@ export class DaemonLoop {
       // handoff must find this exact promise rather than run the hook again.
       if (pending.settlement) return pending.settlement;
       const settlement = (async () => {
-        // Occupancy is indexed as soon as `pending.settlement` is assigned.
-        // Wait for a free slot before starting the hook so a session that began
-        // during ACK wait cannot overlap this work at maxConcurrentAssignments.
+        // Wait unoccupied so a session that began during ACK wait can finish
+        // and free the slot. Index occupancy only after the slot is acquired.
         if (msg.retryAccepted !== true) {
           const entry = this.inflight.get(key);
           if (
@@ -1133,6 +1137,7 @@ export class DaemonLoop {
           ) {
             return;
           }
+          pending.settlementOccupies = true;
         }
         const settlementResult =
           pending.settlementResult ??
@@ -1277,12 +1282,12 @@ export class DaemonLoop {
 
   /**
    * Ordinary terminal-status retries do not occupy CLI capacity while waiting
-   * for ACK. Once a protocol-v6 deferred hook has begun settlement, it keeps
-   * the same slot a replacement handoff uses while executing.
+   * for ACK or for a free execution slot. Once a protocol-v6 deferred hook
+   * has claimed a slot, it keeps the same occupancy a replacement handoff uses.
    */
   private pendingOccupiesAssignmentCapacity(entry: InflightSession): boolean {
     const pending = this.pendingTerminalStatus.get(inflightKey(entry.sessionId, entry.attemptId));
-    return !pending || pending.settlement !== undefined;
+    return !pending || pending.settlementOccupies === true;
   }
 
   private activeAssignmentCount(): number {
@@ -1601,21 +1606,29 @@ export class DaemonLoop {
     matched: boolean;
     result?: import("@auto-harness/shared").SessionResult;
   }> {
-    const matching = [...this.pendingTerminalStatus.values()].filter(
-      (pending) => pending.message.sessionId === sessionId,
+    const matching = [...this.pendingTerminalStatus.entries()].filter(
+      ([, pending]) => pending.message.sessionId === sessionId,
     );
     if (matching.length === 0) return { matched: false };
     const results = await Promise.all(
-      matching.map(async (pending) => {
+      matching.map(async ([key, pending]) => {
         if (pending.settleDeferredTerminalHook) {
           const settlementResult =
             pending.settlementResult ?? pending.settleDeferredTerminalHook(true);
           pending.settlementResult = settlementResult;
-          pending.settlement ??= settlementResult.then(
-            () => undefined,
-            () => undefined,
-          );
-          return await settlementResult.finally(() => pending.resolveDeferredDisposition?.());
+          pending.settlementOccupies = true;
+          pending.settlement ??= settlementResult
+            .then(
+              () => undefined,
+              () => undefined,
+            )
+            .finally(() => {
+              if (this.pendingTerminalStatus.get(key) === pending) {
+                this.pendingTerminalStatus.delete(key);
+              }
+              pending.resolveDeferredDisposition?.();
+            });
+          return await settlementResult;
         } else {
           pending.resolveDeferredDisposition?.();
           return undefined;

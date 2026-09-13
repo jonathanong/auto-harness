@@ -88,8 +88,17 @@ describe("DaemonLoop terminal-hook handoff ordering", () => {
       });
       await flushMacrotask();
       expect(assignmentStarted).not.toHaveBeenCalled();
+      transport.deliver({
+        type: "session:status-acknowledged",
+        sessionId: "lost",
+        attemptId: "attempt",
+        retryAccepted: false,
+      });
+      await flushMacrotask();
+      expect(pendingTerminalStatusOf(loop).size).toBe(1);
       finishHook({ summary: "after hook", summarySource: "harness" });
       await waitFor(() => assignmentStarted.mock.calls.length === 1);
+      expect(pendingTerminalStatusOf(loop).size).toBe(0);
       loop.stop();
     } finally {
       cleanup();
