@@ -9,6 +9,7 @@ import {
   KEEPALIVE_ACK_PROTOCOL_VERSION,
   SESSION_RESULT_PROTOCOL_VERSION,
   TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION,
+  harnessSessionResult,
   thrownMessage,
   type HostRuntimeReport,
   type HostToServerMessage,
@@ -122,6 +123,8 @@ type InflightSession = {
   work: Promise<void>;
   /** Set only by a server `session:acknowledged` wire message. */
   acknowledged: boolean;
+  /** True only after this assignment has passed its target fence and started `runAssign`. */
+  executing: boolean;
   // Cleared back to undefined once fired, not deleted, so both states need an
   // explicit type under exactOptionalPropertyTypes.
   resolveAcknowledgement?: (() => void) | undefined;
@@ -193,6 +196,11 @@ type PendingTerminalHookHandoff = {
   /** Cancels a completion buffered behind a disconnected transport during shutdown. */
   completionController?: AbortController | undefined;
   result?: import("@auto-harness/shared").SessionResult;
+  /** Physical-target reservation installed when the handoff is accepted. */
+  targetKey?: string | undefined;
+  previousTargetWork?: Promise<void> | undefined;
+  targetWork?: Promise<void> | undefined;
+  resolveTargetWork?: (() => void) | undefined;
 };
 
 const DEFAULT_PENDING_STATUS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -222,18 +230,27 @@ function inflightKey(sessionId: string, attemptId: string): string {
 }
 
 function assignmentTargetKey(msg: Extract<HostWireMessage, { type: "session:assign" }>): string {
+  return physicalTargetKey(msg);
+}
+
+function physicalTargetKey(input: {
+  repositoryId: string | null;
+  worktreeId: string | null;
+  workspacePoolId?: string | undefined;
+  workspaceSlotId?: string | undefined;
+}): string {
   // Workspace sessions have no repository checkout. Their configured pool/slot
   // pair identifies the physical target, so separate slots must not inherit
   // the `main\0null` fence while repeated assignments to one slot stay ordered.
-  if (msg.workspacePoolId && msg.workspaceSlotId) {
-    return `workspace\0${msg.workspacePoolId}\0${msg.workspaceSlotId}`;
+  if (input.workspacePoolId && input.workspaceSlotId) {
+    return `workspace\0${input.workspacePoolId}\0${input.workspaceSlotId}`;
   }
   // Worktree ids are currently host inventory identifiers, but repository
   // scope avoids coupling this daemon-side fence to that representation. Main
   // checkout assignments are serialized by their repository lock as well.
-  return msg.worktreeId === null
-    ? `main\0${msg.repositoryId}`
-    : `worktree\0${msg.repositoryId}\0${msg.worktreeId}`;
+  return input.worktreeId === null
+    ? `main\0${input.repositoryId}`
+    : `worktree\0${input.repositoryId}\0${input.worktreeId}`;
 }
 
 export class DaemonLoop {
@@ -1132,6 +1149,10 @@ export class DaemonLoop {
       sending: false,
     };
     this.pendingTerminalHookHandoffs.set(msg.handoffId, pending);
+    // Reserve the physical target before any await so a concurrently
+    // delivered assignment cannot claim the same checkout while this
+    // handoff is reconciling or waiting for execution capacity.
+    this.reserveHandoffTarget(pending);
     // A reconnect can receive the durable replacement handoff while this
     // process still owns the original terminal status. That status's retained
     // checkout tail waits for its hook disposition; let it finish its one
@@ -1139,11 +1160,15 @@ export class DaemonLoop {
     const reconciled = await this.reconcilePendingTerminalStatusForHandoff(msg.sessionId);
     // The handoff may have been acknowledged or replaced while its same-process
     // owner was settling. Never mutate or restart work for a stale entry.
-    if (this.pendingTerminalHookHandoffs.get(msg.handoffId) !== pending) return;
+    if (this.pendingTerminalHookHandoffs.get(msg.handoffId) !== pending) {
+      this.releaseHandoffTarget(pending);
+      return;
+    }
     pending.reconciling = false;
     if (reconciled.matched) {
       if (reconciled.result) pending.result = reconciled.result;
       pending.complete = true;
+      this.releaseHandoffTarget(pending);
       this.sendTerminalHookHandoffCompletion(pending);
       return;
     }
@@ -1151,6 +1176,7 @@ export class DaemonLoop {
     // while reconciliation was pending. Its completion is already the sole
     // terminal side effect; only ensure delivery and never start the hook.
     if (pending.complete) {
+      this.releaseHandoffTarget(pending);
       this.sendTerminalHookHandoffCompletion(pending);
       return;
     }
@@ -1165,6 +1191,15 @@ export class DaemonLoop {
     ).length;
   }
 
+  private executingAssignmentCount(): number {
+    return [...this.inflight.values()].filter(
+      (entry) =>
+        entry.executing &&
+        !entry.controller.signal.aborted &&
+        !this.pendingTerminalStatus.has(inflightKey(entry.sessionId, entry.attemptId)),
+    ).length;
+  }
+
   private startTerminalHookHandoff(pending: PendingTerminalHookHandoff): void {
     if (
       this.settleDeferredOnCompletion ||
@@ -1172,7 +1207,7 @@ export class DaemonLoop {
       pending.reconciling ||
       pending.executing ||
       this.pendingTerminalHookHandoffs.get(pending.message.handoffId) !== pending ||
-      this.activeAssignmentCount() + this.activeTerminalHookHandoffs >=
+      this.executingAssignmentCount() + this.activeTerminalHookHandoffs >=
         this.executionProfiles.maxConcurrentAssignments
     )
       return;
@@ -1182,6 +1217,7 @@ export class DaemonLoop {
       pending.executing = false;
       pending.work = undefined;
       this.activeTerminalHookHandoffs -= 1;
+      this.startPendingTerminalHookHandoffs();
     });
     pending.work = work;
     void work;
@@ -1191,16 +1227,8 @@ export class DaemonLoop {
     const expiresAtMs = pending.expiresAtMs;
     if (expiresAtMs === undefined) return;
     const msg = pending.message;
-    const targetKey =
-      msg.worktreeId === null
-        ? `main\0${msg.repositoryId}`
-        : `worktree\0${msg.repositoryId}\0${msg.worktreeId}`;
-    const previousTargetWork = this.worktreeAssignmentTails.get(targetKey);
-    let resolveTargetWork!: () => void;
-    const targetWork = new Promise<void>((resolve) => {
-      resolveTargetWork = resolve;
-    });
-    this.worktreeAssignmentTails.set(targetKey, targetWork);
+    this.reserveHandoffTarget(pending);
+    const previousTargetWork = pending.previousTargetWork;
     try {
       if (previousTargetWork) await previousTargetWork.catch(() => undefined);
       // Shutdown may begin while this handoff is waiting behind an earlier
@@ -1246,13 +1274,55 @@ export class DaemonLoop {
       // indefinitely while the host remains healthy.
       this.onLog?.(`terminal hook handoff failed for ${msg.sessionId}: ${thrownMessage(error)}`);
     } finally {
-      resolveTargetWork();
-      if (this.worktreeAssignmentTails.get(targetKey) === targetWork) {
-        this.worktreeAssignmentTails.delete(targetKey);
-      }
+      this.releaseHandoffTarget(pending);
     }
     pending.complete = true;
+    this.applyHandoffFallbackResult(pending);
     this.sendTerminalHookHandoffCompletion(pending);
+  }
+
+  private applyHandoffFallbackResult(pending: PendingTerminalHookHandoff): void {
+    if (
+      pending.result === undefined &&
+      this.serverProtocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION
+    ) {
+      pending.result = harnessSessionResult(pending.message.status);
+    }
+  }
+
+  private reserveHandoffTarget(pending: PendingTerminalHookHandoff): void {
+    if (pending.resolveTargetWork) return;
+    const targetKey = physicalTargetKey(pending.message);
+    const previousTargetWork = this.worktreeAssignmentTails.get(targetKey);
+    let resolveTargetWork!: () => void;
+    const targetWork = new Promise<void>((resolve) => {
+      resolveTargetWork = resolve;
+    });
+    this.worktreeAssignmentTails.set(targetKey, targetWork);
+    pending.targetKey = targetKey;
+    pending.previousTargetWork = previousTargetWork;
+    pending.targetWork = targetWork;
+    pending.resolveTargetWork = resolveTargetWork;
+  }
+
+  private releaseHandoffTarget(pending: PendingTerminalHookHandoff): void {
+    const resolveTargetWork = pending.resolveTargetWork;
+    if (!resolveTargetWork) return;
+    pending.resolveTargetWork = undefined;
+    const finishTargetWork = () => {
+      resolveTargetWork();
+      if (
+        pending.targetKey &&
+        this.worktreeAssignmentTails.get(pending.targetKey) === pending.targetWork
+      ) {
+        this.worktreeAssignmentTails.delete(pending.targetKey);
+      }
+    };
+    if (pending.previousTargetWork) {
+      void pending.previousTargetWork.then(finishTargetWork, finishTargetWork);
+    } else {
+      finishTargetWork();
+    }
   }
 
   private async runTerminalHookForClaim(
@@ -1355,6 +1425,7 @@ export class DaemonLoop {
       this.pendingTerminalHookHandoffs.get(pending.message.handoffId) !== pending
     )
       return;
+    this.applyHandoffFallbackResult(pending);
     pending.sending = true;
     const completionController = new AbortController();
     pending.completionController = completionController;
@@ -1408,6 +1479,9 @@ export class DaemonLoop {
       )
         continue;
       this.pendingTerminalHookHandoffs.delete(handoffId);
+      // In-progress execution owns the reservation until its finally block.
+      // Queued/reconciling handoffs must release here so a waiter is not stranded.
+      if (!pending.executing) this.releaseHandoffTarget(pending);
       this.onLog?.(
         `terminal hook handoff completion expired for ${pending.message.sessionId} ` +
           (pending.expiresAtMs === undefined
@@ -1574,6 +1648,7 @@ export class DaemonLoop {
       controller,
       work: Promise.resolve(),
       acknowledged: false,
+      executing: false,
     };
     this.inflight.set(key, entry);
     const settleSuperseded = this.discardSupersededTerminalStatuses(msg.sessionId);
@@ -1619,7 +1694,10 @@ export class DaemonLoop {
           !(await this.acknowledgeAssignment(msg, controller.signal))
         )
           return;
-        if (!controller.signal.aborted) await this.runAssign(msg, controller.signal);
+        if (!controller.signal.aborted) {
+          entry.executing = true;
+          await this.runAssign(msg, controller.signal);
+        }
       } finally {
         // A cancelled waiter may return before its predecessor. Keep this
         // tail pending until both are clear, otherwise a third assignment
@@ -1642,6 +1720,7 @@ export class DaemonLoop {
       await work;
     } finally {
       if (this.inflight.get(key) === entry) this.inflight.delete(key);
+      this.startPendingTerminalHookHandoffs();
     }
   }
 

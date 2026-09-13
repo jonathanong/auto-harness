@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_SESSION_RESULT_BYTES,
   MAX_SESSION_RESULT_FILES,
+  harnessSessionResult,
   isSessionResult,
   normalizeSessionResult,
 } from "./session-result.ts";
@@ -245,5 +246,16 @@ describe("session result normalization", () => {
         filesChangedTruncated: false,
       }),
     ).toBe(false);
+  });
+
+  it("builds a bounded harness fallback from the terminal status", () => {
+    expect(harnessSessionResult("failed")).toEqual({
+      summary: "Session failed",
+      summarySource: "harness",
+    });
+    expect(harnessSessionResult("cancelled")).toEqual({
+      summary: "Session cancelled",
+      summarySource: "harness",
+    });
   });
 });

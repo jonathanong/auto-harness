@@ -420,7 +420,7 @@ export async function settleTerminalHookHandoff(
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression: `SET terminalHookHandoffSettled = :settled${opts.result ? ", #result = :result" : ""} REMOVE terminalHookHandoff, activeHostId, activeHostOrder${opts.mainCheckoutRepositoryId ? ", mainCheckoutLease, assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, ackReceivedAt" : ""}`,
+              UpdateExpression: `SET terminalHookHandoffSettled = :settled${opts.result ? ", #result = if_not_exists(#result, :result)" : ""} REMOVE terminalHookHandoff, activeHostId, activeHostOrder${opts.mainCheckoutRepositoryId ? ", mainCheckoutLease, assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, ackReceivedAt" : ""}`,
               ConditionExpression:
                 "terminalHookHandoff.handoffId = :handoffId AND terminalHookHandoff.hostId = :hostId",
               ExpressionAttributeNames: opts.result ? { "#result": "result" } : undefined,

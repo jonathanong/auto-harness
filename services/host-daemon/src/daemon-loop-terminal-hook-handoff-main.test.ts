@@ -84,6 +84,12 @@ describe("DaemonLoop main-checkout terminal-hook handoffs", () => {
       expect(logs).toContain(
         "terminal hook handoff failed for scheduled: main checkout unavailable for terminal hook scheduled",
       );
+      expect(sent).toContainEqual({
+        type: "session:terminal-hook-complete",
+        sessionId: "scheduled",
+        handoffId: "unavailable-main",
+        result: { summary: "Session failed", summarySource: "harness" },
+      });
       loop.stop();
     } finally {
       cleanup();

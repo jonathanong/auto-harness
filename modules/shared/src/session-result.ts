@@ -1,3 +1,5 @@
+import type { SessionStatus } from "./types.ts";
+
 /** Machine-readable outcome captured at the end of a session attempt. */
 export type SessionResult = {
   summary: string;
@@ -8,6 +10,13 @@ export type SessionResult = {
   filesChangedTruncated?: true;
   pullRequestUrl?: string;
 };
+
+/** Bounded harness fallback when a terminal path cannot collect a checkout result. */
+export function harnessSessionResult(
+  status: Extract<SessionStatus, "completed" | "failed" | "cancelled" | "timed_out">,
+): SessionResult {
+  return { summary: `Session ${status}`, summarySource: "harness" };
+}
 
 export const SESSION_RESULT_PROTOCOL_VERSION = 3;
 export const MAX_SESSION_RESULT_BYTES = 32 * 1024;

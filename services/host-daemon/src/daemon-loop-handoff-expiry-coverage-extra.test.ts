@@ -62,6 +62,7 @@ describe("DaemonLoop handoff expiry coverage", () => {
         type: "session:terminal-hook-complete",
         sessionId: "lost",
         handoffId: "replacement",
+        result: { summary: "Session failed", summarySource: "harness" },
       });
       loop.stop();
     } finally {

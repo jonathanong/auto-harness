@@ -671,8 +671,13 @@ export function handleHostMessage(
       return ingestUsage(state, msg);
     }
     case "session:terminal-hook-complete": {
-      const handoff = state.sessions.get(msg.sessionId)?.terminalHookHandoff;
-      if (!handoff) return { ok: false, error: "terminal hook handoff not found" };
+      const session = state.sessions.get(msg.sessionId);
+      const handoff = session?.terminalHookHandoff;
+      if (!handoff) {
+        return session?.terminalHookHandoffSettled?.handoffId === msg.handoffId
+          ? { ok: true }
+          : { ok: false, error: "terminal hook handoff not found" };
+      }
       const completedResult =
         msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
       if (msg.result !== undefined && completedResult === undefined) {
