@@ -166,6 +166,12 @@ type PendingTerminalStatus = {
    * waiter must not occupy, or it deadlocks itself at maxConcurrentAssignments.
    */
   settlementOccupies?: boolean | undefined;
+  /**
+   * ACK settlement claimed a CLI slot. Same-process handoff reconciliation
+   * sets `settlementOccupies` without this, so replacement occupancy stays on
+   * `activeTerminalHookHandoffs`.
+   */
+  claimedExecutionSlot?: boolean | undefined;
   /** The shared hook result for a same-process handoff that overlaps its status ACK. */
   settlementResult?: Promise<import("@auto-harness/shared").SessionResult | undefined> | undefined;
   resolveDeferredDisposition?: (() => void) | undefined;
@@ -1128,10 +1134,7 @@ export class DaemonLoop {
       // handoff must find this exact promise rather than run the hook again.
       if (pending.settlement) {
         return pending.settlement.finally(() => {
-          if (this.pendingTerminalStatus.get(key) === pending) {
-            this.pendingTerminalStatus.delete(key);
-          }
-          pending.resolveDeferredDisposition?.();
+          this.finishPendingTerminalStatus(key, pending);
         });
       }
       const settlement = (async () => {
@@ -1143,12 +1146,15 @@ export class DaemonLoop {
             if (
               !(await this.acquireExecutionSlot(entry, pending.controller.signal, () => {
                 pending.settlementOccupies = true;
+                pending.claimedExecutionSlot = true;
               }))
             ) {
               return;
             }
           } else {
             pending.settlementOccupies = true;
+            pending.claimedExecutionSlot = true;
+            if (this.hasSpareExecutionCapacity()) this.notifyExecutionCapacityWaiters();
           }
         }
         const settlementResult =
@@ -1201,10 +1207,7 @@ export class DaemonLoop {
           this.sendTerminalHookHandoffCompletion(handoff);
         }
       })().finally(() => {
-        if (this.pendingTerminalStatus.get(key) === pending) {
-          this.pendingTerminalStatus.delete(key);
-        }
-        pending.resolveDeferredDisposition?.();
+        this.finishPendingTerminalStatus(key, pending);
       });
       pending.settlement = settlement;
       return settlement;
@@ -1302,19 +1305,48 @@ export class DaemonLoop {
     return !pending || pending.settlementOccupies === true;
   }
 
+  /**
+   * Drain resume and abortInflight can leave an ACK-claimed hook without a live
+   * inflight entry. Replacement handoffs still occupy only through
+   * `activeTerminalHookHandoffs`.
+   */
+  private occupyingOrphanedDeferredSettlements(): number {
+    let count = 0;
+    for (const [key, pending] of this.pendingTerminalStatus) {
+      if (pending.claimedExecutionSlot !== true) continue;
+      const entry = this.inflight.get(key);
+      if (entry && !entry.controller.signal.aborted) continue;
+      count += 1;
+    }
+    return count;
+  }
+
+  private finishPendingTerminalStatus(key: string, pending: PendingTerminalStatus): void {
+    if (this.pendingTerminalStatus.get(key) === pending) {
+      this.pendingTerminalStatus.delete(key);
+    }
+    pending.resolveDeferredDisposition?.();
+    if (pending.claimedExecutionSlot === true) this.scheduleQueuedExecution();
+  }
+
   private activeAssignmentCount(): number {
-    return [...this.inflight.values()].filter(
-      (entry) => !entry.controller.signal.aborted && this.pendingOccupiesAssignmentCapacity(entry),
-    ).length;
+    return (
+      [...this.inflight.values()].filter(
+        (entry) =>
+          !entry.controller.signal.aborted && this.pendingOccupiesAssignmentCapacity(entry),
+      ).length + this.occupyingOrphanedDeferredSettlements()
+    );
   }
 
   private executingAssignmentCount(): number {
-    return [...this.inflight.values()].filter(
-      (entry) =>
-        entry.executing &&
-        !entry.controller.signal.aborted &&
-        this.pendingOccupiesAssignmentCapacity(entry),
-    ).length;
+    return (
+      [...this.inflight.values()].filter(
+        (entry) =>
+          entry.executing &&
+          !entry.controller.signal.aborted &&
+          this.pendingOccupiesAssignmentCapacity(entry),
+      ).length + this.occupyingOrphanedDeferredSettlements()
+    );
   }
 
   private startTerminalHookHandoff(pending: PendingTerminalHookHandoff): void {

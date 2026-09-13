@@ -123,12 +123,31 @@ describe("DaemonLoop deferred hook slot wait", () => {
       const transport = createAcknowledgingLoopbackTransport({
         sendToServer: () => undefined,
       });
+      const lines: string[] = [];
       const loop = new DaemonLoop({
         config,
         transport,
+        onLog: (line) => lines.push(line),
         executionProfiles: { maxConcurrentAssignments: 1, profiles: new Map() },
       });
+      const started: string[] = [];
       let finishHook!: () => void;
+      (
+        loop as unknown as {
+          runner: {
+            run(assign: { sessionId: string }): Promise<{
+              status: "completed";
+              exitCode: number;
+              logs: [];
+            }>;
+          };
+        }
+      ).runner = {
+        async run(assign) {
+          started.push(assign.sessionId);
+          return { status: "completed", exitCode: 0, logs: [] };
+        },
+      };
       pendingTerminalStatusOf(loop).set("lost\0attempt", {
         message: { ...terminalStatusFixture, sessionId: "lost", attemptId: "attempt" },
         firstAttemptedAtMs: Date.now(),
@@ -148,6 +167,10 @@ describe("DaemonLoop deferred hook slot wait", () => {
         retryAccepted: false,
       });
       await waitFor(() => finishHook !== undefined);
+      transport.deliver(assignment("other-session", "wt-2"));
+      await flushMacrotask();
+      expect(started).toEqual([]);
+      expect(lines).toContain("session capacity reached: refused assign other-session");
       finishHook();
       await waitFor(() => pendingTerminalStatusOf(loop).size === 0);
       loop.stop();
