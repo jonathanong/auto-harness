@@ -470,6 +470,7 @@ describe("DaemonLoop coverage guards", () => {
         firstAttemptedAtMs: Date.now() - 1,
         sending: false,
         controller: new AbortController(),
+        claimedExecutionSlot: true,
         settleDeferredTerminalHook: async () => {
           throw "expired primitive";
         },
@@ -480,6 +481,7 @@ describe("DaemonLoop coverage guards", () => {
         firstAttemptedAtMs: Date.now() - 1,
         sending: false,
         controller: new AbortController(),
+        claimedExecutionSlot: true,
         resolveDeferredDisposition: ordinaryResolve,
       } as never);
       internals.retryPendingTerminalStatuses();
@@ -487,7 +489,7 @@ describe("DaemonLoop coverage guards", () => {
       expect(deferredResolve).toHaveBeenCalledOnce();
       expect(ordinaryResolve).toHaveBeenCalledOnce();
       expect(lines).toContain(
-        "deferred terminal hook failed for expired-deferred: expired primitive",
+        "deferred terminal hook release failed for expired-deferred: expired primitive",
       );
     } finally {
       cleanup();

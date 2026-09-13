@@ -731,7 +731,7 @@ describe("DaemonLoop terminal status retry", () => {
       // Giving up must cancel a still-buffered retained frame rather than
       // leaving it queued to transmit whenever the connection recovers.
       expect(controller.signal.aborted).toBe(true);
-      expect(dispositions).toEqual([true]);
+      expect(dispositions).toEqual([false]);
 
       loop.stop();
     } finally {

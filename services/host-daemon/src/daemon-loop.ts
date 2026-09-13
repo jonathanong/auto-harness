@@ -1717,20 +1717,27 @@ export class DaemonLoop {
             `after ${String(this.pendingStatusMaxAgeMs)}ms`,
         );
         // Cancels a still-buffered retained frame instead of leaving it
-        // queued to be transmitted whenever the connection recovers.
+        // queued to be transmitted whenever the connection recovers. Expiry
+        // must not invent a retry-rejected disposition: running the old hook
+        // here can duplicate the replacement attempt's hook if the control
+        // plane already accepted the retry. Release the claim without the hook.
         this.pendingTerminalStatus.delete(key);
         pending.controller.abort();
+        const finishExpired = () => {
+          pending.resolveDeferredDisposition?.();
+          if (pending.claimedExecutionSlot === true) this.scheduleQueuedExecution();
+        };
         if (pending.settleDeferredTerminalHook) {
           void pending
-            .settleDeferredTerminalHook(true)
+            .settleDeferredTerminalHook(false)
             .catch((error: unknown) => {
               this.onLog?.(
-                `deferred terminal hook failed for ${pending.message.sessionId}: ${thrownMessage(error)}`,
+                `deferred terminal hook release failed for ${pending.message.sessionId}: ${thrownMessage(error)}`,
               );
             })
-            .finally(() => pending.resolveDeferredDisposition?.());
+            .finally(finishExpired);
         } else {
-          pending.resolveDeferredDisposition?.();
+          finishExpired();
         }
         continue;
       }
