@@ -105,6 +105,7 @@ describe("SessionStatusCell", () => {
       <SessionStatusCell
         status="queued"
         sessionId="retry"
+        errorMessage="host was lost before command launch; retrying once"
         infrastructureRetryCount={1}
         lastInfrastructureErrorCode="host_lost"
       />,
@@ -115,6 +116,7 @@ describe("SessionStatusCell", () => {
     const detail = renderToStaticMarkup(
       <SessionStatusDetail
         status="queued"
+        errorCode="checkout_fetch_failed"
         infrastructureRetryCount={1}
         lastInfrastructureErrorCode="checkout_fetch_failed"
       />,
@@ -123,6 +125,52 @@ describe("SessionStatusCell", () => {
     expect(detail).toContain("Checkout fetch failed");
     expect(
       renderToStaticMarkup(<SessionStatusDetail status="running" infrastructureRetryCount={1} />),
+    ).not.toContain("Automatic retry");
+    expect(
+      renderToStaticMarkup(
+        <SessionStatusCell
+          status="queued"
+          sessionId="stale"
+          errorCode="usage_limit"
+          errorMessage="provider usage limit; requeued"
+          infrastructureRetryCount={1}
+          lastInfrastructureErrorCode="host_lost"
+        />,
+      ),
+    ).not.toContain("Automatic retry");
+    expect(
+      renderToStaticMarkup(
+        <SessionStatusDetail
+          status="queued"
+          errorMessage="host disconnected; requeued"
+          infrastructureRetryCount={1}
+          lastInfrastructureErrorCode="host_lost"
+        />,
+      ),
+    ).not.toContain("Automatic retry");
+    expect(
+      renderToStaticMarkup(
+        <SessionStatusCell
+          status="queued"
+          sessionId="coded"
+          errorCode="host_lost"
+          infrastructureRetryCount={1}
+        />,
+      ),
+    ).toContain("Automatic retry 1 of 1 in progress after Host lost before launch.");
+    expect(
+      renderToStaticMarkup(
+        <SessionStatusDetail
+          status="queued"
+          errorMessage="checkout fetch failed; retrying once"
+          infrastructureRetryCount={1}
+        />,
+      ),
+    ).toContain("an infrastructure failure");
+    expect(
+      renderToStaticMarkup(
+        <SessionStatusCell status="queued" sessionId="zero" infrastructureRetryCount={0} />,
+      ),
     ).not.toContain("Automatic retry");
   });
 
