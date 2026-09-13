@@ -259,4 +259,46 @@ describe("DaemonLoop terminal-hook handoff", () => {
       cleanup();
     }
   });
+
+  it("completes a handoff when same-process settlement rejects", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const sent: HostToServerMessage[] = [];
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => void sent.push(message),
+      });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
+      pendingTerminalStatusOf(loop).set("lost\0attempt", {
+        message: { ...terminalStatusFixture, sessionId: "lost", attemptId: "attempt" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async () => {
+          throw new Error("hook failed");
+        },
+      } as never);
+      transport.deliver({
+        type: "session:terminal-hook",
+        handoffId: "replacement",
+        sessionId: "lost",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        errorCode: "host_lost",
+      });
+      await waitFor(() =>
+        sent.some(
+          (message) =>
+            message.type === "session:terminal-hook-complete" &&
+            message.handoffId === "replacement",
+        ),
+      );
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
 });

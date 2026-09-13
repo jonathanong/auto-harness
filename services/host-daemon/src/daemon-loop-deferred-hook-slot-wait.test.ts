@@ -7,6 +7,8 @@ import {
   createAcknowledgingLoopbackTransport,
   flushMacrotask,
   makeRepo,
+  pendingTerminalStatusOf,
+  terminalStatusFixture,
 } from "../test-helpers/daemon-loop-test-helpers.ts";
 
 function assignment(
@@ -109,6 +111,45 @@ describe("DaemonLoop deferred hook slot wait", () => {
       finishHook();
       await loop.waitForIdle();
       expect(started).toEqual(["checkout-failure", "other-session"]);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("occupies capacity for a deferred ACK that has no inflight entry", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createAcknowledgingLoopbackTransport({
+        sendToServer: () => undefined,
+      });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        executionProfiles: { maxConcurrentAssignments: 1, profiles: new Map() },
+      });
+      let finishHook!: () => void;
+      pendingTerminalStatusOf(loop).set("lost\0attempt", {
+        message: { ...terminalStatusFixture, sessionId: "lost", attemptId: "attempt" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: () =>
+          new Promise((resolve) => {
+            finishHook = resolve;
+          }),
+      } as never);
+      await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      transport.deliver({
+        type: "session:status-acknowledged",
+        sessionId: "lost",
+        attemptId: "attempt",
+        retryAccepted: false,
+      });
+      await waitFor(() => finishHook !== undefined);
+      finishHook();
+      await waitFor(() => pendingTerminalStatusOf(loop).size === 0);
       loop.stop();
     } finally {
       cleanup();

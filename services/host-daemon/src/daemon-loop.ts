@@ -910,10 +910,12 @@ export class DaemonLoop {
   private async acquireExecutionSlot(
     entry: InflightSession,
     signal: AbortSignal,
+    occupy?: () => void,
   ): Promise<boolean> {
     while (!signal.aborted) {
       if (this.hasSpareExecutionCapacity()) {
         entry.executing = true;
+        occupy?.();
         if (this.hasSpareExecutionCapacity()) this.notifyExecutionCapacityWaiters();
         return true;
       }
@@ -1140,13 +1142,17 @@ export class DaemonLoop {
         // and free the slot. Index occupancy only after the slot is acquired.
         if (msg.retryAccepted !== true) {
           const entry = this.inflight.get(key);
-          if (
-            entry !== undefined &&
-            !(await this.acquireExecutionSlot(entry, pending.controller.signal))
-          ) {
-            return;
+          if (entry !== undefined) {
+            if (
+              !(await this.acquireExecutionSlot(entry, pending.controller.signal, () => {
+                pending.settlementOccupies = true;
+              }))
+            ) {
+              return;
+            }
+          } else {
+            pending.settlementOccupies = true;
           }
-          pending.settlementOccupies = true;
         }
         const settlementResult =
           pending.settlementResult ??
