@@ -75,6 +75,13 @@ export class ControlPlaneSessionsService {
     return durableSessions.createCustomWebhookSessionDurable(this.state, body, options);
   }
 
+  createGitHubIngressSessionDurable(
+    body: unknown,
+    options: { integrationFence?: IntegrationSessionFence } = {},
+  ): ReturnType<typeof durableSessions.createGitHubIngressSessionDurable> {
+    return durableSessions.createGitHubIngressSessionDurable(this.state, body, options);
+  }
+
   getSession(id: string): PublicSession | null {
     return sessions.getSession(this.state, id);
   }

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- recovery, index hygiene, and isolated reset share one boundary. */
 import { lstat } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -38,10 +39,11 @@ async function quitOperation(
   markers: readonly string[],
   commands: readonly (readonly string[])[],
   signal?: AbortSignal,
+  environment?: NodeJS.ProcessEnv,
 ): Promise<void> {
   if (!(await hasMarker(gitDir, markers))) return;
   for (const command of commands) {
-    await runGit(runner, cwd, [...command], signal);
+    await runGit(runner, cwd, [...command], signal, environment);
     if (!(await hasMarker(gitDir, markers))) return;
   }
   throw new Error("Failed to clear interrupted Git operation");
@@ -52,8 +54,17 @@ async function clearInterruptedOperations(
   cwd: string,
   gitDir: string,
   signal?: AbortSignal,
+  environment?: NodeJS.ProcessEnv,
 ): Promise<void> {
-  await quitOperation(runner, cwd, gitDir, ["rebase-merge"], [["rebase", "--abort"]], signal);
+  await quitOperation(
+    runner,
+    cwd,
+    gitDir,
+    ["rebase-merge"],
+    [["rebase", "--abort"]],
+    signal,
+    environment,
+  );
   await quitOperation(
     runner,
     cwd,
@@ -64,8 +75,17 @@ async function clearInterruptedOperations(
       ["am", "--abort"],
     ],
     signal,
+    environment,
   );
-  await quitOperation(runner, cwd, gitDir, ["MERGE_HEAD"], [["merge", "--abort"]], signal);
+  await quitOperation(
+    runner,
+    cwd,
+    gitDir,
+    ["MERGE_HEAD"],
+    [["merge", "--abort"]],
+    signal,
+    environment,
+  );
   await quitOperation(
     runner,
     cwd,
@@ -73,8 +93,17 @@ async function clearInterruptedOperations(
     ["CHERRY_PICK_HEAD", "sequencer"],
     [["cherry-pick", "--abort"]],
     signal,
+    environment,
   );
-  await quitOperation(runner, cwd, gitDir, ["REVERT_HEAD"], [["revert", "--abort"]], signal);
+  await quitOperation(
+    runner,
+    cwd,
+    gitDir,
+    ["REVERT_HEAD"],
+    [["revert", "--abort"]],
+    signal,
+    environment,
+  );
 }
 
 function trackedPathChunks(paths: string[]): string[][] {
@@ -122,6 +151,7 @@ async function clearTrackedPathFlags(
   runner: ProcessRunner,
   cwd: string,
   signal?: AbortSignal,
+  environment?: NodeJS.ProcessEnv,
 ): Promise<void> {
   // `-v` adds a two-byte tag to each record. Doubling the ordinary capture bound preserves the
   // largest path-only listing accepted before flag inspection was added (a path is at least one
@@ -131,7 +161,7 @@ async function clearTrackedPathFlags(
     cwd,
     ["ls-files", "-v", "-z"],
     signal,
-    undefined,
+    environment,
     undefined,
     MAX_CAPTURED_GIT_STDOUT_BYTES * 2,
   );
@@ -142,7 +172,13 @@ async function clearTrackedPathFlags(
     ["--no-skip-worktree", paths.skipWorktree],
   ] as const) {
     for (const chunk of trackedPathChunks(flagged)) {
-      const updated = await runGit(runner, cwd, ["update-index", flag, "--", ...chunk], signal);
+      const updated = await runGit(
+        runner,
+        cwd,
+        ["update-index", flag, "--", ...chunk],
+        signal,
+        environment,
+      );
       if (updated.exitCode !== 0) {
         throw gitFailure("Failed to clear tracked-file index flags", updated.stderr);
       }
@@ -155,23 +191,32 @@ export async function resetPriorWorktreeState(
   cwd: string,
   gitDir: string,
   signal?: AbortSignal,
+  environment?: NodeJS.ProcessEnv,
 ): Promise<void> {
-  await clearInterruptedOperations(runner, cwd, gitDir, signal);
-  await clearTrackedPathFlags(runner, cwd, signal);
+  await clearInterruptedOperations(runner, cwd, gitDir, signal, environment);
+  await clearTrackedPathFlags(runner, cwd, signal, environment);
 }
 
 export async function resetInitializedSubmodules(
   runner: ProcessRunner,
   cwd: string,
   signal?: AbortSignal,
+  environment?: NodeJS.ProcessEnv,
 ): Promise<void> {
-  const synced = await runGit(runner, cwd, ["submodule", "sync", "--recursive"], signal);
+  const synced = await runGit(
+    runner,
+    cwd,
+    ["submodule", "sync", "--recursive"],
+    signal,
+    environment,
+  );
   if (synced.exitCode !== 0) throw gitFailure("Failed to sync submodules", synced.stderr);
   const updated = await runGit(
     runner,
     cwd,
     ["submodule", "update", "--recursive", "--checkout", "--force"],
     signal,
+    environment,
   );
   if (updated.exitCode !== 0) throw gitFailure("Failed to update submodules", updated.stderr);
 }

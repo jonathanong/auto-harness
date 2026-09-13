@@ -45,6 +45,7 @@ export async function createSessionDurable(
     principalId?: string;
     integrationFence?: IntegrationSessionFence;
     allowCustomWebhookConcurrencyId?: boolean;
+    allowGitHubCommentConcurrencyId?: boolean;
   } = {},
 ): Promise<
   | { ok: true; session: PublicSession; created: boolean }
@@ -58,11 +59,10 @@ export async function createSessionDurable(
         code: "CONFLICT",
       };
     }
-    return createSession(
-      state,
-      body,
-      options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {},
-    );
+    return createSession(state, body, {
+      ...(options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {}),
+      ...(options.allowGitHubCommentConcurrencyId ? { allowGitHubCommentConcurrencyId: true } : {}),
+    });
   }
   await refreshTargetCatalogDurable(state);
   if (
@@ -78,11 +78,10 @@ export async function createSessionDurable(
   ) {
     await getWorkspacePoolDurable(state, (body as { workspacePoolId: string }).workspacePoolId);
   }
-  const prepared = validateSessionCreate(
-    state,
-    body,
-    options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {},
-  );
+  const prepared = validateSessionCreate(state, body, {
+    ...(options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {}),
+    ...(options.allowGitHubCommentConcurrencyId ? { allowGitHubCommentConcurrencyId: true } : {}),
+  });
   if (!prepared.ok) return prepared;
   if (options.integrationFence && !matchesIntegrationFence(state, options.integrationFence)) {
     return {
@@ -133,6 +132,18 @@ export function createCustomWebhookSessionDurable(
   return createSessionDurable(state, body, {
     ...options,
     allowCustomWebhookConcurrencyId: true,
+  });
+}
+
+/** Trusted GitHub ingress alone may mint comment-delivery concurrency identities. */
+export function createGitHubIngressSessionDurable(
+  state: ControlPlaneState,
+  body: unknown,
+  options: { integrationFence?: IntegrationSessionFence } = {},
+): ReturnType<typeof createSessionDurable> {
+  return createSessionDurable(state, body, {
+    ...options,
+    allowGitHubCommentConcurrencyId: true,
   });
 }
 

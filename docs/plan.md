@@ -53,10 +53,13 @@ Explicitly out of scope for this project, regardless of how easy any individual 
 - **API-metered agent farms.** This is a subscription-capacity scheduler, not a pay-per-token
   agent platform. See [why.md](why.md), [costs.md](costs.md).
 - **Replacing interactive IDE/chat use.** Auto Harness is for unattended, queued work.
-- **Owning a target repo's GitHub policy.** Trigger filtering, CI-failure triage, deduplication,
-  comment-author authorization, and prompt content stay in the target repo
-  ([harness.md](harness.md)). Auto Harness receives a rendered prompt and a target; it does not
-  decide _whether_ to run.
+- **Owning a target repo's GitHub policy, except comment-trigger authorization.** CI-failure triage
+  and prompt content stay in the target repo ([harness.md](harness.md)); Auto Harness does not
+  render, template, or rewrite a prompt. For App-mediated `issue_comment` and
+  `pull_request_review_comment` triggers only, Auto Harness owns comment-author authorization,
+  trigger deduplication, and repository-to-command resolution: one tested centralized gate is safer
+  than N drifting public-repository workflow copies. Every other ingress path still receives a
+  rendered prompt and does not decide _whether_ to run.
 - **Multi-tenant SaaS.** Single-org control plane; `allowedRepositories` scoping is the extent of
   multi-tenancy, not a hard security boundary between untrusted customers.
 - **Per-session containerization** (see D9).

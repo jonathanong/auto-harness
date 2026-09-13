@@ -13,6 +13,7 @@ import { loadExecutionProfiles } from "./execution-profiles.ts";
 import { probeGitReadiness } from "./git-readiness.ts";
 import { WorkspaceManager } from "./workspace-manager.ts";
 import { loadGitHubAppConfig } from "./github-app.ts";
+import { loadGitHubPullRefConfigs } from "./github-pull-ref-config.ts";
 
 export async function ensureDaemonReady(
   config: DaemonConfig,
@@ -27,7 +28,7 @@ export async function ensureDaemonReady(
     await workspaces.ensureAll();
     return runtime;
   }
-  const git = createGitClient(processRunner);
+  const git = createGitClient(processRunner, loadGitHubPullRefConfigs());
   const worktrees = new WorktreeManager(config, git);
   await worktrees.ensureAll();
   await workspaces.ensureAll();
@@ -49,7 +50,7 @@ export async function runAssignedSession(
   if (!runtime.gitReady && !workspace) {
     throw new Error("Git 2.36 or newer with checkout recovery support is required");
   }
-  const git = createGitClient(processRunner);
+  const git = createGitClient(processRunner, loadGitHubPullRefConfigs(childEnvSource));
   const worktrees = new WorktreeManager(config, git);
   const githubApp = loadGitHubAppConfig(childEnvSource);
   const sessionRunner = new SessionRunner({

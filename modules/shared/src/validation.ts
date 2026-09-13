@@ -165,7 +165,8 @@ export function isReservedConcurrencyId(value: string): boolean {
     value.startsWith("provider-account:") ||
     value.startsWith("provider-lease:") ||
     value.startsWith("session-spawn:") ||
-    value.startsWith("webhook:")
+    value.startsWith("webhook:") ||
+    value.startsWith("github-comment:")
   );
 }
 
@@ -193,7 +194,10 @@ export function validateCreateSessionInput(
     /** Internal scheduler/session derivations may use reserved lock namespaces. */
     allowReservedConcurrencyId?: boolean;
   },
-  options: { allowCustomWebhookConcurrencyId?: boolean } = {},
+  options: {
+    allowCustomWebhookConcurrencyId?: boolean;
+    allowGitHubCommentConcurrencyId?: boolean;
+  } = {},
 ): ValidationResult<{
   repositoryId: string | null;
   prompt: string;
@@ -324,7 +328,11 @@ export function validateCreateSessionInput(
     if (
       isReservedConcurrencyId(input.concurrencyId) &&
       !input.allowReservedConcurrencyId &&
-      !(options.allowCustomWebhookConcurrencyId && input.concurrencyId.startsWith("webhook:"))
+      !(
+        (options.allowCustomWebhookConcurrencyId && input.concurrencyId.startsWith("webhook:")) ||
+        (options.allowGitHubCommentConcurrencyId &&
+          input.concurrencyId.startsWith("github-comment:"))
+      )
     ) {
       return { ok: false, error: "concurrencyId uses a reserved internal prefix" };
     }
