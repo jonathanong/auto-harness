@@ -105,10 +105,10 @@ describe("deferred checkout-failure Slack lifecycle", () => {
     await expect(settleTerminalHookHandoff(state, settleInput)).resolves.toBe(true);
     await settleStorage(state);
     expect([...outbox.items.keys()]).toContain("slack:session:session_failed:reply");
-    const created = outbox.calls;
+    const ids = [...outbox.items.keys()];
     await expect(settleTerminalHookHandoff(state, settleInput)).resolves.toBe(true);
     await settleStorage(state);
-    expect(outbox.calls).toBe(created);
+    expect([...outbox.items.keys()]).toEqual(ids);
   });
 
   it("enqueues session_failed once on cold expiry", async () => {
@@ -120,12 +120,12 @@ describe("deferred checkout-failure Slack lifecycle", () => {
     ).resolves.toBe(true);
     await settleStorage(state);
     expect([...outbox.items.keys()]).toContain("slack:session:session_failed:reply");
-    const created = outbox.calls;
+    const ids = [...outbox.items.keys()];
     await expect(
       expireTerminalHookHandoffIfNeeded(state, structuredClone(stored), Date.parse(EXPIRED)),
     ).resolves.toBe(false);
     await settleStorage(state);
-    expect(outbox.calls).toBe(created);
+    expect([...outbox.items.keys()]).toEqual(ids);
   });
 
   it("leaves host-loss settlement off the Slack outbox", async () => {

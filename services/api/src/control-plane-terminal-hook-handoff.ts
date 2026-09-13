@@ -6,11 +6,12 @@ import {
 } from "@auto-harness/shared";
 
 import { queueSessionArchive } from "./control-plane-archive.ts";
-import { noteSlackSessionLifecycle, type ControlPlaneState } from "./control-plane-state.ts";
+import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { ArchiveMetadata } from "./db/plane-storage-types.ts";
 import type { SessionRecord } from "./db/types.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import { connectionProtocolVersion } from "./control-plane-protocol.ts";
+import { enqueueSlackSessionLifecycle } from "./slack-session-runtime.ts";
 
 export const TERMINAL_HOOK_HANDOFF_DELIVERY_LIMIT = 500;
 
@@ -136,10 +137,14 @@ export async function settleTerminalHookHandoff(
     handoff.hostId !== input.hostId
   ) {
     // A lost acknowledgement is idempotent only for this exact handoff and host.
-    return (
+    const duplicate =
       session?.terminalHookHandoffSettled?.handoffId === input.handoffId &&
-      session.terminalHookHandoffSettled.hostId === input.hostId
-    );
+      session.terminalHookHandoffSettled.hostId === input.hostId;
+    if (duplicate) {
+      const pending = noteDeferredCheckoutFailureLifecycle(state, session);
+      if (pending) await pending;
+    }
+    return duplicate;
   }
   const archive = pendingArchiveIntent(state, input.sessionId);
   // Durable AWS invocations pass the authenticated socket protocol via
@@ -185,7 +190,8 @@ export async function settleTerminalHookHandoff(
   state.sessions.set(next.id, next);
   if (state.storage) state.archives.set(archive.key, archive);
   queueSessionArchive(state, next.id);
-  noteDeferredCheckoutFailureLifecycle(state, handoff, next);
+  const pendingSlack = noteDeferredCheckoutFailureLifecycle(state, next);
+  if (pendingSlack) await pendingSlack;
   return true;
 }
 
@@ -197,7 +203,13 @@ export async function expireTerminalHookHandoffIfNeeded(
   options: { connectionId?: string } = {},
 ): Promise<boolean> {
   const handoff = session.terminalHookHandoff;
-  if (!handoff || Date.parse(handoff.expiresAt) > nowMs) return false;
+  if (!handoff || Date.parse(handoff.expiresAt) > nowMs) {
+    if (!handoff && session.terminalHookHandoffExpiredAt) {
+      const pending = noteDeferredCheckoutFailureLifecycle(state, session);
+      if (pending) await pending;
+    }
+    return false;
+  }
   const connectionId = options.connectionId ?? state.hostConnection.get(handoff.hostId);
   const archive = pendingArchiveIntent(state, session.id);
   const expired = state.storage
@@ -229,7 +241,8 @@ export async function expireTerminalHookHandoffIfNeeded(
   state.sessions.set(next.id, next);
   if (state.storage) state.archives.set(archive.key, archive);
   queueSessionArchive(state, next.id);
-  noteDeferredCheckoutFailureLifecycle(state, handoff, next);
+  const pendingSlack = noteDeferredCheckoutFailureLifecycle(state, next);
+  if (pendingSlack) await pendingSlack;
   return true;
 }
 
@@ -246,12 +259,15 @@ function releaseReservedMainCheckout(
 }
 
 /** Host-loss already enqueued Slack at the terminal write. Checkout-fetch
- * exhaustion defers that until the hook settles or expires. */
+ * exhaustion defers that until the hook settles or expires. Await the outbox
+ * put so a swallowed flush cannot ack the daemon before Slack intent exists;
+ * duplicate settlement/expiry retries the same idempotent ids. */
 function noteDeferredCheckoutFailureLifecycle(
   state: ControlPlaneState,
-  handoff: NonNullable<SessionRecord["terminalHookHandoff"]>,
   session: SessionRecord,
-): void {
-  if (handoff.errorCode !== "checkout_fetch_failed") return;
-  noteSlackSessionLifecycle(state, session);
+): Promise<void> | undefined {
+  const errorCode = session.terminalHookHandoff?.errorCode ?? session.errorCode;
+  if (errorCode !== "checkout_fetch_failed") return;
+  if (!state.storage || typeof state.storage.enqueue !== "function") return;
+  return enqueueSlackSessionLifecycle(state, session);
 }
