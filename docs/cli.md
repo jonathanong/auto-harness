@@ -45,10 +45,13 @@ paths are refused rather than being tied to the supervisor working directory. Un
 or per-profile JSON keys are rejected. Optional
 `HARNESS_MAX_CONCURRENT_ASSIGNMENTS` overrides the
 host-wide assignment cap advertised as `capabilities.maxConcurrentAssignments`. To disable a
-previously persisted GitHub App configuration or pull-ref policy, export
-`HARNESS_GITHUB_APP_CONFIG=''` or `HARNESS_GITHUB_PULL_REF_CONFIG=''` and rerun
-`install-service`; the existing service env entry is cleared. A GitHub App config path must be
+previously persisted GitHub App configuration or pull-ref policy, pass an explicit empty
+`HARNESS_GITHUB_APP_CONFIG=''` or `HARNESS_GITHUB_PULL_REF_CONFIG=''` into `install-service`;
+omitting either variable retains the current value. A GitHub App config path must be
 native-absolute for the install host: Windows-shaped paths are refused on POSIX before persistence.
+On Linux, the service env is root-owned and plain `sudo` drops exported empty values, so pass
+`HARNESS_ENV_FILE=/etc/auto-harness/host-daemon.env` and the empty key through `sudo env` (see
+[deploy-host-daemon.md](deploy-host-daemon.md)).
 
 ---
 
@@ -122,6 +125,16 @@ pnpm local:daemon install-service --api-url 'https://new-control.example.com'
 
 On Linux, run this update as root when the existing mode-0600 env file is root-owned
 (for example, `sudo pnpm local:daemon install-service --api-url 'https://new-control.example.com'`).
+To clear a previously persisted GitHub App config or pull-ref policy path, pass the empty value
+explicitly; omitting the variable retains the current value. Plain `sudo` drops exported empty
+values, so pass `HARNESS_ENV_FILE` and the empty key through `sudo env`:
+
+```bash
+sudo env \
+  HARNESS_ENV_FILE=/etc/auto-harness/host-daemon.env \
+  HARNESS_GITHUB_PULL_REF_CONFIG='' \
+  pnpm local:daemon install-service
+```
 
 `status` / `run-session` / `start` still default to `local-1` and `http://127.0.0.1:7420` for
 local work above. They do not automatically discover a platform service's persisted environment.

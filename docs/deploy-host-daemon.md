@@ -403,9 +403,23 @@ after assignment and therefore are not advertised as ambient host environment ca
 To enable `refs/pull/<number>/head`, create a root-owned mode-`0644` policy file, or a root-owned
 `root:harness` mode-`0640` policy file, outside every checkout and set its absolute path as
 `HARNESS_GITHUB_PULL_REF_CONFIG`. Every parent directory and the file itself must be root-owned,
-non-group/world-writable, and free of symlinks. To remove a previously persisted path, export
-`HARNESS_GITHUB_PULL_REF_CONFIG=''` and rerun `install-service`; omitting the variable retains the
-current value.
+non-group/world-writable, and free of symlinks. To remove a previously persisted path, pass an
+explicit empty `HARNESS_GITHUB_PULL_REF_CONFIG=''` into `install-service`; omitting the variable
+retains the current value.
+
+On Linux, `/etc/auto-harness/host-daemon.env` is root-owned, so this update needs `sudo` — and
+plain `sudo` resets the environment, silently dropping an exported empty value. `install-service`
+would then retain the old path, or fail persisted-identity validation instead of clearing it. Pass
+both `HARNESS_ENV_FILE` and the empty key to `sudo env` explicitly, the same pattern already used
+above for execution profiles:
+
+```bash
+sudo env \
+  HARNESS_ENV_FILE=/etc/auto-harness/host-daemon.env \
+  HARNESS_GITHUB_PULL_REF_CONFIG='' \
+  pnpm local:daemon install-service
+```
+
 Create one immutable bare materializer for each Git object format before enabling this policy. The
 directories, every descendant (including `config` and `info/`), and every ancestor must be
 root-owned, symlink-free, and non-writable; the materializers are read-only Git metadata, not
