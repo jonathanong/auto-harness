@@ -108,6 +108,27 @@ describe("runSetupIfNeeded setup cache", () => {
     expect(secondRun.system).toContain("Setup unchanged; skipping.");
   });
 
+  it("does not store a fingerprint when setup rewrites a declared extra", async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-rewrite-"));
+    const { cwd, claimed } = await claimSetupCache({
+      worktreeSetup: "pnpm install",
+      worktreeCacheInputs: ["pnpm-lock.yaml"],
+      files: { "pnpm-lock.yaml": "lock-1" },
+    });
+    const rewriting = {
+      async run() {
+        await writeFile(join(cwd, "pnpm-lock.yaml"), "lock-rewritten");
+        return { exitCode: 0, timedOut: false, signal: null, environment: {} };
+      },
+    };
+    const first = await runCachedSetup(baseAssign(), claimed, rewriting, cacheDir);
+    expect(first.failure).toBeNull();
+    await writeFile(join(cwd, "pnpm-lock.yaml"), "lock-1");
+    const second = countingSetupRunner();
+    await runCachedSetup(baseAssign(), claimed, second.runner, cacheDir);
+    expect(second.calls()).toBe(1);
+  });
+
   it("does not store a fingerprint after failed setup", async () => {
     const cacheDir = await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-fail-"));
     const { claimed } = await claimSetupCache({ worktreeSetup: "false" });

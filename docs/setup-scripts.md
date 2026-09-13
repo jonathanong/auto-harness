@@ -106,7 +106,8 @@ These paths are illustrative; use absolute, operator-controlled paths appropriat
 - Do not expect Auto Harness to hash `package.json`, lockfiles, or other checkout files unless you
   listed those paths as setup cache inputs. Each declared path must be a regular file of at most
   16 MiB; missing, non-regular, oversized, or unreadable files are cache misses and run setup again.
-  Changing an undeclared file does not invalidate cached setup.
+  If setup rewrites a declared extra, that run is not stored, so the next fresh session re-runs
+  setup. Changing an undeclared file does not invalidate cached setup.
 - Do not configure setup on a Windows host until native or compatible-shell setup execution is
   supported. Stock Windows has no usable `/bin/sh` fallback for this contract.
 - Do not use destructive resets or cleanup against a scheduled main checkout unless that behavior is

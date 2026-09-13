@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   defaultSetupCacheDir,
   fingerprintSetup,
+  matchingSetupFingerprintAfterSetup,
   mergeSetupCacheInputs,
   readDeclaredSetupFiles,
   readStoredSetupCache,
@@ -140,6 +141,49 @@ describe("setup script fingerprint", () => {
     expect(miss.skip).toBe(false);
     expect(miss).toMatchObject({ fingerprintToStore: expect.any(String) });
     expect(miss).not.toEqual(first);
+  });
+
+  it("does not return a storeable fingerprint when declared extras change during setup", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-rehash-"));
+    await writeFile(join(cwd, "pnpm-lock.yaml"), "lock-a");
+    const first = await resolveSetupCacheState({
+      cacheDir: await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-rehash-store-")),
+      checkoutSha: "abc",
+      cwd,
+      worktreeId: "wt-1",
+      scripts: ["pnpm install"],
+      extraPaths: ["pnpm-lock.yaml"],
+    });
+    if (first.skip || !first.fingerprintToStore) throw new Error("expected a fingerprint");
+    await writeFile(join(cwd, "pnpm-lock.yaml"), "lock-b");
+    expect(
+      await matchingSetupFingerprintAfterSetup({
+        checkoutSha: "abc",
+        cwd,
+        scripts: ["pnpm install"],
+        extraPaths: ["pnpm-lock.yaml"],
+        expectedFingerprint: first.fingerprintToStore,
+      }),
+    ).toBeUndefined();
+    await writeFile(join(cwd, "pnpm-lock.yaml"), "lock-a");
+    expect(
+      await matchingSetupFingerprintAfterSetup({
+        checkoutSha: "abc",
+        cwd,
+        scripts: ["pnpm install"],
+        extraPaths: ["pnpm-lock.yaml"],
+        expectedFingerprint: first.fingerprintToStore,
+      }),
+    ).toBe(first.fingerprintToStore);
+    expect(
+      await matchingSetupFingerprintAfterSetup({
+        checkoutSha: "abc",
+        cwd,
+        scripts: ["pnpm install"],
+        extraPaths: ["missing.lock"],
+        expectedFingerprint: first.fingerprintToStore,
+      }),
+    ).toBeUndefined();
   });
 
   it("merges host extras ahead of a scoped override without inventing paths", () => {
