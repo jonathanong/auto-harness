@@ -597,9 +597,18 @@ describe("reconnect reconciliation", () => {
       status: "idle",
       online: true,
     });
+    plane.state.worktrees.set("w-extra", {
+      ...durableWorktree("w-extra", null, "idle"),
+      online: true,
+    });
     plane.state.sessions.set("s", { ...durableRunning("s", "w") });
     plane.state.worktrees.set("w", { ...durableWorktree("w", "s"), online: true, status: "busy" });
-    loseSessionAfterValidation(plane, "s");
+    let removedExtra = false;
+    loseSessionAfterValidation(plane, "s", () => {
+      if (removedExtra) return;
+      removedExtra = true;
+      plane.state.worktrees.delete("w-extra");
+    });
     await expect(
       plane.registerHostDurable({
         hostId: "h",
@@ -623,7 +632,9 @@ describe("reconnect reconciliation", () => {
       error: "reported running session lost reconnect reconciliation",
     });
     expect(plane.state.worktrees.has("w2")).toBe(false);
+    expect(plane.state.worktrees.has("w-extra")).toBe(true);
     expect(plane.state.worktrees.get("w")?.online).toBe(false);
+    expect(plane.state.worktrees.get("w-extra")?.online).toBe(false);
     expect(plane.state.workspaceSlots.has("slot-new")).toBe(false);
     expect(plane.state.workspaceSlots.get("slot-prior")?.online).toBe(false);
     expect(plane.state.drainingHosts.has("h")).toBe(false);
@@ -679,6 +690,50 @@ describe("reconnect reconciliation", () => {
     expect(plane.state.hostConnection.get("h")).toBe("winner");
     expect(plane.state.connections.has("winner")).toBe(true);
     expect(plane.state.connections.has("c2")).toBe(false);
+  });
+
+  it("keeps concurrent worktree ownership when storage-less reconcile fails", async () => {
+    const plane = new ControlPlane({
+      now: () => "2026-01-01T00:00:00.000Z",
+      connectionIdFactory: (() => {
+        let id = 0;
+        return () => `c${++id}`;
+      })(),
+    });
+    expect(
+      plane.registerHost({
+        hostId: "h",
+        worktrees: [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }],
+        commandProfiles: [],
+      }),
+    ).toEqual({ ok: true, connectionId: "c1" });
+    plane.state.sessions.set("s", { ...durableRunning("s", "w") });
+    plane.state.worktrees.set("w", { ...durableWorktree("w", "s"), online: true, status: "busy" });
+    loseSessionAfterValidation(plane, "s", () => {
+      plane.state.worktrees.set("w", {
+        ...plane.state.worktrees.get("w")!,
+        status: "idle",
+        currentSessionId: null,
+        online: true,
+      });
+    });
+    await expect(
+      plane.registerHostDurable({
+        hostId: "h",
+        worktrees: [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }],
+        commandProfiles: [],
+        runningSessions: ["s"],
+        replaceExisting: true,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "reported running session lost reconnect reconciliation",
+    });
+    expect(plane.state.worktrees.get("w")).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+      online: false,
+    });
   });
 
   it("rolls back mixed scheduled and worktree confirmations after a later report fails", async () => {

@@ -280,8 +280,8 @@ function reconcileReportedRunningSessions(
 }
 
 type InMemoryRegistrationSnapshot = {
-  worktrees: WorktreeRecord[];
-  slots: WorkspaceSlotRecord[];
+  worktrees: Map<string, WorktreeRecord>;
+  slots: Map<string, WorkspaceSlotRecord>;
   inventory: HostInventoryRecord | undefined;
   disconnected: { lastHeartbeatAt: string } | undefined;
 };
@@ -291,12 +291,16 @@ function snapshotInMemoryRegistration(
   hostId: string,
 ): InMemoryRegistrationSnapshot {
   return {
-    worktrees: [...state.worktrees.values()]
-      .filter((wt) => wt.hostId === hostId)
-      .map((wt) => ({ ...wt, labels: [...(wt.labels ?? [])] })),
-    slots: [...state.workspaceSlots.values()]
-      .filter((slot) => slot.hostId === hostId)
-      .map((slot) => ({ ...slot })),
+    worktrees: new Map(
+      [...state.worktrees.values()]
+        .filter((wt) => wt.hostId === hostId)
+        .map((wt) => [wt.id, { ...wt }]),
+    ),
+    slots: new Map(
+      [...state.workspaceSlots.values()]
+        .filter((slot) => slot.hostId === hostId)
+        .map((slot) => [slot.id, { ...slot }]),
+    ),
     inventory: state.hostInventories.get(hostId),
     disconnected: state.disconnectedHosts.get(hostId),
   };
@@ -317,16 +321,18 @@ function restoreInMemoryRegistration(
   state.hostConnection.delete(hostId);
   if (snapshot.inventory) state.hostInventories.set(hostId, snapshot.inventory);
   else state.hostInventories.delete(hostId);
-  const previousWorktreeIds = new Set(snapshot.worktrees.map((wt) => wt.id));
   for (const [id, wt] of state.worktrees) {
-    if (wt.hostId === hostId && !previousWorktreeIds.has(id)) state.worktrees.delete(id);
+    if (wt.hostId === hostId && !snapshot.worktrees.has(id)) state.worktrees.delete(id);
   }
-  for (const wt of snapshot.worktrees) state.worktrees.set(wt.id, { ...wt });
-  const previousSlotIds = new Set(snapshot.slots.map((slot) => slot.id));
+  for (const [id, wt] of snapshot.worktrees) {
+    if (!state.worktrees.has(id)) state.worktrees.set(id, { ...wt });
+  }
   for (const [id, slot] of state.workspaceSlots) {
-    if (slot.hostId === hostId && !previousSlotIds.has(id)) state.workspaceSlots.delete(id);
+    if (slot.hostId === hostId && !snapshot.slots.has(id)) state.workspaceSlots.delete(id);
   }
-  for (const slot of snapshot.slots) state.workspaceSlots.set(slot.id, { ...slot });
+  for (const [id, slot] of snapshot.slots) {
+    if (!state.workspaceSlots.has(id)) state.workspaceSlots.set(id, { ...slot });
+  }
   state.drainingHosts.delete(hostId);
   offlineHostAndRequeue(state, hostId, reason);
   offlineWorkspaceSlotsLocal(state, hostId, reason);
