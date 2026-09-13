@@ -4,6 +4,9 @@ import { randomUUID } from "node:crypto";
 import {
   DEFAULT_QUEUE_TTL_SECONDS,
   isValidGitHubIngressDefaultRef,
+  githubIngressCatalogReferenceKeys,
+  githubIngressCatalogReferenceLimitError,
+  MAX_GITHUB_INGRESS_CATALOG_REFS,
   MAX_REQUIRED_LABELS,
   MAX_REQUIRED_LABEL_LENGTH,
   sessionPriorityError,
@@ -30,8 +33,7 @@ type Failure = { ok: false; error: string; conflict?: true; unavailable?: true }
 
 /** Leave headroom below DynamoDB's 400 KiB item limit for attribute overhead and evolution. */
 export const MAX_GITHUB_INGRESS_CONFIG_BYTES = 300 * 1024;
-/** One write plus at most 99 marker condition checks fits DynamoDB's 100-action limit. */
-export const MAX_GITHUB_INGRESS_CATALOG_REFS = 99;
+export { MAX_GITHUB_INGRESS_CATALOG_REFS };
 
 export async function getGitHubIngressConfig(
   state: ControlPlaneState,
@@ -319,12 +321,10 @@ function validateInput(
       return { ok: false, error: "allowedLogins must be non-empty strings" };
     }
   }
-  if (githubIngressReferenceKeys(input).length > MAX_GITHUB_INGRESS_CATALOG_REFS) {
-    return {
-      ok: false,
-      error: `GitHub ingress configuration may reference at most ${MAX_GITHUB_INGRESS_CATALOG_REFS} unique catalog entries`,
-    };
-  }
+  const catalogRefs = githubIngressCatalogReferenceLimitError(
+    githubIngressCatalogReferenceKeys(input.bindings).length,
+  );
+  if (catalogRefs) return { ok: false, error: catalogRefs };
   return { ok: true };
 }
 
@@ -390,23 +390,10 @@ async function withGitHubIngressReferenceFence<T extends { ok: boolean }>(
       | undefined,
   ) => Promise<T>,
 ): Promise<T | Failure> {
-  const keys = githubIngressReferenceKeys(input);
+  const keys = githubIngressCatalogReferenceKeys(input.bindings);
   return withDeletionMarkers(state, keys, async (owner) =>
     operation(owner ? keys.map((key) => ({ key, owner, now: state.now() })) : undefined),
   );
-}
-
-function githubIngressReferenceKeys(input: GitHubIngressConfigInput): string[] {
-  const keys = new Set<string>();
-  for (const binding of input.bindings) {
-    keys.add(`repository:${binding.repositoryId}`);
-    for (const route of [binding.target, ...(binding.fallbacks ?? [])]) {
-      keys.add(
-        "providerId" in route ? `provider:${route.providerId}` : `command:${route.commandId}`,
-      );
-    }
-  }
-  return [...keys];
 }
 
 function configSizeError(record: GitHubIngressConfigRecord): string | null {

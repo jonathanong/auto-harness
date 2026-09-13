@@ -898,6 +898,10 @@ components:
           type: array
           minItems: 1
           maxItems: 100
+          description: >
+            At most 100 bindings. Unique Auto Harness repository, command, and provider
+            ids across every binding target and fallback must not exceed 99, matching the
+            DynamoDB transaction catalog-reference fence.
           items: { $ref: "#/components/schemas/GitHubIngressBinding" }
     GitHubIngressConfigCreateInput:
       allOf:
@@ -922,6 +926,10 @@ components:
           type: array
           minItems: 1
           maxItems: 100
+          description: >
+            At most 100 bindings. Unique Auto Harness repository, command, and provider
+            ids across every binding target and fallback must not exceed 99, matching the
+            DynamoDB transaction catalog-reference fence.
           items: { $ref: "#/components/schemas/GitHubIngressBinding" }
         version:
           type: integer
@@ -946,6 +954,10 @@ components:
           type: array
           minItems: 1
           maxItems: 100
+          description: >
+            At most 100 bindings. Unique Auto Harness repository, command, and provider
+            ids across every binding target and fallback must not exceed 99, matching the
+            DynamoDB transaction catalog-reference fence.
           items: { $ref: "#/components/schemas/GitHubIngressBinding" }
         secretConfigured: { type: boolean, const: true }
         version: { type: integer, minimum: 1 }

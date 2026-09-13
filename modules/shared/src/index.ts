@@ -283,6 +283,12 @@ export {
   canonicalizeGitHubIngressDefaultRef,
   MAX_SCHEDULED_BRANCH_REF_BYTES,
 } from "./scheduled-branch-ref.ts";
+export {
+  githubIngressCatalogReferenceKeys,
+  githubIngressCatalogReferenceLimitError,
+  MAX_GITHUB_INGRESS_CATALOG_REFS,
+  type GitHubIngressCatalogBinding,
+} from "./github-ingress-catalog-refs.ts";
 
 export {
   parseProviderAccountOverrides,
