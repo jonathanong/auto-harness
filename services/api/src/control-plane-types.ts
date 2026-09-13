@@ -59,6 +59,8 @@ export type ArchiveMetadata = {
   updatedAt: string;
   retryState?: "pending" | "processing";
   retryOrder?: string;
+  /** Retry generation that recorded captured transcript bytes before the object PUT. */
+  capturedRetryOrder?: string;
 };
 
 export type ControlPlaneOptions = {

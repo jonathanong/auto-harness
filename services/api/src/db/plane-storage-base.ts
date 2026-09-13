@@ -1283,6 +1283,10 @@ export class DynamoPlaneStorageBase {
     return catalog.completeArchiveRetry(this.ctx, archive, expectedRetryOrder);
   }
 
+  recordArchiveRetryCapture(key: string, retryOrder: string, bodyBytes: number): Promise<boolean> {
+    return catalog.recordArchiveRetryCapture(this.ctx, key, retryOrder, bodyBytes);
+  }
+
   expireArchive(key: string, updatedAt: string): Promise<boolean> {
     return catalog.expireArchive(this.ctx, key, updatedAt);
   }

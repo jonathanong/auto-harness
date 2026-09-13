@@ -335,7 +335,11 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
    - Query all SessionLogs for `sessionId`
    - Write the `sessions/{sessionId}/logs.jsonl` object and track pending/completed/expired state.
      `expired` is a durable terminal metadata status: retry GSI attributes are removed so Cron
-     cannot later serialize an empty log set and mark the archive complete.
+     cannot later serialize an empty log set and mark the archive complete. Read-time expiry does
+     not preempt an in-flight `processing` retry claim that already recorded captured transcript
+     bytes for the current retry generation, so that worker can still complete the upload.
+     Empty processing claims, reclaimed generations that no longer own the capture marker,
+     and unclaimed pending rows with confirmed absent logs still expire.
      First-time archives persist pending metadata before the PUT so Cron can retry the same key.
      A complete, stored, version-pinned archive keeps that metadata until a replacement object
      version is committed; a failed replacement leaves the prior complete row downloadable. A

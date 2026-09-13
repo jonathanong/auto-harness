@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- captured vs empty processing expiry needs generation-bound cases. */
 import { describe, expect, it, vi } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
@@ -124,6 +125,112 @@ describe("archive expire persistence", () => {
     });
     await expect(persistExpiredArchive(state, pending.key, pending)).resolves.toBe("pending");
     expect(state.archives.get(pending.key)).toBeUndefined();
+  });
+
+  it("does not expire an in-flight processing claim", async () => {
+    const expireArchive = vi.fn(async () => true);
+    const processing: ArchiveMetadata = {
+      ...pending,
+      retryState: "processing",
+      bodyBytes: 42,
+      capturedRetryOrder: pending.retryOrder,
+    };
+    const state = createControlPlaneState({
+      now: () => "now",
+      storage: { expireArchive, getArchive: async () => processing } as never,
+    });
+    await expect(persistExpiredArchive(state, processing.key, processing)).resolves.toBe("pending");
+    expect(expireArchive).not.toHaveBeenCalled();
+    expect(state.archives.get(processing.key)).toMatchObject({ retryState: "processing" });
+
+    const memory = createControlPlaneState({ now: () => "now" });
+    memory.archives.set(processing.key, processing);
+    await expect(persistExpiredArchive(memory, processing.key, processing)).resolves.toBe(
+      "pending",
+    );
+    expect(memory.archives.get(processing.key)).toMatchObject({
+      status: "pending",
+      retryState: "processing",
+    });
+
+    const completeMemory = createControlPlaneState({ now: () => "now" });
+    completeMemory.archives.set(processing.key, {
+      ...processing,
+      status: "complete",
+      objectStored: true,
+    });
+    await expect(persistExpiredArchive(completeMemory, processing.key, processing)).resolves.toBe(
+      "complete",
+    );
+
+    const expiredState = createControlPlaneState({
+      storage: {
+        expireArchive,
+        getArchive: async () => ({ ...processing, status: "expired" as const }),
+      } as never,
+    });
+    await expect(persistExpiredArchive(expiredState, processing.key, processing)).resolves.toBe(
+      "expired",
+    );
+    expect(expireArchive).not.toHaveBeenCalled();
+  });
+
+  it("keeps a captured processing claim when durable metadata is missing", async () => {
+    const expireArchive = vi.fn(async () => true);
+    const processing: ArchiveMetadata = {
+      ...pending,
+      retryState: "processing",
+      bodyBytes: 42,
+      capturedRetryOrder: pending.retryOrder,
+    };
+    const state = createControlPlaneState({
+      now: () => "now",
+      storage: { expireArchive, getArchive: async () => undefined } as never,
+    });
+    await expect(persistExpiredArchive(state, processing.key, processing)).resolves.toBe("pending");
+    expect(expireArchive).not.toHaveBeenCalled();
+  });
+
+  it("keeps a captured in-memory processing claim that is not mirrored yet", async () => {
+    const processing: ArchiveMetadata = {
+      ...pending,
+      retryState: "processing",
+      bodyBytes: 42,
+      capturedRetryOrder: pending.retryOrder,
+    };
+    const memory = createControlPlaneState({ now: () => "now" });
+    await expect(persistExpiredArchive(memory, processing.key, processing)).resolves.toBe(
+      "pending",
+    );
+    expect(memory.archives.get(processing.key)).toBeUndefined();
+  });
+
+  it("expires a processing claim whose capture belongs to a prior retry generation", async () => {
+    const expireArchive = vi.fn(async () => true);
+    const stale: ArchiveMetadata = {
+      ...pending,
+      retryState: "processing",
+      bodyBytes: 42,
+      retryOrder: "new-claim",
+      capturedRetryOrder: "old-claim",
+    };
+    const state = createControlPlaneState({
+      now: () => "now",
+      storage: { expireArchive, getArchive: async () => stale } as never,
+    });
+    await expect(persistExpiredArchive(state, stale.key, stale)).resolves.toBe("expired");
+    expect(expireArchive).toHaveBeenCalledWith(stale.key, "now");
+  });
+
+  it("expires a processing claim that captured no logs", async () => {
+    const expireArchive = vi.fn(async () => true);
+    const empty: ArchiveMetadata = { ...pending, retryState: "processing" };
+    const state = createControlPlaneState({
+      now: () => "now",
+      storage: { expireArchive, getArchive: async () => empty } as never,
+    });
+    await expect(persistExpiredArchive(state, empty.key, empty)).resolves.toBe("expired");
+    expect(expireArchive).toHaveBeenCalledWith(empty.key, "now");
   });
 
   it("refuses to clobber an in-memory complete winner", async () => {

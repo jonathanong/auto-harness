@@ -119,6 +119,42 @@ export async function archiveSessionLogs(
       retryOrder: retryPending.retryOrder ?? `${state.now()}#${key}`,
     };
   }
+  if (ownedRetry && pending.bodyBytes === 0 && state.storage && !replacement) {
+    const existing = await state.storage.getArchive(object.key);
+    if (
+      archiveRetentionElapsed(state.now(), [existing?.updatedAt]) &&
+      !(await recentLogsRemain(state, sessionId))
+    ) {
+      await persistExpiredArchive(state, object.key, {
+        ...pending,
+        retryState: "processing",
+        retryOrder: ownedRetry.retryOrder,
+      });
+      return object;
+    }
+  }
+  if (ownedRetry && pending.bodyBytes > 0) {
+    const claimed = state.archives.get(object.key);
+    if (
+      claimed?.retryState === "processing" &&
+      claimed.retryOrder === ownedRetry.retryOrder &&
+      claimed.status !== "expired"
+    ) {
+      state.archives.set(object.key, {
+        ...claimed,
+        bodyBytes: pending.bodyBytes,
+        capturedRetryOrder: ownedRetry.retryOrder,
+      });
+    }
+    if (state.storage && typeof state.storage.recordArchiveRetryCapture === "function") {
+      const recorded = await state.storage.recordArchiveRetryCapture(
+        object.key,
+        ownedRetry.retryOrder,
+        pending.bodyBytes,
+      );
+      if (!recorded) return object;
+    }
+  }
   const writeResult = await state.archiveWriter.putArchive(object);
   const versionId = archiveVersionId(writeResult);
   if (replacement && !ownedRetry) {
@@ -142,6 +178,7 @@ export async function archiveSessionLogs(
   const storedMetadata = { ...pending };
   delete storedMetadata.retryState;
   delete storedMetadata.retryOrder;
+  delete storedMetadata.capturedRetryOrder;
   const complete: ArchiveMetadata = {
     ...storedMetadata,
     status: "complete",

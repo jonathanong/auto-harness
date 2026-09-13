@@ -267,7 +267,10 @@ until repaired.
 **Transcript expired before archival completed** means the terminal session's seven-day recent-log
 retention elapsed and a bounded strongly consistent probe found no recent log row before a durable
 archive became retrievable. That expired metadata is persisted so a later archive retry cannot
-replace the data-loss state with an empty transcript.
+replace the data-loss state with an empty transcript. An in-flight processing retry claim that
+already captured nonempty logs for the current retry generation is not expired out from under
+its upload; empty processing claims, reclaimed generations, and empty completes against an
+already-expired row stay rejected.
 Queued and running sessions always remain in the recent/not-archived state, even if stale complete
 archive metadata exists; archived retrieval is exposed only after the authoritative session is terminal.
 

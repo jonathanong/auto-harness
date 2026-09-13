@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Dynamo archive expiry covers captured vs empty processing claims. */
 import { describe, expect, it } from "vitest";
 
 import { archiveSessionLogs, retrySessionArchiveIfNeeded } from "./control-plane-lifecycle.ts";
@@ -90,6 +91,69 @@ describe("archive writer with real DynamoDB Local", () => {
     expect(metadata).not.toHaveProperty("body");
   });
 
+  it("does not expire an in-flight processing archive retry claim", async () => {
+    if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
+    const key = "sessions/session-processing/logs.jsonl";
+    await ctx.storage.putArchive({
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 42,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "claimed-order",
+      capturedRetryOrder: "claimed-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    await expect(ctx.storage.expireArchive(key, "2026-01-08T00:00:00.000Z")).resolves.toBe(false);
+    expect(await ctx.storage.getArchive(key)).toMatchObject({
+      status: "pending",
+      retryState: "processing",
+      retryOrder: "claimed-order",
+      bodyBytes: 42,
+    });
+    await expect(
+      ctx.storage.completeArchiveRetry(
+        {
+          key,
+          contentType: "application/x-ndjson",
+          bodyBytes: 42,
+          status: "complete",
+          objectStored: true,
+          versionId: "archive-v1",
+          updatedAt: "2026-01-08T00:00:00.000Z",
+        },
+        "claimed-order",
+      ),
+    ).resolves.toBe(true);
+    expect(await ctx.storage.getArchive(key)).toMatchObject({
+      status: "complete",
+      objectStored: true,
+      versionId: "archive-v1",
+    });
+  });
+
+  it("expires an empty processing archive retry claim", async () => {
+    if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
+    const key = "sessions/session-empty-processing/logs.jsonl";
+    await ctx.storage.putArchive({
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "empty-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await expect(ctx.storage.expireArchive(key, "2026-01-08T00:00:00.000Z")).resolves.toBe(true);
+    expect(await ctx.storage.getArchive(key)).toMatchObject({
+      status: "expired",
+      objectStored: false,
+    });
+  });
+
   it("expires a pending archive so a late retry cannot mark it complete", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
     const key = "sessions/session-expired/logs.jsonl";
@@ -99,7 +163,7 @@ describe("archive writer with real DynamoDB Local", () => {
       bodyBytes: 0,
       status: "pending",
       objectStored: false,
-      retryState: "processing",
+      retryState: "pending",
       retryOrder: "claimed-order",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
