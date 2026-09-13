@@ -66,6 +66,7 @@ export function CustomWebhookSettings() {
     }
     const requestedId = config.id;
     const requestedEndpoint = endpoint;
+    const secretWhenRequested = secret;
     start(async () => {
       try {
         const response = await apiFetch(requestedEndpoint, { cache: "no-store" });
@@ -98,7 +99,7 @@ export function CustomWebhookSettings() {
           version: loaded.version,
           generation: loaded.generation,
         });
-        setSecret("");
+        setSecret((current) => (current === secretWhenRequested ? "" : current));
         setConfigured(true);
         showToast("Custom webhook configuration loaded.", { pw: "custom-webhook-loaded" });
       } catch {
