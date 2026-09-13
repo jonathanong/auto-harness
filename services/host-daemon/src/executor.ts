@@ -43,8 +43,8 @@ export type RunProcessOptions = {
    */
   preserveOutputChunks?: boolean;
   /**
-   * Decode preserved stdout/stderr with this encoding. Latin-1 keeps each
-   * captured byte so NUL-delimited Git path lists survive chunk splits.
+   * Decode preserved stdout with this encoding. Latin-1 keeps each captured
+   * byte so NUL-delimited Git path lists survive chunk splits. stderr stays UTF-8.
    */
   outputEncoding?: "utf8" | "latin1";
   /** Optional stdin bytes for porcelain that cannot round-trip paths through argv. */
@@ -222,7 +222,8 @@ export class SpawnProcessRunner implements ProcessRunner {
 
       const emitChunk = (stream: OutputChunk["stream"], buf: Buffer): void => {
         if (options.preserveOutputChunks) {
-          options.onChunk({ stream, data: buf.toString(options.outputEncoding ?? "utf8") });
+          const encoding = stream === "stdout" ? (options.outputEncoding ?? "utf8") : "utf8";
+          options.onChunk({ stream, data: buf.toString(encoding) });
           return;
         }
         // Keep a malicious/noisy process from allocating unbounded memory in
