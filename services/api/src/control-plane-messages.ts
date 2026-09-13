@@ -1259,9 +1259,11 @@ async function applySessionStatusDurable(
   ) {
     const handoff = session.terminalHookHandoff;
     const owned = handoff.status === msg.status && (!fence || handoff.hostId === fence.hostId);
+    const retryAccepted = settledCheckoutFetchRetryDisposition(msg, session);
     return {
       ok: true,
       applied: true,
+      ...(retryAccepted !== undefined ? { retryAccepted } : {}),
       ...(owned ? { terminalHookHandoffId: handoff.handoffId } : {}),
       ...(owned && protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
         ? { terminalHookHandoffExpiresAt: handoff.expiresAt }
