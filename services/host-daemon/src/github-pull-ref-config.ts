@@ -150,6 +150,7 @@ function parseTransport(
     }
   }
   const httpProxy = optionalString(transport.httpProxy, `${context}.httpProxy`);
+  let canonicalHttpProxy: string | undefined;
   if (httpProxy !== undefined) {
     let parsed: URL;
     try {
@@ -166,6 +167,9 @@ function parseTransport(
     ) {
       throw new Error(`${context}.httpProxy must be an http(s) URL`);
     }
+    // Git receives this exact string as `http.proxy`. Store WHATWG's canonical form so a
+    // validated spelling cannot later fail at fetch time.
+    canonicalHttpProxy = parsed.toString();
   }
   const sslCAInfo = optionalString(transport.sslCAInfo, `${context}.sslCAInfo`);
   if (sslCAInfo !== undefined && !isAbsolute(sslCAInfo)) {
@@ -175,7 +179,7 @@ function parseTransport(
     ...(resolvedCredentialHelper === undefined
       ? {}
       : { credentialHelper: resolvedCredentialHelper }),
-    ...(httpProxy === undefined ? {} : { httpProxy }),
+    ...(canonicalHttpProxy === undefined ? {} : { httpProxy: canonicalHttpProxy }),
     ...(sslCAInfo === undefined ? {} : { sslCAInfo }),
   };
 }
