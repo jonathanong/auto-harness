@@ -10,7 +10,6 @@ import {
   CardTitle,
   Input,
   Label,
-  Textarea,
   showToast,
 } from "@auto-harness/ui";
 
@@ -23,6 +22,7 @@ import {
   parsedFallbacks,
   type FallbackTarget,
 } from "./github-ingress-fallback-fields.tsx";
+import { BindingRequiredLabels } from "./github-ingress-label-fields.tsx";
 
 type Binding = {
   githubRepositoryId: string;
@@ -32,7 +32,7 @@ type Binding = {
   timeout: string;
   queueTtlSeconds: string;
   priority: string;
-  requiredLabels: string;
+  requiredLabels: string[];
   fallbacks: FallbackTarget[];
   defaultRef: string;
   allowedLogins: string;
@@ -46,7 +46,7 @@ const blank = (): Binding => ({
   timeout: "3600",
   queueTtlSeconds: "691200",
   priority: "0",
-  requiredLabels: "",
+  requiredLabels: [],
   fallbacks: [],
   defaultRef: "refs/heads/main",
   allowedLogins: "",
@@ -112,7 +112,7 @@ export function GitHubIngressSettings() {
             timeout: String(binding.timeout),
             queueTtlSeconds: String(binding.queueTtlSeconds),
             priority: String(binding.priority),
-            requiredLabels: binding.requiredLabels.join("\n"),
+            requiredLabels: [...binding.requiredLabels],
             fallbacks: loadedFallbacks(binding.fallbacks),
             defaultRef: binding.defaultRef,
             allowedLogins: binding.allowedLogins.join(", "),
@@ -125,7 +125,7 @@ export function GitHubIngressSettings() {
   const change = (
     index: number,
     field: keyof Binding,
-    value: string | boolean | FallbackTarget[],
+    value: string | boolean | string[] | FallbackTarget[],
   ) =>
     setBindings((current) =>
       current.map((binding, position) =>
@@ -180,10 +180,7 @@ export function GitHubIngressSettings() {
           timeout: Number(binding.timeout),
           queueTtlSeconds: Number(binding.queueTtlSeconds),
           priority: Number(binding.priority),
-          requiredLabels: binding.requiredLabels
-            .split(/\r?\n/)
-            .map((label) => label.trim())
-            .filter(Boolean),
+          requiredLabels: binding.requiredLabels.filter((label) => label !== ""),
           fallbacks: validFallbacks[index]!,
           defaultRef: binding.defaultRef,
           allowedLogins: binding.allowedLogins
@@ -348,11 +345,10 @@ export function GitHubIngressSettings() {
               value={binding.defaultRef}
               onChange={(event) => change(index, "defaultRef", event.target.value)}
             />
-            <Textarea
-              aria-label="Required labels"
-              value={binding.requiredLabels}
-              onChange={(event) => change(index, "requiredLabels", event.target.value)}
-              placeholder="Required labels, one per line"
+            <BindingRequiredLabels
+              bindingIndex={index}
+              labels={binding.requiredLabels}
+              onChange={(requiredLabels) => change(index, "requiredLabels", requiredLabels)}
             />
             <BindingFallbacks
               bindingIndex={index}

@@ -67,7 +67,8 @@ describe("GitHubIngressSettings", () => {
     setValue(labelled(view.container, "Queue TTL seconds"), "7200");
     setValue(labelled(view.container, "Priority"), "7");
     setValue(labelled(view.container, "Default ref"), "refs/heads/release");
-    setValue(labelled(view.container, "Required labels"), "ready\nsafe");
+    press(field(view.container, "github-ingress-add-label-0"));
+    setValue(labelled(view.container, "Required label 2"), "safe");
     setValue(field(view.container, "github-ingress-fallback-type-0-0"), "providerId");
     setValue(field(view.container, "github-ingress-fallback-id-0-0"), "backup");
     press(field(view.container, "github-ingress-add-fallback-0"));
@@ -91,7 +92,12 @@ describe("GitHubIngressSettings", () => {
     expect(saved).toMatchObject({
       version: 2,
       generation: "generation-1",
-      bindings: [{ fallbacks: [{ providerId: "backup" }, { commandId: "fallback" }] }],
+      bindings: [
+        {
+          fallbacks: [{ providerId: "backup" }, { commandId: "fallback" }],
+          requiredLabels: ["ready", "safe"],
+        },
+      ],
     });
     press(field(view.container, "github-ingress-delete"));
     expect(fake.requests).toHaveLength(2);
@@ -134,24 +140,75 @@ describe("GitHubIngressSettings", () => {
     expect(created.enabled).toBe(true);
   });
 
-  it("round-trips required labels containing commas", async () => {
-    const commaExisting = {
+  it.each([
+    ["commas", ["needs,review"]],
+    ["newlines", ["needs\nreview"]],
+    ["surrounding whitespace", ["  ready  "]],
+  ])("preserves required labels containing %s after an unrelated edit", async (_kind, labels) => {
+    const labelledExisting = {
       ...existing,
       bindings: existing.bindings.map((binding) => ({
         ...binding,
-        requiredLabels: ["needs,review"],
+        requiredLabels: labels,
       })),
     };
-    const fake = createApiFake(json(commaExisting), json({ ...commaExisting, version: 3 }));
+    const fake = createApiFake(json(labelledExisting), json({ ...labelledExisting, version: 3 }));
     const view = mountForm(<GitHubIngressSettings />);
     await settle();
+    expect(labelled<HTMLTextAreaElement>(view.container, "Required label 1").value).toBe(labels[0]);
     setValue(labelled(view.container, "Timeout seconds"), "240");
     press(field(view.container, "github-ingress-save"));
     await settle();
     const saved = JSON.parse(String(fake.requests[1]?.[1]?.body)) as {
       bindings: Array<{ requiredLabels: string[] }>;
     };
-    expect(saved.bindings[0]?.requiredLabels).toEqual(["needs,review"]);
+    expect(saved.bindings[0]?.requiredLabels).toEqual(labels);
+  });
+
+  it("hides add-label once a binding already has 16 required labels", async () => {
+    createApiFake(
+      json({
+        ...existing,
+        bindings: existing.bindings.map((binding) => ({
+          ...binding,
+          requiredLabels: Array.from({ length: 16 }, (_, index) => `label-${index}`),
+        })),
+      }),
+    );
+    const view = mountForm(<GitHubIngressSettings />);
+    await settle();
+    expect(view.container.querySelector('[data-pw="github-ingress-add-label-0"]')).toBeNull();
+    expect(labelled<HTMLTextAreaElement>(view.container, "Required label 16").value).toBe(
+      "label-15",
+    );
+  });
+
+  it("omits blank added labels and can remove a persisted label", async () => {
+    const fake = createApiFake(json(existing), json({ ...existing, version: 3 }));
+    const view = mountForm(<GitHubIngressSettings />);
+    await settle();
+    press(field(view.container, "github-ingress-add-label-0"));
+    expect(labelled<HTMLTextAreaElement>(view.container, "Required label 2").value).toBe("");
+    setValue(labelled(view.container, "Timeout seconds"), "240");
+    press(field(view.container, "github-ingress-save"));
+    await settle();
+    expect(
+      (
+        JSON.parse(String(fake.requests[1]?.[1]?.body)) as {
+          bindings: Array<{ requiredLabels: string[] }>;
+        }
+      ).bindings[0]?.requiredLabels,
+    ).toEqual(["ready"]);
+    press(labelled(view.container, "Required label 1").parentElement!.querySelector("button")!);
+    press(field(view.container, "github-ingress-save"));
+    await settle();
+    expect(
+      (
+        JSON.parse(String(fake.requests[2]?.[1]?.body)) as {
+          bindings: Array<{ requiredLabels: string[] }>;
+        }
+      ).bindings[0]?.requiredLabels,
+    ).toEqual([]);
   });
 
   it.each([
