@@ -276,4 +276,40 @@ describe("concurrent session admission conflicts", () => {
       ),
     ).resolves.toMatchObject({ created: true });
   });
+
+  it("acknowledges the active lock when config rotation races the same delivery", async () => {
+    const fence = {
+      id: "deploy",
+      type: "custom-webhook" as const,
+      storageId: "custom-webhook:deploy",
+      generation: "generation",
+      version: 2,
+      enabled: true,
+    };
+    let activeRead = false;
+    await expect(
+      createSession(
+        ctx(async (command) => {
+          if (command instanceof TransactWriteCommand) {
+            throw {
+              name: "TransactionCanceledException",
+              CancellationReasons: Array.from({ length: 8 }, (_, index) => ({
+                Code: index === 3 || index === 4 ? "ConditionalCheckFailed" : "None",
+              })),
+            };
+          }
+          expect(command).toBeInstanceOf(GetCommand);
+          if (!activeRead) {
+            activeRead = true;
+            return { Item: { sessionId: "active" } };
+          }
+          return { Item: { id: "active", status: "running" } };
+        }),
+        session,
+        [],
+        undefined,
+        fence,
+      ),
+    ).resolves.toMatchObject({ created: false, session: { id: "active", status: "running" } });
+  });
 });

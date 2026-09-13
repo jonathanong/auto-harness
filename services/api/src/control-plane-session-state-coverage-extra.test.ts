@@ -218,8 +218,8 @@ describe("session state-machine residual coverage", () => {
       createGitHubIngressSessionDurable(changed, githubBody(), {
         integrationFence: githubFence,
       }),
-    ).resolves.toMatchObject({ ok: true, created: true });
-    expect(reads).toBe(2);
+    ).resolves.toMatchObject({ ok: true, created: false, session: { id: "active" } });
+    expect(reads).toBe(0);
 
     const disappeared = commandState();
     disappeared.repositories.set("repo", {
@@ -243,8 +243,8 @@ describe("session state-machine residual coverage", () => {
       createGitHubIngressSessionDurable(disappeared, githubBody(), {
         integrationFence: githubFence,
       }),
-    ).resolves.toMatchObject({ ok: true, created: true });
-    expect(disappearanceReads).toBe(2);
+    ).resolves.toMatchObject({ ok: true, created: false, session: { id: "active" } });
+    expect(disappearanceReads).toBe(0);
   });
 
   it("deduplicates an active GitHub ingress session with a stable fence", async () => {
@@ -265,7 +265,7 @@ describe("session state-machine residual coverage", () => {
         integrationFence: githubFence,
       }),
     ).resolves.toMatchObject({ ok: true, created: false, session: { id: "active" } });
-    expect(reads).toBe(2);
+    expect(reads).toBe(0);
     expect(state.sessions.get("active")).toMatchObject({
       concurrencyId: githubBody().concurrencyId,
     });
