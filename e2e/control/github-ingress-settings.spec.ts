@@ -35,6 +35,9 @@ test.describe("control plane GitHub ingress settings", () => {
     await page.getByRole("textbox", { name: "GitHub repository id" }).fill("42");
     await page.getByRole("textbox", { name: "Auto Harness repository id" }).fill("repo-1");
     await page.getByRole("textbox", { name: "Target id" }).fill("provider-1");
+    await page.getByTestId("github-ingress-add-fallback-0").click();
+    await page.getByTestId("github-ingress-fallback-type-0-0").selectOption("commandId");
+    await page.getByTestId("github-ingress-fallback-id-0-0").fill("team,provider");
     await page.getByTestId("github-ingress-save").click();
 
     await expect(page.getByTestId("github-ingress-success")).toContainText("saved");
@@ -46,6 +49,7 @@ test.describe("control plane GitHub ingress settings", () => {
           githubRepositoryId: 42,
           repositoryId: "repo-1",
           target: { providerId: "provider-1" },
+          fallbacks: [{ commandId: "team,provider" }],
         }),
       ],
     });
