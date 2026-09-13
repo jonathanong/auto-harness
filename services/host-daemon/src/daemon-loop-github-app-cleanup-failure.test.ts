@@ -23,6 +23,7 @@ describe("DaemonLoop GitHub App cleanup", () => {
   it("logs an isolated config cleanup failure after a mapped hook", async () => {
     const { config, cleanup } = await makeRepo();
     const logs: string[] = [];
+    let credentialDeadline!: () => void;
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -43,6 +44,13 @@ describe("DaemonLoop GitHub App cleanup", () => {
         config,
         transport: createLoopbackTransport(),
         onLog: (line) => logs.push(line),
+        timers: {
+          setTimeout: (callback) => {
+            credentialDeadline = callback;
+            return 1 as never;
+          },
+          clearTimeout: () => undefined,
+        },
         githubApp: parseGitHubAppConfig(
           {
             appId: "1",
@@ -87,6 +95,7 @@ describe("DaemonLoop GitHub App cleanup", () => {
         },
         Date.now() + 10_000,
       );
+      credentialDeadline();
       expect(logs).toContainEqual(
         expect.stringContaining("failed to remove isolated GitHub config directory"),
       );
