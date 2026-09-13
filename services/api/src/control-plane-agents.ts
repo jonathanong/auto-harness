@@ -344,6 +344,12 @@ function releaseUnackedProvisionalAssignment(
   if (target === "worktree") session.worktreeId = null;
   else session.workspaceSlotId = null;
   session.hostId = null;
+  delete session.workspaceSlotLease;
+  delete session.assignmentConnectionId;
+  delete session.assignmentSentAt;
+  delete session.ackReceivedAt;
+  delete session.reconnectDeadlineAt;
+  state.pendingAcks.delete(session.id);
   persistSession(state, session);
 }
 
@@ -367,12 +373,9 @@ function dropReplacementOnlyCapacity(
   winnerOwnsHost: boolean,
   reason: string,
 ): void {
-  const winnerWorktrees = winnerOwnsHost
-    ? advertisedWorktreeIds(state.hostInventories.get(hostId))
-    : new Set<string>();
-  const winnerSlots = winnerOwnsHost
-    ? advertisedSlotIds(state.hostInventories.get(hostId))
-    : new Set<string>();
+  const winnerInventory = winnerOwnsHost ? state.hostInventories.get(hostId) : undefined;
+  const winnerWorktrees = advertisedWorktreeIds(winnerInventory);
+  const winnerSlots = advertisedSlotIds(winnerInventory);
   for (const [id, wt] of state.worktrees) {
     if (wt.hostId !== hostId || snapshot.worktrees.has(id) || winnerWorktrees.has(id)) continue;
     requeueUnackedWorktree(state, wt, reason);

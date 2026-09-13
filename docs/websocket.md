@@ -325,6 +325,8 @@ sequenceDiagram
 ```
 
 Disconnect and reconnect reconciliation: [aws.md](aws.md#disconnect-handling), [host-daemon.md](host-daemon.md#disconnect-and-crash-recovery).
+On the storage-less local hub, omitted-session reconcile is awaited before `host:register` is
+accepted; a false result fails closed and rolls back provisional ads and unacked claims.
 
 ---
 

@@ -933,9 +933,17 @@ describe("reconnect reconciliation", () => {
         completedAt: "2026-01-01T00:00:00.000Z",
         worktreeId: null,
         workspaceSlotId: "slot-new",
+        workspaceSlotLease: true,
+        attemptId: "attempt",
       };
       delete cancelledSlot.ackReceivedAt;
       plane.state.sessions.set("cancelled-slot", cancelledSlot);
+      plane.state.pendingAcks.set("cancelled-slot", {
+        sessionId: "cancelled-slot",
+        worktreeId: null,
+        attemptId: "attempt",
+        assignedAtMs: 0,
+      });
       plane.state.workspaceSlots.set("slot-new", {
         id: "slot-new",
         name: "slot-new",
@@ -979,6 +987,8 @@ describe("reconnect reconciliation", () => {
       workspaceSlotId: null,
       hostId: null,
     });
+    expect(plane.state.sessions.get("cancelled-slot")).not.toHaveProperty("workspaceSlotLease");
+    expect(plane.state.pendingAcks.has("cancelled-slot")).toBe(false);
     expect(plane.state.workspaceSlots.has("slot-new")).toBe(false);
   });
 
@@ -1109,7 +1119,15 @@ describe("reconnect reconciliation", () => {
       delete claimed.ackReceivedAt;
       claimed.worktreeId = null;
       claimed.workspaceSlotId = "slot-new";
+      claimed.workspaceSlotLease = true;
+      claimed.attemptId = "attempt";
       plane.state.sessions.set("claimed-slot", claimed);
+      plane.state.pendingAcks.set("claimed-slot", {
+        sessionId: "claimed-slot",
+        worktreeId: null,
+        attemptId: "attempt",
+        assignedAtMs: 0,
+      });
       plane.state.workspaceSlots.set("slot-new", {
         id: "slot-new",
         name: "slot-new",
@@ -1179,6 +1197,10 @@ describe("reconnect reconciliation", () => {
       workspaceSlotId: null,
       hostId: null,
     });
+    expect(plane.state.sessions.get("claimed-slot")).not.toHaveProperty("workspaceSlotLease");
+    expect(plane.state.pendingAcks.has("claimed-slot")).toBe(false);
+    expect(plane.cancelSession("claimed-slot")).toMatchObject({ ok: true });
+    expect(plane.state.sessions.get("claimed-slot")).not.toHaveProperty("workspaceSlotLease");
     expect(plane.state.workspaceSlots.has("slot-new")).toBe(false);
     expect(plane.state.workspaceSlots.get("slot-acked")).toMatchObject({
       status: "busy",
