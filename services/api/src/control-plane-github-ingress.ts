@@ -77,9 +77,14 @@ export async function createGitHubIngressConfig(
     if (size) return { ok: false, error: size };
     const catalogAfter = await revalidateInMemoryBindings(state, input);
     if (!catalogAfter.ok) return catalogAfter;
-    if (!state.storage && state.githubIngressConfig) return conflict();
-    if (state.storage && !(await state.storage.putGitHubIngressConfig(record, null, markers)))
-      return conflict();
+    if (!state.storage) {
+      const present = configuredBindingsPresent(state, input);
+      if (!present.ok) return present;
+      if (state.githubIngressConfig) return conflict();
+      state.githubIngressConfig = record;
+      return { ok: true, integration: toPublicGitHubIngressConfig(record) };
+    }
+    if (!(await state.storage.putGitHubIngressConfig(record, null, markers))) return conflict();
     state.githubIngressConfig = record;
     return { ok: true, integration: toPublicGitHubIngressConfig(record) };
   });
@@ -120,14 +125,18 @@ export async function updateGitHubIngressConfig(
     if (size) return { ok: false, error: size };
     const catalogAfter = await revalidateInMemoryBindings(state, input);
     if (!catalogAfter.ok) return catalogAfter;
+    if (!state.storage) {
+      const present = configuredBindingsPresent(state, input);
+      if (!present.ok) return present;
+      if (
+        state.githubIngressConfig?.version !== current.version ||
+        state.githubIngressConfig.generation !== current.generation
+      )
+        return conflict();
+      state.githubIngressConfig = record;
+      return { ok: true, integration: toPublicGitHubIngressConfig(record) };
+    }
     if (
-      !state.storage &&
-      (state.githubIngressConfig?.version !== current.version ||
-        state.githubIngressConfig.generation !== current.generation)
-    )
-      return conflict();
-    if (
-      state.storage &&
       !(await state.storage.putGitHubIngressConfig(
         record,
         current.version,
@@ -354,9 +363,7 @@ async function revalidateInMemoryBindings(
   input: GitHubIngressConfigInput,
 ): Promise<{ ok: true } | Failure> {
   if (state.storage) return { ok: true };
-  const catalogAfter = await validateConfiguredBindings(state, input);
-  if (!catalogAfter.ok) return catalogAfter;
-  return configuredBindingsPresent(state, input);
+  return validateConfiguredBindings(state, input);
 }
 
 function configuredBindingsPresent(

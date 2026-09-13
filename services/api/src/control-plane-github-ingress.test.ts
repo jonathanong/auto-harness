@@ -294,6 +294,28 @@ describe("GitHub ingress config", () => {
     await expect(plane.getGitHubIngressConfig()).resolves.toBeNull();
   });
 
+  it("does not commit when the pre-commit catalog presence check fails", async () => {
+    const plane = createPlane();
+    plane.state.repositories.has = () => false;
+    await expect(
+      plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: false, error: "repository not found" });
+    await expect(plane.getGitHubIngressConfig()).resolves.toBeNull();
+
+    const missingTarget = createPlane();
+    const originalGet = missingTarget.state.commands.get.bind(missingTarget.state.commands);
+    let reads = 0;
+    missingTarget.state.commands.get = ((id: string) => {
+      reads += 1;
+      if (reads >= 3) return undefined;
+      return originalGet(id);
+    }) as typeof missingTarget.state.commands.get;
+    await expect(
+      missingTarget.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: false });
+    await expect(missingTarget.getGitHubIngressConfig()).resolves.toBeNull();
+  });
+
   it("allows only one concurrent in-memory create after delayed encryption", async () => {
     let release!: () => void;
     let ready!: () => void;
