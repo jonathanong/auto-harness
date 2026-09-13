@@ -483,6 +483,7 @@ only into that session's process environment, and limits its command to the toke
 minutes. It never writes the shared repository config. A native resume receives a new token; there
 is no refresh service. Mapped sessions strip ambient GitHub credential variables before setup and
 terminal hooks, inject the scoped token and bot identity into the assigned command and terminal hook
+(including when the execution profile is unavailable after minting)
 under the canonical `GH_TOKEN` / `GIT_AUTHOR_*` / `GIT_COMMITTER_*` names exactly once (a differently
 cased operator allowlist entry is replaced in place; unrelated entries keep their order),
 and use a fresh private empty `GH_CONFIG_DIR` for the session so stored `gh auth login` credentials
