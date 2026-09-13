@@ -881,6 +881,9 @@ only. They are omitted from session detail and list responses. The storage-less 
 keeps `terminalHookHandoffSettled` after clearing the pending handoff. A later
 `session:terminal-hook-complete` for that exact handoff ID on the settled host's current connection
 re-emits `session:terminal-hook-acknowledged`; mismatched handoff IDs and host owners stay rejected.
+An exhausted protocol-v6 `checkout_fetch_failed` handoff enqueues the terminal Slack lifecycle
+(`session_failed`) when it settles or expires, even on a cold worker with no in-memory session
+history. Host-loss already enqueues Slack at the terminal write.
 
 `result` is captured after the terminal hook and is untrusted agent/worktree-derived data. Its
 `summarySource` is `agent` only when a supported structured CLI result supplied the summary;
