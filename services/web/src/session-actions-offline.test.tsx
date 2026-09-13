@@ -19,6 +19,7 @@ describe("offline SessionActions", () => {
     );
 
     expect(view.container.querySelector('[data-pw="session-cancel"]')).toBeNull();
+    expect(view.container.querySelector('[data-pw="session-archive"]')).toBeNull();
     const trigger = field<HTMLButtonElement>(view.container, "session-force-cancel");
     expect(trigger.textContent).toBe("Force-cancel");
     press(trigger);
