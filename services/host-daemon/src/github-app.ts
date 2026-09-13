@@ -1,7 +1,8 @@
 /* eslint-disable max-lines -- App configuration, token validation, and session credential scoping share one boundary. */
 import { createPrivateKey, sign } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { isAbsolute } from "node:path";
+
+import { isNativeAbsolutePath } from "./native-absolute-path.ts";
 
 const GITHUB_APP_CONFIG_ENV = "HARNESS_GITHUB_APP_CONFIG";
 export const GITHUB_APP_TOKEN_MARGIN_MS = 5 * 60_000;
@@ -101,6 +102,7 @@ function rejectUnknown(
 export function parseGitHubAppConfig(
   raw: unknown,
   readFile: (path: string, encoding: "utf8") => string = readFileSync,
+  platform: string = process.platform,
 ): GitHubAppConfig {
   const config = record(raw, "GitHub App config");
   rejectUnknown(
@@ -111,7 +113,7 @@ export function parseGitHubAppConfig(
   const appId = string(config.appId, "GitHub App config.appId");
   if (!/^\d+$/.test(appId)) throw new Error("GitHub App config.appId must be numeric");
   const privateKeyPath = string(config.privateKeyPath, "GitHub App config.privateKeyPath");
-  if (!isAbsolute(privateKeyPath))
+  if (!isNativeAbsolutePath(privateKeyPath, platform))
     throw new Error("GitHub App config.privateKeyPath must be absolute");
   const botLogin = string(config.botLogin, "GitHub App config.botLogin");
   const botUserId = positiveInteger(config.botUserId, "GitHub App config.botUserId");
@@ -153,13 +155,14 @@ export function parseGitHubAppConfig(
 export function loadGitHubAppConfig(
   env: NodeJS.ProcessEnv = process.env,
   readFile: (path: string, encoding: "utf8") => string = readFileSync,
+  platform: string = process.platform,
 ): GitHubAppConfig | undefined {
   const path = env[GITHUB_APP_CONFIG_ENV]?.trim();
   if (!path) return undefined;
-  if (!isAbsolute(path)) {
+  if (!isNativeAbsolutePath(path, platform)) {
     throw new Error(`${GITHUB_APP_CONFIG_ENV} must be absolute`);
   }
-  return parseGitHubAppConfig(JSON.parse(readFile(path, "utf8")) as unknown, readFile);
+  return parseGitHubAppConfig(JSON.parse(readFile(path, "utf8")) as unknown, readFile, platform);
 }
 
 function jwt(config: GitHubAppConfig, nowMs: number): string {

@@ -78,10 +78,14 @@ export function preparePersistedEnv(opts: {
   env: NodeJS.ProcessEnv;
   apiUrl?: string | undefined;
   capturePath?: boolean | undefined;
+  platform?: string | undefined;
 }): { contents: string; errors: string[] } {
+  const platform = opts.platform ?? process.platform;
   if (opts.apiUrl !== undefined && !isProductionApiUrl(opts.apiUrl)) {
     const errors =
-      opts.existing === undefined ? ["HARNESS_API_URL"] : validatePersistedEnvFile(opts.existing);
+      opts.existing === undefined
+        ? ["HARNESS_API_URL"]
+        : validatePersistedEnvFile(opts.existing, platform);
     if (!errors.includes("HARNESS_API_URL")) errors.push("HARNESS_API_URL");
     return { contents: opts.existing ?? "", errors };
   }
@@ -100,7 +104,7 @@ export function preparePersistedEnv(opts: {
     contents = updatePersistedApiUrl(opts.existing, opts.apiUrl);
   }
   contents = updatePersistedDaemonEnv(contents, opts.env);
-  const errors = validatePersistedEnvFile(contents);
+  const errors = validatePersistedEnvFile(contents, platform);
   // Keep an existing valid service file intact when a new relative secret
   // configuration path is rejected. Callers already avoid writes on errors,
   // and returning the original contents makes that no-write guarantee explicit.

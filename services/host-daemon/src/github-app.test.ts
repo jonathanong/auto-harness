@@ -197,6 +197,35 @@ describe("GitHub App credentials", () => {
         }),
       ).toThrow("privateKeyPath must be absolute");
     }
+    expect(
+      loadGitHubAppConfig(
+        { HARNESS_GITHUB_APP_CONFIG: "C:\\keys\\config.json" },
+        (filePath) =>
+          filePath === "C:\\keys\\config.json"
+            ? JSON.stringify({
+                appId: "1",
+                privateKeyPath: "C:\\keys\\app.pem",
+                botLogin: "bot",
+                botUserId: 1,
+                repositories: {},
+              })
+            : pem,
+        "win32",
+      ),
+    ).toMatchObject({ appId: "1", botLogin: "bot", botUserId: 1 });
+    expect(
+      parseGitHubAppConfig(
+        {
+          appId: "1",
+          privateKeyPath: "C:\\keys\\app.pem",
+          botLogin: "bot",
+          botUserId: 1,
+          repositories: {},
+        },
+        () => pem,
+        "win32",
+      ),
+    ).toMatchObject({ appId: "1", botLogin: "bot", botUserId: 1 });
     expect(() =>
       parseGitHubAppConfig(
         {
