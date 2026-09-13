@@ -353,9 +353,9 @@ describe("archive replacement preserves the last complete generation", () => {
       } as never,
     });
 
-    await expect(archiveSessionLogs(state, "legacy-race")).rejects.toThrow(
-      "object store unavailable",
-    );
+    await expect(archiveSessionLogs(state, "legacy-race")).resolves.toMatchObject({
+      key: "sessions/legacy-race/logs.jsonl",
+    });
     expect(putArchive).not.toHaveBeenCalled();
   });
 
@@ -381,13 +381,74 @@ describe("archive replacement preserves the last complete generation", () => {
       "object store unavailable",
     );
     expect(replaceCompleteArchivePending).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "pending", objectStored: false }),
+      expect.objectContaining({
+        status: "pending",
+        objectStored: false,
+        retryState: "processing",
+      }),
       { updatedAt: current.updatedAt },
     );
     expect(putArchive).not.toHaveBeenCalled();
     expect(state.archives.get(current.key)).toMatchObject({
       status: "pending",
       objectStored: false,
+      retryState: "processing",
+    });
+  });
+
+  it("records a fenced legacy retry before awaiting the object PUT", async () => {
+    let releasePut!: () => void;
+    let markPutStarted!: () => void;
+    const putStarted = new Promise<void>((resolve) => {
+      markPutStarted = resolve;
+    });
+    const putReleased = new Promise<void>((resolve) => {
+      releasePut = resolve;
+    });
+    const replaceCompleteArchivePending = vi.fn(async () => true);
+    const completeArchiveRetry = vi.fn(async () => true);
+    const current = storedComplete("legacy-hang");
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          markPutStarted();
+          await putReleased;
+          return { versionId: "repaired-v" };
+        },
+      },
+      storage: {
+        getArchive: async () => current,
+        listLogs: async () => [],
+        replaceCompleteArchivePending,
+        completeArchiveRetry,
+      } as never,
+    });
+
+    const archived = archiveSessionLogs(state, "legacy-hang");
+    await putStarted;
+    expect(replaceCompleteArchivePending).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "pending",
+        objectStored: false,
+        retryState: "processing",
+      }),
+      { updatedAt: current.updatedAt },
+    );
+    expect(state.archives.get(current.key)).toMatchObject({
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+    });
+    expect(completeArchiveRetry).not.toHaveBeenCalled();
+    releasePut();
+    await archived;
+    expect(completeArchiveRetry).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "complete", versionId: "repaired-v" }),
+      expect.any(String),
+    );
+    expect(state.archives.get(current.key)).toMatchObject({
+      status: "complete",
+      versionId: "repaired-v",
     });
   });
 
@@ -405,9 +466,11 @@ describe("archive replacement preserves the last complete generation", () => {
 
     await archiveSessionLogs(state, "legacy-ok");
     expect(putArchive).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "pending", objectStored: false, retryState: "processing" }),
+    );
+    expect(putArchive).toHaveBeenCalledWith(
       expect.objectContaining({ status: "complete", versionId: "repaired-v2" }),
     );
-    expect(putArchive).not.toHaveBeenCalledWith(expect.objectContaining({ status: "pending" }));
   });
 
   it("does not put a replacement when the stored row is no longer complete", async () => {
@@ -459,7 +522,7 @@ describe("archive replacement preserves the last complete generation", () => {
     expect(putArchive).toHaveBeenCalledWith(expect.objectContaining({ status: "pending" }));
   });
 
-  it("queues an in-memory legacy retry after a failed upload", async () => {
+  it("queues an in-memory legacy retry before the object PUT", async () => {
     const current = storedComplete("legacy-mem");
     const state = createControlPlaneState({
       archiveWriter: {
@@ -496,9 +559,9 @@ describe("archive replacement preserves the last complete generation", () => {
       } as never,
     });
 
-    await expect(archiveSessionLogs(state, "legacy-lost")).rejects.toThrow(
-      "object store unavailable",
-    );
+    await expect(archiveSessionLogs(state, "legacy-lost")).resolves.toMatchObject({
+      key: current.key,
+    });
     expect(putArchive).not.toHaveBeenCalled();
     expect(state.archives.get(current.key)).toEqual(current);
   });

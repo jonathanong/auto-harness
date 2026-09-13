@@ -713,7 +713,8 @@ the private S3 writer when `ARCHIVE_BUCKET` is configured. Metadata is bounded a
 pending first-time upload before the PUT so a repeated terminal message can retry safely. Replacement
 of a version-pinned complete archive uploads first and commits the new version id only on success,
 so a failed replacement leaves the prior complete metadata downloadable. A complete stored row with
-no `versionId` records pending retry metadata only while that exact legacy generation still wins. The
+no `versionId` records that fenced pending retry metadata before the replacement PUT, so an uncertain
+upload remains recoverable, and only while that exact legacy generation still wins. The
 bucket name and
 scoped archive policy are wired into the synthesized runtime functions. The REST runtime separately
 has canonical-prefix `GetObject` access for verified presigned archive downloads; Cron and
