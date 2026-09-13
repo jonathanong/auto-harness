@@ -54,12 +54,13 @@ describe("SessionArchiveStatus request timeout", () => {
     vi.useFakeTimers();
     let signal: AbortSignal | undefined;
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
-      signal = init?.signal;
+      const next = init?.signal;
+      if (next) signal = next;
       return Promise.resolve({
         ok: true,
         json: () =>
           new Promise((_, reject) => {
-            init?.signal?.addEventListener("abort", () => {
+            next?.addEventListener("abort", () => {
               const error = new Error("aborted");
               error.name = "AbortError";
               reject(error);
