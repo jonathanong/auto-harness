@@ -186,7 +186,10 @@ is durable local observability only: it neither restarts the host nor sends an e
 A completed WebSocket write is not delivery: the frame reached the kernel send buffer, not
 necessarily the control plane. `session:status` is therefore treated as unacknowledged until an
 explicit `session:status-acknowledged { sessionId, attemptId }` reply arrives, and is resent on
-every 20-second `host:keepalive` tick until then (dropped after 24h). The same keepalive also
+every 20-second `host:keepalive` tick until then (dropped after 24h). Expiry of an unacknowledged
+v6 deferred checkout-failure status releases the retained claim without running the hook: it must
+not invent a retry-rejected disposition while the control plane may already have accepted the
+retry. The same keepalive also
 carries `runningSessions`: every session id the daemon still owns, including one whose terminal
 status is still awaiting acknowledgement. The control plane requeues any session it believes is
 running on that host but which is missing from this list, bounding a lost/orphaned session to one
