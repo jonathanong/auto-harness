@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
+import { registerHost, registerHostDurable } from "./control-plane-agents.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 
@@ -267,5 +268,46 @@ describe("in-memory recovery handoff delivery", () => {
       terminalHookHandoffs: [expect.objectContaining({ handoffId: "handoff" })],
     });
     expect(state.sessions.get("session")?.status).toBe("failed");
+  });
+
+  it("returns a storage-less keepalive without handoffs when none are pending", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    expect(
+      handleHostMessage(state, {
+        type: "host:register",
+        hostId: "host",
+        worktrees: [],
+        protocolVersion: 7,
+      }),
+    ).toEqual({ ok: true });
+
+    await expect(
+      handleHostMessageDurable(state, {
+        type: "host:keepalive",
+        hostId: "host",
+        at: NOW,
+      }),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it("defers omitted-session reconcile until registerHostDurable awaits it", async () => {
+    const state = createControlPlaneState({
+      now: () => NOW,
+      connectionIdFactory: () => "conn",
+    });
+    expect(
+      registerHost(state, {
+        hostId: "host",
+        worktrees: [],
+        deferRunningSessionReconcile: true,
+      }),
+    ).toEqual({ ok: true, connectionId: "conn" });
+    await expect(
+      registerHostDurable(state, {
+        hostId: "host",
+        worktrees: [],
+        replaceExisting: true,
+      }),
+    ).resolves.toMatchObject({ ok: true });
   });
 });
