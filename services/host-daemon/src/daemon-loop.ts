@@ -1647,8 +1647,10 @@ export class DaemonLoop {
    * A same-process recovery handoff is proof that this daemon still has the
    * original terminal owner. Deferred statuses release their target only once
    * their hook has run; ordinary statuses already ran it. Keep the status for
-   * its own ACK retry, but settle the handoff without executing a second hook.
-   * The incoming handoff's absolute expiry bounds that retained settlement.
+   * its own ACK retry, but settle the handoff without executing a second hook
+   * and forward any buffered `session:status` result so archival keeps
+   * branch, changed-files, and PR data. The incoming handoff's absolute
+   * expiry bounds that retained settlement.
    */
   private async reconcilePendingTerminalStatusForHandoff(
     sessionId: string,
@@ -1693,7 +1695,7 @@ export class DaemonLoop {
           }
         } else {
           pending.resolveDeferredDisposition?.();
-          return undefined;
+          return pending.message.result;
         }
       }),
     );
