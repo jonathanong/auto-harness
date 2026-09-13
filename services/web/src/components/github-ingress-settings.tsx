@@ -227,6 +227,7 @@ export function GitHubIngressSettings() {
       setGeneration(undefined);
       setConfirmingDelete(false);
       setSecret("");
+      setEnabled(true);
       setBindings([blank()]);
       showToast("GitHub ingress configuration deleted.", { pw: "github-ingress-success" });
     });
