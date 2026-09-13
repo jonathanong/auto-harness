@@ -580,7 +580,9 @@ describe("reconnect reconciliation", () => {
         let id = 0;
         return () => `c${++id}`;
       })(),
+      workspacePoolIdFactory: () => "pool",
     });
+    expect(plane.createWorkspacePool({ name: "pool" }).ok).toBe(true);
     expect(
       plane.registerHost({
         hostId: "h",
@@ -605,6 +607,12 @@ describe("reconnect reconciliation", () => {
               { id: "w", name: "w", path: "/w", labels: [] },
               { id: "w-catalog", name: "w-catalog", path: "/w-catalog", labels: [] },
             ],
+          },
+        ],
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [{ id: "slot-catalog", name: "slot-catalog", path: "/slot-catalog" }],
           },
         ],
       });
@@ -637,6 +645,13 @@ describe("reconnect reconciliation", () => {
       online: false,
     });
     expect(plane.state.worktrees.has("w2")).toBe(false);
+    expect(plane.state.hostInventories.get("h")?.workspacePools?.[0]?.slots[0]?.id).toBe(
+      "slot-catalog",
+    );
+    expect(plane.state.workspaceSlots.get("slot-catalog")).toMatchObject({
+      id: "slot-catalog",
+      online: false,
+    });
   });
 
   it("does not restore inventory over a delete-and-recreate with the same version", async () => {
