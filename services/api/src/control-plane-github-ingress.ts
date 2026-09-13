@@ -239,14 +239,12 @@ function validateInput(
   ) {
     return { ok: false, error: "between 1 and 100 GitHub repository bindings are required" };
   }
+  const secretLength = typeof input.secret === "string" ? Array.from(input.secret).length : -1;
   if (
-    (requireSecret &&
-      (typeof input.secret !== "string" ||
-        input.secret.length < 16 ||
-        input.secret.length > 512)) ||
+    (requireSecret && (secretLength < 16 || secretLength > 512)) ||
     (!requireSecret &&
       input.secret !== undefined &&
-      (input.secret.length < 16 || input.secret.length > 512))
+      (typeof input.secret !== "string" || secretLength < 16 || secretLength > 512))
   ) {
     return { ok: false, error: "secret must be between 16 and 512 characters" };
   }

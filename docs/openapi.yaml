@@ -890,7 +890,7 @@ components:
           minLength: 16
           maxLength: 512
           writeOnly: true
-          description: Required on create; omit on update to retain the encrypted secret.
+          description: Required on create; omit on update to retain the encrypted secret. Length is Unicode code points (16–512), matching custom webhook secrets.
         enabled:
           type: boolean
           description: Defaults to true on create. Omit on update to retain the current value.
@@ -914,7 +914,7 @@ components:
           minLength: 16
           maxLength: 512
           writeOnly: true
-          description: Omit on update to retain the encrypted secret.
+          description: Omit on update to retain the encrypted secret. Length is Unicode code points (16–512).
         enabled:
           type: boolean
           description: Omit on update to retain the current value.
