@@ -20,7 +20,11 @@ function runner(): ProcessRunner {
   };
 }
 
-async function runClaimed(claimed: typeof claimedBase, setupScript?: string) {
+async function runClaimed(
+  claimed: typeof claimedBase,
+  setupScript?: string,
+  remainingMs: () => number = () => 10_000,
+) {
   const logs = [];
   return await runClaimedSession(
     runner(),
@@ -30,7 +34,7 @@ async function runClaimed(claimed: typeof claimedBase, setupScript?: string) {
     claimed,
     undefined,
     () => false,
-    () => 10_000,
+    remainingMs,
     undefined,
     { PATH: process.env.PATH },
     undefined,
@@ -67,8 +71,11 @@ describe("deferred pre-command setup failures", () => {
         },
       },
       "setup",
+      () => {
+        throw new Error("setup planner failed");
+      },
     );
-    expect(result).toMatchObject({ status: "failed", errorMessage: "setup policy changed" });
+    expect(result).toMatchObject({ status: "failed", errorMessage: "setup planner failed" });
     expect(result.settleDeferredTerminalHook).toEqual(expect.any(Function));
   });
 });
