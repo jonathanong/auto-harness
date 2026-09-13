@@ -560,8 +560,9 @@ socket. If that pass returns false, registration fails closed: the failed connec
 replacement-only ads are stripped, and unacked provisional worktree or workspace-slot claims are
 released — including `workspaceSlotLease` and the pending acknowledgement — so a later cancel cannot
 retain a lease for a slot the rollback already deleted. Rollback restores the pre-register inventory
-only when that document's version is still the registration's own write; a newer same-host catalog
-edit is left in place and worktree/slot projections stay aligned with it.
+only when the live document is still the registration's own object; a newer same-host catalog
+edit — including DELETE then recreate at version 1 — is left in place and worktree/slot projections
+stay aligned with it.
 
 ---
 

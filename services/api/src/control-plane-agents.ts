@@ -284,7 +284,6 @@ type InMemoryRegistrationSnapshot = {
   worktrees: Map<string, WorktreeRecord>;
   slots: Map<string, WorkspaceSlotRecord>;
   inventory: HostInventoryRecord | undefined;
-  inventoryVersion: number;
   disconnected: { lastHeartbeatAt: string } | undefined;
 };
 
@@ -305,7 +304,6 @@ function snapshotInMemoryRegistration(
         .map((slot) => [slot.id, { ...slot }]),
     ),
     inventory,
-    inventoryVersion: inventory?.version ?? 0,
     disconnected: state.disconnectedHosts.get(hostId),
   };
 }
@@ -317,9 +315,11 @@ function advertisedWorktreeIds(inventory: HostInventoryRecord | undefined): Set<
 }
 
 function advertisedSlotIds(inventory: HostInventoryRecord | undefined): Set<string> {
-  return new Set(
-    (inventory?.workspacePools ?? []).flatMap((pool) => pool.slots.map((slot) => slot.id)),
-  );
+  const ids = new Set<string>();
+  for (const pool of inventory?.workspacePools ?? []) {
+    for (const slot of pool.slots) ids.add(slot.id);
+  }
+  return ids;
 }
 
 function isUnackedProvisionalAssignment(
@@ -405,10 +405,10 @@ function restoreInMemoryRegistration(
   hostId: string,
   failedConnectionId: string,
   snapshot: InMemoryRegistrationSnapshot,
+  registrationInventory: HostInventoryRecord | undefined,
 ): void {
   const winnerOwnsHost = state.hostConnection.get(hostId) !== failedConnectionId;
-  const catalogMoved =
-    (state.hostInventories.get(hostId)?.version ?? 0) !== snapshot.inventoryVersion + 1;
+  const catalogMoved = state.hostInventories.get(hostId) !== registrationInventory;
   const reason = "reported running session lost reconnect reconciliation";
   state.connections.delete(failedConnectionId);
   if (!winnerOwnsHost) {
@@ -956,9 +956,16 @@ export async function registerHostDurable(
     const previous = snapshotInMemoryRegistration(state, opts.hostId);
     const result = registerHost(state, { ...opts, deferRunningSessionReconcile: true });
     if (!result.ok) return result;
+    const registrationInventory = state.hostInventories.get(opts.hostId);
     const reconciled = await reconcileReportedRunningSessions(state, opts);
     if (reconciled !== false) return result;
-    restoreInMemoryRegistration(state, opts.hostId, result.connectionId, previous);
+    restoreInMemoryRegistration(
+      state,
+      opts.hostId,
+      result.connectionId,
+      previous,
+      registrationInventory,
+    );
     return { ok: false, error: "reported running session lost reconnect reconciliation" };
   }
   const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);

@@ -639,6 +639,59 @@ describe("reconnect reconciliation", () => {
     expect(plane.state.worktrees.has("w2")).toBe(false);
   });
 
+  it("does not restore inventory over a delete-and-recreate with the same version", async () => {
+    const plane = new ControlPlane({
+      now: () => "2026-01-01T00:00:00.000Z",
+      connectionIdFactory: () => "c1",
+    });
+    const session = { ...durableRunning("s", "w") };
+    const worktree = { ...durableWorktree("w", "s"), online: true };
+    plane.state.sessions.set("s", session);
+    plane.state.worktrees.set("w", worktree);
+    let seeded = false;
+    loseSessionAfterValidation(plane, "s", () => {
+      if (seeded) return;
+      seeded = true;
+      const current = plane.state.hostInventories.get("h");
+      const deleted = plane.deleteHostInventory("h", current?.version);
+      if (!deleted.ok) throw new Error(deleted.error);
+      const put = plane.putHostInventory("h", {
+        repositories: [
+          {
+            id: "r",
+            path: "/r",
+            worktrees: [
+              { id: "w", name: "w", path: "/w", labels: [] },
+              { id: "w-recreated", name: "w-recreated", path: "/w-recreated", labels: [] },
+            ],
+          },
+        ],
+      });
+      if (!put.ok) throw new Error(put.error);
+    });
+    await expect(
+      plane.registerHostDurable({
+        hostId: "h",
+        worktrees: [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }],
+        commandProfiles: [],
+        runningSessions: ["s"],
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "reported running session lost reconnect reconciliation",
+    });
+    expect(plane.state.hostInventories.get("h")?.version).toBe(1);
+    expect(
+      plane.state.hostInventories
+        .get("h")
+        ?.repositories.flatMap((repo) => repo.worktrees.map((wt) => wt.id)),
+    ).toEqual(["w", "w-recreated"]);
+    expect(plane.state.worktrees.get("w-recreated")).toMatchObject({
+      id: "w-recreated",
+      online: false,
+    });
+  });
+
   it("drops replacement-only worktrees and slots when storage-less reconcile fails", async () => {
     const plane = new ControlPlane({
       now: () => "2026-01-01T00:00:00.000Z",
