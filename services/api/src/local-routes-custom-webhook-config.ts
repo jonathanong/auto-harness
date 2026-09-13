@@ -39,10 +39,17 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
       | Awaited<ReturnType<RouteCtx["plane"]["getCustomWebhookIntegration"]>>
       | undefined;
     try {
+      currentForAudit = await ctx.plane.getCustomWebhookIntegration(id);
+    } catch {
+      if (!(await audit(ctx, id, "failed"))) return true;
+      sendInternalError(ctx.res);
+      return true;
+    }
+    try {
       expectedVersion = parseExpectedVersion(ctx.req.headers["if-match"]);
       expectedGeneration = parseExpectedGeneration(ctx.req.headers["if-match-generation"]);
     } catch (error) {
-      if (!(await audit(ctx, id, "failed"))) return true;
+      if (!(await audit(ctx, id, "failed", currentForAudit?.repositoryId))) return true;
       send(ctx.res, 400, {
         error: {
           code: "VALIDATION_ERROR",
@@ -52,7 +59,6 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
       return true;
     }
     try {
-      currentForAudit = await ctx.plane.getCustomWebhookIntegration(id);
       const result = await ctx.plane.deleteCustomWebhookIntegration(
         id,
         expectedVersion,

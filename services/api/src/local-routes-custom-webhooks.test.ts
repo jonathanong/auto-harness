@@ -894,6 +894,35 @@ describe("custom webhook receiver", () => {
     });
   });
 
+  it("scopes malformed DELETE version and generation audits to the stored repository", async () => {
+    const { plane, handler } = await fixture();
+    const generation = (await plane.getCustomWebhookIntegration("deploy"))!.generation ?? "legacy";
+    for (const headers of [
+      { "if-match": "0", "if-match-generation": generation },
+      { "if-match": "1", "if-match-generation": "" },
+    ]) {
+      expect(
+        await invokeHandler(
+          handler,
+          "DELETE",
+          "/api/v1/integrations/custom/deploy",
+          undefined,
+          headers,
+        ),
+      ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+    }
+    await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({ action: "integration:custom-webhook:delete", outcome: "failed" }),
+        expect.objectContaining({ action: "integration:custom-webhook:delete", outcome: "failed" }),
+      ]),
+    });
+    const scoped = await plane.listAuditLogs({ repositoryId: "repo" });
+    expect(
+      scoped.items.filter((item) => item.action === "integration:custom-webhook:delete").length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
   it("does not send a second ingress response after each denied or failed audit", async () => {
     const request = Buffer.from(JSON.stringify({ prompt: "x", idempotencyKey: "audit-failure" }));
     const signedHeaders = {
