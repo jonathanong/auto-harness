@@ -66,7 +66,7 @@ export async function createSessionDurable(
     });
   }
   if (options.allowGitHubCommentConcurrencyId) {
-    const active = await activeGitHubIngressSession(state, body, options.integrationFence);
+    const active = await activeGitHubIngressSession(state, body);
     if (active) {
       return { ok: true, session: toPublic(state, active), created: false };
     }
@@ -175,7 +175,6 @@ function matchesIntegrationFence(
 async function activeGitHubIngressSession(
   state: ControlPlaneState,
   body: unknown,
-  fence: IntegrationSessionFence | undefined,
 ): Promise<SessionRecord | null> {
   if (
     typeof body !== "object" ||
@@ -185,23 +184,18 @@ async function activeGitHubIngressSession(
   ) {
     return null;
   }
-  if (fence?.type === "github-ingress") {
-    const current = await state.storage!.getGitHubIngressConfig();
-    state.githubIngressConfig = current ?? undefined;
-    if (!current || !matchesIntegrationFence(state, fence)) return null;
-  }
   const concurrencyId = (body as { concurrencyId: string }).concurrencyId;
   // The process-local session cache is only an observation. Another Lambda can
   // settle the session and release its concurrency lock, so durable ingress
   // deduplication must always consult the storage-owned active lock.
+  // Config rotation must not hide that lock: an already-admitted delivery
+  // still returns 202 even when the fence would reject a new create.
   const active = await state.storage!.getActiveSessionByConcurrencyId(concurrencyId);
-  if (active && fence?.type === "github-ingress") {
-    const current = await state.storage!.getGitHubIngressConfig();
-    state.githubIngressConfig = current ?? undefined;
-    if (!current || !matchesIntegrationFence(state, fence)) return null;
+  if (active) {
+    state.sessions.set(active.id, { ...active });
+    return active;
   }
-  if (active) state.sessions.set(active.id, { ...active });
-  return active;
+  return null;
 }
 
 /** Durable resume uses the same concurrency lock as a fresh create. */

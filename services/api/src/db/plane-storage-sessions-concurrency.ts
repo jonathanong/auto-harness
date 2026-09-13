@@ -164,6 +164,13 @@ async function throwIfCreateAdmissionConflict(
     throw new ParentSessionAttemptEndedError();
   }
   if (integrationCheck && isConditionalTransactionFailureAt(err, integrationIndex)) {
+    // Dynamo evaluates every item. A duplicate ingress can lose the
+    // integration fence and the lock Put together when config rotates
+    // while the original session still owns the lock. The lock is the
+    // durable dedupe fact; acknowledge it before reporting the fence.
+    await throwIfFailedParentFence(ctx, err, parts, parentIndex, rootBudgetIndex);
+    const winner = await acknowledgeActiveLockWinner(ctx, err, session, lockIndex);
+    if (winner) return winner;
     throw new IntegrationChangedError();
   }
 }
