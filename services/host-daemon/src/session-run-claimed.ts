@@ -309,9 +309,12 @@ export async function runClaimedSession(
   }
 
   if (assign.resolvedArgv.length === 0) {
-    const hookEnvironment = installationToken
-      ? withInstallationToken(setup.environment, githubApp!, installationToken)
+    const isolatedEnvironment = isolatedGitHubConfigDir
+      ? withIsolatedGitHubConfigDir(setup.environment, isolatedGitHubConfigDir)
       : setup.environment;
+    const hookEnvironment = installationToken
+      ? withInstallationToken(isolatedEnvironment, githubApp!, installationToken)
+      : isolatedEnvironment;
     return await finishClaimedSession(
       effectiveTerminalRunner,
       streamer,
