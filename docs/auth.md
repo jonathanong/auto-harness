@@ -130,11 +130,13 @@ Service accounts have the same role system as user accounts (`read-only`, `autho
 Rotating an `operator` or `maintainer` key creates a **new** account. Schedules keep
 the old `principalId`; they are not rewritten onto the replacement. An unreleased
 [principal session drain](api.md#principal-session-drains) likewise stays on the old
-principal. `DELETE` of the old account therefore returns `409 CONFLICT` until those
-schedules are deleted and recreated under the new account and every unreleased drain
-for that principal is [released](api.md#principal-session-drains). Only then can the
-old key be revoked. The Settings rotation dialog still requires confirming consumers
-were updated; it does not move schedule ownership or release drains.
+principal, and only that principal can release it — the replacement key and an admin
+session cannot. Release each terminal drain **while still authenticating with the old
+key**, before removing that credential from consumers. `DELETE` of the old account
+then returns `409 CONFLICT` until those schedules are deleted and recreated under the
+new account and every drain is released. Only then can the old key be revoked. The
+Settings rotation dialog still requires confirming consumers were updated; it does
+not move schedule ownership or release drains.
 
 ```json
 {
