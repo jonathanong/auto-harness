@@ -172,8 +172,20 @@ function parseTransport(
     canonicalHttpProxy = parsed.toString();
   }
   const sslCAInfo = optionalString(transport.sslCAInfo, `${context}.sslCAInfo`);
-  if (sslCAInfo !== undefined && !isAbsolute(sslCAInfo)) {
-    throw new Error(`${context}.sslCAInfo must be absolute`);
+  if (sslCAInfo !== undefined) {
+    if (!isAbsolute(sslCAInfo)) {
+      throw new Error(`${context}.sslCAInfo must be absolute`);
+    }
+    assertRootOwnedPath(sslCAInfo, inspect);
+    const caStatus = inspect(sslCAInfo);
+    if (
+      caStatus.isSymbolicLink() ||
+      !caStatus.isFile() ||
+      caStatus.uid !== 0 ||
+      (caStatus.mode & 0o222) !== 0
+    ) {
+      throw new Error(`${context}.sslCAInfo must be a root-owned immutable regular file`);
+    }
   }
   return {
     ...(resolvedCredentialHelper === undefined

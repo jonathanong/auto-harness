@@ -563,7 +563,9 @@ not resolved through the ordinary `fetch --all` fallback because a repository's 
 refspec commonly does not advertise them. They require a host-local, absolute
 `HARNESS_GITHUB_PULL_REF_CONFIG` file. It maps each canonical repository path to its immutable
 remote URL and, where HTTPS needs it, an explicit `credentialHelper`, credential-free,
-query/fragment-free `httpProxy`, or absolute `sslCAInfo`. Repository, global, and system Git
+query/fragment-free `httpProxy`, or absolute `sslCAInfo`. A configured CA file and every ancestor
+must be root-owned, non-writable, and symlink-free; the CA path itself must be a regular file.
+Repository, global, and system Git
 configuration are never the source of that policy, so a session cannot replace it before or after a
 daemon restart. A helper name is resolved at daemon policy load to its `git-credential-<name>`
 executable and accepted only when that resolved path is an absolute, root-owned, non-writable,

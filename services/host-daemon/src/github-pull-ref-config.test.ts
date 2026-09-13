@@ -33,7 +33,8 @@ const materializerGitDirs = {
 
 function inspectPolicyPath(path: string) {
   if (path.startsWith("/usr/bin/git-credential-")) return rootOwnedExecutable;
-  if (path === configPath || path.endsWith("/config")) return rootOwnedFile;
+  if (path === configPath || path.endsWith("/config") || path.endsWith(".pem"))
+    return rootOwnedFile;
   return rootOwnedDirectory;
 }
 
@@ -435,6 +436,30 @@ describe("GitHub pull-ref host policy", () => {
       "-c",
       "http.proxy=https://proxy.example/",
     ]);
+  });
+
+  it("rejects writable, symlinked, and non-regular sslCAInfo files", () => {
+    const caPath = "/etc/ssl/private-ca.pem";
+    for (const [status, message] of [
+      [{ ...rootOwnedFile, isSymbolicLink: () => true }, "must not traverse symlinks"],
+      [
+        { ...rootOwnedFile, isFile: () => false, isDirectory: () => true },
+        "must be a root-owned immutable regular file",
+      ],
+      [{ ...rootOwnedFile, uid: 501 }, "must be root-owned"],
+      [{ ...rootOwnedFile, mode: 0o100644 }, "must be a root-owned immutable regular file"],
+    ] as const) {
+      expect(() =>
+        loadGitHubPullRefConfigs(
+          { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
+          () => JSON.stringify(repositoryConfig({ transport: { sslCAInfo: caPath } })),
+          (candidate) => (candidate === caPath ? status : inspectPolicyPath(candidate)),
+          "linux",
+          readPolicyDirectory,
+          resolveCredentialHelper,
+        ),
+      ).toThrow(message);
+    }
   });
 
   it("rejects symlinked, non-root-owned, and session-writable policy paths", () => {
