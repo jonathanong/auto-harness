@@ -55,6 +55,7 @@ function directRoute(
   body = Buffer.alloc(0),
   headers: Record<string, string> = {},
   throwWhenWriting = false,
+  streamError = false,
 ) {
   let status = 0;
   const req = {
@@ -62,7 +63,11 @@ function directRoute(
     destroy() {
       /* simulate a terminated oversized request */
     },
-    on(event: string, callback: (value?: Buffer) => void) {
+    on(event: string, callback: (value?: Buffer | Error) => void) {
+      if (streamError) {
+        if (event === "error") callback(new Error("request stream failed"));
+        return req;
+      }
       if (event === "data" && body.length) callback(body);
       if (event === "end") callback();
       return req;
@@ -976,6 +981,77 @@ describe("custom webhook receiver", () => {
     expect(route.status()).toBe(400);
   });
 
+  it("scopes existing-webhook body-read failures without decrypting or leaking unknown slugs", async () => {
+    const { plane } = await fixture();
+    const decrypt = vi.spyOn(plane.state.secretEncryptor!, "decrypt");
+    const streamError = directRoute(
+      plane,
+      "/api/v1/webhooks/custom/deploy",
+      "POST",
+      Buffer.alloc(0),
+      {},
+      false,
+      true,
+    );
+    await expect(handleCustomWebhookRoute(streamError.ctx as never)).resolves.toBe(true);
+    expect(streamError.status()).toBe(400);
+    await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({
+          action: "webhook:custom:receive",
+          outcome: "failed",
+          repositoryId: "repo",
+          resourceId: "deploy",
+        }),
+      ],
+    });
+
+    const oversized = directRoute(
+      plane,
+      "/api/v1/webhooks/custom/deploy",
+      "POST",
+      Buffer.alloc(1024 * 1024 + 1),
+    );
+    await expect(handleCustomWebhookRoute(oversized.ctx as never)).resolves.toBe(true);
+    expect(oversized.status()).toBe(400);
+    await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({
+          action: "webhook:custom:receive",
+          outcome: "failed",
+          repositoryId: "repo",
+          resourceId: "deploy",
+        }),
+        expect.objectContaining({
+          action: "webhook:custom:receive",
+          outcome: "failed",
+          repositoryId: "repo",
+          resourceId: "deploy",
+        }),
+      ],
+    });
+
+    const unknown = directRoute(
+      plane,
+      "/api/v1/webhooks/custom/missing",
+      "POST",
+      Buffer.alloc(1024 * 1024 + 1),
+    );
+    await expect(handleCustomWebhookRoute(unknown.ctx as never)).resolves.toBe(true);
+    expect(unknown.status()).toBe(400);
+    const scopedReceives = (await plane.listAuditLogs({ repositoryId: "repo" })).items.filter(
+      (item) => item.action === "webhook:custom:receive",
+    );
+    expect(scopedReceives).toHaveLength(2);
+    expect(scopedReceives.every((item) => item.resourceId === "deploy")).toBe(true);
+    const unknownReceive = (await plane.listAuditLogs()).items.find(
+      (item) => item.action === "webhook:custom:receive" && item.resourceId === "missing",
+    );
+    expect(unknownReceive).toMatchObject({ outcome: "failed" });
+    expect(unknownReceive?.repositoryId).toBeUndefined();
+    expect(decrypt).not.toHaveBeenCalled();
+  });
+
   it("rejects oversized raw requests and does not create work when audit response persistence fails", async () => {
     const { plane } = await fixture();
     const oversized = directRoute(
@@ -986,6 +1062,15 @@ describe("custom webhook receiver", () => {
     );
     await expect(handleCustomWebhookRoute(oversized.ctx as never)).resolves.toBe(true);
     expect(oversized.status()).toBe(400);
+    await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({
+          action: "webhook:custom:receive",
+          outcome: "failed",
+          repositoryId: "repo",
+        }),
+      ],
+    });
 
     plane.appendAuditLog = async () => {
       throw new Error("audit unavailable");
