@@ -2,6 +2,7 @@
 import { isPositiveAssignmentCap, LOCAL_API_HTTP, LOCAL_HOST_ID } from "@auto-harness/shared";
 import { isAbsolute, win32 } from "node:path";
 import { parseChildEnvAllowlist } from "./child-env.ts";
+import { isNativeAbsolutePath } from "./native-absolute-path.ts";
 
 export function parseEnvFile(contents: string): Record<string, string> {
   const parsed: Record<string, string> = {};
@@ -69,6 +70,10 @@ function isInvalidAssignmentCap(value: string | undefined): boolean {
   return value !== undefined && value !== "" && !isPositiveAssignmentCap(Number(value));
 }
 
+function invalidGitHubAppConfigPath(value: string | undefined, platform: string): boolean {
+  return value !== undefined && value !== "" && !isNativeAbsolutePath(value, platform);
+}
+
 export function isProductionApiUrl(value: string): boolean {
   if (/[\r\n]/u.test(value)) return false;
   let url: URL;
@@ -103,7 +108,7 @@ export function isProductionApiUrl(value: string): boolean {
 }
 
 /** Gaps that would persist local/placeholder identity into a service env file. */
-export function envIdentityErrors(env: NodeJS.ProcessEnv, _platform: string): string[] {
+export function envIdentityErrors(env: NodeJS.ProcessEnv, platform: string): string[] {
   const hostId = env.HARNESS_HOST_ID?.trim() ?? "";
   const apiUrl = env.HARNESS_API_URL?.trim() || env.HARNESS_API_HTTP?.trim() || "";
   const apiKey = env.HARNESS_API_KEY?.trim() ?? "";
@@ -115,10 +120,16 @@ export function envIdentityErrors(env: NodeJS.ProcessEnv, _platform: string): st
   if (isPlaceholder(apiKey)) {
     errors.push("HARNESS_API_KEY");
   }
+  if (invalidGitHubAppConfigPath(env.HARNESS_GITHUB_APP_CONFIG, platform)) {
+    errors.push("HARNESS_GITHUB_APP_CONFIG");
+  }
   return errors;
 }
 
-export function validatePersistedEnvFile(contents: string): string[] {
+export function validatePersistedEnvFile(
+  contents: string,
+  platform: string = process.platform,
+): string[] {
   const env = parseEnvFile(contents);
   const hostId = env.HARNESS_HOST_ID?.trim() ?? "";
   const apiUrl = env.HARNESS_API_URL?.trim() ?? "";
@@ -136,11 +147,7 @@ export function validatePersistedEnvFile(contents: string): string[] {
     errors.push("HARNESS_EXECUTION_PROFILES");
   }
   const githubAppConfig = env.HARNESS_GITHUB_APP_CONFIG;
-  if (
-    githubAppConfig !== undefined &&
-    githubAppConfig !== "" &&
-    !isPersistableExecutionProfilesPath(githubAppConfig)
-  ) {
+  if (invalidGitHubAppConfigPath(githubAppConfig, platform)) {
     errors.push("HARNESS_GITHUB_APP_CONFIG");
   }
   const githubPullRefConfig = env.HARNESS_GITHUB_PULL_REF_CONFIG;
@@ -169,7 +176,9 @@ export function persistedEnvError(errors: string[]): string {
   ].filter((name) => errors.includes(name));
   const profilePathRemediation =
     invalidPaths.length > 0
-      ? ` ${invalidPaths.join(" and ")} must be ${invalidPaths.length === 1 ? "an absolute path" : "absolute paths"}.`
+      ? ` ${invalidPaths.join(" and ")} must be ${
+          invalidPaths.length === 1 ? "an absolute path" : "absolute paths"
+        }${errors.includes("HARNESS_GITHUB_APP_CONFIG") ? " on this host platform" : ""}.`
       : "";
   return `Refusing service install: invalid ${errors.join(", ")}; ${remediation}.${profilePathRemediation}`;
 }

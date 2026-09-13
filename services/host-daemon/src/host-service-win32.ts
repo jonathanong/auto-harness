@@ -63,6 +63,7 @@ export function installWin32(ctx: HostServiceContext): number {
     example: ctx.fs.readFileSync(ctx.envExamplePath),
     env: ctx.env,
     apiUrl: ctx.apiUrl,
+    platform: ctx.platform,
   });
   if (preparedEnv.errors.length > 0) {
     ctx.error(persistedEnvError(preparedEnv.errors));

@@ -209,6 +209,7 @@ function prepareLinuxInstall(ctx: HostServiceContext): LinuxInstall | undefined 
     env: { ...ctx.env, PATH: persistedLinuxPath(ctx.nodePath) },
     apiUrl: ctx.apiUrl,
     capturePath: true,
+    platform: ctx.platform,
   });
   if (preparedEnv.errors.length > 0) {
     ctx.error(persistedEnvError(preparedEnv.errors));

@@ -239,6 +239,35 @@ describe("persisted service environment validation", () => {
     ).toEqual({ contents: "", errors: ["HARNESS_API_URL"] });
   });
 
+  it("rejects a Windows-shaped GitHub App path on POSIX without changing execution-profile fixtures", () => {
+    const identity =
+      "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com\nHARNESS_API_KEY=secret\n";
+    expect(
+      validatePersistedEnvFile(
+        `${identity}HARNESS_EXECUTION_PROFILES=C:\\auto-harness\\profiles.json\n`,
+        "linux",
+      ),
+    ).toEqual([]);
+    expect(
+      validatePersistedEnvFile(
+        `${identity}HARNESS_GITHUB_APP_CONFIG=C:\\auto-harness\\github-app.json\n`,
+        "linux",
+      ),
+    ).toEqual(["HARNESS_GITHUB_APP_CONFIG"]);
+    expect(
+      validatePersistedEnvFile(
+        `${identity}HARNESS_GITHUB_APP_CONFIG=D:/auto-harness/github-app.json\n`,
+        "darwin",
+      ),
+    ).toEqual(["HARNESS_GITHUB_APP_CONFIG"]);
+    expect(
+      validatePersistedEnvFile(
+        `${identity}HARNESS_GITHUB_APP_CONFIG=/etc/auto-harness/github-app.json\n`,
+        "linux",
+      ),
+    ).toEqual([]);
+  });
+
   it("rejects URL credentials, queries, and fragments", () => {
     for (const apiUrl of [
       "https://user:secret@control.example.com",

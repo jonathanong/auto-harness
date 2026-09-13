@@ -14,7 +14,7 @@ Identity (env; local defaults shown):
                       never a raw API Gateway *.execute-api.*.amazonaws.com URL.
   HARNESS_API_KEY    service account token (when auth enabled)
   HARNESS_CHILD_ENV_ALLOWLIST  optional comma-separated child-process variables (non-HARNESS_)
-  HARNESS_GITHUB_APP_CONFIG    optional absolute host-local GitHub App config JSON path
+  HARNESS_GITHUB_APP_CONFIG    optional native-absolute host-local GitHub App config JSON path
   HARNESS_UPDATE_MANIFEST_URL  https URL of the signed update manifest (optional)
   HARNESS_UPDATE_PUBLIC_KEY    Ed25519 PEM for that manifest
   HARNESS_UPDATE_INSTALL_DIR   artifact root (default /opt/auto-harness)
