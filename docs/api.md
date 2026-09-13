@@ -1176,7 +1176,8 @@ version-pinned S3 object was found, but its immutable version, content length, o
 from the verified DynamoDB metadata; `reason` is `version-id-missing`, `version-id-mismatch`,
 `content-length-mismatch`, `content-type-mismatch`, or `content-length-and-type-mismatch`. `expired` means archival did not complete before the terminal
 session's seven-day recent-log retention elapsed and a strongly consistent bounded probe found no
-recent log row remaining. `unavailable` means an archive record exists but
+recent log row remaining. That expiry is persisted on the archive metadata row and dropped from
+the retry queue so a later retry cannot publish an empty transcript. `unavailable` means an archive record exists but
 the object cannot currently be retrieved, including a cold Glacier object that has not been
 restored. The API does not initiate restores. Clients must request a new URL immediately before
 each download and must not persist or log it.

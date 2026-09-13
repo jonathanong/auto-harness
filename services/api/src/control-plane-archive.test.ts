@@ -29,6 +29,45 @@ describe("archive retry state", () => {
     expect(uploads).toBe(0);
   });
 
+  it("does not retry a durably expired archive", async () => {
+    let uploads = 0;
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => void (uploads += 1) },
+    });
+    const key = "sessions/expired/logs.jsonl";
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "expired",
+      objectStored: false,
+      updatedAt: "2026-01-08T00:00:00.000Z",
+    });
+    await retrySessionArchiveIfNeeded(state, "expired");
+    expect(uploads).toBe(0);
+    expect(state.archives.get(key)?.status).toBe("expired");
+  });
+
+  it("does not select an expired in-memory row even if retry attributes remain", async () => {
+    const uploaded: string[] = [];
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async ({ key }) => void uploaded.push(key) },
+    });
+    state.archives.set("sessions/expired/logs.jsonl", {
+      key: "sessions/expired/logs.jsonl",
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "expired",
+      objectStored: false,
+      retryState: "pending",
+      retryOrder: "2026-01-01T00:00:00.000Z#sessions/expired/logs.jsonl",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await expect(retryPendingArchives(state, 25)).resolves.toBe(0);
+    expect(uploaded).toEqual([]);
+    expect(state.archives.get("sessions/expired/logs.jsonl")?.status).toBe("expired");
+  });
+
   it("retries pending cached metadata without durable storage", async () => {
     const uploaded: string[] = [];
     const state = createControlPlaneState({
@@ -154,6 +193,50 @@ describe("archive retry state", () => {
       retryState: "pending",
       retryOrder: "new-claim",
     });
+  });
+
+  it("does not let a late retry complete over an expired archive", async () => {
+    let releaseUpload!: () => void;
+    const uploadStarted = new Promise<void>((resolve) => {
+      releaseUpload = resolve;
+    });
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => uploadStarted },
+      now: () => "2026-01-08T00:00:00.000Z",
+    });
+    const key = "sessions/expired-race/logs.jsonl";
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "old-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const retry = retrySessionArchiveIfNeeded(state, "expired-race", {
+      retryState: "processing",
+      retryOrder: "old-claim",
+    });
+    await Promise.resolve();
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "expired",
+      objectStored: false,
+      updatedAt: "2026-01-08T00:00:00.000Z",
+    });
+    releaseUpload();
+    await retry;
+
+    expect(state.archives.get(key)).toMatchObject({
+      status: "expired",
+      objectStored: false,
+    });
+    expect(state.archives.get(key)).not.toHaveProperty("retryState");
   });
 
   it("does not restore a stale same-key upload over a newer durable retry generation", async () => {

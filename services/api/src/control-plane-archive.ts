@@ -3,7 +3,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { ArchiveMetadata, ArchiveObject } from "./control-plane-types.ts";
 import type { SessionArchiveReadResponse } from "@auto-harness/shared";
 import type { ArchiveWriteResult } from "./archive-writer.ts";
-import { SESSION_LOGS_TTL_SECONDS } from "./db/dynamo.ts";
+import { persistExpiredArchive, archiveRetentionElapsed } from "./control-plane-archive-expire.ts";
 
 async function rewriteWinningArchive(
   state: ControlPlaneState,
@@ -114,7 +114,11 @@ export async function archiveSessionLogs(
     // In-memory mode has no conditional write primitive, so apply the same fence locally.
     // A newer claim may have replaced this row while the object upload was in flight.
     const current = state.archives.get(object.key);
-    if (current?.retryState === "processing" && current.retryOrder === retryClaim.retryOrder) {
+    if (
+      current?.status !== "expired" &&
+      current?.retryState === "processing" &&
+      current.retryOrder === retryClaim.retryOrder
+    ) {
       if (state.storage) await state.storage.putArchive(complete);
       state.archives.set(object.key, complete);
     } else await rewriteWinningArchive(state, sessionId, key);
@@ -163,6 +167,7 @@ export async function retrySessionArchiveIfNeeded(
   if (!state.archiveWriter) return;
   const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
   const metadata = state.storage ? await state.storage.getArchive(key) : state.archives.get(key);
+  if (metadata?.status === "expired") return;
   if (metadata?.status === "complete" && metadata.objectStored) return;
   await archiveSessionLogs(state, sessionId, retryClaim);
 }
@@ -188,6 +193,7 @@ export async function retryPendingArchives(
       : [...state.archives.values()]
           .filter(
             (metadata) =>
+              metadata.status !== "expired" &&
               !metadata.objectStored &&
               (metadata.retryState === "pending" || metadata.retryState === "processing"),
           )
@@ -276,23 +282,22 @@ export async function getArchiveDownloadDurable(
   terminalAt?: string,
 ): Promise<SessionArchiveReadResponse> {
   const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
-  const metadata = state.storage ? await state.storage.getArchive(key) : state.archives.get(key);
+  let metadata = state.storage ? await state.storage.getArchive(key) : state.archives.get(key);
   if (metadata) state.archives.set(key, metadata);
+  if (metadata?.status === "expired") return { state: "expired" };
   if (!metadata || metadata.status !== "complete") {
-    const parsedAnchors = [metadata?.updatedAt, terminalAt]
-      .filter((anchor): anchor is string => anchor !== undefined)
-      .map(Date.parse)
-      .filter(Number.isFinite);
-    const retainedAtMs = parsedAnchors.length ? Math.max(...parsedAnchors) : Number.NaN;
-    const nowMs = Date.parse(state.now());
     if (
-      Number.isFinite(retainedAtMs) &&
-      Number.isFinite(nowMs) &&
-      nowMs >= retainedAtMs + SESSION_LOGS_TTL_SECONDS * 1_000
+      archiveRetentionElapsed(state.now(), [metadata?.updatedAt, terminalAt]) &&
+      !(await recentLogsRemain(state, sessionId))
     ) {
-      if (!(await recentLogsRemain(state, sessionId))) return { state: "expired" };
+      if (!metadata) return { state: "expired" };
+      const persisted = await persistExpiredArchive(state, key, metadata);
+      if (persisted === "expired") return { state: "expired" };
+      metadata = state.archives.get(key);
+      if (!metadata || metadata.status !== "complete") return { state: "dynamodb" };
+    } else {
+      return { state: "dynamodb" };
     }
-    return { state: "dynamodb" };
   }
   if (!metadata.objectStored || !state.archiveReader) return { state: "unavailable" };
   if (!metadata.versionId) return { state: "incomplete", reason: "version-id-missing" };

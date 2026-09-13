@@ -235,7 +235,8 @@ export type ArchiveMetadata = {
   versionId?: string;
   contentType: string;
   bodyBytes: number;
-  status: "pending" | "complete";
+  /** `expired` is durable and terminal; retry GSI attributes must be removed. */
+  status: "pending" | "complete" | "expired";
   objectStored: boolean;
   updatedAt: string;
   /** Internal GSI fields; present on every not-yet-stored archive. */

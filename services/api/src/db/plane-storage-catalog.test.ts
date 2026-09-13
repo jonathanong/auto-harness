@@ -29,6 +29,7 @@ import {
   updateScheduleManagement,
   claimArchiveRetry,
   completeArchiveRetry,
+  expireArchive,
   listPendingArchives,
   releaseArchiveRetry,
 } from "./plane-storage-catalog.ts";
@@ -192,6 +193,32 @@ describe("archive retry storage", () => {
         }),
       },
     });
+    expect(send.mock.calls[2]?.[0]).toMatchObject({
+      input: {
+        ConditionExpression: expect.stringContaining("#status <> :expired"),
+        ExpressionAttributeValues: expect.objectContaining({ ":expired": "expired" }),
+      },
+    });
+  });
+
+  it("expires a pending archive and removes it from the retry index", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const ctx = archiveCtx(send);
+
+    await expect(expireArchive(ctx, archive.key, "2026-01-08T00:00:00.000Z")).resolves.toBe(true);
+    expect(send.mock.calls[0]?.[0]).toMatchObject({
+      input: {
+        UpdateExpression:
+          "SET #status = :expired, updatedAt = :updatedAt REMOVE retryState, retryOrder",
+        ConditionExpression:
+          "#status = :expired OR (objectStored = :false AND (attribute_not_exists(#status) OR #status = :pending))",
+        ExpressionAttributeValues: expect.objectContaining({
+          ":expired": "expired",
+          ":pending": "pending",
+        }),
+      },
+    });
+    expect(send.mock.calls[0]?.[0].input.ConditionExpression).not.toContain(":complete");
   });
 
   it("returns false when another worker changes an archive retry fence", async () => {
@@ -205,6 +232,7 @@ describe("archive retry storage", () => {
       releaseArchiveRetry(ctx, archive.key, "claimed-order", "pending-order"),
     ).resolves.toBe(false);
     await expect(completeArchiveRetry(ctx, archive, "claimed-order")).resolves.toBe(false);
+    await expect(expireArchive(ctx, archive.key, "2026-01-08T00:00:00.000Z")).resolves.toBe(false);
   });
 
   it("propagates non-conditional archive retry failures", async () => {
@@ -216,6 +244,9 @@ describe("archive retry storage", () => {
       releaseArchiveRetry(ctx, archive.key, "claimed-order", "pending-order"),
     ).rejects.toThrow("archive retry unavailable");
     await expect(completeArchiveRetry(ctx, archive, "claimed-order")).rejects.toThrow(
+      "archive retry unavailable",
+    );
+    await expect(expireArchive(ctx, archive.key, "2026-01-08T00:00:00.000Z")).rejects.toThrow(
       "archive retry unavailable",
     );
   });
@@ -277,6 +308,9 @@ describe("archive and assignment base-storage delegators", () => {
       storage.releaseArchiveRetry(archive.key, "claimed-order", "pending-order"),
     ).resolves.toBe(true);
     await expect(storage.completeArchiveRetry(archive, "claimed-order")).resolves.toBe(true);
+    await expect(storage.expireArchive(archive.key, "2026-01-08T00:00:00.000Z")).resolves.toBe(
+      true,
+    );
     expect(send).toHaveBeenCalled();
   });
 });
