@@ -6,8 +6,9 @@ import {
 } from "@auto-harness/shared";
 
 import { queueSessionArchive } from "./control-plane-archive.ts";
-import type { ControlPlaneState } from "./control-plane-state.ts";
+import { noteSlackSessionLifecycle, type ControlPlaneState } from "./control-plane-state.ts";
 import type { ArchiveMetadata } from "./db/plane-storage-types.ts";
+import type { SessionRecord } from "./db/types.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 
@@ -184,13 +185,14 @@ export async function settleTerminalHookHandoff(
   state.sessions.set(next.id, next);
   if (state.storage) state.archives.set(archive.key, archive);
   queueSessionArchive(state, next.id);
+  noteDeferredCheckoutFailureLifecycle(state, handoff, next);
   return true;
 }
 
 /** Scheduler recovery visits every session row already; use that bounded sweep to release a lost host's hook. */
 export async function expireTerminalHookHandoffIfNeeded(
   state: ControlPlaneState,
-  session: import("./db/types.ts").SessionRecord,
+  session: SessionRecord,
   nowMs: number,
   options: { connectionId?: string } = {},
 ): Promise<boolean> {
@@ -227,17 +229,29 @@ export async function expireTerminalHookHandoffIfNeeded(
   state.sessions.set(next.id, next);
   if (state.storage) state.archives.set(archive.key, archive);
   queueSessionArchive(state, next.id);
+  noteDeferredCheckoutFailureLifecycle(state, handoff, next);
   return true;
 }
 
 function releaseReservedMainCheckout(
   state: ControlPlaneState,
   sessionId: string,
-  handoff: NonNullable<import("./db/types.ts").SessionRecord["terminalHookHandoff"]>,
+  handoff: NonNullable<SessionRecord["terminalHookHandoff"]>,
 ): void {
   if (!handoff.mainCheckoutLease) return;
   const key = `${handoff.hostId}\0${handoff.repositoryId}`;
   if (state.mainCheckoutLeases.get(key)?.sessionId === sessionId) {
     state.mainCheckoutLeases.delete(key);
   }
+}
+
+/** Host-loss already enqueued Slack at the terminal write. Checkout-fetch
+ * exhaustion defers that until the hook settles or expires. */
+function noteDeferredCheckoutFailureLifecycle(
+  state: ControlPlaneState,
+  handoff: NonNullable<SessionRecord["terminalHookHandoff"]>,
+  session: SessionRecord,
+): void {
+  if (handoff.errorCode !== "checkout_fetch_failed") return;
+  noteSlackSessionLifecycle(state, session);
 }

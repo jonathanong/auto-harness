@@ -176,6 +176,8 @@ Version `7` adds the absolute control-plane expiry to terminal-hook handoffs; on
 receive one, and it bounds hook execution and completion retry to that deadline.
 Version `6` adds the deferred checkout-failure result handoff: terminal disposition is persisted
 before the daemon runs its retained hook, and archival waits for the post-hook result completion.
+That exhausted checkout-failure handoff also enqueues the terminal Slack lifecycle when it
+settles or expires; host-loss already enqueued Slack at the terminal write.
 Version `5` adds the durable terminal-hook handoff used when final `host_lost` recovery transfers
 hook ownership to a replacement daemon. Version `4` adds the durable pre-launch
 `session:command-start` handshake: the control plane records
