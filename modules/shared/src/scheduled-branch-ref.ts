@@ -62,6 +62,18 @@ export function isValidGitHubIngressDefaultRef(value: unknown): value is string 
 }
 
 /**
+ * Rewrite a pre-#618 short branch name such as `main` to `refs/heads/main`.
+ * Tag refs, pull refs, and revision expressions stay invalid so new writes
+ * still require a canonical heads branch.
+ */
+export function canonicalizeGitHubIngressDefaultRef(value: unknown): string | null {
+  if (isValidGitHubIngressDefaultRef(value)) return value;
+  if (typeof value !== "string" || value.startsWith("refs/")) return null;
+  const candidate = `${HEADS_PREFIX}${value}`;
+  return isValidGitHubIngressDefaultRef(candidate) ? candidate : null;
+}
+
+/**
  * Validate a scheduled checkout branch name without consulting a repository.
  *
  * This follows `git check-ref-format --branch` constraints closely, while

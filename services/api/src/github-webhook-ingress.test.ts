@@ -192,6 +192,21 @@ describe("parseGitHubWebhookIngress", () => {
     }
   });
 
+  it("creates issue-comment sessions from legacy short defaultRef values", () => {
+    expect(
+      ingress("issue_comment", issueComment(), [{ ...binding, defaultRef: "main" }]),
+    ).toMatchObject({
+      kind: "accepted",
+      session: { ref: "refs/heads/main" },
+    });
+    expect(
+      ingress("issue_comment", issueComment(), [{ ...binding, defaultRef: "release/v1.2" }]),
+    ).toMatchObject({
+      kind: "accepted",
+      session: { ref: "refs/heads/release/v1.2" },
+    });
+  });
+
   it("keeps issue and review comment concurrency namespaces distinct", () => {
     const issue = ingress(
       "issue_comment",

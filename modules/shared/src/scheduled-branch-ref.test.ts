@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canonicalizeGitHubIngressDefaultRef,
   isValidGitHubIngressDefaultRef,
   isValidScheduledBranchRef,
   isValidSessionRef,
@@ -114,6 +115,33 @@ describe("isValidGitHubIngressDefaultRef", () => {
       "a".repeat(256),
     ]) {
       expect(isValidGitHubIngressDefaultRef(value)).toBe(false);
+    }
+  });
+});
+
+describe("canonicalizeGitHubIngressDefaultRef", () => {
+  it("keeps canonical heads refs and prefixes safe legacy branch names", () => {
+    expect(canonicalizeGitHubIngressDefaultRef("refs/heads/main")).toBe("refs/heads/main");
+    expect(canonicalizeGitHubIngressDefaultRef("main")).toBe("refs/heads/main");
+    expect(canonicalizeGitHubIngressDefaultRef("release/v1.2")).toBe("refs/heads/release/v1.2");
+    expect(canonicalizeGitHubIngressDefaultRef("deadbeef")).toBe("refs/heads/deadbeef");
+  });
+
+  it("does not re-accept tags, pull refs, or revision expressions", () => {
+    for (const value of [
+      "",
+      "HEAD",
+      "HEAD~1",
+      "HEAD^2",
+      "refs/tags/v1.2.3",
+      "refs/pull/1/head",
+      "refs/heads/",
+      "-branch",
+      "feature..broken",
+      42,
+      null,
+    ]) {
+      expect(canonicalizeGitHubIngressDefaultRef(value)).toBeNull();
     }
   });
 });

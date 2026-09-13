@@ -54,6 +54,43 @@ describe("GitHub ingress config", () => {
     await expect(getGitHubIngressConfig(plane.state)).resolves.toBeNull();
   });
 
+  it("canonicalizes legacy short defaultRef values on admin GET", async () => {
+    const plane = createPlane();
+    plane.state.githubIngressConfig = {
+      id: "github-ingress",
+      type: "github-ingress",
+      encryptedSecret: "cipher:{}",
+      enabled: true,
+      bindings: [
+        {
+          ...binding,
+          fallbacks: [],
+          queueTtlSeconds: 691200,
+          priority: 0,
+          requiredLabels: [],
+          allowedLogins: [],
+          defaultRef: "main",
+        },
+        {
+          ...binding,
+          githubRepositoryId: 43,
+          fallbacks: [],
+          queueTtlSeconds: 691200,
+          priority: 0,
+          requiredLabels: [],
+          allowedLogins: [],
+          defaultRef: "HEAD~1",
+        },
+      ],
+      version: 1,
+      createdAt: "2026-09-12T00:00:00.000Z",
+      updatedAt: "2026-09-12T00:00:00.000Z",
+    };
+    await expect(getGitHubIngressConfig(plane.state)).resolves.toMatchObject({
+      bindings: [{ defaultRef: "refs/heads/main" }, { defaultRef: "HEAD~1" }],
+    });
+  });
+
   it("retains enabled when an update omits it", async () => {
     const plane = createPlane();
     await plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });

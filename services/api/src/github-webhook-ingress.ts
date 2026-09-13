@@ -1,5 +1,5 @@
 import {
-  isValidGitHubIngressDefaultRef,
+  canonicalizeGitHubIngressDefaultRef,
   promptByteLengthError,
   sessionTimeoutError,
   validateTargetRouting,
@@ -83,10 +83,11 @@ export function parseGitHubWebhookIngress(input: {
   const binding = bindings[0]!;
   const routing = validateTargetRouting({ target: binding.target, fallbacks: binding.fallbacks });
   const timeoutError = sessionTimeoutError(binding.timeout);
+  const defaultRef = canonicalizeGitHubIngressDefaultRef(binding.defaultRef);
   if (
     !nonEmptyString(binding.repositoryId) ||
     !routing.ok ||
-    !isValidGitHubIngressDefaultRef(binding.defaultRef) ||
+    defaultRef === null ||
     !validAllowedLogins(binding.allowedLogins) ||
     timeoutError !== null
   ) {
@@ -114,7 +115,7 @@ export function parseGitHubWebhookIngress(input: {
   if (promptByteLengthError(prompt) !== null)
     return ignored("invalid_payload", binding.repositoryId);
 
-  const thread = threadFor(input.event, payload, binding.defaultRef);
+  const thread = threadFor(input.event, payload, defaultRef);
   if (!thread) return ignored("invalid_payload", binding.repositoryId);
 
   return {
