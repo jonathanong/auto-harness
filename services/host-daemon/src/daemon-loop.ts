@@ -1121,63 +1121,74 @@ export class DaemonLoop {
       // Keep the entry indexed during settlement: an overlapping durable
       // handoff must find this exact promise rather than run the hook again.
       if (pending.settlement) return pending.settlement;
-      const settlementResult =
-        pending.settlementResult ??
-        pending.settleDeferredTerminalHook(
-          msg.retryAccepted !== true,
-          syntheticV7Handoff ? validHandoffExpiresAtMs : undefined,
-        );
-      pending.settlementResult = settlementResult;
-      const settlement = settlementResult
-        .then((result) => {
-          if (msg.terminalHookHandoffId && msg.retryAccepted !== true) {
-            const existing = this.pendingTerminalHookHandoffs.get(msg.terminalHookHandoffId);
-            if (existing) {
-              if (result !== undefined) existing.result = result;
-              existing.complete = true;
-              // The inbound handoff's reconciliation owns the first completion
-              // send; sending here too races a fast local transport and can
-              // duplicate that completion before its acknowledgement arrives.
-              return;
-            }
-            const handoff: PendingTerminalHookHandoff = {
-              ...(handoffExpiresAtMs !== undefined && Number.isFinite(handoffExpiresAtMs)
-                ? { expiresAtMs: handoffExpiresAtMs }
+      const settlement = (async () => {
+        // Occupancy is indexed as soon as `pending.settlement` is assigned.
+        // Wait for a free slot before starting the hook so a session that began
+        // during ACK wait cannot overlap this work at maxConcurrentAssignments.
+        if (msg.retryAccepted !== true) {
+          const entry = this.inflight.get(key);
+          if (
+            entry !== undefined &&
+            !(await this.acquireExecutionSlot(entry, pending.controller.signal))
+          ) {
+            return;
+          }
+        }
+        const settlementResult =
+          pending.settlementResult ??
+          pending.settleDeferredTerminalHook!(
+            msg.retryAccepted !== true,
+            syntheticV7Handoff ? validHandoffExpiresAtMs : undefined,
+          );
+        pending.settlementResult = settlementResult;
+        const result = await settlementResult;
+        if (msg.terminalHookHandoffId && msg.retryAccepted !== true) {
+          const existing = this.pendingTerminalHookHandoffs.get(msg.terminalHookHandoffId);
+          if (existing) {
+            if (result !== undefined) existing.result = result;
+            existing.complete = true;
+            // The inbound handoff's reconciliation owns the first completion
+            // send; sending here too races a fast local transport and can
+            // duplicate that completion before its acknowledgement arrives.
+            return;
+          }
+          const handoff: PendingTerminalHookHandoff = {
+            ...(handoffExpiresAtMs !== undefined && Number.isFinite(handoffExpiresAtMs)
+              ? { expiresAtMs: handoffExpiresAtMs }
+              : {}),
+            message: {
+              type: "session:terminal-hook",
+              handoffId: msg.terminalHookHandoffId,
+              sessionId: pending.message.sessionId,
+              repositoryId: "",
+              worktreeId: pending.message.worktreeId,
+              status: pending.message.status as Extract<
+                import("@auto-harness/shared").SessionStatus,
+                "completed" | "failed" | "cancelled" | "timed_out"
+              >,
+              ...(msg.terminalHookHandoffExpiresAt !== undefined &&
+              Number.isFinite(handoffExpiresAtMs)
+                ? { expiresAt: msg.terminalHookHandoffExpiresAt }
                 : {}),
-              message: {
-                type: "session:terminal-hook",
-                handoffId: msg.terminalHookHandoffId,
-                sessionId: pending.message.sessionId,
-                repositoryId: "",
-                worktreeId: pending.message.worktreeId,
-                status: pending.message.status as Extract<
-                  import("@auto-harness/shared").SessionStatus,
-                  "completed" | "failed" | "cancelled" | "timed_out"
-                >,
-                ...(msg.terminalHookHandoffExpiresAt !== undefined &&
-                Number.isFinite(handoffExpiresAtMs)
-                  ? { expiresAt: msg.terminalHookHandoffExpiresAt }
-                  : {}),
-                ...(pending.message.errorCode !== undefined
-                  ? { errorCode: pending.message.errorCode }
-                  : {}),
-              },
-              firstAttemptedAtMs: Date.now(),
-              complete: true,
-              executing: false,
-              sending: false,
-              ...(result !== undefined ? { result } : {}),
-            };
-            this.pendingTerminalHookHandoffs.set(msg.terminalHookHandoffId, handoff);
-            this.sendTerminalHookHandoffCompletion(handoff);
-          }
-        })
-        .finally(() => {
-          if (this.pendingTerminalStatus.get(key) === pending) {
-            this.pendingTerminalStatus.delete(key);
-          }
-          pending.resolveDeferredDisposition?.();
-        });
+              ...(pending.message.errorCode !== undefined
+                ? { errorCode: pending.message.errorCode }
+                : {}),
+            },
+            firstAttemptedAtMs: Date.now(),
+            complete: true,
+            executing: false,
+            sending: false,
+            ...(result !== undefined ? { result } : {}),
+          };
+          this.pendingTerminalHookHandoffs.set(msg.terminalHookHandoffId, handoff);
+          this.sendTerminalHookHandoffCompletion(handoff);
+        }
+      })().finally(() => {
+        if (this.pendingTerminalStatus.get(key) === pending) {
+          this.pendingTerminalStatus.delete(key);
+        }
+        pending.resolveDeferredDisposition?.();
+      });
       pending.settlement = settlement;
       return settlement;
     };
@@ -1597,8 +1608,14 @@ export class DaemonLoop {
     const results = await Promise.all(
       matching.map(async (pending) => {
         if (pending.settleDeferredTerminalHook) {
-          const settlement = pending.settlementResult ?? pending.settleDeferredTerminalHook(true);
-          return await settlement.finally(() => pending.resolveDeferredDisposition?.());
+          const settlementResult =
+            pending.settlementResult ?? pending.settleDeferredTerminalHook(true);
+          pending.settlementResult = settlementResult;
+          pending.settlement ??= settlementResult.then(
+            () => undefined,
+            () => undefined,
+          );
+          return await settlementResult.finally(() => pending.resolveDeferredDisposition?.());
         } else {
           pending.resolveDeferredDisposition?.();
           return undefined;
