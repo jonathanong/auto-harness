@@ -11,33 +11,19 @@ import { runSetupIfNeeded, type ClaimedWorktree } from "./session-run-setup.ts";
 import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
 
 async function claim(extras?: {
-  hostSetupScript?: string;
-  hostSetupCacheInputs?: string[];
-  repositorySetup?: string;
   worktreeSetup?: string;
-  repositoryCacheInputs?: string[];
   worktreeCacheInputs?: string[];
   files?: Record<string, string>;
 }): Promise<{ cwd: string; claimed: ClaimedWorktree }> {
   const cwd = await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-run-"));
   for (const [name, contents] of Object.entries(extras?.files ?? {})) {
-    const path = join(cwd, name);
-    await mkdir(join(path, ".."), { recursive: true });
-    await writeFile(path, contents);
+    await mkdir(join(join(cwd, name), ".."), { recursive: true });
+    await writeFile(join(cwd, name), contents);
   }
   return {
     cwd,
     claimed: {
-      repository: {
-        id: "repo-1",
-        path: cwd,
-        defaultBranch: "main",
-        worktrees: [],
-        ...(extras?.repositorySetup !== undefined ? { setupScript: extras.repositorySetup } : {}),
-        ...(extras?.repositoryCacheInputs
-          ? { setupCacheInputs: extras.repositoryCacheInputs }
-          : {}),
-      },
+      repository: { id: "repo-1", path: cwd, defaultBranch: "main", worktrees: [] },
       worktree: {
         id: "wt-1",
         name: "wt-1",
@@ -48,10 +34,6 @@ async function claim(extras?: {
       },
       cwd,
       currentHookTarget: async () => null,
-      ...(extras?.hostSetupScript !== undefined ? { hostSetupScript: extras.hostSetupScript } : {}),
-      ...(extras?.hostSetupCacheInputs
-        ? { hostSetupCacheInputs: extras.hostSetupCacheInputs }
-        : {}),
     },
   };
 }
@@ -101,8 +83,10 @@ async function runCached(
     undefined,
     cacheDir,
   );
-  const system = logs.filter((chunk) => chunk.stream === "system").map((chunk) => chunk.content);
-  return { failure, system };
+  return {
+    failure,
+    system: logs.filter((chunk) => chunk.stream === "system").map((chunk) => chunk.content),
+  };
 }
 
 describe("runSetupIfNeeded setup cache", () => {
@@ -151,8 +135,7 @@ describe("runSetupIfNeeded setup cache", () => {
       worktreeCacheInputs: ["pnpm-lock.yaml"],
       files: { "pnpm-lock.yaml": "lock-1" },
     });
-    const primed = countingRunner();
-    await runCached(baseAssign(), claimed, primed.runner, cacheDir);
+    await runCached(baseAssign(), claimed, countingRunner().runner, cacheDir);
 
     const scriptChanged = countingRunner();
     await runCached(
@@ -194,8 +177,7 @@ describe("runSetupIfNeeded setup cache", () => {
       worktreeCacheInputs: ["declared.txt"],
       files: { "declared.txt": "ok", "pnpm-lock.yaml": "lock-1", "package.json": "pkg-1" },
     });
-    const first = countingRunner();
-    await runCached(baseAssign(), claimed, first.runner, cacheDir);
+    await runCached(baseAssign(), claimed, countingRunner().runner, cacheDir);
     await writeFile(join(cwd, "pnpm-lock.yaml"), "lock-2");
     await writeFile(join(cwd, "package.json"), "pkg-2");
     const second = countingRunner();
