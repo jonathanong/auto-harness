@@ -78,6 +78,34 @@ async function acknowledgeActiveLockWinner(
   return resolved === "retry" ? undefined : resolved;
 }
 
+async function throwIfFailedParentFence(
+  ctx: PlaneStorageCtx,
+  err: unknown,
+  parts: CreateSessionAdmissionParts,
+  parentIndex: number,
+  rootBudgetIndex: number | undefined,
+): Promise<void> {
+  if (
+    hasSeparateParentCheck(parts.parentFence) &&
+    isConditionalTransactionFailureAt(err, parentIndex)
+  ) {
+    throw new ParentSessionAttemptEndedError();
+  }
+  const parentFence = parts.parentFence;
+  if (
+    !parentFence ||
+    hasSeparateParentCheck(parentFence) ||
+    rootBudgetIndex === undefined ||
+    !isConditionalTransactionFailureAt(err, rootBudgetIndex)
+  ) {
+    return;
+  }
+  const currentParent = await getSession(ctx, parentFence.id, true);
+  if (!parentFenceIsValid(currentParent, parentFence)) {
+    throw new ParentSessionAttemptEndedError();
+  }
+}
+
 async function throwIfCreateAdmissionConflict(
   ctx: PlaneStorageCtx,
   err: unknown,
@@ -93,6 +121,10 @@ async function throwIfCreateAdmissionConflict(
   const parentIndex = drainIndex + Number(!!drainCheck);
   const integrationIndex = parentIndex + Number(hasSeparateParentCheck(parts.parentFence));
   const lockIndex = integrationIndex + Number(!!integrationCheck);
+  const rootBudgetIndex =
+    parts.parentFence?.rootSessionId === undefined
+      ? undefined
+      : lockIndex + 2 + Number(!!parts.activityPut);
   const markerFailed =
     markers.length > 0 &&
     Array.from({ length: markers.length }, (_, index) => index).some((index) =>
@@ -101,7 +133,9 @@ async function throwIfCreateAdmissionConflict(
   if (markerFailed) {
     // Dynamo evaluates every TransactWrite item. A duplicate ingress can lose
     // both the deletion-marker check and the lock Put after the original owner
-    // already committed. The active lock is the durable fact to acknowledge.
+    // already committed. The active lock is the durable fact to acknowledge
+    // unless a parent/root-budget attempt fence also failed.
+    await throwIfFailedParentFence(ctx, err, parts, parentIndex, rootBudgetIndex);
     const winner = await acknowledgeActiveLockWinner(ctx, err, session, lockIndex);
     if (winner) return winner;
     throw new CatalogDeletionInProgressError();
@@ -114,6 +148,7 @@ async function throwIfCreateAdmissionConflict(
     // A concurrent redelivery may lose both resource admission and the lock
     // condition. The lock's active session is the authoritative winner; resolve
     // it before reporting the resource's later admission state.
+    await throwIfFailedParentFence(ctx, err, parts, parentIndex, rootBudgetIndex);
     const winner = await acknowledgeActiveLockWinner(ctx, err, session, lockIndex);
     if (winner) return winner;
     if (session.repositoryId) throw new RepositoryAdmissionClosedError();

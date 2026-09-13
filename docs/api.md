@@ -923,13 +923,16 @@ root sessions retain the general 90-fallback limit.
 
 The same `spawnKey` under one parent returns the active existing child (`200`, `created: false`)
 instead of creating a duplicate. A spawn key may be reused after that child reaches a terminal
-state. Children are assigned and completed independently; a child never extends the parent's
-liveness or terminal status.
+state. A session-token redelivery whose parent or root-budget attempt fence failed returns
+`409 CONFLICT` rather than that existing child, even if the spawn lock is still held. GitHub and
+custom-webhook ingress have no parent fence and still acknowledge an active lock winner. Children
+are assigned and completed independently; a child never extends the parent's liveness or terminal
+status.
 
 Each lineage has a durable root-wide descendant budget of 64 direct or indirect children. The
 budget is reserved atomically with child admission, so concurrent branches cannot exceed it;
-exhaustion returns `409 CONFLICT`. Repeating an active `spawnKey` returns its existing child and
-does not consume another budget slot.
+exhaustion returns `409 CONFLICT`. Repeating an active `spawnKey` while the parent attempt fence
+still holds returns its existing child and does not consume another budget slot.
 
 **Response:** `201 Created` for a new child or `200 OK` for an active deduplicated child, using the
 same `SessionCreateResult` shape as `POST /sessions`. The response includes `parentSessionId` and
