@@ -204,14 +204,14 @@ the same mapping **before** grant validation so a deployed daemon key can be rep
 Remapping to `agent` applies to **any non-`agent` role with `boundHostId`**, except
 `read-only` with `boundHostId`. Unbound `operator` remains `operator`.
 
-| Stored                                                        | Effective                   |
-| ------------------------------------------------------------- | --------------------------- |
-| `read-only`                                                   | `read-only`                 |
-| `operator`, no bind                                           | `operator`                  |
-| any non-`agent` role except `read-only` + `boundHostId`      | `agent`                     |
-| `admin` + `allowedRepositoryIds`, no bind                     | `maintainer`                |
-| `admin`, unscoped                                             | `admin`                     |
-| `read-only` + `boundHostId`                                   | `read-only` (no escalation) |
+| Stored                                                  | Effective                   |
+| ------------------------------------------------------- | --------------------------- |
+| `read-only`                                             | `read-only`                 |
+| `operator`, no bind                                     | `operator`                  |
+| any non-`agent` role except `read-only` + `boundHostId` | `agent`                     |
+| `admin` + `allowedRepositoryIds`, no bind               | `maintainer`                |
+| `admin`, unscoped                                       | `admin`                     |
+| `read-only` + `boundHostId`                             | `read-only` (no escalation) |
 
 Unbound `operator` keys are **not** downgraded to `author`. Mint a new `author`
 key if CI should not rewrite schedules.
