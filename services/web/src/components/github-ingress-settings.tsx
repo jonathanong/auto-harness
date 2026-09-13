@@ -15,6 +15,12 @@ import {
 } from "@auto-harness/ui";
 
 import { apiFetch } from "../lib/client-api.ts";
+import {
+  BindingFallbacks,
+  loadedFallbacks,
+  parsedFallbacks,
+  type FallbackTarget,
+} from "./github-ingress-fallback-fields.tsx";
 
 type Binding = {
   githubRepositoryId: string;
@@ -25,13 +31,11 @@ type Binding = {
   queueTtlSeconds: string;
   priority: string;
   requiredLabels: string;
-  fallbacks: string;
+  fallbacks: FallbackTarget[];
   defaultRef: string;
   allowedLogins: string;
   enabled: boolean;
 };
-type FallbackTarget = { providerId: string } | { commandId: string };
-type ParsedFallbackTargets = { ok: true; targets: FallbackTarget[] } | { ok: false };
 const blank = (): Binding => ({
   githubRepositoryId: "",
   repositoryId: "",
@@ -41,26 +45,11 @@ const blank = (): Binding => ({
   queueTtlSeconds: "691200",
   priority: "0",
   requiredLabels: "",
-  fallbacks: "",
+  fallbacks: [],
   defaultRef: "refs/heads/main",
   allowedLogins: "",
   enabled: true,
 });
-
-function parseFallbackTargets(value: string): ParsedFallbackTargets {
-  const targets: FallbackTarget[] = [];
-  for (const entry of value
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)) {
-    const separator = entry.indexOf(":");
-    const kind = separator < 0 ? "" : entry.slice(0, separator).trim();
-    const id = separator < 0 ? "" : entry.slice(separator + 1).trim();
-    if (!id || (kind !== "provider" && kind !== "command")) return { ok: false };
-    targets.push(kind === "provider" ? { providerId: id } : { commandId: id });
-  }
-  return { ok: true, targets };
-}
 
 /** Structured singleton editor; webhook secret stays empty on load and is retained on PUT. */
 export function GitHubIngressSettings() {
@@ -122,13 +111,7 @@ export function GitHubIngressSettings() {
             queueTtlSeconds: String(binding.queueTtlSeconds),
             priority: String(binding.priority),
             requiredLabels: binding.requiredLabels.join("\n"),
-            fallbacks: binding.fallbacks
-              .map((fallback) =>
-                "providerId" in fallback
-                  ? `provider:${fallback.providerId}`
-                  : `command:${fallback.commandId}`,
-              )
-              .join(", "),
+            fallbacks: loadedFallbacks(binding.fallbacks),
             defaultRef: binding.defaultRef,
             allowedLogins: binding.allowedLogins.join(", "),
             enabled: true,
@@ -137,7 +120,11 @@ export function GitHubIngressSettings() {
       })
       .catch(() => setLoadState("error"));
   }, []);
-  const change = (index: number, field: keyof Binding, value: string | boolean) =>
+  const change = (
+    index: number,
+    field: keyof Binding,
+    value: string | boolean | FallbackTarget[],
+  ) =>
     setBindings((current) =>
       current.map((binding, position) =>
         position === index ? { ...binding, [field]: value } : binding,
@@ -161,17 +148,18 @@ export function GitHubIngressSettings() {
         });
         return;
       }
-      const parsedFallbacks = bindings.map((binding) => parseFallbackTargets(binding.fallbacks));
-      if (parsedFallbacks.some((result) => !result.ok)) {
-        showToast("Fallbacks must use provider:id or command:id.", {
-          variant: "destructive",
-          pw: "github-ingress-error",
-        });
-        return;
+      const validFallbacks: FallbackTarget[][] = [];
+      for (const binding of bindings) {
+        const targets = parsedFallbacks(binding.fallbacks);
+        if (!targets) {
+          showToast("Each fallback must have a provider or command id.", {
+            variant: "destructive",
+            pw: "github-ingress-error",
+          });
+          return;
+        }
+        validFallbacks.push(targets);
       }
-      // The validation above makes every result successful; keep the narrowed
-      // targets aligned with bindings without adding an unreachable fallback branch.
-      const validFallbacks = parsedFallbacks as Array<Extract<ParsedFallbackTargets, { ok: true }>>;
       const body = {
         ...(secret ? { secret } : {}),
         ...(configured ? { version, generation: generation ?? "legacy" } : {}),
@@ -187,7 +175,7 @@ export function GitHubIngressSettings() {
             .split(/\r?\n/)
             .map((label) => label.trim())
             .filter(Boolean),
-          fallbacks: validFallbacks[index]!.targets,
+          fallbacks: validFallbacks[index]!,
           defaultRef: binding.defaultRef,
           allowedLogins: binding.allowedLogins
             .split(",")
@@ -356,11 +344,10 @@ export function GitHubIngressSettings() {
               onChange={(event) => change(index, "requiredLabels", event.target.value)}
               placeholder="Required labels, one per line"
             />
-            <Input
-              aria-label="Fallback targets"
-              value={binding.fallbacks}
-              onChange={(event) => change(index, "fallbacks", event.target.value)}
-              placeholder="Fallbacks: provider:id, command:id"
+            <BindingFallbacks
+              bindingIndex={index}
+              fallbacks={binding.fallbacks}
+              onChange={(fallbacks) => change(index, "fallbacks", fallbacks)}
             />
             <Input
               aria-label="Allowed GitHub logins"

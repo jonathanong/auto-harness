@@ -68,7 +68,15 @@ describe("GitHubIngressSettings", () => {
     setValue(labelled(view.container, "Priority"), "7");
     setValue(labelled(view.container, "Default ref"), "refs/heads/release");
     setValue(labelled(view.container, "Required labels"), "ready\nsafe");
-    setValue(labelled(view.container, "Fallback targets"), "provider:backup, command:fallback");
+    setValue(field(view.container, "github-ingress-fallback-type-0-0"), "providerId");
+    setValue(field(view.container, "github-ingress-fallback-id-0-0"), "backup");
+    press(field(view.container, "github-ingress-add-fallback-0"));
+    setValue(field(view.container, "github-ingress-fallback-type-0-1"), "commandId");
+    setValue(field(view.container, "github-ingress-fallback-id-0-1"), "fallback");
+    press(field(view.container, "github-ingress-add-fallback-0"));
+    const extraFallback = field(view.container, "github-ingress-fallback-id-0-2").parentElement;
+    if (!extraFallback) throw new Error("missing extra fallback");
+    press(extraFallback.querySelector("button")!);
     setValue(labelled(view.container, "Allowed GitHub logins"), "release-bot");
     press(field(view.container, "github-ingress-add-binding"));
     const remove = [...view.container.querySelectorAll("button")]
@@ -123,6 +131,61 @@ describe("GitHubIngressSettings", () => {
     expect(saved.bindings[0]?.requiredLabels).toEqual(["needs,review"]);
   });
 
+  it.each([
+    ["provider", { providerId: "team,provider" }],
+    ["command", { commandId: "team,command" }],
+  ] as const)(
+    "round-trips %s fallback ids containing commas after an unrelated edit",
+    async (_kind, fallback) => {
+      const commaExisting = {
+        ...existing,
+        bindings: existing.bindings.map((binding) => ({
+          ...binding,
+          fallbacks: [fallback],
+        })),
+      };
+      const fake = createApiFake(json(commaExisting), json({ ...commaExisting, version: 3 }));
+      const view = mountForm(<GitHubIngressSettings />);
+      await settle();
+      expect(labelled<HTMLInputElement>(view.container, "Fallback 1 id").value).toBe(
+        "providerId" in fallback ? fallback.providerId : fallback.commandId,
+      );
+      setValue(labelled(view.container, "Timeout seconds"), "240");
+      press(field(view.container, "github-ingress-save"));
+      await settle();
+      const saved = JSON.parse(String(fake.requests[1]?.[1]?.body)) as {
+        bindings: Array<{ fallbacks: unknown[] }>;
+      };
+      expect(saved.bindings[0]?.fallbacks).toEqual([fallback]);
+    },
+  );
+
+  it("renders empty fallback rows without an identifier", async () => {
+    createApiFake(
+      json({
+        ...existing,
+        bindings: existing.bindings.map((binding) => ({
+          ...binding,
+          fallbacks: [{ providerId: null }, {}],
+        })),
+      }),
+    );
+    const view = mountForm(<GitHubIngressSettings />);
+    await settle();
+    expect(field<HTMLInputElement>(view.container, "github-ingress-fallback-id-0-0").value).toBe(
+      "",
+    );
+    expect(field<HTMLSelectElement>(view.container, "github-ingress-fallback-type-0-0").value).toBe(
+      "providerId",
+    );
+    expect(field<HTMLInputElement>(view.container, "github-ingress-fallback-id-0-1").value).toBe(
+      "",
+    );
+    expect(field<HTMLSelectElement>(view.container, "github-ingress-fallback-type-0-1").value).toBe(
+      "commandId",
+    );
+  });
+
   it("uses legacy generation headers when an older config omits generation", async () => {
     const legacy = { ...existing, generation: undefined };
     const fake = createApiFake(json(legacy), json({ version: 3 }), json({}, 204));
@@ -161,10 +224,16 @@ describe("GitHubIngressSettings", () => {
     const fake = createApiFake(json(alternate), json({ ...alternate, version: 3 }));
     const view = mountForm(<GitHubIngressSettings />);
     await settle();
-    const targetTypes = [...view.container.querySelectorAll("select")];
+    const targetTypes = [
+      ...view.container.querySelectorAll<HTMLSelectElement>('[aria-label="Target type"]'),
+    ];
     expect(targetTypes[1]?.value).toBe("commandId");
-    const fallbacks = [...view.container.querySelectorAll('[aria-label="Fallback targets"]')];
-    expect((fallbacks[1] as HTMLInputElement | undefined)?.value).toBe("provider:provider-two");
+    expect(field<HTMLInputElement>(view.container, "github-ingress-fallback-id-1-0").value).toBe(
+      "provider-two",
+    );
+    expect(field<HTMLSelectElement>(view.container, "github-ingress-fallback-type-1-0").value).toBe(
+      "providerId",
+    );
     const timeouts = [...view.container.querySelectorAll('[aria-label="Timeout seconds"]')];
     setValue(timeouts[1] as HTMLInputElement, "300");
     press(field(view.container, "github-ingress-save"));
@@ -179,7 +248,7 @@ describe("GitHubIngressSettings", () => {
     });
   });
 
-  it("validates required values and rejects malformed fallback prefixes", async () => {
+  it("validates required values and rejects empty fallback ids", async () => {
     const fake = createApiFake(json({}, 404));
     const view = mountForm(<GitHubIngressSettings />);
     await settle();
@@ -189,18 +258,14 @@ describe("GitHubIngressSettings", () => {
     setValue(labelled(view.container, "GitHub repository id"), "42");
     setValue(labelled(view.container, "Auto Harness repository id"), "repo");
     setValue(labelled(view.container, "Target id"), "provider");
-    setValue(labelled(view.container, "Fallback targets"), "typo:fallback");
+    press(field(view.container, "github-ingress-add-fallback-0"));
     await settle();
     press(field(view.container, "github-ingress-save"));
-    expect(document.body.textContent).toContain("provider:id or command:id");
-    setValue(labelled(view.container, "Fallback targets"), "missing-prefix");
+    expect(document.body.textContent).toContain("provider or command id");
+    setValue(field(view.container, "github-ingress-fallback-id-0-0"), "   ");
     await settle();
     press(field(view.container, "github-ingress-save"));
-    expect(document.body.textContent).toContain("provider:id or command:id");
-    setValue(labelled(view.container, "Fallback targets"), "provider:");
-    await settle();
-    press(field(view.container, "github-ingress-save"));
-    expect(document.body.textContent).toContain("provider:id or command:id");
+    expect(document.body.textContent).toContain("provider or command id");
     expect(fake.requests).toHaveLength(1);
   });
 
