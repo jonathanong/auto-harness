@@ -156,8 +156,12 @@ export async function archiveSessionLogs(
   }
   if (ownedRetry && pending.bodyBytes > 0) {
     const claimed = state.archives.get(object.key);
-    if (!state.storage && (claimed === undefined || claimed.status === "expired")) {
-      return object;
+    if (!state.storage) {
+      if (claimed === undefined || claimed.status === "expired") return object;
+      if (claimed.retryState !== "processing" || claimed.retryOrder !== ownedRetry.retryOrder) {
+        await rewriteWinningArchive(state, sessionId, object.key);
+        return object;
+      }
     }
     if (
       claimed?.retryState === "processing" &&

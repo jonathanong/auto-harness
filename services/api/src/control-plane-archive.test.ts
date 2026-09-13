@@ -517,6 +517,74 @@ describe("archive retry state", () => {
     expect(state.archives.get(key)?.status).toBe("expired");
   });
 
+  it("does not expire a newer in-memory claim discovered after the retention probe", async () => {
+    let uploaded = 0;
+    const key = "sessions/empty-latest/logs.jsonl";
+    const state = createControlPlaneState({
+      now: () => "2026-01-08T00:00:00.000Z",
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+    });
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "old-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const originalGet = state.logs.get.bind(state.logs);
+    state.logs.get = ((sessionId: string) => {
+      state.archives.set(key, {
+        key,
+        contentType: "application/x-ndjson",
+        bodyBytes: 42,
+        status: "pending",
+        objectStored: false,
+        retryState: "processing",
+        retryOrder: "new-claim",
+        capturedRetryOrder: "new-claim",
+        updatedAt: "2026-01-08T00:00:00.000Z",
+      });
+      return originalGet(sessionId);
+    }) as typeof state.logs.get;
+    await retrySessionArchiveIfNeeded(state, "empty-latest", {
+      retryState: "processing",
+      retryOrder: "old-claim",
+    });
+    expect(uploaded).toBe(0);
+    expect(state.archives.get(key)).toMatchObject({
+      retryOrder: "new-claim",
+      bodyBytes: 42,
+    });
+  });
+
+  it("does not upload a nonempty in-memory retry against an expired claim", async () => {
+    let uploaded = 0;
+    const key = "sessions/expired-put/logs.jsonl";
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+    });
+    state.logs.set("expired-put", [
+      { timestamp: "1", stream: "stdout", content: "captured" } as never,
+    ]);
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 4,
+      status: "expired",
+      objectStored: false,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await archiveSessionLogs(state, "expired-put", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(uploaded).toBe(0);
+    expect(state.archives.get(key)?.status).toBe("expired");
+  });
+
   it("does not block a missing in-memory empty retry before retention elapses", async () => {
     let uploaded = 0;
     const state = createControlPlaneState({
@@ -727,8 +795,11 @@ describe("archive retry state", () => {
     releaseUpload();
     await retry;
 
-    expect(uploaded).toHaveLength(1);
-    expect(uploaded[0]).toBe('{"timestamp":"1","stream":"stdout","content":"old"}\n');
+    expect(uploaded).toHaveLength(0);
+    expect(state.archives.get(key)).toMatchObject({
+      retryState: "pending",
+      retryOrder: "new-claim",
+    });
   });
 
   it("republishes the newer winner after a stale canonical upload loses its fence", async () => {
@@ -780,10 +851,7 @@ describe("archive retry state", () => {
     releaseUpload();
     await retry;
 
-    expect(uploaded).toEqual([
-      '{"timestamp":"1","stream":"stdout","content":"old"}\n',
-      '{"timestamp":"1","stream":"stdout","content":"new"}\n',
-    ]);
+    expect(uploaded).toEqual(['{"timestamp":"1","stream":"stdout","content":"new"}\n']);
   });
 
   it.each(["missing-result", "missing-version"])(
