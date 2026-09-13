@@ -274,42 +274,21 @@ describe("custom webhook integration lifecycle", () => {
       name: "repository",
       config: {},
       mutate: (value: ControlPlane) => {
-        const originalHas = value.state.repositories.has.bind(value.state.repositories);
-        let reads = 0;
-        value.state.repositories.has = ((id: string) => {
-          reads += 1;
-          const present = originalHas(id);
-          if (reads === 1) value.state.repositories.delete(id);
-          return present;
-        }) as typeof value.state.repositories.has;
+        value.state.repositories.delete("repo");
       },
     },
     {
       name: "provider",
       config: { fallbacks: [{ commandId: "command" }] },
       mutate: (value: ControlPlane) => {
-        const originalHas = value.state.providers.has.bind(value.state.providers);
-        let reads = 0;
-        value.state.providers.has = ((id: string) => {
-          reads += 1;
-          const present = originalHas(id);
-          if (reads === 1) value.state.providers.delete(id);
-          return present;
-        }) as typeof value.state.providers.has;
+        value.state.providers.delete("provider");
       },
     },
     {
       name: "command",
       config: { target: { commandId: "command" } },
       mutate: (value: ControlPlane) => {
-        const originalHas = value.state.commands.has.bind(value.state.commands);
-        let reads = 0;
-        value.state.commands.has = ((id: string) => {
-          reads += 1;
-          const present = originalHas(id);
-          if (reads === 1) value.state.commands.delete(id);
-          return present;
-        }) as typeof value.state.commands.has;
+        value.state.commands.delete("command");
       },
     },
   ])(
@@ -319,11 +298,10 @@ describe("custom webhook integration lifecycle", () => {
       await expect(value.createCustomWebhookIntegration(config(overrides))).resolves.toMatchObject({
         ok: true,
       });
+      const pending = value.deleteCustomWebhookIntegration("deploy");
+      await Promise.resolve();
       mutate(value);
-      await expect(value.deleteCustomWebhookIntegration("deploy")).resolves.toMatchObject({
-        ok: false,
-        conflict: true,
-      });
+      await expect(pending).resolves.toMatchObject({ ok: false, conflict: true });
       expect(value.state.customWebhookIntegrations.has("deploy")).toBe(true);
     },
   );
@@ -333,26 +311,16 @@ describe("custom webhook integration lifecycle", () => {
     await expect(value.createCustomWebhookIntegration(config())).resolves.toMatchObject({
       ok: true,
     });
-    const originalGet = value.state.customWebhookIntegrations.get.bind(
-      value.state.customWebhookIntegrations,
-    );
-    let reads = 0;
-    value.state.customWebhookIntegrations.get = ((id: string) => {
-      reads += 1;
-      const current = originalGet(id);
-      if (reads === 1 && current) {
-        value.state.customWebhookIntegrations.set(id, {
-          ...current,
-          version: current.version + 1,
-          generation: "newer-generation",
-        });
-      }
-      return current;
-    }) as typeof value.state.customWebhookIntegrations.get;
-    await expect(value.deleteCustomWebhookIntegration("deploy")).resolves.toMatchObject({
-      ok: false,
-      conflict: true,
+    const pending = value.deleteCustomWebhookIntegration("deploy");
+    await Promise.resolve();
+    const current = value.state.customWebhookIntegrations.get("deploy");
+    expect(current).toBeDefined();
+    value.state.customWebhookIntegrations.set("deploy", {
+      ...current!,
+      version: current!.version + 1,
+      generation: "newer-generation",
     });
+    await expect(pending).resolves.toMatchObject({ ok: false, conflict: true });
     expect(value.state.customWebhookIntegrations.get("deploy")).toMatchObject({
       version: 2,
       generation: "newer-generation",
