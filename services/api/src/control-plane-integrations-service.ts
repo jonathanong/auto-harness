@@ -5,6 +5,8 @@ import { installSlackOAuthIntegrationDurable } from "./control-plane-slack-oauth
 import { getSlackBotTokenOwnershipDurable } from "./slack-oauth-token-ownership.ts";
 import * as customWebhooks from "./control-plane-custom-webhooks.ts";
 import type { CustomWebhookConfigInput } from "./custom-webhook-types.ts";
+import * as githubIngress from "./control-plane-github-ingress.ts";
+import type { GitHubIngressConfigInput } from "./github-ingress-types.ts";
 
 /** Slack and other outbound integration configuration. */
 export class ControlPlaneIntegrationsService {
@@ -109,5 +111,44 @@ export class ControlPlaneIntegrationsService {
     record: import("./db/plane-storage-types.ts").CustomWebhookIntegrationRecord,
   ): ReturnType<typeof customWebhooks.decryptCustomWebhookSecret> {
     return customWebhooks.decryptCustomWebhookSecret(this.state, id, record);
+  }
+  getGitHubIngressConfig(): ReturnType<typeof githubIngress.getGitHubIngressConfig> {
+    return githubIngress.getGitHubIngressConfig(this.state);
+  }
+
+  getGitHubIngressConfigRecord(): ReturnType<typeof githubIngress.getGitHubIngressConfigRecord> {
+    return githubIngress.getGitHubIngressConfigRecord(this.state);
+  }
+
+  createGitHubIngressConfig(
+    input: GitHubIngressConfigInput,
+  ): ReturnType<typeof githubIngress.createGitHubIngressConfig> {
+    return githubIngress.createGitHubIngressConfig(this.state, input);
+  }
+
+  updateGitHubIngressConfig(
+    input: GitHubIngressConfigInput,
+    expectedVersion?: number,
+    expectedGeneration?: string | null,
+  ): ReturnType<typeof githubIngress.updateGitHubIngressConfig> {
+    return githubIngress.updateGitHubIngressConfig(
+      this.state,
+      input,
+      expectedVersion,
+      expectedGeneration,
+    );
+  }
+
+  deleteGitHubIngressConfig(
+    expectedVersion?: number,
+    expectedGeneration?: string | null,
+  ): ReturnType<typeof githubIngress.deleteGitHubIngressConfig> {
+    return githubIngress.deleteGitHubIngressConfig(this.state, expectedVersion, expectedGeneration);
+  }
+
+  decryptGitHubIngressSecret(
+    record: import("./db/plane-storage-types.ts").GitHubIngressConfigRecord,
+  ): ReturnType<typeof githubIngress.decryptGitHubIngressSecret> {
+    return githubIngress.decryptGitHubIngressSecret(this.state, record);
   }
 }

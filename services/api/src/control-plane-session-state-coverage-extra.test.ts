@@ -1,4 +1,4 @@
-/* eslint-disable max-lines */
+/* eslint-disable max-lines -- residual durable session branches share one focused fixture. */
 import { describe, expect, it } from "vitest";
 
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
@@ -8,10 +8,15 @@ import { buildSessionRecord, validateSessionCreate } from "./control-plane-sessi
 import {
   cloneSessionDurable,
   createSessionDurable,
+  createGitHubIngressSessionDurable,
   resumeSessionDurable,
 } from "./control-plane-sessions-durable.ts";
 import { createSession, supersedeSession } from "./control-plane-sessions.ts";
 import type { SessionRecord } from "./db/types.ts";
+import type {
+  GitHubIngressConfigRecord,
+  IntegrationSessionFence,
+} from "./db/plane-storage-types.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 
@@ -48,6 +53,40 @@ function commandState() {
     providerId: null,
   });
   return state;
+}
+
+function githubConfig(over: Partial<GitHubIngressConfigRecord> = {}): GitHubIngressConfigRecord {
+  return {
+    id: "github-ingress",
+    type: "github-ingress",
+    encryptedSecret: "cipher",
+    enabled: true,
+    bindings: [],
+    generation: "generation",
+    version: 1,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...over,
+  };
+}
+
+const githubFence: IntegrationSessionFence = {
+  id: "github-ingress",
+  type: "github-ingress",
+  storageId: "github-ingress",
+  generation: "generation",
+  version: 1,
+  enabled: true,
+};
+
+function githubBody(concurrencyId = "github-comment:issue_comment:42:99") {
+  return {
+    repositoryId: "repo",
+    prompt: "handle GitHub comment",
+    target: { commandId: "cmd" },
+    timeout: 30,
+    concurrencyId,
+  };
 }
 
 describe("session state-machine residual coverage", () => {
@@ -103,6 +142,135 @@ describe("session state-machine residual coverage", () => {
     });
   });
 
+  it("does not deduplicate GitHub ingress from a stale process-local session", async () => {
+    const state = commandState();
+    state.repositories.set("repo", {
+      id: "repo",
+      name: "repository",
+      url: "https://example.test/repository",
+      defaultBranch: "main",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const concurrencyId = "github-comment:issue_comment:42:99";
+    state.sessions.set("stale", row({ id: "stale", concurrencyId }));
+    let durableLookup = 0;
+    setDurableReadStorage(state, {
+      getActiveSessionByConcurrencyId: async () => {
+        durableLookup += 1;
+        return null;
+      },
+      createSession: async (session: SessionRecord) => ({ created: true, session }),
+    });
+
+    await expect(
+      createGitHubIngressSessionDurable(state, {
+        repositoryId: "repo",
+        prompt: "rerun terminal delivery",
+        target: { commandId: "cmd" },
+        timeout: 30,
+        concurrencyId,
+      }),
+    ).resolves.toMatchObject({ ok: true, created: true, session: { id: "new" } });
+    expect(durableLookup).toBe(1);
+  });
+
+  it("covers malformed and fenced GitHub ingress admission reads", async () => {
+    const malformed = commandState();
+    setDurableReadStorage(malformed, { getActiveSessionByConcurrencyId: async () => null });
+    await expect(createGitHubIngressSessionDurable(malformed, null)).resolves.toMatchObject({
+      ok: false,
+    });
+
+    const missing = commandState();
+    setDurableReadStorage(missing, {
+      getGitHubIngressConfig: async () => null,
+      getActiveSessionByConcurrencyId: async () => null,
+    });
+    await expect(
+      createGitHubIngressSessionDurable(
+        missing,
+        { ...githubBody(), target: { commandId: "missing" } },
+        { integrationFence: githubFence },
+      ),
+    ).resolves.toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+
+    const changed = commandState();
+    changed.repositories.set("repo", {
+      id: "repo",
+      name: "repository",
+      url: "https://example.test/repository",
+      defaultBranch: "main",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    let reads = 0;
+    const active = row({ id: "active", concurrencyId: githubBody().concurrencyId });
+    setDurableReadStorage(changed, {
+      getGitHubIngressConfig: async () => {
+        reads += 1;
+        return reads === 1 ? githubConfig() : githubConfig({ version: 2 });
+      },
+      getActiveSessionByConcurrencyId: async () => active,
+      createSession: async (session: SessionRecord) => ({ created: true, session }),
+    });
+    await expect(
+      createGitHubIngressSessionDurable(changed, githubBody(), {
+        integrationFence: githubFence,
+      }),
+    ).resolves.toMatchObject({ ok: true, created: true });
+    expect(reads).toBe(2);
+
+    const disappeared = commandState();
+    disappeared.repositories.set("repo", {
+      id: "repo",
+      name: "repository",
+      url: "https://example.test/repository",
+      defaultBranch: "main",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    let disappearanceReads = 0;
+    setDurableReadStorage(disappeared, {
+      getGitHubIngressConfig: async () => {
+        disappearanceReads += 1;
+        return disappearanceReads === 1 ? githubConfig() : null;
+      },
+      getActiveSessionByConcurrencyId: async () => active,
+      createSession: async (session: SessionRecord) => ({ created: true, session }),
+    });
+    await expect(
+      createGitHubIngressSessionDurable(disappeared, githubBody(), {
+        integrationFence: githubFence,
+      }),
+    ).resolves.toMatchObject({ ok: true, created: true });
+    expect(disappearanceReads).toBe(2);
+  });
+
+  it("deduplicates an active GitHub ingress session with a stable fence", async () => {
+    const state = commandState();
+    const active = row({ id: "active", concurrencyId: githubBody().concurrencyId });
+    const config = githubConfig();
+    let reads = 0;
+    setDurableReadStorage(state, {
+      getGitHubIngressConfig: async () => {
+        reads += 1;
+        return config;
+      },
+      getActiveSessionByConcurrencyId: async () => active,
+    });
+
+    await expect(
+      createGitHubIngressSessionDurable(state, githubBody(), {
+        integrationFence: githubFence,
+      }),
+    ).resolves.toMatchObject({ ok: true, created: false, session: { id: "active" } });
+    expect(reads).toBe(2);
+    expect(state.sessions.get("active")).toMatchObject({
+      concurrencyId: githubBody().concurrencyId,
+    });
+  });
+
   it("persists an ordinary queued supersession without a concurrency lock", () => {
     const state = commandState();
     state.sessions.set("s", row());
@@ -117,6 +285,25 @@ describe("session state-machine residual coverage", () => {
 
   it("maps a durable clone id collision to a public conflict", async () => {
     const state = commandState();
+    state.providers.set("provider", {
+      id: "provider",
+      name: "provider",
+      defaultCommandId: "cmd",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    state.providerAccounts.set("account", {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+      usageLimitCooldownSeconds: 0,
+      maxConcurrentSessions: 1,
+      usageLimitedUntil: null,
+      lastUsageLimitedAt: null,
+      lastAssignedAt: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
     const source = row({ status: "completed", completedAt: NOW });
     const conflict = new Error("collision");
     conflict.name = "SessionIdCollisionError";

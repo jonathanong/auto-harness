@@ -98,6 +98,10 @@ export class DynamoPlaneStorageBase {
     return sessions.getSession(this.ctx, id, consistentRead);
   }
 
+  getActiveSessionByConcurrencyId(concurrencyId: string): Promise<SessionRecord | null> {
+    return sessions.getActiveSessionByConcurrencyId(this.ctx, concurrencyId);
+  }
+
   listAllSessions(consistentRead = false): Promise<SessionRecord[]> {
     return sessions.listAllSessions(this.ctx, consistentRead);
   }

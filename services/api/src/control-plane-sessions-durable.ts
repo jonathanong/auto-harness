@@ -23,6 +23,7 @@ import {
 import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
 import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 import type { IntegrationSessionFence } from "./db/plane-storage-types.ts";
+import type { SessionRecord } from "./db/types.ts";
 
 function sessionDrainFailure(
   error: unknown,
@@ -64,6 +65,12 @@ export async function createSessionDurable(
       ...(options.allowGitHubCommentConcurrencyId ? { allowGitHubCommentConcurrencyId: true } : {}),
     });
   }
+  if (options.allowGitHubCommentConcurrencyId) {
+    const active = await activeGitHubIngressSession(state, body, options.integrationFence);
+    if (active) {
+      return { ok: true, session: toPublic(state, active), created: false };
+    }
+  }
   await refreshTargetCatalogDurable(state);
   if (
     typeof body === "object" &&
@@ -83,13 +90,6 @@ export async function createSessionDurable(
     ...(options.allowGitHubCommentConcurrencyId ? { allowGitHubCommentConcurrencyId: true } : {}),
   });
   if (!prepared.ok) return prepared;
-  if (options.integrationFence && !matchesIntegrationFence(state, options.integrationFence)) {
-    return {
-      ok: false,
-      error: "integration changed concurrently",
-      code: "CONFLICT",
-    };
-  }
   let result;
   try {
     const session = buildSessionRecord(state, prepared, options.principalId);
@@ -135,7 +135,7 @@ export function createCustomWebhookSessionDurable(
   });
 }
 
-/** Trusted GitHub ingress alone may mint comment-delivery concurrency identities. */
+/** Trusted GitHub ingress alone may mint the comment-delivery concurrency namespace. */
 export function createGitHubIngressSessionDurable(
   state: ControlPlaneState,
   body: unknown,
@@ -151,6 +151,17 @@ function matchesIntegrationFence(
   state: ControlPlaneState,
   fence: IntegrationSessionFence,
 ): boolean {
+  if (fence.type === "github-ingress") {
+    const current = state.githubIngressConfig;
+    return (
+      !!current &&
+      current.id === fence.id &&
+      current.type === fence.type &&
+      current.generation === fence.generation &&
+      current.version === fence.version &&
+      current.enabled === fence.enabled
+    );
+  }
   const current = state.customWebhookIntegrations.get(fence.id);
   return (
     !!current &&
@@ -159,6 +170,38 @@ function matchesIntegrationFence(
     current.version === fence.version &&
     current.enabled === fence.enabled
   );
+}
+
+async function activeGitHubIngressSession(
+  state: ControlPlaneState,
+  body: unknown,
+  fence: IntegrationSessionFence | undefined,
+): Promise<SessionRecord | null> {
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    typeof (body as { concurrencyId?: unknown }).concurrencyId !== "string" ||
+    !(body as { concurrencyId: string }).concurrencyId.startsWith("github-comment:")
+  ) {
+    return null;
+  }
+  if (fence?.type === "github-ingress") {
+    const current = await state.storage!.getGitHubIngressConfig();
+    state.githubIngressConfig = current ?? undefined;
+    if (!current || !matchesIntegrationFence(state, fence)) return null;
+  }
+  const concurrencyId = (body as { concurrencyId: string }).concurrencyId;
+  // The process-local session cache is only an observation. Another Lambda can
+  // settle the session and release its concurrency lock, so durable ingress
+  // deduplication must always consult the storage-owned active lock.
+  const active = await state.storage!.getActiveSessionByConcurrencyId(concurrencyId);
+  if (active && fence?.type === "github-ingress") {
+    const current = await state.storage!.getGitHubIngressConfig();
+    state.githubIngressConfig = current ?? undefined;
+    if (!current || !matchesIntegrationFence(state, fence)) return null;
+  }
+  if (active) state.sessions.set(active.id, { ...active });
+  return active;
 }
 
 /** Durable resume uses the same concurrency lock as a fresh create. */

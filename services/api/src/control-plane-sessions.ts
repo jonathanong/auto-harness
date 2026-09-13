@@ -70,6 +70,12 @@ export function createSession(
   }
 
   const v = validated.value;
+  if (options.allowGitHubCommentConcurrencyId && v.concurrencyId) {
+    const active = activeSessionForConcurrency(state, v.concurrencyId);
+    if (active) {
+      return { ok: true, session: toPublic(state, active), created: false };
+    }
+  }
   if (v.repositoryId) {
     const admissionFailure = repositoryAdmissionFailure(state, v.repositoryId);
     if (admissionFailure) return admissionFailure;
@@ -92,12 +98,8 @@ export function createSession(
     return { ok: false, error: workspacePayloadError, code: "VALIDATION_ERROR" };
   }
   if (v.concurrencyId) {
-    const active = [...state.sessions.values()].filter(
-      (s) => s.concurrencyId === v.concurrencyId && isActiveSessionStatus(s.status),
-    );
-    if (active.length > 0) {
-      return { ok: true, session: toPublic(state, active[0]!), created: false };
-    }
+    const active = activeSessionForConcurrency(state, v.concurrencyId);
+    if (active) return { ok: true, session: toPublic(state, active), created: false };
   }
 
   const id = state.idFactory();
@@ -147,6 +149,25 @@ export function createSession(
   };
   persistSession(state, session);
   return { ok: true, session: toPublic(state, session), created: true };
+}
+
+function activeSessionForConcurrency(
+  state: ControlPlaneState,
+  concurrencyId: string,
+): SessionRecord | undefined {
+  return [...state.sessions.values()].find(
+    (session) => session.concurrencyId === concurrencyId && isActiveSessionStatus(session.status),
+  );
+}
+
+/** Trusted GitHub ingress alone may mint the comment-delivery concurrency namespace. */
+export function createGitHubIngressSession(
+  state: ControlPlaneState,
+  body: unknown,
+):
+  | { ok: true; session: PublicSession; created: boolean }
+  | { ok: false; error: string; code?: string } {
+  return createSession(state, body, { allowGitHubCommentConcurrencyId: true });
 }
 
 export function getSession(state: ControlPlaneState, id: string): PublicSession | null {

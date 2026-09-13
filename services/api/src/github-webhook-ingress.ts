@@ -50,6 +50,7 @@ export type GitHubWebhookIngressResult =
         | "unauthorized_author"
         | "missing_mention"
         | "invalid_payload";
+      repositoryId?: string;
     };
 
 type SupportedEvent = "issue_comment" | "pull_request_review_comment";
@@ -89,7 +90,7 @@ export function parseGitHubWebhookIngress(input: {
     !validAllowedLogins(binding.allowedLogins) ||
     timeoutError !== null
   ) {
-    return ignored("invalid_payload");
+    return ignored("invalid_payload", binding.repositoryId);
   }
 
   const comment = record(payload.comment);
@@ -103,17 +104,18 @@ export function parseGitHubWebhookIngress(input: {
     !nonEmptyString(githubAuthorLogin) ||
     !nonEmptyString(body)
   ) {
-    return ignored("invalid_payload");
+    return ignored("invalid_payload", binding.repositoryId);
   }
   if (!isAuthorized(authorAssociation, githubAuthorLogin, binding.allowedLogins)) {
-    return ignored("unauthorized_author");
+    return ignored("unauthorized_author", binding.repositoryId);
   }
   const prompt = promptAfterMention(body);
-  if (prompt === undefined) return ignored("missing_mention");
-  if (promptByteLengthError(prompt) !== null) return ignored("invalid_payload");
+  if (prompt === undefined) return ignored("missing_mention", binding.repositoryId);
+  if (promptByteLengthError(prompt) !== null)
+    return ignored("invalid_payload", binding.repositoryId);
 
   const thread = threadFor(input.event, payload, binding.defaultRef);
-  if (!thread) return ignored("invalid_payload");
+  if (!thread) return ignored("invalid_payload", binding.repositoryId);
 
   return {
     kind: "accepted",
@@ -138,8 +140,11 @@ export function parseGitHubWebhookIngress(input: {
   };
 }
 
-function ignored(reason: Extract<GitHubWebhookIngressResult, { kind: "ignored" }>["reason"]) {
-  return { kind: "ignored", reason } as const;
+function ignored(
+  reason: Extract<GitHubWebhookIngressResult, { kind: "ignored" }>["reason"],
+  repositoryId?: string,
+) {
+  return { kind: "ignored", reason, ...(repositoryId ? { repositoryId } : {}) } as const;
 }
 
 function isSupportedEvent(value: string): value is SupportedEvent {

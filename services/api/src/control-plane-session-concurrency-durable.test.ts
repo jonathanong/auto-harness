@@ -49,6 +49,23 @@ describe("durable session concurrency", () => {
       }),
     ).resolves.toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
 
+    const githubComment = {
+      repositoryId: "repo-1",
+      prompt: "handle GitHub comment",
+      target: { commandId: "cmd-concurrency" },
+      timeout: 30,
+      concurrencyId: "github-comment:issue_comment:42:99",
+    };
+    await expect(plane.createSessionDurable(githubComment)).resolves.toMatchObject({
+      ok: false,
+      error: "concurrencyId uses a reserved internal prefix",
+    });
+    await expect(plane.createGitHubIngressSessionDurable(githubComment)).resolves.toMatchObject({
+      ok: true,
+      created: true,
+      session: { concurrencyId: "github-comment:issue_comment:42:99" },
+    });
+
     const body = {
       repositoryId: "repo-1",
       prompt: "shepherd PR",

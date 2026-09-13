@@ -151,6 +151,9 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
       new DeleteCommand({ TableName: ctx.tables.integrations, Key: { id: "slack" } }),
     );
   }
+  await ctx.doc.send(
+    new DeleteCommand({ TableName: ctx.tables.integrations, Key: { id: "github-ingress" } }),
+  );
   for (const integration of await listCustomWebhookIntegrations(ctx)) {
     await ctx.doc.send(
       new DeleteCommand({

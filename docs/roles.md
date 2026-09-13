@@ -73,7 +73,7 @@ UI can hide buttons. REST still checks the same ids on every request.
 | `providers:leases`     | Inspect held Provider Account leases and force-release a lease only after its holder session is terminal and its host assignment is detached. Repository scope applies to holders. This is an operational recovery action, not Provider Account catalog configuration.                                |
 | `catalog:write`        | Create/update/delete Commands, Providers, and Repositories. Command `argv` is **arbitrary execution on the fleet** ([plan.md](plan.md) D4). Repository setup/hook fields are persisted but not assigned. Admin only.                                                                                  |
 | `accounts:write`       | User and service-account CRUD, including manual service-account credential rotation: create a new key, update consumers, then delete the old key ([auth.md](auth.md#service-accounts-api-keys)). `GET` of those lists too.                                                                            |
-| `integrations:write`   | Slack and custom webhook integration CRUD (`/integrations/slack`, `/integrations/custom/:id`), including `GET`.                                                                                                                                                                                       |
+| `integrations:write`   | Slack, custom-webhook, and GitHub ingress configuration CRUD, including `GET`.                                                                                                                                                                                                                        |
 | `audit:read`           | `GET /audit-logs`.                                                                                                                                                                                                                                                                                    |
 | `scheduler:run`        | `POST /scheduler/*` (assign, ack-deadlines, reclaim-stale). Internal.                                                                                                                                                                                                                                 |
 | `agent:protocol`       | `POST /host/messages` and the host WebSocket. Requires `kind=service-account` **and** `boundHostId`.                                                                                                                                                                                                  |
@@ -128,26 +128,27 @@ bound service-account, which `admin` is forbidden to be.
 
 `authorize()` maps method + path to a capability before the handler runs.
 
-| Path prefix                                                        | GET/HEAD/OPTIONS                       | Writes               |
-| ------------------------------------------------------------------ | -------------------------------------- | -------------------- |
-| `/api/v1/sessions/:id/children`                                    | authenticated                          | `sessions:spawn`     |
-| `/api/v1/sessions` (except archive and children)                   | authenticated                          | `sessions:write`     |
-| `/api/v1/sessions/:id/archive`                                     | authenticated                          | `sessions:archive`   |
-| `/api/v1/schedules`                                                | authenticated                          | `schedules:write`    |
-| `/api/v1/repositories/:id/session-drains`                          | authenticated                          | `sessions:write`     |
-| `/api/v1/hosts/drain`                                              | authenticated                          | `fleet:drain`        |
-| `/api/v1/hosts/:id/inventory`, `/api/v1/host-inventories`          | authenticated                          | `fleet:inventory`    |
-| `/api/v1/hosts/:id/exec-config`                                    | authenticated                          | `fleet:exec-config`  |
-| `/api/v1/provider-accounts/:id/leases`                             | `providers:leases`                     | `providers:leases`   |
-| `/api/v1/provider-accounts/:id/leases/:slot/release`               | —                                      | `providers:leases`   |
-| `/api/v1/provider-accounts`                                        | authenticated                          | `providers:accounts` |
-| `/api/v1/commands`, `/providers`, `/repositories`                  | authenticated                          | `catalog:write`      |
-| `/api/v1/auth/users`, `/auth/service-accounts`                     | `accounts:write`                       | `accounts:write`     |
-| `/api/v1/integrations/slack`, `/api/v1/integrations/custom/:id`    | `integrations:write`                   | `integrations:write` |
-| `/api/v1/audit-logs`                                               | `audit:read`                           | _(no write route)_   |
-| `/api/v1/scheduler/*`                                              | —                                      | `scheduler:run`      |
-| `/api/v1/host/messages`                                            | —                                      | `agent:protocol`     |
-| `/api/v1/auth/me`, `/auth/password`, `/auth/viewer-ticket`, logout | self-service; skipped by `authorize()` | same                 |
+| Path prefix                                                              | GET/HEAD/OPTIONS                       | Writes               |
+| ------------------------------------------------------------------------ | -------------------------------------- | -------------------- |
+| `/api/v1/sessions/:id/children`                                          | authenticated                          | `sessions:spawn`     |
+| `/api/v1/sessions` (except archive and children)                         | authenticated                          | `sessions:write`     |
+| `/api/v1/sessions/:id/archive`                                           | authenticated                          | `sessions:archive`   |
+| `/api/v1/schedules`                                                      | authenticated                          | `schedules:write`    |
+| `/api/v1/repositories/:id/session-drains`                                | authenticated                          | `sessions:write`     |
+| `/api/v1/hosts/drain`                                                    | authenticated                          | `fleet:drain`        |
+| `/api/v1/hosts/:id/inventory`, `/api/v1/host-inventories`                | authenticated                          | `fleet:inventory`    |
+| `/api/v1/hosts/:id/exec-config`                                          | authenticated                          | `fleet:exec-config`  |
+| `/api/v1/provider-accounts/:id/leases`                                   | `providers:leases`                     | `providers:leases`   |
+| `/api/v1/provider-accounts/:id/leases/:slot/release`                     | —                                      | `providers:leases`   |
+| `/api/v1/provider-accounts`                                              | authenticated                          | `providers:accounts` |
+| `/api/v1/commands`, `/providers`, `/repositories`                        | authenticated                          | `catalog:write`      |
+| `/api/v1/auth/users`, `/auth/service-accounts`                           | `accounts:write`                       | `accounts:write`     |
+| `/api/v1/integrations/slack`                                             | `integrations:write`                   | `integrations:write` |
+| `/api/v1/integrations/custom/:id`, `/api/v1/integrations/github-ingress` | `integrations:write`                   | `integrations:write` |
+| `/api/v1/audit-logs`                                                     | `audit:read`                           | _(no write route)_   |
+| `/api/v1/scheduler/*`                                                    | —                                      | `scheduler:run`      |
+| `/api/v1/host/messages`                                                  | —                                      | `agent:protocol`     |
+| `/api/v1/auth/me`, `/auth/password`, `/auth/viewer-ticket`, logout       | self-service; skipped by `authorize()` | same                 |
 
 Self-service auth routes (`/auth/me`, password change, viewer ticket, logout)
 are reachable by any authenticated principal. Login is unauthenticated.

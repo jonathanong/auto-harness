@@ -35,10 +35,12 @@ function expectIgnored(
   payload: unknown,
   reason: string,
   repositories: readonly GitHubWebhookRepositoryBinding[] = [binding],
+  repositoryId?: string,
 ) {
   expect(parseGitHubWebhookIngress({ event, payload, repositories })).toEqual({
     kind: "ignored",
     reason,
+    ...(repositoryId ? { repositoryId } : {}),
   });
 }
 
@@ -68,6 +70,7 @@ describe("parseGitHubWebhookIngress edge cases", () => {
       event: string;
       payload: unknown;
       repositories?: readonly GitHubWebhookRepositoryBinding[];
+      repositoryId?: string;
     }> = [
       { event: "issue_comment", payload: null },
       { event: "issue_comment", payload: issueComment({ repository: { id: "42" } }) },
@@ -76,6 +79,7 @@ describe("parseGitHubWebhookIngress edge cases", () => {
         event: "issue_comment",
         payload: issueComment(),
         repositories: [repository],
+        repositoryId: "auto-harness",
       })),
       {
         event: "pull_request_review_comment",
@@ -90,11 +94,22 @@ describe("parseGitHubWebhookIngress edge cases", () => {
             user: { login: "owner" },
           },
         },
+        repositoryId: "auto-harness",
       },
-      { event: "issue_comment", payload: issueComment({ issue: { number: 0 } }) },
+      {
+        event: "issue_comment",
+        payload: issueComment({ issue: { number: 0 } }),
+        repositoryId: "auto-harness",
+      },
     ];
     for (const testCase of cases) {
-      expectIgnored(testCase.event, testCase.payload, "invalid_payload", testCase.repositories);
+      expectIgnored(
+        testCase.event,
+        testCase.payload,
+        "invalid_payload",
+        testCase.repositories,
+        testCase.repositoryId,
+      );
     }
   });
 
@@ -110,6 +125,8 @@ describe("parseGitHubWebhookIngress edge cases", () => {
         },
       }),
       "unauthorized_author",
+      [binding],
+      "auto-harness",
     );
   });
 
@@ -146,6 +163,8 @@ describe("parseGitHubWebhookIngress edge cases", () => {
         "issue_comment",
         issueComment({ comment: { ...issueComment().comment, body } }),
         "missing_mention",
+        [binding],
+        "auto-harness",
       );
     }
   });

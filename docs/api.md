@@ -398,6 +398,31 @@ stable `x-auto-harness-event` and `x-auto-harness-delivery` headers. HTTPS is th
 plain HTTP needs an explicit non-production development/test escape. Redirects are rejected, and
 408/429/5xx responses are retried by the bounded outbox.
 
+### GitHub App comment ingress
+
+`POST /api/v1/webhooks/github` is the public webhook receiver for the dedicated ingress GitHub
+App. It requires GitHub's `x-hub-signature-256` HMAC over the exact request bytes, a bounded
+`x-github-delivery`, and either the `issue_comment` or `pull_request_review_comment` event. Only
+created comments from repository owners, members, collaborators, or explicitly allowlisted logins
+are eligible, and `@auto-harness` must be the first token. Verified but ineligible events receive a
+small `202` ignored response; eligible events receive a small `202` session acknowledgement.
+
+Admin `GET`/`POST`/`PUT`/`DELETE` configuration is at
+`/api/v1/integrations/github-ingress`. The singleton config contains an encrypted webhook secret
+and one or more numeric GitHub repository ID bindings to admitted Auto Harness repositories and
+fixed routing. `PUT` may omit `secret` to retain it and requires the last observed positive integer
+`version` plus opaque `generation`. `DELETE` requires those fences in `If-Match` and
+`If-Match-Generation`; stale mutations, including across delete/recreate, return `409`. A binding's
+default ref is used for issue comments; pull-request comments use `refs/pull/<number>/head`.
+
+The numeric repository and comment ID form a reserved session concurrency identity. Concurrent or
+active-session redelivery returns the existing session, while terminal sessions release the
+identity so a later redelivery can create a new run. This endpoint does not provide exactly-once
+execution or maintain a separate durable receipt.
+
+The ingress App is separate from the host credential App. The control plane stores only the
+ingress webhook secret. It never receives the credential App private key or installation tokens.
+
 ### Integrations — Slack
 
 Slack configuration is the singleton `/integrations/slack`. Every method

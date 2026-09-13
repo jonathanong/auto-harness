@@ -6,6 +6,7 @@ import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import {
   createSession,
+  getActiveSessionByConcurrencyId,
   getConcurrencyLock,
   getSession,
   isCreateSessionConflict,
@@ -115,6 +116,7 @@ describe("DynamoDB Local session creation", () => {
   it("returns the authoritative active concurrency owner and reclaims a terminal owner", async () => {
     const active = { ...base, id: "active", concurrencyId: "same", status: "queued" as const };
     await expect(createSession(ctx, active)).resolves.toEqual({ created: true, session: active });
+    await expect(getActiveSessionByConcurrencyId(ctx, "same")).resolves.toEqual(active);
     await expect(
       createSession(ctx, { ...base, id: "duplicate", concurrencyId: "same", status: "queued" }),
     ).resolves.toEqual({ created: false, session: active });
@@ -123,6 +125,7 @@ describe("DynamoDB Local session creation", () => {
     expect(await getConcurrencyLock(ctx, "same")).toEqual({ sessionId: "active" });
     await releaseConcurrencyLock(ctx, "same", "active");
     expect(await getConcurrencyLock(ctx, "same")).toBeNull();
+    await expect(getActiveSessionByConcurrencyId(ctx, "same")).resolves.toBeNull();
     await expect(
       releaseConcurrencyLock(
         { ...ctx, tables: { ...tables, concurrencyLocks: "missing-locks" } },

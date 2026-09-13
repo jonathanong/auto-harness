@@ -183,14 +183,20 @@ an unaudited success.
 
 ## Integration secrets
 
-The Slack bot token, optional signing secret, and generic custom-webhook HMAC
-secrets are the narrow exception to the control plane's usual no-secret rule.
+The Slack bot token, optional signing secret, generic custom-webhook HMAC secrets, and dedicated
+GitHub ingress App webhook secret are the narrow exception to the control plane's usual no-secret
+rule.
 They are encrypted with the KMS key named
 by `KMS_KEY_ID` before they are stored in the Integrations table, and ciphertext
 is bound to a stable integration-specific encryption context. Plaintext is never
 retained in REST responses, logs, audit metadata, or durable records. If KMS is
 unavailable, integration configuration writes fail closed. Repository, SSH, and AI
 provider credentials remain agent-held and are never accepted by this API.
+
+The GitHub ingress App and host credential App are separate trust boundaries. The ingress App needs
+no private key and the control plane stores only its encrypted webhook secret. Credential App
+private keys remain host-local; installation tokens are minted per session and are never persisted
+or sent to the control plane.
 
 ## VPS hardening recommendations
 

@@ -23,6 +23,18 @@ describe("clearAll session-drain cleanup", () => {
             };
           }
           if (command.input.TableName === "integrations" && "ConsistentRead" in command.input) {
+            if (
+              "Key" in command.input &&
+              (command.input.Key as { id?: unknown })?.id === "github-ingress"
+            ) {
+              return {
+                Item: {
+                  id: "github-ingress",
+                  type: "github-ingress",
+                  encryptedSecret: "ciphertext",
+                },
+              };
+            }
             return {
               Items: [
                 {
@@ -76,6 +88,12 @@ describe("clearAll session-drain cleanup", () => {
       expect.objectContaining({
         TableName: "integrations",
         Key: { id: "custom-webhook:deploy" },
+      }),
+    );
+    expect(commands.map((command) => command.input)).toContainEqual(
+      expect.objectContaining({
+        TableName: "integrations",
+        Key: { id: "github-ingress" },
       }),
     );
   });

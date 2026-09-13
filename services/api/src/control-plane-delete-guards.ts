@@ -7,6 +7,7 @@ import type { SessionRecord } from "./db/types.ts";
 import type {
   CommandRecord,
   CustomWebhookIntegrationRecord,
+  GitHubIngressConfigRecord,
   ProviderAccountRecord,
   ProviderRecord,
 } from "./db/plane-storage.ts";
@@ -75,6 +76,7 @@ export type DeleteReferences = {
   accounts: ReadonlyArray<ProviderAccountRecord>;
   commands: ReadonlyArray<CommandRecord>;
   integrations: ReadonlyArray<CustomWebhookIntegrationRecord>;
+  githubIngress?: GitHubIngressConfigRecord | null | undefined;
 };
 
 export function referencesFromState(state: ControlPlaneState): DeleteReferences {
@@ -88,6 +90,7 @@ export function referencesFromState(state: ControlPlaneState): DeleteReferences 
     accounts: [...state.providerAccounts.values()],
     commands: [...state.commands.values()],
     integrations: [...state.customWebhookIntegrations.values()],
+    githubIngress: state.githubIngressConfig,
   };
 }
 
@@ -104,6 +107,7 @@ export async function refreshDeleteReferences(state: ControlPlaneState): Promise
     accounts,
     commands,
     integrations,
+    githubIngress,
   ] = await Promise.all([
     // Account deletion must see every just-committed owned schedule after the
     // principal marker is acquired; eventual reads could miss one and leave
@@ -122,6 +126,9 @@ export async function refreshDeleteReferences(state: ControlPlaneState): Promise
     typeof state.storage.listCustomWebhookIntegrations === "function"
       ? state.storage.listCustomWebhookIntegrations()
       : [...state.customWebhookIntegrations.values()],
+    typeof state.storage.getGitHubIngressConfig === "function"
+      ? state.storage.getGitHubIngressConfig()
+      : Promise.resolve(state.githubIngressConfig ?? null),
   ]);
   return {
     schedules,
@@ -133,6 +140,7 @@ export async function refreshDeleteReferences(state: ControlPlaneState): Promise
     accounts,
     commands,
     integrations,
+    githubIngress,
   };
 }
 
@@ -151,6 +159,13 @@ export function dependenciesForProvider(refs: DeleteReferences, id: string): Del
   for (const integration of refs.integrations)
     if (referencesProvider(integration.target, integration.fallbacks, id))
       dependencies.push({ kind: "integration", id: integration.id });
+  if (
+    refs.githubIngress?.bindings.some((binding) =>
+      referencesProvider(binding.target, binding.fallbacks, id),
+    )
+  ) {
+    dependencies.push({ kind: "integration", id: "github-ingress" });
+  }
   return unique(dependencies);
 }
 
@@ -190,6 +205,13 @@ export function dependenciesForCommand(refs: DeleteReferences, id: string): Dele
   for (const integration of refs.integrations)
     if (referencesCommand(integration.target, integration.fallbacks, id))
       dependencies.push({ kind: "integration", id: integration.id });
+  if (
+    refs.githubIngress?.bindings.some((binding) =>
+      referencesCommand(binding.target, binding.fallbacks, id),
+    )
+  ) {
+    dependencies.push({ kind: "integration", id: "github-ingress" });
+  }
   return unique(dependencies);
 }
 
@@ -220,6 +242,9 @@ export function dependenciesForRepository(refs: DeleteReferences, id: string): D
     ...refs.integrations
       .filter((integration) => integration.repositoryId === id)
       .map((integration) => ({ kind: "integration" as const, id: integration.id })),
+    ...(refs.githubIngress?.bindings.some((binding) => binding.repositoryId === id)
+      ? [{ kind: "integration" as const, id: "github-ingress" }]
+      : []),
   ]);
 }
 

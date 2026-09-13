@@ -6,6 +6,7 @@ export {
 export { putSession, createSession } from "./plane-storage-sessions-create.ts";
 export type { CreateSessionResult } from "./plane-storage-sessions-errors.ts";
 export {
+  getActiveSessionByConcurrencyId,
   getConcurrencyLock,
   releaseConcurrencyLock,
   MAX_SESSION_DESCENDANTS,
