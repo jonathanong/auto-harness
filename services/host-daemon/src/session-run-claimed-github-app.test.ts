@@ -334,6 +334,8 @@ describe("claimed session GitHub App credentials", () => {
       undefined,
       app(),
       () => now,
+      undefined,
+      "/tmp/isolated-github-config",
     );
 
     expect(result).toMatchObject({
@@ -346,6 +348,7 @@ describe("claimed session GitHub App credentials", () => {
     expect(hookEnv?.GH_TOKEN).toBe("ghs_exact-token");
     expect(hookEnv?.GIT_AUTHOR_NAME).toBe("auto-harness[bot]");
     expect(hookEnv?.PATH).toMatch(/^\/setup-bin:/);
+    expect(hookEnv?.GH_CONFIG_DIR).toBe("/tmp/isolated-github-config");
     expect(logs.map((chunk) => chunk.content).join("")).not.toContain("ghs_exact-token");
   });
 
