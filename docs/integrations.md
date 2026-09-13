@@ -345,7 +345,9 @@ intentionally unauthenticated because the HMAC secret is its credential.
 Outbound HTTP delivery signs the exact JSON event body with the same header and sends stable
 `x-auto-harness-event` and `x-auto-harness-delivery` headers. HTTPS is the default (plain HTTP
 needs an explicit non-production development/test escape), redirects are disabled, and resolver
-plus request work is bounded by the delivery lease with time reserved for settlement. HTTP 408, 429, and 5xx responses remain retryable; other 4xx
+plus request work is bounded by the delivery lease with time reserved for settlement. Success,
+retry, and permanent rejection sample settlement time after the attempt so an expired worker
+cannot complete or reschedule the delivery. HTTP 408, 429, and 5xx responses remain retryable; other 4xx
 responses are permanent failures and are dead-lettered immediately under the worker's exact lease.
 
 ### GitHub App comment ingress

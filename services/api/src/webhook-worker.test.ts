@@ -142,6 +142,71 @@ describe("webhook outbox processor", () => {
     );
   });
 
+  it("uses settlement time when completing a slow success", async () => {
+    const complete = vi.fn(async () => true);
+    const store = webhookProcessStore({ completeWebhookDelivery: complete });
+    const nowValues = [webhookTestNow, "2026-08-15T12:00:40.000Z"];
+    await expect(
+      processWebhookOutboxOnce(
+        store,
+        { deliver: async () => ({ ok: true }) },
+        { now: () => nowValues.shift()! },
+      ),
+    ).resolves.toBe("sent");
+    expect(complete).toHaveBeenCalledWith(
+      expect.objectContaining({ now: "2026-08-15T12:00:40.000Z" }),
+    );
+  });
+
+  it("uses settlement time when retrying a slow transient failure", async () => {
+    const reschedule = vi.fn(async () => "pending" as const);
+    const store = webhookProcessStore({ failWebhookDelivery: reschedule });
+    const nowValues = [webhookTestNow, "2026-08-15T12:00:40.000Z"];
+    await expect(
+      processWebhookOutboxOnce(
+        store,
+        { deliver: async () => ({ ok: false, failureCode: "transient-failure" }) },
+        { now: () => nowValues.shift()!, baseRetryMs: 2_000, maxRetryMs: 10_000 },
+      ),
+    ).resolves.toBe("retried");
+    expect(reschedule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        now: "2026-08-15T12:00:40.000Z",
+        nextAttemptAt: "2026-08-15T12:00:42.000Z",
+      }),
+    );
+  });
+
+  it("does not complete or retry when settlement time is after the lease", async () => {
+    const complete = vi.fn(async () => false);
+    const success = webhookProcessStore({ completeWebhookDelivery: complete });
+    const nowValues = [webhookTestNow, "2026-08-15T12:00:40.000Z"];
+    await expect(
+      processWebhookOutboxOnce(
+        success,
+        { deliver: async () => ({ ok: true }) },
+        { now: () => nowValues.shift()! },
+      ),
+    ).resolves.toBe("lease-lost");
+    expect(complete).toHaveBeenCalledWith(
+      expect.objectContaining({ now: "2026-08-15T12:00:40.000Z" }),
+    );
+
+    const reschedule = vi.fn(async () => null);
+    const retry = webhookProcessStore({ failWebhookDelivery: reschedule });
+    const retryNow = [webhookTestNow, "2026-08-15T12:00:40.000Z"];
+    await expect(
+      processWebhookOutboxOnce(
+        retry,
+        { deliver: async () => ({ ok: false, failureCode: "transient-failure" }) },
+        { now: () => retryNow.shift()! },
+      ),
+    ).resolves.toBe("lease-lost");
+    expect(reschedule).toHaveBeenCalledWith(
+      expect.objectContaining({ now: "2026-08-15T12:00:40.000Z" }),
+    );
+  });
+
   it("dead-letters exhausted due rows before claiming and validates bounds", async () => {
     const exhausted = webhookTestDelivery({ attemptCount: 2 });
     const store = webhookProcessStore({
@@ -202,7 +267,13 @@ describe("webhook outbox processor", () => {
         return webhookTestDelivery({ id: input.id, attemptCount: 1, state: "leased" });
       }),
     });
-    const nowValues = [webhookTestNow, "2026-08-15T12:00:01.000Z", "2026-08-15T12:00:10.000Z"];
+    const nowValues = [
+      webhookTestNow,
+      "2026-08-15T12:00:01.000Z",
+      "2026-08-15T12:00:01.500Z",
+      "2026-08-15T12:00:10.000Z",
+      "2026-08-15T12:00:10.500Z",
+    ];
     await processWebhookOutboxBatch(
       store,
       { deliver: async () => ({ ok: true }) },
