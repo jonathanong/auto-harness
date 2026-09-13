@@ -292,6 +292,20 @@ describe("GitHubIngressSettings", () => {
     expect(fake.requests).toHaveLength(1);
   });
 
+  it("rejects a default ref that is not a canonical heads branch", async () => {
+    const fake = createApiFake(json({}, 404));
+    const view = mountForm(<GitHubIngressSettings />);
+    await settle();
+    setValue(field(view.container, "github-ingress-secret"), "s".repeat(32));
+    setValue(labelled(view.container, "GitHub repository id"), "42");
+    setValue(labelled(view.container, "Auto Harness repository id"), "repo");
+    setValue(labelled(view.container, "Target id"), "provider");
+    setValue(labelled(view.container, "Default ref"), "HEAD~1");
+    press(field(view.container, "github-ingress-save"));
+    expect(document.body.textContent).toContain("canonical refs/heads");
+    expect(fake.requests).toHaveLength(1);
+  });
+
   it("creates a new configuration and reports save and delete failures", async () => {
     const fake = createApiFake(
       json({}, 404),

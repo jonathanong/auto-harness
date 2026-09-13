@@ -1,5 +1,5 @@
 import {
-  isValidSessionRef,
+  isValidGitHubIngressDefaultRef,
   promptByteLengthError,
   sessionTimeoutError,
   validateTargetRouting,
@@ -86,7 +86,7 @@ export function parseGitHubWebhookIngress(input: {
   if (
     !nonEmptyString(binding.repositoryId) ||
     !routing.ok ||
-    !isValidSessionRef(binding.defaultRef) ||
+    !isValidGitHubIngressDefaultRef(binding.defaultRef) ||
     !validAllowedLogins(binding.allowedLogins) ||
     timeoutError !== null
   ) {

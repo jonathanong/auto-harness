@@ -365,7 +365,8 @@ MEMBER, and COLLABORATOR associations are accepted; extra bot or service logins 
 allowlisted per binding.
 
 Inline review comments run against `refs/pull/<number>/head`. Issue comments on pull requests use
-the same pull ref; issue comments on ordinary issues use the configured default ref. Provision
+the same pull ref; issue comments on ordinary issues use the configured canonical
+`refs/heads/...` default branch. Provision
 every eligible host with `HARNESS_GITHUB_PULL_REF_CONFIG` **before** enabling pull-request comment
 triggers; see [GitHub pull-ref checkout policy](deploy-host-daemon.md#github-pull-ref-checkout-policy).
 Hosts without that policy fail closed with `Configured pull-ref checkout has no operator policy`.

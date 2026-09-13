@@ -14,6 +14,8 @@ import {
   showToast,
 } from "@auto-harness/ui";
 
+import { isValidGitHubIngressDefaultRef } from "@auto-harness/shared";
+
 import { apiFetch } from "../lib/client-api.ts";
 import {
   BindingFallbacks,
@@ -159,6 +161,13 @@ export function GitHubIngressSettings() {
           return;
         }
         validFallbacks.push(targets);
+      }
+      if (bindings.some((binding) => !isValidGitHubIngressDefaultRef(binding.defaultRef))) {
+        showToast("Each default ref must be a canonical refs/heads/... branch.", {
+          variant: "destructive",
+          pw: "github-ingress-error",
+        });
+        return;
       }
       const body = {
         ...(secret ? { secret } : {}),
