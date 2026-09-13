@@ -94,6 +94,8 @@ describe("isValidGitHubIngressDefaultRef", () => {
     expect(isValidGitHubIngressDefaultRef("refs/heads/main")).toBe(true);
     expect(isValidGitHubIngressDefaultRef("refs/heads/release/v1.2")).toBe(true);
     expect(isValidGitHubIngressDefaultRef("refs/heads/feature/scheduled-maintenance")).toBe(true);
+    expect(isValidGitHubIngressDefaultRef("refs/heads/deadbeef")).toBe(true);
+    expect(isValidGitHubIngressDefaultRef("refs/heads/refs/keep")).toBe(true);
   });
 
   it("rejects HEAD, ancestry, tags, and malformed branch refs", () => {
