@@ -7,6 +7,7 @@ import { join, parse } from "node:path";
 import { createChildEnv } from "./child-env.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { checkoutFetchFailure, runGit } from "./git-commands.ts";
+import { clearTrackedPathFlags } from "./git-worktree-reset.ts";
 import type { GitHubPullRefConfig } from "./github-pull-ref-config.ts";
 
 const GITHUB_PULL_REQUEST_REF = /^refs\/pull\/([1-9]\d*)\/head$/;
@@ -453,12 +454,22 @@ export async function materializeGitHubPullRequestRef(
   ) {
     return false;
   }
+  // Isolated read-tree skips claimed-worktree recovery porcelain. Hidden index
+  // flags still have to be cleared on the real index or Git can refuse to
+  // replace a skip-worktree / assume-unchanged tracked path.
+  const environment = isolatedMaterializationEnvironment(
+    trustedGitDirectory,
+    cwd,
+    objectDirectory,
+    indexPath,
+  );
+  await clearTrackedPathFlags(runner, cwd, signal, environment);
   const materialized = await runGit(
     runner,
     cwd,
     ["read-tree", "--reset", "-u", "--no-sparse-checkout", sha],
     signal,
-    isolatedMaterializationEnvironment(trustedGitDirectory, cwd, objectDirectory, indexPath),
+    environment,
   );
   return materialized.exitCode === 0;
 }

@@ -64,6 +64,13 @@ function resetsPriorState() {
   return [...lockProbe(), { match: ["ls-files", "-v", "-z"], exitCode: 0 }];
 }
 
+function isolatedReadTree(sha: string, exitCode = 0) {
+  return [
+    { match: ["ls-files", "-v", "-z"], exitCode: 0 },
+    { match: ["read-tree", "--reset", "-u", "--no-sparse-checkout", sha], exitCode },
+  ];
+}
+
 function hardReset(sha: string) {
   return { match: ["reset", "--hard", sha], exitCode: 0 };
 }
@@ -103,7 +110,7 @@ function pullRefCheckoutSteps(
       exitCode: 0,
       stdout: `${objectFormat}\n`,
     },
-    { match: ["read-tree", "--reset", "-u", "--no-sparse-checkout", head], exitCode: 0 },
+    ...isolatedReadTree(head),
     { match: ["update-ref", "--no-deref", "HEAD", head], exitCode: 0 },
     checksPullRefSubmodules(submoduleExitCode),
     { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${head}\n` },
@@ -449,7 +456,7 @@ describe("createGitClient checkout and revParse", () => {
         exitCode: 0,
         stdout: "sha1\n",
       },
-      { match: ["read-tree", "--reset", "-u", "--no-sparse-checkout", pullSha], exitCode: 0 },
+      ...isolatedReadTree(pullSha),
       { match: ["update-ref", "--no-deref", "HEAD", pullSha], exitCode: 0 },
       checksPullRefSubmodules(),
       { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
@@ -584,7 +591,7 @@ describe("createGitClient checkout and revParse", () => {
           exitCode: 0,
           stdout: "sha1\n",
         },
-        { match: ["read-tree", "--reset", "-u", "--no-sparse-checkout", pullSha], exitCode: 0 },
+        ...isolatedReadTree(pullSha),
         { match: ["update-ref", "--no-deref", "HEAD", pullSha], exitCode: 1 },
         deletesFetchedPullRef(),
       ]),
@@ -641,7 +648,7 @@ describe("createGitClient checkout and revParse", () => {
           exitCode: 0,
           stdout: "sha1\n",
         },
-        { match: ["read-tree", "--reset", "-u", "--no-sparse-checkout", pullSha], exitCode: 1 },
+        ...isolatedReadTree(pullSha, 1),
         deletesFetchedPullRef(),
       ]),
       pullRefPolicy(),

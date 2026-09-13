@@ -316,6 +316,35 @@ describe("createGitClient real git", () => {
     await expect(git(worktree, ["status", "--porcelain"])).resolves.toBe("");
   });
 
+  it("clears hidden tracked-file index flags before pull-ref materialization", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-pull-index-flags-"));
+    roots.push(root);
+    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
+    const { remote, sha } = await createPinnedPullHead(
+      root,
+      { "tracked.txt": "pull-tracked\n", "obstructed.txt": "pull-obstructed\n" },
+      repo,
+    );
+    const materializer = await createTrustedMaterializer(root);
+    const client = createGitClient(
+      new SpawnProcessRunner(),
+      new Map([[resolvePath(repo), pullRefPolicy(remote, materializer)]]),
+    );
+    await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: targetSha });
+    await git(worktree, ["update-index", "--skip-worktree", "tracked.txt"]);
+    await git(worktree, ["update-index", "--assume-unchanged", "obstructed.txt"]);
+    writeFileSync(join(worktree, "tracked.txt"), "hidden session modification\n");
+    writeFileSync(join(worktree, "obstructed.txt"), "assumed session modification\n");
+    writeFileSync(join(worktree, "untracked.txt"), "keep me\n");
+
+    await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: "refs/pull/42/head" });
+
+    await expect(client.revParse(worktree, "HEAD")).resolves.toBe(sha);
+    expect(readFileSync(join(worktree, "tracked.txt"), "utf8")).toBe("pull-tracked\n");
+    expect(readFileSync(join(worktree, "obstructed.txt"), "utf8")).toBe("pull-obstructed\n");
+    expect(readFileSync(join(worktree, "untracked.txt"), "utf8")).toBe("keep me\n");
+  });
+
   it("does not read filter settings added after a pull head is fetched", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-pull-filter-race-"));
     roots.push(root);

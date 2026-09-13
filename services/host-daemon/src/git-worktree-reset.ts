@@ -147,7 +147,7 @@ function flaggedTrackedPaths(output: string): {
   return { assumeUnchanged, skipWorktree };
 }
 
-async function clearTrackedPathFlags(
+export async function clearTrackedPathFlags(
   runner: ProcessRunner,
   cwd: string,
   signal?: AbortSignal,

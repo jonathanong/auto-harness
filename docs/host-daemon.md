@@ -593,8 +593,11 @@ signal; it is never a shared predictable ref or `FETCH_HEAD`.
 The worktree materialization itself runs from the root-owned bare Git directory selected by the
 policy's validated object format, never from a session-discoverable temporary repository. The daemon
 verifies that the selected directory reports that exact object format before materializing. It
-receives only the claimed worktree's validated index path, worktree path, and object directory, and
-disables sparse checkout before applying the exact fetched commit. A target tree can name a filter
+receives only the claimed worktree's validated index path, worktree path, and object directory. Before
+`read-tree`, it inspects that isolated index with `git ls-files -v` and clears `assume-unchanged`
+and `skip-worktree` on flagged tracked paths, without running the merge/rebase recovery porcelain
+intentionally excluded from pull-ref checkout. It then disables sparse checkout before applying the
+exact fetched commit. A target tree can name a filter
 in `.gitattributes`, but that Git directory has no session-configured filter driver or
 `info/attributes` to define it.
 Thus a prior or concurrent session cannot choose filter drivers, alter file bytes through
