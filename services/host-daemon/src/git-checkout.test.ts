@@ -1289,6 +1289,7 @@ describe("createGitClient checkout and revParse", () => {
       ]),
     ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
 
+    await expect(checkout).rejects.toBeInstanceOf(CheckoutFetchError);
     await expect(checkout).rejects.toThrow("Failed to update submodules");
     await expect(checkout).rejects.not.toThrow("SIGNEDSECRET");
   });
@@ -1305,6 +1306,7 @@ describe("createGitClient checkout and revParse", () => {
     ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
 
     await expect(checkout).rejects.toThrow("Failed to sync submodules");
+    await expect(checkout).rejects.not.toBeInstanceOf(CheckoutFetchError);
     await expect(checkout).rejects.not.toThrow("SYNCSECRET");
   });
 

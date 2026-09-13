@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- claim, checkout, and deferred-hook classifications share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
@@ -132,6 +133,39 @@ describe("SessionRunner claim and checkout failures", () => {
       },
     });
     const result = await sessionRunner.run(baseAssign({ ref: "missing" }));
+    expect(result.errorCode).toBe("checkout_fetch_failed");
+  });
+
+  it("maps a submodule object-fetch failure to checkout_fetch_failed", async () => {
+    const config = parseDaemonConfig({
+      hostId: "a1",
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
+        },
+      ],
+    });
+    const worktrees = new WorktreeManager(config, {
+      ensureRepo: async () => undefined,
+      ensureWorktree: async () => undefined,
+      checkoutRef: async () => {
+        throw checkoutFetchFailure("Failed to update submodules", "Could not resolve host");
+      },
+      prepareMainCheckout: async () => undefined,
+      revParse: async () => "x",
+    });
+    const sessionRunner = new SessionRunner({
+      worktrees,
+      processRunner: {
+        async run() {
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+    });
+    const result = await sessionRunner.run(baseAssign({ ref: "main" }));
     expect(result.errorCode).toBe("checkout_fetch_failed");
   });
 
