@@ -54,6 +54,28 @@ describe("GitHub ingress config", () => {
     await expect(getGitHubIngressConfig(plane.state)).resolves.toBeNull();
   });
 
+  it("measures GitHub ingress secrets in Unicode code points", async () => {
+    const plane = createPlane();
+    await expect(
+      plane.createGitHubIngressConfig({ secret: "😀".repeat(8), bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("secret") });
+    await expect(
+      plane.createGitHubIngressConfig({ secret: "é".repeat(15), bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("secret") });
+    await expect(
+      plane.createGitHubIngressConfig({ secret: "😀".repeat(16), bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      plane.updateGitHubIngressConfig({ secret: "é".repeat(512), bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      plane.updateGitHubIngressConfig({ secret: "😀".repeat(257), bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      plane.updateGitHubIngressConfig({ secret: "😀".repeat(513), bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("secret") });
+  });
+
   it("canonicalizes legacy short defaultRef values on admin GET", async () => {
     const plane = createPlane();
     plane.state.githubIngressConfig = {
@@ -496,6 +518,11 @@ describe("GitHub ingress config", () => {
     );
     expect(openapi).toMatch(/description: .*255 bytes\./);
     expect(openapi).not.toMatch(/defaultRef:.*maxLength:/);
+  });
+
+  it("documents GitHub ingress secret length as Unicode code points", () => {
+    const openapi = readFileSync(new URL("../../../docs/openapi.yaml", import.meta.url), "utf8");
+    expect(openapi).toContain("Length is Unicode code points (16–512)");
   });
 
   it("fences durable writes against referenced catalog deletion", async () => {
