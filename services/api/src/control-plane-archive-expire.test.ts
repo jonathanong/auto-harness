@@ -169,6 +169,26 @@ describe("archive expire persistence", () => {
     expect(expireArchive).not.toHaveBeenCalled();
   });
 
+  it("keeps a captured processing claim when durable metadata is missing", async () => {
+    const expireArchive = vi.fn(async () => true);
+    const processing: ArchiveMetadata = { ...pending, retryState: "processing", bodyBytes: 42 };
+    const state = createControlPlaneState({
+      now: () => "now",
+      storage: { expireArchive, getArchive: async () => undefined } as never,
+    });
+    await expect(persistExpiredArchive(state, processing.key, processing)).resolves.toBe("pending");
+    expect(expireArchive).not.toHaveBeenCalled();
+  });
+
+  it("keeps a captured in-memory processing claim that is not mirrored yet", async () => {
+    const processing: ArchiveMetadata = { ...pending, retryState: "processing", bodyBytes: 42 };
+    const memory = createControlPlaneState({ now: () => "now" });
+    await expect(persistExpiredArchive(memory, processing.key, processing)).resolves.toBe(
+      "pending",
+    );
+    expect(memory.archives.get(processing.key)).toBeUndefined();
+  });
+
   it("expires a processing claim that captured no logs", async () => {
     const expireArchive = vi.fn(async () => true);
     const empty: ArchiveMetadata = { ...pending, retryState: "processing" };
