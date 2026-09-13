@@ -61,4 +61,32 @@ describe("DaemonLoop drain resume terminal status", () => {
       cleanup();
     }
   });
+
+  it("leaves a live deferred terminal status controller intact when resuming", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createLoopbackTransport({
+        sendToServer: () => undefined,
+      });
+      const loop = new DaemonLoop({ config, transport, now: () => "now" });
+      await loop.start();
+      const live = new AbortController();
+      pendingTerminalStatusOf(loop).set("live-session\0attempt-1", {
+        message: { ...statusMessage, sessionId: "live-session" },
+        firstAttemptedAtMs: Date.now(),
+        sending: true,
+        controller: live,
+        settleDeferredTerminalHook: async () => undefined,
+      });
+
+      await loop.resumeFromDrain();
+      await flushMicrotasks();
+      const pending = pendingTerminalStatusOf(loop).get("live-session\0attempt-1");
+      expect(pending?.controller).toBe(live);
+      expect(pending?.controller.signal.aborted).toBe(false);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
 });
