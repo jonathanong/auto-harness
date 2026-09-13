@@ -153,6 +153,7 @@ describe("session live detail", () => {
       view.container.querySelector('[data-pw="session-agent-offline"]')?.getAttribute("role"),
     ).toBe("alert");
     expect(view.container.querySelector('[data-pw="session-force-cancel"]')).not.toBeNull();
+    expect(view.container.querySelector('[data-pw="session-archive"]')).toBeNull();
     expect(view.container.querySelector('[data-pw="child"]')).not.toBeNull();
 
     await act(async () => {
@@ -177,6 +178,7 @@ describe("session live detail", () => {
     );
     expect(view.container.querySelector('[data-pw="session-resume"]')).toBeNull();
     expect(view.container.querySelector('[data-pw="session-clone"]')).not.toBeNull();
+    expect(view.container.querySelector('[data-pw="session-archive"]')).not.toBeNull();
     view.unmount();
   });
 

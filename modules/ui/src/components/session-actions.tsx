@@ -3,16 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { apiErrorMessage } from "@auto-harness/shared";
+import {
+  apiErrorMessage,
+  isActiveSessionStatus,
+  isTerminalSessionStatus,
+} from "@auto-harness/shared";
 
 import { Button } from "./button.tsx";
 import { ConfirmButton } from "./confirm-button.tsx";
 import { ResumeSessionDialog, type ResumeOverrides } from "./resume-session-dialog.tsx";
 import { WithTooltip } from "./tooltip.tsx";
 import type { SessionSummary } from "./session-detail-types.ts";
-
-const ACTIVE_STATUSES = new Set(["queued", "running"]);
-const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled", "timed_out"]);
 
 export type SessionActionsProps = {
   sessionId: string;
@@ -108,7 +109,7 @@ export function SessionActions({
             variant="destructive"
             disabled={pending}
           />
-        ) : canCancel && ACTIVE_STATUSES.has(status) ? (
+        ) : canCancel && isActiveSessionStatus(status) ? (
           <WithTooltip tip="Cancel this session — running work finishes stopping, worktree is released">
             <Button
               type="button"
@@ -123,7 +124,7 @@ export function SessionActions({
             </Button>
           </WithTooltip>
         ) : null}
-        {TERMINAL_STATUSES.has(status) ? (
+        {isTerminalSessionStatus(status) ? (
           <>
             {canResume && sessionType !== "workspace" ? (
               <WithTooltip tip="Create a new session pinned to the same host, with optional overrides">
@@ -164,22 +165,22 @@ export function SessionActions({
                 </Button>
               </WithTooltip>
             ) : null}
+            {canArchive ? (
+              <WithTooltip tip="Move current logs to durable archive storage">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  aria-busy={pending && action === "archive"}
+                  data-pw="session-archive"
+                  onClick={() => void run("archive", "archive")}
+                >
+                  {pending && action === "archive" ? "Archiving…" : "Archive logs"}
+                </Button>
+              </WithTooltip>
+            ) : null}
           </>
-        ) : null}
-        {canArchive ? (
-          <WithTooltip tip="Move current logs to durable archive storage">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={pending}
-              aria-busy={pending && action === "archive"}
-              data-pw="session-archive"
-              onClick={() => void run("archive", "archive")}
-            >
-              {pending && action === "archive" ? "Archiving…" : "Archive logs"}
-            </Button>
-          </WithTooltip>
         ) : null}
       </div>
       {error ? (

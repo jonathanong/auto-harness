@@ -78,6 +78,7 @@ describe("host session live detail", () => {
     expect(
       view.container.querySelector('[data-pw="session-detail-queue-deadline"]'),
     ).not.toBeNull();
+    expect(view.container.querySelector('[data-pw="session-archive"]')).toBeNull();
     expect(view.container.querySelector('[data-pw="child"]')).not.toBeNull();
 
     await act(async () => {
@@ -86,6 +87,7 @@ describe("host session live detail", () => {
     });
     expect(view.container.querySelector('[data-pw="session-detail-queue-deadline"]')).toBeNull();
     expect(view.container.querySelector('[data-pw="session-resume"]')).not.toBeNull();
+    expect(view.container.querySelector('[data-pw="session-archive"]')).not.toBeNull();
     view.unmount();
     expect(vi.getTimerCount()).toBe(0);
   });

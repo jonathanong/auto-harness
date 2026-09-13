@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- cancel, archive, and permission coverage share a SessionActions fixture. */
 // @vitest-environment happy-dom
 
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime.js";
@@ -41,38 +42,46 @@ afterEach(() => document.body.replaceChildren());
 afterEach(() => vi.unstubAllGlobals());
 
 describe("SessionActions", () => {
-  it("renders status-specific controls and refreshes after cancel and archive", async () => {
+  it("cancels a running session and omits Archive logs", async () => {
     const router = { push: vi.fn(), refresh: vi.fn() };
-    const archiveSuccess = vi.fn();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(response(true))
-      .mockResolvedValueOnce(response(true));
+    const fetchMock = vi.fn().mockResolvedValue(response(true));
     vi.stubGlobal("fetch", fetchMock);
-    const view = mount(
-      <SessionActions sessionId="a/b" status="running" onArchiveSuccess={archiveSuccess} />,
-      router,
-    );
+    const view = mount(<SessionActions sessionId="a/b" status="running" />, router);
 
     expect(view.container.querySelector('[data-pw="session-cancel"]')).not.toBeNull();
     expect(view.container.querySelector('[data-pw="session-resume"]')).toBeNull();
+    expect(view.container.querySelector('[data-pw="session-archive"]')).toBeNull();
     await act(async () => {
       (view.container.querySelector('[data-pw="session-cancel"]') as HTMLButtonElement).click();
       await Promise.resolve();
     });
-    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/sessions/a%2Fb/cancel", {
-      method: "POST",
-    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/sessions/a%2Fb/cancel", { method: "POST" });
     expect(router.refresh).toHaveBeenCalledOnce();
+    view.unmount();
+  });
 
+  it("archives a completed session", async () => {
+    const router = { push: vi.fn(), refresh: vi.fn() };
+    const archiveSuccess = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(response(true));
+    vi.stubGlobal("fetch", fetchMock);
+    const view = mount(
+      <SessionActions sessionId="a/b" status="completed" onArchiveSuccess={archiveSuccess} />,
+      router,
+    );
+
+    expect(view.container.querySelector('[data-pw="session-cancel"]')).toBeNull();
+    const archive = view.container.querySelector(
+      '[data-pw="session-archive"]',
+    ) as HTMLButtonElement;
+    expect(archive.textContent).toBe("Archive logs");
+    expect(archive.getAttribute("aria-busy")).toBe("false");
     await act(async () => {
-      (view.container.querySelector('[data-pw="session-archive"]') as HTMLButtonElement).click();
+      archive.click();
       await Promise.resolve();
     });
-    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/sessions/a%2Fb/archive", {
-      method: "POST",
-    });
-    expect(router.refresh).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/sessions/a%2Fb/archive", { method: "POST" });
+    expect(router.refresh).toHaveBeenCalledOnce();
     expect(archiveSuccess).toHaveBeenCalledOnce();
     view.unmount();
   });
@@ -120,6 +129,7 @@ describe("SessionActions", () => {
 
     const clone = view.container.querySelector('[data-pw="session-clone"]') as HTMLButtonElement;
     expect(clone).not.toBeNull();
+    expect(view.container.querySelector('[data-pw="session-archive"]')).not.toBeNull();
     expect(clone.textContent).toBe("Re-run");
     expect(clone.getAttribute("aria-busy")).toBe("false");
     await act(async () => {
@@ -171,15 +181,21 @@ describe("SessionActions", () => {
     view.unmount();
   });
 
-  it("omits cancel and resume for unrelated statuses", () => {
+  it("omits cancel, resume, and archive for unrelated statuses", () => {
     const router = { push: vi.fn(), refresh: vi.fn() };
     const view = mount(<SessionActions sessionId="sess" status="unknown" />, router);
     expect(view.container.querySelector('[data-pw="session-cancel"]')).toBeNull();
     expect(view.container.querySelector('[data-pw="session-resume"]')).toBeNull();
-    const archive = view.container.querySelector('[data-pw="session-archive"]');
-    expect(archive?.textContent).toBe("Archive logs");
-    expect(archive?.getAttribute("aria-busy")).toBe("false");
+    expect(view.container.querySelector('[data-pw="session-archive"]')).toBeNull();
     view.unmount();
+    const queued = mount(<SessionActions sessionId="sess" status="queued" />, router);
+    expect(queued.container.querySelector('[data-pw="session-archive"]')).toBeNull();
+    queued.unmount();
+    for (const status of ["cancelled", "timed_out"]) {
+      const terminal = mount(<SessionActions sessionId="sess" status={status} />, router);
+      expect(terminal.container.querySelector('[data-pw="session-archive"]')).not.toBeNull();
+      terminal.unmount();
+    }
   });
 
   it("hides cancel, resume, clone, and archive when the caller lacks those capabilities", () => {
