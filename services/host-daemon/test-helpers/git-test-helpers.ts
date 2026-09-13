@@ -7,11 +7,12 @@ export function scripted(
     stdout?: string;
     stderr?: string;
   }>,
-): ProcessRunner {
+): ProcessRunner & { remaining(): number } {
   // Consume matching entries in order so the same argv can return different
   // results on successive calls (e.g. rev-parse fails then succeeds after fetch).
   const queue = [...responses];
   return {
+    remaining: () => queue.length,
     async run(opts) {
       const idx = queue.findIndex((r) =>
         r.match.every((m, i) => opts.argv[i + 1] === m || m === "*"),

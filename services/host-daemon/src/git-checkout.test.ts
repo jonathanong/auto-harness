@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createGitClient } from "./git.ts";
 import { CheckoutFetchError } from "./git-commands.ts";
 import { fetchGitHubPullRequestRef } from "./git-github-pull-ref.ts";
+import { GITHUB_PULL_REF_CONFIG_ENV, loadGitHubPullRefConfigs } from "./github-pull-ref-config.ts";
 import { scripted } from "../test-helpers/git-test-helpers.ts";
 
 const pullSha = "0123456789abcdef0123456789abcdef01234567";
@@ -81,6 +82,42 @@ function objectId(objectFormat: string, sha: string): string {
 
 function pullRefPolicy(remoteUrl = "https://github.com/example/repository.git") {
   return new Map([[resolve(checkoutRepo), { materializerGitDirs, remoteUrl, transport: {} }]]);
+}
+
+const policyConfigPath = "/etc/auto-harness/pull-refs.json";
+const rootOwnedFile = {
+  uid: 0,
+  mode: 0o100444,
+  isDirectory: () => false,
+  isFile: () => true,
+  isSymbolicLink: () => false,
+};
+const rootOwnedDirectory = {
+  uid: 0,
+  mode: 0o40555,
+  isDirectory: () => true,
+  isFile: () => false,
+  isSymbolicLink: () => false,
+};
+
+function loadOperatorPolicy(remoteUrl = "https://github.com/example/repository.git") {
+  return loadGitHubPullRefConfigs(
+    { [GITHUB_PULL_REF_CONFIG_ENV]: policyConfigPath },
+    () =>
+      JSON.stringify({
+        materializerGitDirs,
+        repositories: {
+          [resolve(checkoutRepo)]: { remoteUrl, transport: {} },
+        },
+      }),
+    (path) =>
+      path === policyConfigPath || path.endsWith("/config") ? rootOwnedFile : rootOwnedDirectory,
+    "linux",
+    (path) =>
+      path === materializerGitDirs.sha1 || path === materializerGitDirs.sha256
+        ? ["config", "info"]
+        : [],
+  );
 }
 
 function pullRefCheckoutSteps(
@@ -681,42 +718,99 @@ describe("createGitClient checkout and revParse", () => {
 
   it("fails closed when no immutable pull-ref policy is available", async () => {
     const ref = "refs/pull/127/head";
-    const checkout = createGitClient(
-      scripted([
-        ...resetsPriorState(),
-        { match: ["remote", "get-url", "--", "origin"], exitCode: 1 },
-      ]),
-    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
+    const runner = scripted([]);
+    const checkout = createGitClient(runner, loadGitHubPullRefConfigs({})).checkoutRef({
+      cwd: checkoutCwd,
+      repoPath: checkoutRepo,
+      ref,
+    });
 
     await expect(checkout).rejects.toThrow("no operator policy");
+    expect(runner.remaining()).toBe(0);
   });
 
   it("fails closed when no pull-ref policy is available before a Git config read", async () => {
     const ref = "refs/pull/128/head";
-    const checkout = createGitClient(
-      scripted([
-        ...resetsPriorState(),
-        { match: ["remote", "get-url", "--", "origin"], exitCode: 0 },
-      ]),
-    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
+    const runner = scripted([]);
+    const checkout = createGitClient(runner, loadGitHubPullRefConfigs({})).checkoutRef({
+      cwd: checkoutCwd,
+      repoPath: checkoutRepo,
+      ref,
+    });
 
     await expect(checkout).rejects.toThrow("no operator policy");
+    expect(runner.remaining()).toBe(0);
   });
 
   it("does not accept an origin added by an untrusted session without operator policy", async () => {
     const ref = "refs/pull/129/head";
-    const git = createGitClient(
-      scripted([
-        { match: ["rev-parse", "--is-inside-work-tree"], exitCode: 0, stdout: "true\n" },
-        { match: ["remote", "get-url", "--", "origin"], exitCode: 1 },
-        ...resetsPriorState(),
-      ]),
-    );
+    const runner = scripted([
+      { match: ["rev-parse", "--is-inside-work-tree"], exitCode: 0, stdout: "true\n" },
+    ]);
+    const git = createGitClient(runner, loadGitHubPullRefConfigs({}));
 
     await git.ensureRepo(checkoutRepo);
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
     ).rejects.toThrow("no operator policy");
+    expect(runner.remaining()).toBe(0);
+  });
+
+  it("loads a restart-stable origin from the operator policy file", async () => {
+    const remoteUrl = "https://github.com/example/repository.git";
+    const first = loadOperatorPolicy(remoteUrl);
+    const restarted = loadOperatorPolicy(remoteUrl);
+    expect(first.get(resolve(checkoutRepo))?.remoteUrl).toBe(remoteUrl);
+    expect(restarted.get(resolve(checkoutRepo))?.remoteUrl).toBe(remoteUrl);
+
+    const ref = "refs/pull/130/head";
+    const runner = scripted([...pullRefCheckoutSteps(ref, remoteUrl)]);
+    await expect(
+      createGitClient(runner, first).checkoutRef({
+        cwd: checkoutCwd,
+        repoPath: checkoutRepo,
+        ref,
+      }),
+    ).resolves.toBe(pullSha);
+    expect(runner.remaining()).toBe(0);
+  });
+
+  it("does not consume a failed or empty origin Git read when operator policy is missing", async () => {
+    const ref = "refs/pull/131/head";
+    const runner = scripted([
+      { match: ["remote", "get-url", "origin"], exitCode: 1, stderr: "missing origin\n" },
+      { match: ["remote", "get-url", "origin"], exitCode: 0, stdout: "\n" },
+    ]);
+    await expect(
+      createGitClient(runner, loadGitHubPullRefConfigs({})).checkoutRef({
+        cwd: checkoutCwd,
+        repoPath: checkoutRepo,
+        ref,
+      }),
+    ).rejects.toThrow("no operator policy");
+    expect(runner.remaining()).toBe(2);
+  });
+
+  it("fails closed when the operator policy remoteUrl is empty without reading Git remotes", async () => {
+    const runner = scripted([
+      {
+        match: ["remote", "get-url", "origin"],
+        exitCode: 0,
+        stdout: "https://attacker.example/repo.git\n",
+      },
+    ]);
+    expect(() => loadOperatorPolicy("")).toThrow("remoteUrl must be a non-empty string");
+    expect(runner.remaining()).toBe(1);
+  });
+
+  it("fails closed when the operator policy remoteUrl is not HTTPS without reading Git remotes", async () => {
+    const runner = scripted([
+      { match: ["remote", "get-url", "origin"], exitCode: 1, stderr: "not a git repository\n" },
+    ]);
+    expect(() => loadOperatorPolicy("git@github.com:example/repository.git")).toThrow(
+      "remoteUrl must be an https URL",
+    );
+    expect(runner.remaining()).toBe(1);
   });
 
   it("classifies a failed pull-ref fetch as a checkout fetch failure instead of probing an untrusted fallback remote", async () => {
