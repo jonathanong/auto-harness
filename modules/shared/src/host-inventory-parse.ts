@@ -21,6 +21,7 @@ import {
 } from "./environment-requirements.ts";
 import { parseAllowedRoots, parseTerminalHookScript } from "./host-exec-config.ts";
 import { parseHostUpdateConfig } from "./host-update-config.ts";
+import { parseSetupCacheInputs } from "./setup-cache-inputs.ts";
 
 // Registration also carries daemon identity/runtime and reconnect metadata that is not part of
 // the persisted inventory. Keep a conservative cushion so an inventory near the frame limit
@@ -53,6 +54,14 @@ function optionalString(
   return value;
 }
 
+function optionalCacheInputs(
+  raw: Record<string, unknown>,
+  ctx: string,
+): { setupCacheInputs: string[] } | Record<string, never> {
+  if (!Object.hasOwn(raw, "setupCacheInputs")) return {};
+  return { setupCacheInputs: parseSetupCacheInputs(raw.setupCacheInputs, ctx) ?? [] };
+}
+
 function parseWorktree(rawWorktree: unknown, index: number, repositoryId: string): HostWorktree {
   if (!isRecord(rawWorktree)) {
     throw new TypeError(`repositories.${repositoryId}.worktrees[${index}] invalid`);
@@ -80,6 +89,7 @@ function parseWorktree(rawWorktree: unknown, index: number, repositoryId: string
     path,
     labels: rawWorktree.labels as string[],
     ...(setupScript !== undefined ? { setupScript } : {}),
+    ...optionalCacheInputs(rawWorktree, `worktree.${id}.setupCacheInputs`),
     ...(overrides !== undefined ? { providerAccountOverrides: overrides } : {}),
   };
 }
@@ -132,6 +142,7 @@ function parseRepository(
       parseWorktree(worktree, worktreeIndex, id),
     ),
     ...(setupScript !== undefined ? { setupScript } : {}),
+    ...optionalCacheInputs(rawRepository, `repository.${id}.setupCacheInputs`),
     ...(terminalHookScript !== undefined ? { terminalHookScript } : {}),
     ...(requiredEnvironment.length ? { requiredEnvironment } : {}),
     ...(overrides !== undefined ? { providerAccountOverrides: overrides } : {}),
@@ -274,6 +285,7 @@ export function parseHostInventory(
 
   const inventory: HostInventory = {
     ...(setupScript !== undefined ? { setupScript } : {}),
+    ...optionalCacheInputs(value, "setupCacheInputs"),
     ...(allowedRoots !== undefined ? { allowedRoots } : {}),
     ...(requiredEnvironment.length ? { requiredEnvironment } : {}),
     ...(updateConfig !== undefined ? { updateConfig } : {}),

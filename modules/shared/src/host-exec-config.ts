@@ -28,6 +28,15 @@ function assignOptionalString<T extends object>(target: T, key: keyof T, value: 
   else (target[key] as string) = value;
 }
 
+function assignOptionalStringArray<T extends object>(
+  target: T,
+  key: keyof T,
+  value: string[],
+): void {
+  if (value.length === 0) delete target[key];
+  else (target[key] as string[]) = [...value];
+}
+
 function requireRepository(inventory: HostInventory, repositoryId: string): HostRepository {
   const repository = inventory.repositories.find((entry) => entry.id === repositoryId);
   if (!repository) throw new Error(`Unknown repository: ${repositoryId}`);
@@ -48,6 +57,9 @@ export function applyHostExecConfig(
   const next: HostInventory = {
     ...existing,
     ...(existing.allowedRoots !== undefined ? { allowedRoots: [...existing.allowedRoots] } : {}),
+    ...(existing.setupCacheInputs !== undefined
+      ? { setupCacheInputs: [...existing.setupCacheInputs] }
+      : {}),
     ...(existing.updateConfig !== undefined ? { updateConfig: { ...existing.updateConfig } } : {}),
     ...(existing.requiredEnvironment !== undefined
       ? { requiredEnvironment: [...existing.requiredEnvironment] }
@@ -71,6 +83,9 @@ export function applyHostExecConfig(
       : {}),
   };
   if (patch.setupScript !== undefined) assignOptionalString(next, "setupScript", patch.setupScript);
+  if (patch.setupCacheInputs !== undefined) {
+    assignOptionalStringArray(next, "setupCacheInputs", patch.setupCacheInputs);
+  }
   if (patch.allowedRoots !== undefined) {
     if (patch.allowedRoots.length) next.allowedRoots = [...patch.allowedRoots];
     else delete next.allowedRoots;
@@ -81,6 +96,9 @@ export function applyHostExecConfig(
     if (repositoryPatch.setupScript !== undefined) {
       assignOptionalString(repository, "setupScript", repositoryPatch.setupScript);
     }
+    if (repositoryPatch.setupCacheInputs !== undefined) {
+      assignOptionalStringArray(repository, "setupCacheInputs", repositoryPatch.setupCacheInputs);
+    }
     if (repositoryPatch.terminalHookScript !== undefined) {
       assignOptionalString(repository, "terminalHookScript", repositoryPatch.terminalHookScript);
     }
@@ -88,6 +106,9 @@ export function applyHostExecConfig(
       const worktree = requireWorktree(repository, worktreePatch.id);
       if (worktreePatch.setupScript !== undefined) {
         assignOptionalString(worktree, "setupScript", worktreePatch.setupScript);
+      }
+      if (worktreePatch.setupCacheInputs !== undefined) {
+        assignOptionalStringArray(worktree, "setupCacheInputs", worktreePatch.setupCacheInputs);
       }
     }
   }
@@ -255,12 +276,17 @@ export function inventoryHasExecConfig(inventory: HostInventory | null | undefin
   if (inventory.updateConfig !== undefined) return true;
   if ((inventory.setupScript ?? "") !== "" || (inventory.allowedRoots ?? []).length > 0)
     return true;
+  if ((inventory.setupCacheInputs ?? []).length > 0) return true;
   if ((inventory.workspacePools ?? []).length > 0) return true;
   return inventory.repositories.some(
     (repository) =>
       (repository.setupScript ?? "") !== "" ||
+      (repository.setupCacheInputs ?? []).length > 0 ||
       (repository.terminalHookScript ?? "") !== "" ||
-      repository.worktrees.some((worktree) => (worktree.setupScript ?? "") !== ""),
+      repository.worktrees.some(
+        (worktree) =>
+          (worktree.setupScript ?? "") !== "" || (worktree.setupCacheInputs ?? []).length > 0,
+      ),
   );
 }
 
@@ -271,6 +297,9 @@ export function listExecConfigEdits(
 ): string[] {
   const edits: string[] = [];
   addOptionalStringEdit(edits, "setupScript", existing?.setupScript, incoming.setupScript);
+  if (!sameRoots(existing?.setupCacheInputs, incoming.setupCacheInputs)) {
+    edits.push("setupCacheInputs");
+  }
   if (!sameRoots(existing?.allowedRoots, incoming.allowedRoots)) edits.push("allowedRoots");
   if (!sameUpdateConfig(existing?.updateConfig, incoming.updateConfig)) edits.push("updateConfig");
 
@@ -287,6 +316,9 @@ export function listExecConfigEdits(
       previous?.setupScript,
       next?.setupScript,
     );
+    if (!sameRoots(previous?.setupCacheInputs, next?.setupCacheInputs)) {
+      edits.push(`repositories.${repositoryId}.setupCacheInputs`);
+    }
     // Setup scripts and terminal hooks execute in the claimed checkout. Moving
     // (or attaching) a repository can therefore change the executable context
     // for a main checkout even when the executable text itself is unchanged.
@@ -320,6 +352,9 @@ export function listExecConfigEdits(
         previousWorktree?.setupScript,
         nextWorktree?.setupScript,
       );
+      if (!sameRoots(previousWorktree?.setupCacheInputs, nextWorktree?.setupCacheInputs)) {
+        edits.push(`repositories.${repositoryId}.worktrees.${worktreeId}.setupCacheInputs`);
+      }
       // Setup scripts and terminal hooks run in this worktree's cwd, so its
       // path is executable configuration whenever either trusted action applies.
       const executionCwdIsTrusted =
@@ -367,6 +402,23 @@ function restoreScript<T extends { setupScript?: string | undefined }>(
   else delete target.setupScript;
 }
 
+function restoreCacheInputs<T extends { setupCacheInputs?: string[] | undefined }>(
+  target: T,
+  previous: T | undefined,
+): void {
+  if (previous?.setupCacheInputs !== undefined)
+    target.setupCacheInputs = [...previous.setupCacheInputs];
+  else delete target.setupCacheInputs;
+}
+
+function assignIncomingCacheInputs<T extends { setupCacheInputs?: string[] | undefined }>(
+  target: T,
+): void {
+  if (!Object.hasOwn(target, "setupCacheInputs")) return;
+  if (!target.setupCacheInputs?.length) delete target.setupCacheInputs;
+  else target.setupCacheInputs = [...target.setupCacheInputs];
+}
+
 /**
  * Restore stored exec-config onto omitted keys of an incoming inventory document.
  * Present keys stay as-is so a capable PUT can change them without wiping omitted fields.
@@ -397,6 +449,8 @@ export function preserveHostExecConfig(
   };
   if (!Object.hasOwn(next, "setupScript")) restoreScript(next, existing ?? undefined);
   else if (next.setupScript === "") delete next.setupScript;
+  if (!Object.hasOwn(next, "setupCacheInputs")) restoreCacheInputs(next, existing ?? undefined);
+  else assignIncomingCacheInputs(next);
   if (next.allowedRoots === undefined) {
     if (existing?.allowedRoots !== undefined) next.allowedRoots = [...existing.allowedRoots];
     else delete next.allowedRoots;
@@ -408,6 +462,8 @@ export function preserveHostExecConfig(
     const previous = existing?.repositories.find((entry) => entry.id === repository.id);
     if (!Object.hasOwn(repository, "setupScript")) restoreScript(repository, previous);
     else if (repository.setupScript === "") delete repository.setupScript;
+    if (!Object.hasOwn(repository, "setupCacheInputs")) restoreCacheInputs(repository, previous);
+    else assignIncomingCacheInputs(repository);
     if (!Object.hasOwn(repository, "terminalHookScript")) {
       if (previous?.terminalHookScript !== undefined) {
         repository.terminalHookScript = previous.terminalHookScript;
@@ -418,13 +474,16 @@ export function preserveHostExecConfig(
       delete repository.terminalHookScript;
     }
     for (const worktree of repository.worktrees) {
+      const previousWorktree = previous?.worktrees.find((entry) => entry.id === worktree.id);
       if (!Object.hasOwn(worktree, "setupScript")) {
-        restoreScript(
-          worktree,
-          previous?.worktrees.find((entry) => entry.id === worktree.id),
-        );
+        restoreScript(worktree, previousWorktree);
       } else if (worktree.setupScript === "") {
         delete worktree.setupScript;
+      }
+      if (!Object.hasOwn(worktree, "setupCacheInputs")) {
+        restoreCacheInputs(worktree, previousWorktree);
+      } else {
+        assignIncomingCacheInputs(worktree);
       }
     }
   }

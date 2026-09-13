@@ -42,6 +42,7 @@ import {
 import { resolvedRouteMetadata, sessionAssignFromWire } from "./session-assign.ts";
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
+import { defaultSetupCacheDir } from "./setup-script-cache.ts";
 import { WorktreeManager, type ClaimedWorktree } from "./worktree-manager.ts";
 import { WorkspaceManager } from "./workspace-manager.ts";
 import { probeGitReadiness } from "./git-readiness.ts";
@@ -375,6 +376,7 @@ export class DaemonLoop {
       onLog: (chunk) => void this.emitLog(chunk),
       now: this.now,
       authorizeCommandStart: (assign, signal) => this.authorizeCommandStart(assign, signal),
+      setupCacheDir: defaultSetupCacheDir(),
     });
   }
   async start(): Promise<void> {

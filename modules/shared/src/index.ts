@@ -178,6 +178,15 @@ export {
 export { parseHostUpdateConfig, type HostUpdateConfig } from "./host-update-config.ts";
 export { parseHostInventory } from "./host-inventory-parse.ts";
 export {
+  MAX_SETUP_CACHE_INPUTS,
+  MAX_SETUP_CACHE_INPUT_LENGTH,
+  isSetupCacheInputPath,
+  parseSetupCacheInputs,
+  parseSetupCacheInputsField,
+  presentSetupCacheInputs,
+  splitSetupCacheInputLines,
+} from "./setup-cache-inputs.ts";
+export {
   EXEC_CONFIG_CAPABILITY,
   EXEC_CONFIG_REQUIRED_MESSAGE,
   MAX_ALLOWED_ROOTS,

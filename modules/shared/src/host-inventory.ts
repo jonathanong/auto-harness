@@ -29,6 +29,7 @@ export type HostWorktree = {
   labels: string[];
   // `| undefined` since callers commonly forward an already-optional value verbatim.
   setupScript?: string | undefined;
+  setupCacheInputs?: string[] | undefined;
   providerAccountOverrides?: Record<string, ProviderAccountOverride>;
 };
 
@@ -38,6 +39,7 @@ export type HostRepository = {
   defaultBranch: string;
   worktrees: HostWorktree[];
   setupScript?: string | undefined;
+  setupCacheInputs?: string[] | undefined;
   terminalHookScript?: string | undefined;
   requiredEnvironment?: string[] | undefined;
   providerAccountOverrides?: Record<string, ProviderAccountOverride>;
@@ -52,6 +54,7 @@ export type HostProviderAccount = {
 export type HostInventory = {
   /** Optional host-wide setup run before the repository/worktree setup. */
   setupScript?: string | undefined;
+  setupCacheInputs?: string[] | undefined;
   /**
    * Host-local directories that inventory filesystem paths and terminal hook
    * paths must resolve under. Empty/absent = unrestricted. Catalog argv is not
@@ -83,6 +86,9 @@ export function defaultWorktreePath(repoPath: string, worktreeName: string): str
 function cloneInventory(existing: HostInventory | null | undefined): HostInventory {
   return {
     ...(existing?.setupScript !== undefined ? { setupScript: existing.setupScript } : {}),
+    ...(existing?.setupCacheInputs !== undefined
+      ? { setupCacheInputs: [...existing.setupCacheInputs] }
+      : {}),
     ...(existing?.allowedRoots !== undefined ? { allowedRoots: [...existing.allowedRoots] } : {}),
     ...(existing?.requiredEnvironment !== undefined
       ? { requiredEnvironment: [...existing.requiredEnvironment] }
@@ -94,7 +100,16 @@ function cloneInventory(existing: HostInventory | null | undefined): HostInvento
           ...(r.requiredEnvironment !== undefined
             ? { requiredEnvironment: [...r.requiredEnvironment] }
             : {}),
-          worktrees: r.worktrees.map((w) => ({ ...w, labels: [...w.labels] })),
+          ...(r.setupCacheInputs !== undefined
+            ? { setupCacheInputs: [...r.setupCacheInputs] }
+            : {}),
+          worktrees: r.worktrees.map((w) => ({
+            ...w,
+            labels: [...w.labels],
+            ...(w.setupCacheInputs !== undefined
+              ? { setupCacheInputs: [...w.setupCacheInputs] }
+              : {}),
+          })),
         }))
       : [],
     providerAccounts: existing?.providerAccounts
@@ -160,6 +175,7 @@ export function upsertHostRepository(
     path: string;
     defaultBranch: string;
     setupScript?: string;
+    setupCacheInputs?: string[];
     terminalHookScript?: string;
     requiredEnvironment?: string[];
   },
@@ -188,8 +204,20 @@ export function upsertHostRepository(
     ...(entry.terminalHookScript !== undefined
       ? { terminalHookScript: entry.terminalHookScript }
       : {}),
-    worktrees: prev ? prev.worktrees.map((w) => ({ ...w, labels: [...w.labels] })) : [],
+    worktrees: prev
+      ? prev.worktrees.map((w) => ({
+          ...w,
+          labels: [...w.labels],
+          ...(w.setupCacheInputs !== undefined
+            ? { setupCacheInputs: [...w.setupCacheInputs] }
+            : {}),
+        }))
+      : [],
   };
+  if (entry.setupCacheInputs !== undefined) {
+    if (entry.setupCacheInputs.length) repository.setupCacheInputs = [...entry.setupCacheInputs];
+    else delete repository.setupCacheInputs;
+  }
   if (requiredEnvironment !== undefined) {
     if (requiredEnvironment.length) repository.requiredEnvironment = requiredEnvironment;
     else delete repository.requiredEnvironment;
@@ -226,6 +254,9 @@ export function addHostWorktree(
     path: worktree.path,
     labels: [...worktree.labels],
     ...(worktree.setupScript !== undefined ? { setupScript: worktree.setupScript } : {}),
+    ...(worktree.setupCacheInputs !== undefined
+      ? { setupCacheInputs: [...worktree.setupCacheInputs] }
+      : {}),
   });
   return base;
 }
@@ -254,6 +285,10 @@ export function updateHostWorktree(
   if (Object.hasOwn(worktree, "setupScript")) {
     if (worktree.setupScript === undefined) delete updated.setupScript;
     else updated.setupScript = worktree.setupScript;
+  }
+  if (Object.hasOwn(worktree, "setupCacheInputs")) {
+    if (!worktree.setupCacheInputs?.length) delete updated.setupCacheInputs;
+    else updated.setupCacheInputs = [...worktree.setupCacheInputs];
   }
   repo.worktrees[idx] = updated;
   return base;

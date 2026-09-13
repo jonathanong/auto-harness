@@ -43,6 +43,7 @@ export default async function SettingsPage() {
   const initialJson = JSON.stringify(
     {
       setupScript: inventory.setupScript,
+      setupCacheInputs: inventory.setupCacheInputs,
       allowedRoots: inventory.allowedRoots,
       requiredEnvironment: inventory.requiredEnvironment,
       repositories: inventory.repositories,
@@ -94,6 +95,7 @@ export default async function SettingsPage() {
         <HostSetupScriptForm
           hostId={id}
           setupScript={inventory.setupScript}
+          setupCacheInputs={inventory.setupCacheInputs}
           allowedRoots={inventory.allowedRoots}
           requiredEnvironment={inventory.requiredEnvironment}
           canWriteExecConfig={canEditExecConfig}

@@ -14,6 +14,7 @@ describe("loadHostInventoryWithVersion", () => {
     setApiTransportForTests(async () =>
       Response.json({
         setupScript: "source ~/.zshrc",
+        setupCacheInputs: ["pnpm-lock.yaml"],
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
         repositories: [],
@@ -25,6 +26,7 @@ describe("loadHostInventoryWithVersion", () => {
     await expect(loadHostInventoryWithVersion("host-a")).resolves.toEqual({
       inventory: {
         setupScript: "source ~/.zshrc",
+        setupCacheInputs: ["pnpm-lock.yaml"],
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
         repositories: [],

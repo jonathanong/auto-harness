@@ -150,6 +150,7 @@ describe("HostRepoSettingsForm", () => {
     setValue(field(document, "repo-settings-path-repo-1"), " /new/repo ");
     setValue(field(document, "repo-settings-branch-repo-1"), " ");
     setValue(field(document, "repo-settings-setup-repo-1"), "setup");
+    setValue(field(document, "repo-settings-setup-cache-inputs-repo-1"), "pnpm-lock.yaml");
     setValue(field(document, "repo-settings-hook-repo-1"), "/opt/harness/hook.sh");
     setValue(field(document, "repo-settings-required-environment-repo-1"), "Z_TOKEN, A_TOKEN");
     submit(field(document, "form-repo-settings-repo-1"));
@@ -162,6 +163,7 @@ describe("HostRepoSettingsForm", () => {
           defaultBranch: "main",
           requiredEnvironment: ["A_TOKEN", "Z_TOKEN"],
           setupScript: "setup",
+          setupCacheInputs: ["pnpm-lock.yaml"],
           terminalHookScript: "/opt/harness/hook.sh",
           worktrees: [{ id: "worktree" }],
         },

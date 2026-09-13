@@ -8,6 +8,11 @@ import type { LogStreamer } from "./log-streamer.ts";
 import { finishClaimedSession, type SessionRunResult } from "./session-outcome.ts";
 import type { GitHubAppConfig } from "./github-app.ts";
 import { runSetupScript } from "./setup-script.ts";
+import {
+  mergeSetupCacheInputs,
+  resolveSetupCacheState,
+  writeStoredSetupFingerprint,
+} from "./setup-script-cache.ts";
 
 export type { ClaimedWorktree } from "./worktree-manager.ts";
 import type { ClaimedWorktree } from "./worktree-manager.ts";
@@ -33,6 +38,7 @@ export async function runSetupIfNeeded(
   deferTerminalHook = false,
   githubApp?: GitHubAppConfig,
   nowMs?: () => number,
+  setupCacheDir?: string,
 ): Promise<SessionSetupResult> {
   let environment = createChildEnv(childEnvSource);
   const scopedSetupScript =
@@ -41,6 +47,21 @@ export async function runSetupIfNeeded(
     (script): script is string => Boolean(script),
   );
   if (assign.resume || setupScripts.length === 0) return { environment, failure: null };
+  const cache = await resolveSetupCacheState({
+    cacheDir: setupCacheDir,
+    checkoutSha: baseline,
+    cwd: claimed.cwd,
+    worktreeId: claimed.worktree.id,
+    scripts: setupScripts,
+    extraPaths: mergeSetupCacheInputs(
+      claimed.hostSetupCacheInputs,
+      claimed.worktree.setupCacheInputs ?? claimed.repository.setupCacheInputs,
+    ),
+  });
+  if (cache.skip) {
+    streamer.write("system", "Setup unchanged; skipping.");
+    return { environment, failure: null };
+  }
 
   const finish = (outcome: Parameters<typeof finishClaimedSession>[5]) =>
     finishClaimedSession(
@@ -126,6 +147,14 @@ export async function runSetupIfNeeded(
     if (failure) return { environment, failure };
   }
   streamer.write("system", "Setup complete.");
+  if (setupCacheDir && cache.fingerprintToStore) {
+    await writeStoredSetupFingerprint(
+      setupCacheDir,
+      claimed.worktree.id,
+      claimed.cwd,
+      cache.fingerprintToStore,
+    );
+  }
 
   return { environment, failure: null };
 }

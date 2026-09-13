@@ -105,6 +105,7 @@ describe("EditWorktreeForm", () => {
     setValue(field(document, "worktree-edit-path"), " /new/feature ");
     setValue(field(document, "worktree-edit-labels"), " fast, ci, , fast ");
     setValue(field(document, "worktree-edit-setup-script"), "pnpm install");
+    setValue(field(document, "worktree-edit-setup-cache-inputs"), "pnpm-lock.yaml");
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
     expect(api.requests).toHaveLength(2);
@@ -118,6 +119,7 @@ describe("EditWorktreeForm", () => {
               path: "/new/feature",
               labels: ["fast", "ci", "fast"],
               setupScript: "pnpm install",
+              setupCacheInputs: ["pnpm-lock.yaml"],
             },
           ],
         },

@@ -58,6 +58,10 @@ export async function loadHostInventoryWithVersion(
     return {
       inventory: {
         ...(typeof cfg.setupScript === "string" ? { setupScript: cfg.setupScript } : {}),
+        ...(Array.isArray(cfg.setupCacheInputs) &&
+        cfg.setupCacheInputs.every((path) => typeof path === "string")
+          ? { setupCacheInputs: cfg.setupCacheInputs as string[] }
+          : {}),
         ...(Array.isArray(cfg.allowedRoots) &&
         cfg.allowedRoots.every((root) => typeof root === "string")
           ? { allowedRoots: cfg.allowedRoots as string[] }

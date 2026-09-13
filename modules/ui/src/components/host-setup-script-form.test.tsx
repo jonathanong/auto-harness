@@ -156,11 +156,13 @@ describe("HostSetupScriptForm", () => {
       "/opt/harness",
     );
     setValue(field(view.container, "host-setup-script"), "source ~/.zshrc");
+    setValue(field(view.container, "host-setup-cache-inputs"), "pnpm-lock.yaml\nCargo.lock");
     setValue(field(view.container, "host-allowed-roots"), "/opt/harness,with,commas\n/usr/local");
     setValue(field(view.container, "host-required-environment"), " REGION\nTOKEN ");
     await submit(field(view.container, "form-host-setup-script"));
     expect(execPatch).toEqual({
       setupScript: "source ~/.zshrc",
+      setupCacheInputs: ["pnpm-lock.yaml", "Cargo.lock"],
       allowedRoots: ["/opt/harness,with,commas", "/usr/local"],
     });
     expect(written).toBeUndefined();
@@ -240,6 +242,19 @@ describe("HostSetupScriptForm", () => {
     await submit(field(invalid.container, "form-host-setup-script"));
     expect(field(document.body, "host-setup-script-error").textContent).toContain("absolute");
     invalid.unmount();
+
+    const invalidCache = mount(
+      <HostSetupScriptForm
+        hostId="host"
+        mutateExec={successfulExec}
+        mutateInv={successfulInv}
+        canWriteExecConfig
+      />,
+    );
+    setValue(field(invalidCache.container, "host-setup-cache-inputs"), "/etc/passwd");
+    await submit(field(invalidCache.container, "form-host-setup-script"));
+    expect(field(document.body, "host-setup-script-error").textContent).toContain("relative");
+    invalidCache.unmount();
 
     const envFail = mount(
       <HostSetupScriptForm

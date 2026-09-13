@@ -8,6 +8,8 @@ import {
   mutateExecConfig,
   mutateInventory,
   parseAllowedRoots,
+  parseSetupCacheInputs,
+  splitSetupCacheInputLines,
   thrownMessage,
   type HostExecConfigPatch,
   updateHostRequiredEnvironment,
@@ -18,10 +20,12 @@ import { Label } from "./label.tsx";
 import { Textarea } from "./textarea.tsx";
 import { showToast } from "./toast.tsx";
 import { WithTooltip } from "./tooltip.tsx";
+import { SetupCacheInputsField } from "./setup-cache-inputs-field.tsx";
 
 export function HostSetupScriptForm({
   hostId,
   setupScript,
+  setupCacheInputs,
   allowedRoots,
   requiredEnvironment,
   mutateExec = mutateExecConfig,
@@ -31,6 +35,7 @@ export function HostSetupScriptForm({
 }: Readonly<{
   hostId: string;
   setupScript?: string | undefined;
+  setupCacheInputs?: string[] | undefined;
   allowedRoots?: string[] | undefined;
   requiredEnvironment?: string[] | undefined;
   mutateExec?: typeof mutateExecConfig;
@@ -44,13 +49,17 @@ export function HostSetupScriptForm({
   const [execSaved, setExecSaved] = useState(false);
   const [environmentSaved, setEnvironmentSaved] = useState(false);
   const [script, setScript] = useState(setupScript ?? "");
+  const [cacheInputs, setCacheInputs] = useState((setupCacheInputs ?? []).join("\n"));
   const [roots, setRoots] = useState((allowedRoots ?? []).join("\n"));
   const [environment, setEnvironment] = useState((requiredEnvironment ?? []).join("\n"));
   const [scriptDirty, setScriptDirty] = useState(false);
+  const [cacheInputsDirty, setCacheInputsDirty] = useState(false);
   const [rootsDirty, setRootsDirty] = useState(false);
   const scriptDirtyRef = useRef(false);
+  const cacheInputsDirtyRef = useRef(false);
   const rootsDirtyRef = useRef(false);
   const scriptValueRef = useRef(script);
+  const cacheInputsValueRef = useRef(cacheInputs);
   const rootsValueRef = useRef(roots);
   const environmentDirtyRef = useRef(false);
   const environmentValueRef = useRef(environment);
@@ -59,20 +68,25 @@ export function HostSetupScriptForm({
 
   useEffect(() => {
     const nextScript = setupScript ?? "";
+    const nextCacheInputs = (setupCacheInputs ?? []).join("\n");
     const nextRoots = (allowedRoots ?? []).join("\n");
-    const refreshKey = JSON.stringify([nextScript, nextRoots]);
+    const refreshKey = JSON.stringify([nextScript, nextCacheInputs, nextRoots]);
     const preserveSavedFeedback = savedRefreshExecRef.current === refreshKey;
     savedRefreshExecRef.current = null;
     if (!scriptDirtyRef.current) {
       setScript(nextScript);
       setScriptDirty(false);
     }
+    if (!cacheInputsDirtyRef.current) {
+      setCacheInputs(nextCacheInputs);
+      setCacheInputsDirty(false);
+    }
     if (!rootsDirtyRef.current) {
       setRoots(nextRoots);
       setRootsDirty(false);
     }
     if (!preserveSavedFeedback) setExecSaved(false);
-  }, [allowedRoots, setupScript]);
+  }, [allowedRoots, setupCacheInputs, setupScript]);
 
   useEffect(() => {
     const nextEnvironment = (requiredEnvironment ?? []).join("\n");
@@ -97,12 +111,27 @@ export function HostSetupScriptForm({
             event.preventDefault();
             setExecSaved(false);
             const submittedScript = script;
+            const submittedCacheInputs = cacheInputs;
             const submittedRoots = roots;
             startExec(async () => {
               try {
                 const patch: HostExecConfigPatch = {};
                 let parsedRoots: string[] | undefined;
                 if (scriptDirty) patch.setupScript = script;
+                if (cacheInputsDirty) {
+                  try {
+                    patch.setupCacheInputs = parseSetupCacheInputs(
+                      splitSetupCacheInputLines(cacheInputs),
+                      "setupCacheInputs",
+                    )!;
+                  } catch (error) {
+                    showToast(thrownMessage(error), {
+                      variant: "destructive",
+                      pw: "host-setup-script-error",
+                    });
+                    return;
+                  }
+                }
                 if (rootsDirty) {
                   try {
                     parsedRoots = parseAllowedRoots(
@@ -130,10 +159,18 @@ export function HostSetupScriptForm({
                     return;
                   }
                 }
-                savedRefreshExecRef.current = JSON.stringify([submittedScript, submittedRoots]);
+                savedRefreshExecRef.current = JSON.stringify([
+                  submittedScript,
+                  submittedCacheInputs,
+                  submittedRoots,
+                ]);
                 if (scriptValueRef.current === submittedScript) {
                   scriptDirtyRef.current = false;
                   setScriptDirty(false);
+                }
+                if (cacheInputsValueRef.current === submittedCacheInputs) {
+                  cacheInputsDirtyRef.current = false;
+                  setCacheInputsDirty(false);
                 }
                 if (rootsValueRef.current === submittedRoots) {
                   rootsDirtyRef.current = false;
@@ -177,6 +214,17 @@ export function HostSetupScriptForm({
               data-pw="host-setup-script"
             />
           </div>
+          <SetupCacheInputsField
+            id="hostSetupCacheInputs"
+            dataPw="host-setup-cache-inputs"
+            value={cacheInputs}
+            onChange={(event) => {
+              setCacheInputs(event.target.value);
+              cacheInputsValueRef.current = event.target.value;
+              cacheInputsDirtyRef.current = true;
+              setCacheInputsDirty(true);
+            }}
+          />
           <div className="space-y-1">
             <Label
               htmlFor="hostAllowedRoots"

@@ -6,7 +6,9 @@ import { useState, useTransition } from "react";
 import {
   mutateInventory,
   parseRequiredEnvironment,
+  parseSetupCacheInputs,
   parseTerminalHookScript,
+  splitSetupCacheInputLines,
   thrownMessage,
   upsertHostRepository,
   type HostRepository,
@@ -22,6 +24,7 @@ import {
   Input,
   Label,
   Textarea,
+  SetupCacheInputsField,
   WithTooltip,
   showToast,
 } from "@auto-harness/ui";
@@ -76,9 +79,14 @@ export function HostRepoSettingsForm({
             const path = pathEditingBlocked ? repo.path : String(fd.get("path") ?? "").trim();
             const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
             const setupScript = String(fd.get("setupScript") ?? "");
+            const setupCacheInputsEntry = String(fd.get("setupCacheInputs") ?? "");
             const terminalHookScript = String(fd.get("terminalHookScript") ?? "");
             const setupScriptEdited =
               canWriteExecConfig && setupScript !== (repo.setupScript ?? "");
+            let setupCacheInputs: string[] | undefined;
+            const setupCacheInputsEdited =
+              canWriteExecConfig &&
+              setupCacheInputsEntry !== (repo.setupCacheInputs ?? []).join("\n");
             const terminalHookScriptEdited =
               canWriteExecConfig && terminalHookScript !== (repo.terminalHookScript ?? "");
             const requiredEnvironmentEntry = fd.get("requiredEnvironment");
@@ -114,6 +122,12 @@ export function HostRepoSettingsForm({
                   // absolute-path requirement. Keep that value usable until it changes.
                   allowLegacyRelative: terminalHookScript === (repo.terminalHookScript ?? ""),
                 });
+                if (setupCacheInputsEdited) {
+                  setupCacheInputs = parseSetupCacheInputs(
+                    splitSetupCacheInputLines(setupCacheInputsEntry),
+                    `repository.${repo.id}.setupCacheInputs`,
+                  )!;
+                }
               } catch (error) {
                 showToast(thrownMessage(error), {
                   variant: "destructive",
@@ -133,6 +147,7 @@ export function HostRepoSettingsForm({
                     defaultBranch,
                     requiredEnvironment,
                     ...(setupScriptEdited ? { setupScript } : {}),
+                    ...(setupCacheInputsEdited ? { setupCacheInputs } : {}),
                     ...(terminalHookScriptEdited ? { terminalHookScript } : {}),
                   }),
                 );
@@ -219,6 +234,11 @@ export function HostRepoSettingsForm({
                   data-pw={`repo-settings-setup-${repo.id}`}
                 />
               </div>
+              <SetupCacheInputsField
+                id={`setup-cache-${repo.id}`}
+                dataPw={`repo-settings-setup-cache-inputs-${repo.id}`}
+                defaultValue={(repo.setupCacheInputs ?? []).join("\n")}
+              />
               <div className="space-y-1">
                 <Label
                   htmlFor={`hook-${repo.id}`}

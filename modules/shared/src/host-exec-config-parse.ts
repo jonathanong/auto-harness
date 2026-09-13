@@ -1,4 +1,5 @@
 import { parseHostUpdateConfig, type HostUpdateConfig } from "./host-update-config.ts";
+import { parseSetupCacheInputs } from "./setup-cache-inputs.ts";
 
 export const EXEC_CONFIG_REQUIRED_MESSAGE =
   "fleet:exec-config is required to change setup scripts or executable paths";
@@ -8,6 +9,7 @@ export const MAX_EXEC_PATH_LENGTH = 4096;
 
 export type HostExecConfigPatch = {
   setupScript?: string | undefined;
+  setupCacheInputs?: string[] | undefined;
   allowedRoots?: string[] | undefined;
   updateConfig?: HostUpdateConfig | undefined;
   repositories?: HostExecRepositoryPatch[] | undefined;
@@ -16,6 +18,7 @@ export type HostExecConfigPatch = {
 export type HostExecRepositoryPatch = {
   id: string;
   setupScript?: string | undefined;
+  setupCacheInputs?: string[] | undefined;
   terminalHookScript?: string | undefined;
   worktrees?: HostExecWorktreePatch[] | undefined;
 };
@@ -23,6 +26,7 @@ export type HostExecRepositoryPatch = {
 export type HostExecWorktreePatch = {
   id: string;
   setupScript?: string | undefined;
+  setupCacheInputs?: string[] | undefined;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -91,6 +95,15 @@ function optionalPatchString(
   return value;
 }
 
+function optionalPatchStringArray(
+  obj: Record<string, unknown>,
+  key: string,
+  ctx: string,
+): string[] | undefined {
+  if (!Object.hasOwn(obj, key)) return undefined;
+  return parseSetupCacheInputs(obj[key], `${ctx}.${key}`) ?? [];
+}
+
 function parseExecWorktree(
   raw: unknown,
   index: number,
@@ -106,7 +119,12 @@ function parseExecWorktree(
     );
   }
   const setupScript = optionalPatchString(raw, "setupScript", `worktree.${id}`);
-  return { id, ...(setupScript !== undefined ? { setupScript } : {}) };
+  const setupCacheInputs = optionalPatchStringArray(raw, "setupCacheInputs", `worktree.${id}`);
+  return {
+    id,
+    ...(setupScript !== undefined ? { setupScript } : {}),
+    ...(setupCacheInputs !== undefined ? { setupCacheInputs } : {}),
+  };
 }
 
 function parseExecRepository(raw: unknown, index: number): HostExecRepositoryPatch {
@@ -116,6 +134,7 @@ function parseExecRepository(raw: unknown, index: number): HostExecRepositoryPat
     throw new TypeError(`repositories[${String(index)}]: id must be a non-empty string`);
   }
   const setupScript = optionalPatchString(raw, "setupScript", `repository.${id}`);
+  const setupCacheInputs = optionalPatchStringArray(raw, "setupCacheInputs", `repository.${id}`);
   const terminalHookScript = parseTerminalHookScript(
     optionalPatchString(raw, "terminalHookScript", `repository.${id}`),
     id,
@@ -132,6 +151,7 @@ function parseExecRepository(raw: unknown, index: number): HostExecRepositoryPat
   return {
     id,
     ...(setupScript !== undefined ? { setupScript } : {}),
+    ...(setupCacheInputs !== undefined ? { setupCacheInputs } : {}),
     ...(terminalHookScript !== undefined ? { terminalHookScript } : {}),
     ...(worktrees !== undefined ? { worktrees } : {}),
   };
@@ -141,6 +161,7 @@ function parseExecRepository(raw: unknown, index: number): HostExecRepositoryPat
 export function parseHostExecConfig(value: unknown): HostExecConfigPatch {
   if (!isRecord(value)) throw new TypeError("body must be an object");
   const setupScript = optionalPatchString(value, "setupScript", "exec-config");
+  const setupCacheInputs = optionalPatchStringArray(value, "setupCacheInputs", "exec-config");
   const allowedRoots = Object.hasOwn(value, "allowedRoots")
     ? (parseAllowedRoots(value.allowedRoots) ?? [])
     : undefined;
@@ -156,6 +177,7 @@ export function parseHostExecConfig(value: unknown): HostExecConfigPatch {
   }
   return {
     ...(setupScript !== undefined ? { setupScript } : {}),
+    ...(setupCacheInputs !== undefined ? { setupCacheInputs } : {}),
     ...(allowedRoots !== undefined ? { allowedRoots } : {}),
     ...(updateConfig !== undefined ? { updateConfig } : {}),
     ...(repositories !== undefined ? { repositories } : {}),

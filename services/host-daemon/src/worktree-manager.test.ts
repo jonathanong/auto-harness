@@ -56,6 +56,34 @@ describe("WorktreeManager", () => {
     expect(mgr.isBusy("wt-1")).toBe(false);
   });
 
+  it("copies host setup cache inputs onto a claimed worktree", async () => {
+    const git = fakeGit();
+    const mgr = new WorktreeManager(
+      parseDaemonConfig({
+        ...config,
+        setupCacheInputs: ["host.lock"],
+        repositories: [
+          {
+            ...config.repositories[0],
+            setupCacheInputs: ["pnpm-lock.yaml"],
+            worktrees: [
+              {
+                ...config.repositories[0]!.worktrees[0],
+                setupCacheInputs: ["Cargo.lock"],
+              },
+            ],
+          },
+        ],
+      }),
+      git,
+    );
+    const claimed = await mgr.claim("repo-1", "wt-1");
+    expect(claimed.hostSetupCacheInputs).toEqual(["host.lock"]);
+    expect(claimed.repository.setupCacheInputs).toEqual(["pnpm-lock.yaml"]);
+    expect(claimed.worktree.setupCacheInputs).toEqual(["Cargo.lock"]);
+    mgr.release("wt-1");
+  });
+
   it("checks out explicit ref or default branch", async () => {
     const git = fakeGit();
     const mgr = new WorktreeManager(config, git);
