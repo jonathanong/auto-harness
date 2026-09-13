@@ -510,7 +510,10 @@ describe("DaemonLoop coverage guards", () => {
         handleServerMessage(message: HostWireMessage): Promise<void>;
         serverProtocolVersion: number;
         pendingTerminalHookHandoffs: Map<string, { complete: boolean; result?: unknown }>;
-        reconcilePendingTerminalStatusForHandoff(sessionId: string): Promise<unknown>;
+        reconcilePendingTerminalStatusForHandoff(
+          sessionId: string,
+          expiresAtMs: number,
+        ): Promise<unknown>;
       };
       const pending = pendingTerminalStatusOf(loop);
       const result = { summary: "hook result", summarySource: "harness" as const };
@@ -686,13 +689,15 @@ describe("DaemonLoop coverage guards", () => {
         controller: new AbortController(),
         resolveDeferredDisposition: ordinaryResolve,
       } as never);
-      await expect(internals.reconcilePendingTerminalStatusForHandoff("ordinary")).resolves.toEqual(
-        {
-          matched: true,
-        },
-      );
+      await expect(
+        internals.reconcilePendingTerminalStatusForHandoff("ordinary", Date.now() + 60_000),
+      ).resolves.toEqual({
+        matched: true,
+      });
       expect(ordinaryResolve).toHaveBeenCalledOnce();
-      await expect(internals.reconcilePendingTerminalStatusForHandoff("absent")).resolves.toEqual({
+      await expect(
+        internals.reconcilePendingTerminalStatusForHandoff("absent", Date.now() + 60_000),
+      ).resolves.toEqual({
         matched: false,
       });
       loop.stop();
