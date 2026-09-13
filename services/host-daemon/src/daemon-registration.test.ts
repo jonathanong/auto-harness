@@ -452,4 +452,63 @@ describe("daemon registration", () => {
     ).rejects.toThrow("registration failed");
     expect(config.workspacePools).toEqual(workspacePools);
   });
+
+  it("commits host setup cache inputs into the live inventory", async () => {
+    const config = {
+      hostId: "h",
+      setupCacheInputs: ["old.lock"],
+      repositories: [],
+      providerAccounts: [],
+    };
+    const next = { ...config, setupCacheInputs: ["new.lock"] };
+    await applyDaemonInventory(
+      config,
+      next,
+      { ensureAll: async () => undefined } as never,
+      async () => undefined,
+    );
+    expect(config.setupCacheInputs).toEqual(["new.lock"]);
+    await applyDaemonInventory(
+      config,
+      { hostId: "h", repositories: [], providerAccounts: [] },
+      { ensureAll: async () => undefined } as never,
+      async () => undefined,
+    );
+    expect(config).not.toHaveProperty("setupCacheInputs");
+  });
+
+  it("restores host setup cache inputs when registration fails", async () => {
+    const config = {
+      hostId: "h",
+      setupCacheInputs: ["old.lock"],
+      repositories: [],
+      providerAccounts: [],
+    };
+    await expect(
+      applyDaemonInventory(
+        config,
+        { ...config, setupCacheInputs: ["new.lock"] },
+        { ensureAll: async () => undefined } as never,
+        async () => {
+          throw new Error("registration failed");
+        },
+      ),
+    ).rejects.toThrow("registration failed");
+    expect(config.setupCacheInputs).toEqual(["old.lock"]);
+  });
+
+  it("does not keep newly applied setup cache inputs after registration fails", async () => {
+    const config = { hostId: "h", repositories: [], providerAccounts: [] };
+    await expect(
+      applyDaemonInventory(
+        config,
+        { ...config, setupCacheInputs: ["new.lock"] },
+        { ensureAll: async () => undefined } as never,
+        async () => {
+          throw new Error("registration failed");
+        },
+      ),
+    ).rejects.toThrow("registration failed");
+    expect(config).not.toHaveProperty("setupCacheInputs");
+  });
 });

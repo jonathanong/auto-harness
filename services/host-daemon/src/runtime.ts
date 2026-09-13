@@ -8,6 +8,7 @@ import { UsageCapturingProcessRunner } from "./usage-adapter.ts";
 import { createGitClient } from "./git.ts";
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
+import { defaultSetupCacheDir } from "./setup-script-cache.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 import { loadExecutionProfiles } from "./execution-profiles.ts";
 import { probeGitReadiness } from "./git-readiness.ts";
@@ -64,6 +65,7 @@ export async function runAssignedSession(
     onLog: (c) => {
       onLog(`[${c.stream}#${c.seq}] ${c.content}`);
     },
+    setupCacheDir: defaultSetupCacheDir(),
   });
   return sessionRunner.run(assign);
 }

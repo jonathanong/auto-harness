@@ -74,6 +74,7 @@ test.describe("control plane worktrees", () => {
         await expect(page.getByTestId("worktree-edit-path")).toHaveValue(wtPath);
         await expect(page.getByTestId("worktree-edit-labels")).toHaveValue("echo");
         await expect(page.getByTestId("worktree-edit-setup-script")).toHaveValue("old setup");
+        await expect(page.getByTestId("worktree-edit-setup-cache-inputs")).toBeVisible();
         await expect(page.getByTestId("worktree-edit-error")).toBeHidden();
         await page.getByTestId("worktree-edit-labels").fill("");
         await page.getByTestId("worktree-edit-setup-script").fill("pnpm build");

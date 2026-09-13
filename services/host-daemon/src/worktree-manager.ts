@@ -10,6 +10,7 @@ import type { GitClient } from "./git.ts";
 
 export type ClaimedWorktree = {
   hostSetupScript?: string;
+  hostSetupCacheInputs?: string[];
   repository: RepositoryConfig;
   worktree: WorktreeConfig;
   cwd: string;
@@ -144,8 +145,12 @@ export class WorktreeManager {
     const claimedWorktree = { ...worktree, path: cwd };
     const claimedAllowedRoots = this.effectiveAllowedRoots();
     const claimedHostSetupScript = this.config.setupScript;
+    const claimedHostSetupCacheInputs = this.config.setupCacheInputs ?? [];
     return {
       ...(claimedHostSetupScript !== undefined ? { hostSetupScript: claimedHostSetupScript } : {}),
+      ...(claimedHostSetupCacheInputs.length
+        ? { hostSetupCacheInputs: claimedHostSetupCacheInputs }
+        : {}),
       ...(claimedAllowedRoots.length ? { allowedRoots: claimedAllowedRoots } : {}),
       repository: claimedRepository,
       worktree: claimedWorktree,
@@ -185,6 +190,15 @@ export class WorktreeManager {
                 currentRepository.terminalHookScript,
               ) ||
               !sameOptionalString(claimedWorktree.setupScript, currentWorktree.setupScript) ||
+              !sameStrings(claimedHostSetupCacheInputs, this.config.setupCacheInputs ?? []) ||
+              !sameStrings(
+                claimedRepository.setupCacheInputs ?? [],
+                currentRepository.setupCacheInputs ?? [],
+              ) ||
+              !sameStrings(
+                claimedWorktree.setupCacheInputs ?? [],
+                currentWorktree.setupCacheInputs ?? [],
+              ) ||
               !sameStrings(claimedAllowedRoots, roots)
             ) {
               throw new Error("host inventory changed after this checkout was claimed");

@@ -12,6 +12,7 @@ export type WorktreeConfig = {
   path: string;
   labels: string[];
   setupScript?: string;
+  setupCacheInputs?: string[];
   providerAccountOverrides?: Record<string, ProviderAccountOverride>;
 };
 
@@ -20,6 +21,7 @@ export type RepositoryConfig = {
   path: string;
   defaultBranch: string;
   setupScript?: string;
+  setupCacheInputs?: string[];
   terminalHookScript?: string;
   requiredEnvironment?: string[];
   worktrees: WorktreeConfig[];
@@ -50,6 +52,7 @@ export type DaemonConfig = {
   apiUrl?: string;
   apiKey?: string;
   setupScript?: string;
+  setupCacheInputs?: string[];
   allowedRoots?: string[];
   requiredEnvironment?: string[];
   updateConfig?: HostUpdateConfig;

@@ -107,6 +107,7 @@ export async function putExecConfig(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       ...(patch.setupScript !== undefined ? { setupScript: patch.setupScript } : {}),
+      ...(patch.setupCacheInputs !== undefined ? { setupCacheInputs: patch.setupCacheInputs } : {}),
       ...(patch.allowedRoots !== undefined ? { allowedRoots: patch.allowedRoots } : {}),
       ...(patch.updateConfig !== undefined ? { updateConfig: patch.updateConfig } : {}),
       ...(patch.repositories !== undefined ? { repositories: patch.repositories } : {}),

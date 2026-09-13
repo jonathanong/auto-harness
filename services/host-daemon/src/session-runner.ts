@@ -50,6 +50,8 @@ export type SessionRunnerDeps = {
   /** Durable control-plane authorization immediately before the primary CLI starts. */
   nowMs?: () => number;
   authorizeCommandStart?: (assign: SessionAssign, signal?: AbortSignal) => Promise<boolean>;
+  /** Host-owned directory for last-successful setup fingerprints. */
+  setupCacheDir?: string;
 };
 
 type SessionRunOptions = {
@@ -281,6 +283,7 @@ export class SessionRunner {
             isolatedGitHubConfigDir,
             this.deps.authorizeCommandStart,
             options.deferPreCommandFailureHook === true,
+            this.deps.setupCacheDir,
           );
           return retainDeferredTerminalHook(result);
         } catch (error) {
@@ -427,6 +430,8 @@ export class SessionRunner {
           undefined,
           // Protocol-v4 peers must durably authorize before the workspace CLI can spawn.
           this.deps.authorizeCommandStart,
+          false,
+          this.deps.setupCacheDir,
         );
       } catch (error) {
         result = await failSession(streamer, logs, "setup_failed", thrownMessage(error), null);

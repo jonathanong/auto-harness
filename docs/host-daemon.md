@@ -728,6 +728,20 @@ Non-zero exit → session `failed`, worktree released.
 Resume sessions continue to skip every setup script so a destructive setup cannot reset the
 conversation's existing worktree.
 
+A later fresh session skips those scripts when the fingerprint of the checked-out SHA, the exact
+setup script texts that would run (host then scoped), and the contents of every
+operator-declared `setupCacheInputs` path matches the last successful setup for that worktree. The
+daemon stores that fingerprint and the captured environment (minus `HARNESS_*`) as a mode-0600
+host filesystem sidecar outside the checkout. On a matching fingerprint it restores those
+exports and skips the scripts. Missing, non-regular, oversized (larger than 16 MiB), or
+unreadable declared files, a corrupt or missing sidecar, a changed script, a different ref, or a
+changed declared file are cache misses and run setup again. Declared extra files are opened as
+bounded regular files; the daemon does not follow symlinks into devices and does not read FIFOs.
+The host never inspects undeclared manifests or lockfiles. Failed setup does not record a
+successful cache. If setup succeeds but the sidecar cannot be written, the session still succeeds
+and the next fresh session re-runs setup. Configure `setupCacheInputs` next to setup scripts
+(`fleet:exec-config`); paths must be relative checkout paths with no `..` segments.
+
 ### Command resolution hardening
 
 `runGit` (`services/host-daemon/src/git-commands.ts`) resolves its daemon-owned `git` name through

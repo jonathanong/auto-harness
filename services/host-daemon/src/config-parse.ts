@@ -15,6 +15,7 @@ import type {
   WorktreeConfig,
 } from "./config-types.ts";
 import { isForeignWindowsAbsolutePath } from "./allowed-roots.ts";
+import { assignSetupCacheInputs } from "./config-setup-cache.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -50,6 +51,7 @@ function parseWorktree(raw: unknown, index: number, repoId: string): WorktreeCon
     }
     wt.setupScript = raw.setupScript;
   }
+  assignSetupCacheInputs(wt, raw, `worktree.${id}.setupCacheInputs`);
   const wtOverrides = parseProviderAccountOverrides(raw.providerAccountOverrides, `worktree.${id}`);
   if (wtOverrides !== undefined) {
     wt.providerAccountOverrides = wtOverrides;
@@ -82,6 +84,7 @@ function parseRepository(raw: unknown, index: number): RepositoryConfig {
     }
     repo.setupScript = raw.setupScript;
   }
+  assignSetupCacheInputs(repo, raw, `repository.${id}.setupCacheInputs`);
   if (raw.terminalHookScript !== undefined) {
     if (typeof raw.terminalHookScript !== "string") {
       throw new Error(`repository.${id}.terminalHookScript must be a string`);
@@ -173,6 +176,7 @@ export function parseDaemonConfig(
     }
     config.setupScript = raw.setupScript;
   }
+  assignSetupCacheInputs(config, raw, "setupCacheInputs");
   const allowedRoots = parseAllowedRoots(raw.allowedRoots);
   if (allowedRoots?.length) config.allowedRoots = allowedRoots;
   const workspacePools = parseWorkspacePools(raw.workspacePools);

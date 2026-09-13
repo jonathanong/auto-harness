@@ -185,6 +185,7 @@ test.describe("control plane hosts", () => {
           page.getByTestId(`repo-settings-required-environment-${repo.id}`),
         ).toBeVisible();
         await expect(page.getByTestId(`repo-settings-setup-${repo.id}`)).toBeVisible();
+        await expect(page.getByTestId(`repo-settings-setup-cache-inputs-${repo.id}`)).toBeVisible();
         await expect(page.getByTestId(`repo-settings-hook-${repo.id}`)).toBeVisible();
         await expect(page.getByTestId(`repo-settings-error-${repo.id}`)).toHaveCount(0);
         await page.getByTestId(`repo-settings-submit-${repo.id}`).click();

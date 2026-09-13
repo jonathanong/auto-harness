@@ -232,6 +232,7 @@ export default async function HostDetailPage({
                 initialJson={inventoryJson}
                 initialVersion={inventory?.version ?? 0}
                 setupScript={inv.setupScript}
+                setupCacheInputs={inv.setupCacheInputs}
                 allowedRoots={inv.allowedRoots}
                 requiredEnvironment={inv.requiredEnvironment}
                 updateConfig={inv.updateConfig}

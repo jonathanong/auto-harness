@@ -140,6 +140,7 @@ export async function runClaimedSession(
   authorizeCommandStart?: (assign: SessionAssign, signal?: AbortSignal) => Promise<boolean>,
   /** A v7 peer must durably own pre-command hooks before they can run. */
   deferPreCommandFailureHook = false,
+  setupCacheDir?: string,
 ): Promise<SessionRunResult> {
   const repositoryId = assign.repositoryId;
   const mappedGitHubApp = repositoryId
@@ -238,6 +239,7 @@ export async function runClaimedSession(
       deferPreCommandFailureHook,
       githubApp,
       nowMs,
+      setupCacheDir,
     );
   } catch (error) {
     return await finishClaimedSession(

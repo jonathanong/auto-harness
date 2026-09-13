@@ -4,6 +4,7 @@
 import React, { act } from "react";
 import { describe, expect, it } from "vitest";
 
+import type { HostWorktree } from "@auto-harness/shared";
 import {
   createApiFake,
   field,
@@ -17,7 +18,7 @@ import {
 } from "../../test-helpers/form-test-helpers.tsx";
 import { EditWorktreeForm } from "./edit-worktree-form.tsx";
 
-const worktree = {
+const worktree: HostWorktree = {
   id: "worktree-1",
   name: "feature",
   path: "/repo/feature",
@@ -37,7 +38,7 @@ const inventory = {
   commandProfiles: {},
 };
 
-function form(worktreeValue = worktree) {
+function form(worktreeValue: HostWorktree = worktree) {
   return (
     <EditWorktreeForm
       hostId="host/one"
@@ -60,6 +61,23 @@ describe("EditWorktreeForm", () => {
     pressCancel();
     expect(document.querySelector('[data-pw="form-edit-worktree"]')).toBeNull();
     view.unmount();
+
+    const withCache = mountForm(form({ ...worktree, setupCacheInputs: ["Cargo.lock"] }));
+    press(field(withCache.container, "worktree-edit-open"));
+    expect(field<HTMLTextAreaElement>(document, "worktree-edit-setup-cache-inputs").value).toBe(
+      "Cargo.lock",
+    );
+    pressCancel();
+    withCache.unmount();
+
+    const inherited = mountForm(
+      form({ id: worktree.id, name: worktree.name, path: worktree.path, labels: worktree.labels }),
+    );
+    press(field(inherited.container, "worktree-edit-open"));
+    expect(field<HTMLTextAreaElement>(document, "worktree-edit-setup-script").value).toBe("");
+    expect(field<HTMLTextAreaElement>(document, "worktree-edit-setup-cache-inputs").value).toBe("");
+    pressCancel();
+    inherited.unmount();
   });
 
   it("requires an absolute path", () => {
@@ -105,6 +123,7 @@ describe("EditWorktreeForm", () => {
     setValue(field(document, "worktree-edit-path"), " /new/feature ");
     setValue(field(document, "worktree-edit-labels"), " fast, ci, , fast ");
     setValue(field(document, "worktree-edit-setup-script"), "pnpm install");
+    setValue(field(document, "worktree-edit-setup-cache-inputs"), "pnpm-lock.yaml");
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
     expect(api.requests).toHaveLength(2);
@@ -118,6 +137,7 @@ describe("EditWorktreeForm", () => {
               path: "/new/feature",
               labels: ["fast", "ci", "fast"],
               setupScript: "pnpm install",
+              setupCacheInputs: ["pnpm-lock.yaml"],
             },
           ],
         },
@@ -125,6 +145,15 @@ describe("EditWorktreeForm", () => {
     });
     expect(router.refresh).toHaveBeenCalledOnce();
     expect(document.querySelector('[data-pw="form-edit-worktree"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("rejects invalid setup cache inputs before saving", () => {
+    const view = mountForm(form());
+    press(field(view.container, "worktree-edit-open"));
+    setValue(field(document, "worktree-edit-setup-cache-inputs"), "/etc/passwd");
+    submit(field(document, "form-edit-worktree"));
+    expect(field(document, "worktree-edit-error").textContent).toContain("relative");
     view.unmount();
   });
 

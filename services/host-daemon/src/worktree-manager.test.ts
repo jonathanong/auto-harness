@@ -56,6 +56,34 @@ describe("WorktreeManager", () => {
     expect(mgr.isBusy("wt-1")).toBe(false);
   });
 
+  it("copies host setup cache inputs onto a claimed worktree", async () => {
+    const git = fakeGit();
+    const mgr = new WorktreeManager(
+      parseDaemonConfig({
+        ...config,
+        setupCacheInputs: ["host.lock"],
+        repositories: [
+          {
+            ...config.repositories[0],
+            setupCacheInputs: ["pnpm-lock.yaml"],
+            worktrees: [
+              {
+                ...config.repositories[0]!.worktrees[0],
+                setupCacheInputs: ["Cargo.lock"],
+              },
+            ],
+          },
+        ],
+      }),
+      git,
+    );
+    const claimed = await mgr.claim("repo-1", "wt-1");
+    expect(claimed.hostSetupCacheInputs).toEqual(["host.lock"]);
+    expect(claimed.repository.setupCacheInputs).toEqual(["pnpm-lock.yaml"]);
+    expect(claimed.worktree.setupCacheInputs).toEqual(["Cargo.lock"]);
+    mgr.release("wt-1");
+  });
+
   it("checks out explicit ref or default branch", async () => {
     const git = fakeGit();
     const mgr = new WorktreeManager(config, git);
@@ -622,6 +650,96 @@ describe("WorktreeManager", () => {
     const claimed = await mgr.mainClaim("repo-1");
     mgr.noteInventoryChange();
     await expect(claimed.currentExecutionTarget()).resolves.toBeUndefined();
+  });
+
+  it.each([
+    {
+      name: "host",
+      apply: (cfg: typeof config) => {
+        cfg.setupCacheInputs = ["host.lock"];
+      },
+    },
+    {
+      name: "repository",
+      apply: (cfg: typeof config) => {
+        cfg.repositories[0]!.setupCacheInputs = ["pnpm-lock.yaml"];
+      },
+    },
+    {
+      name: "worktree",
+      apply: (cfg: typeof config) => {
+        cfg.repositories[0]!.worktrees[0]!.setupCacheInputs = ["Cargo.lock"];
+      },
+    },
+  ])("rejects an execution target when $name setup cache inputs change", async ({ apply }) => {
+    const cfg = structuredClone(config);
+    const mgr = new WorktreeManager(cfg, fakeGit());
+    const claimed = await mgr.claim("repo-1", "wt-1");
+    apply(cfg);
+    mgr.noteInventoryChange();
+    await expect(claimed.currentExecutionTarget()).rejects.toThrow(
+      "host inventory changed after this checkout was claimed",
+    );
+  });
+
+  it("treats omitted setup cache inputs as empty during revalidation", async () => {
+    const cfg = structuredClone(config);
+    const mgr = new WorktreeManager(cfg, fakeGit());
+    const claimed = await mgr.claim("repo-1", "wt-1");
+    cfg.repositories[0]!.setupCacheInputs = [];
+    cfg.repositories[0]!.worktrees[0]!.setupCacheInputs = [];
+    mgr.noteInventoryChange();
+    await expect(claimed.currentExecutionTarget()).resolves.toBeUndefined();
+  });
+
+  it("rejects when already-claimed setup cache inputs change", async () => {
+    const cfg = parseDaemonConfig({
+      ...config,
+      setupCacheInputs: ["host.lock"],
+      repositories: [
+        {
+          ...config.repositories[0],
+          setupCacheInputs: ["pnpm-lock.yaml"],
+          worktrees: [
+            {
+              ...config.repositories[0]!.worktrees[0],
+              setupCacheInputs: ["Cargo.lock"],
+            },
+          ],
+        },
+      ],
+    });
+    const mgr = new WorktreeManager(cfg, fakeGit());
+    const claimed = await mgr.claim("repo-1", "wt-1");
+    cfg.setupCacheInputs = ["other.lock"];
+    mgr.noteInventoryChange();
+    await expect(claimed.currentExecutionTarget()).rejects.toThrow(
+      "host inventory changed after this checkout was claimed",
+    );
+  });
+
+  it("keeps a claimed worktree valid when setup cache inputs are unchanged", async () => {
+    const cfg = parseDaemonConfig({
+      ...config,
+      setupCacheInputs: ["host.lock"],
+      repositories: [
+        {
+          ...config.repositories[0],
+          setupCacheInputs: ["pnpm-lock.yaml"],
+          worktrees: [
+            {
+              ...config.repositories[0]!.worktrees[0],
+              setupCacheInputs: ["Cargo.lock"],
+            },
+          ],
+        },
+      ],
+    });
+    const mgr = new WorktreeManager(cfg, fakeGit());
+    const claimed = await mgr.claim("repo-1", "wt-1");
+    mgr.noteInventoryChange();
+    await expect(claimed.currentExecutionTarget()).resolves.toBeUndefined();
+    mgr.release("wt-1");
   });
 
   it("rejects an execution target whose claimed paths moved after inventory refresh", async () => {

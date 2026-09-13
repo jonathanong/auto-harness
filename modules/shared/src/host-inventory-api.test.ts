@@ -174,6 +174,7 @@ describe("getInventory / putInventory", () => {
           "host-1",
           {
             setupScript: "echo",
+            setupCacheInputs: ["pnpm-lock.yaml"],
             allowedRoots: ["/opt/harness"],
             updateConfig,
             repositories: [{ id: "repo", terminalHookScript: "/opt/harness/hook.sh" }],
@@ -184,6 +185,7 @@ describe("getInventory / putInventory", () => {
       expect(sent.url).toContain("/exec-config");
       expect(sent.body).toEqual({
         setupScript: "echo",
+        setupCacheInputs: ["pnpm-lock.yaml"],
         allowedRoots: ["/opt/harness"],
         updateConfig,
         repositories: [{ id: "repo", terminalHookScript: "/opt/harness/hook.sh" }],

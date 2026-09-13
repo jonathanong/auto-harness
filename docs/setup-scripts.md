@@ -20,15 +20,15 @@ checked-out ref control that part of execution.
 
 ## Execution contract
 
-| Behavior          | Contract                                                                                                                                                                                  |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| When setup runs   | Fresh sessions only. Native resumes skip every setup script.                                                                                                                              |
-| Order             | The host script runs first, followed by one scoped script using `session assignment > worktree > repository attachment` precedence.                                                       |
-| Working directory | The claimed session worktree, locked main checkout for a scheduled session, or claimed workspace slot.                                                                                    |
-| Shell             | On POSIX hosts, an available absolute compatible `$SHELL` named `sh`, `bash`, `dash`, `ksh`, or `zsh`; otherwise `/bin/sh`. Configured setup is not currently supported on Windows hosts. |
-| Environment       | Successful exports flow to the next setup script and form the assigned command's base environment, except reserved `HARNESS_*` values.                                                    |
-| Output            | Every stdout/stderr chunk from setup is streamed into the live and retained session log. The private environment snapshot does not redact printed values.                                 |
-| Failure           | A non-zero exit, timeout, cancellation, or invalid environment capture fails setup and prevents the assigned command from starting.                                                       |
+| Behavior          | Contract                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| When setup runs   | Fresh sessions only. Native resumes skip every setup script. When a fresh session's fingerprint of the checked-out ref, the setup scripts that would run, and any operator-declared extra checkout paths matches the last successful setup for that worktree, the daemon skips those scripts, restores the captured exports (minus `HARNESS_*`), and logs `Setup unchanged; skipping.` |
+| Order             | The host script runs first, followed by one scoped script using `session assignment > worktree > repository attachment` precedence.                                                                                                                                                                                                                                                    |
+| Working directory | The claimed session worktree, locked main checkout for a scheduled session, or claimed workspace slot.                                                                                                                                                                                                                                                                                 |
+| Shell             | On POSIX hosts, an available absolute compatible `$SHELL` named `sh`, `bash`, `dash`, `ksh`, or `zsh`; otherwise `/bin/sh`. Configured setup is not currently supported on Windows hosts.                                                                                                                                                                                              |
+| Environment       | Successful exports flow to the next setup script and form the assigned command's base environment, except reserved `HARNESS_*` values. A cache hit restores that captured environment from a mode-0600 host sidecar instead of re-running setup.                                                                                                                                       |
+| Output            | Every stdout/stderr chunk from setup is streamed into the live and retained session log. The private environment snapshot does not redact printed values.                                                                                                                                                                                                                              |
+| Failure           | A non-zero exit, timeout, cancellation, or invalid environment capture fails setup and prevents the assigned command from starting. A failed setup does not record a successful cache. If setup succeeds but the sidecar cannot be written, the session still succeeds and the next fresh session re-runs setup.                                                                       |
 
 For a session using a Provider Account, its execution profile is applied after setup: the profile
 replaces `HOME`/`USERPROFILE` and overlays any colliding profile environment keys. The assigned
@@ -36,6 +36,12 @@ command can read the resulting final values, not necessarily every value setup o
 
 Setup shares the session deadline and has a ten-minute cap. It may run again for another fresh
 assignment, so it must tolerate repetition and partially prepared state.
+
+Cache skip does not fingerprint sourced host files such as `/opt/auto-harness/setup/host-environment`;
+change the setup script text (or a declared checkout input) when those files change. It also does
+not reconstruct or revalidate ignored outputs such as `node_modules` from a prior session; leave
+cache unused or bump a declared input or script if those outputs must be rebuilt. Cache sidecars
+are mode-0600 files in the daemon cache directory (`~/.auto-harness/setup-cache` by default).
 
 ### Workspace profile boundary
 
@@ -97,6 +103,10 @@ These paths are illustrative; use absolute, operator-controlled paths appropriat
   program.
 - Do not assume setup runs during native resume. A resumed command must use the existing worktree and
   environment it can establish without setup.
+- Do not expect Auto Harness to hash `package.json`, lockfiles, or other checkout files unless you
+  listed those paths as setup cache inputs. Each declared path must be a regular file of at most
+  16 MiB; missing, non-regular, oversized, or unreadable files are cache misses and run setup again.
+  Changing an undeclared file does not invalidate cached setup.
 - Do not configure setup on a Windows host until native or compatible-shell setup execution is
   supported. Stock Windows has no usable `/bin/sh` fallback for this contract.
 - Do not use destructive resets or cleanup against a scheduled main checkout unless that behavior is
@@ -127,6 +137,8 @@ list of package-manager flags as a complete security boundary.
 - Can the script and every tool it invokes complete without printing secrets or enabling tracing?
 - Is the script repeatable, bounded by the session deadline, and safe after a partial failure?
 - Is the no-setup behavior for native resume acceptable?
+- If setup is expensive, have you declared the extra checkout paths that should invalidate cached
+  setup (for example a lockfile)? The host never auto-detects manifests.
 - Has the exact script been tested on each target host operating system?
 
 Implementation details and configuration examples live in [host-daemon.md](host-daemon.md#setup-scripts).

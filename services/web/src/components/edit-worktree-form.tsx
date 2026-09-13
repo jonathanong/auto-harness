@@ -2,7 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { mutateInventory, updateHostWorktree, type HostWorktree } from "@auto-harness/shared";
+import {
+  mutateInventory,
+  parseSetupCacheInputsField,
+  thrownMessage,
+  updateHostWorktree,
+  type HostWorktree,
+} from "@auto-harness/shared";
 import {
   Button,
   Dialog,
@@ -13,10 +19,10 @@ import {
   DialogTrigger,
   Input,
   Label,
-  Textarea,
   WithTooltip,
   showToast,
 } from "@auto-harness/ui";
+import { WorktreeExecConfigFields } from "./worktree-exec-config-fields.tsx";
 
 export function EditWorktreeForm({
   hostId,
@@ -36,12 +42,16 @@ export function EditWorktreeForm({
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
   const [setupScriptEdited, setSetupScriptEdited] = useState(false);
+  const [setupCacheInputsEdited, setSetupCacheInputsEdited] = useState(false);
   const pathEditingBlocked =
     !canWriteExecConfig && (hasInheritedExecutionConfig || (worktree.setupScript ?? "") !== "");
 
   const handleOpenChange = (nextOpen: boolean): void => {
     setOpen(nextOpen);
-    if (!nextOpen) setSetupScriptEdited(false);
+    if (!nextOpen) {
+      setSetupScriptEdited(false);
+      setSetupCacheInputsEdited(false);
+    }
   };
 
   return (
@@ -75,6 +85,22 @@ export function EditWorktreeForm({
             const setupScriptEntry = fd.get("setupScript");
             const setupScript = typeof setupScriptEntry === "string" ? setupScriptEntry : "";
             const worktreeSetupScript = setupScript.trim() ? setupScript : undefined;
+            const setupCacheInputsEntry = String(fd.get("setupCacheInputs") ?? "");
+            let setupCacheInputs: string[] | undefined;
+            try {
+              if (canWriteExecConfig && setupCacheInputsEdited) {
+                setupCacheInputs = parseSetupCacheInputsField(
+                  setupCacheInputsEntry,
+                  `worktree.${worktree.id}.setupCacheInputs`,
+                );
+              }
+            } catch (error) {
+              showToast(thrownMessage(error), {
+                variant: "destructive",
+                pw: "worktree-edit-error",
+              });
+              return;
+            }
             if (!path) {
               showToast("absolute path is required", {
                 variant: "destructive",
@@ -94,6 +120,7 @@ export function EditWorktreeForm({
                   ...(canWriteExecConfig && setupScriptEdited
                     ? { setupScript: worktreeSetupScript ?? "" }
                     : {}),
+                  ...(setupCacheInputs !== undefined ? { setupCacheInputs } : {}),
                 }),
               );
               if (!r.ok) {
@@ -137,23 +164,11 @@ export function EditWorktreeForm({
             />
           </div>
           {canWriteExecConfig ? (
-            <div className="space-y-1">
-              <Label
-                htmlFor="worktreeSetupScript"
-                tip="Optional worktree override; leave blank to inherit repository setup. Requires fleet:exec-config."
-              >
-                Setup Script
-              </Label>
-              <Textarea
-                id="worktreeSetupScript"
-                name="setupScript"
-                rows={5}
-                defaultValue={worktree.setupScript ?? ""}
-                onChange={() => setSetupScriptEdited(true)}
-                className="font-mono text-xs"
-                data-pw="worktree-edit-setup-script"
-              />
-            </div>
+            <WorktreeExecConfigFields
+              worktree={worktree}
+              onSetupScriptChange={() => setSetupScriptEdited(true)}
+              onSetupCacheInputsChange={() => setSetupCacheInputsEdited(true)}
+            />
           ) : null}
           <div className="flex gap-2">
             <WithTooltip tip="Save changes to this worktree">
