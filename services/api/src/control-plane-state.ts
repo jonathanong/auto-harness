@@ -355,6 +355,10 @@ export function toPublic(
     activeHostOrder: _activeHostOrder,
     primaryCommandStartState: _primaryCommandStartState,
     descendantCount: _descendantCount,
+    terminalHookHandoff: _terminalHookHandoff,
+    terminalHookHandoffSettled: _terminalHookHandoffSettled,
+    terminalHookHandoffExpiredAt: _terminalHookHandoffExpiredAt,
+    infrastructureRetryAttemptId: _infrastructureRetryAttemptId,
     ...publicSession
   } = session;
   if (!includeResult) delete (publicSession as Partial<SessionRecord>).result;
