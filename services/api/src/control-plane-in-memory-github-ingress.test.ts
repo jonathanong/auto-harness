@@ -109,4 +109,45 @@ describe("in-memory GitHub ingress lock before fence", () => {
       createGitHubIngressSessionDurable(state, githubBody(), { integrationFence: githubFence }),
     ).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
   });
+
+  it("ignores terminal and unrelated in-memory sessions when looking up the lock", async () => {
+    const state = commandState();
+    state.githubIngressConfig = githubConfig({ version: 2 });
+    state.sessions.set("done", { ...activeRow(), id: "done", status: "failed" });
+    state.sessions.set("other", {
+      ...activeRow(),
+      id: "other",
+      concurrencyId: "github-comment:issue_comment:1:2",
+    });
+    await expect(
+      createGitHubIngressSessionDurable(state, githubBody(), { integrationFence: githubFence }),
+    ).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
+  });
+
+  it("does not treat a non-GitHub concurrency id as an ingress lock", async () => {
+    const state = commandState();
+    state.githubIngressConfig = githubConfig({ version: 2 });
+    state.sessions.set("active", {
+      ...activeRow(),
+      concurrencyId: "custom:delivery",
+    });
+    await expect(
+      createGitHubIngressSessionDurable(
+        state,
+        { ...githubBody(), concurrencyId: "custom:delivery" },
+        { integrationFence: githubFence },
+      ),
+    ).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
+    await expect(
+      createGitHubIngressSessionDurable(state, null, { integrationFence: githubFence }),
+    ).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
+  });
+
+  it("creates when the in-memory fence still matches", async () => {
+    const state = commandState();
+    state.githubIngressConfig = githubConfig();
+    await expect(
+      createGitHubIngressSessionDurable(state, githubBody(), { integrationFence: githubFence }),
+    ).resolves.toMatchObject({ ok: true, created: true, session: { id: "new" } });
+  });
 });
