@@ -300,6 +300,14 @@ function terminalHookComplete() {
 }
 
 class ProtocolAckPlane extends ControlPlane {
+  constructor() {
+    super();
+    this.state.sessions.set("ack-session", {
+      hostId: "ack-host",
+      terminalHookHandoff: { hostId: "ack-host", handoffId: "handoff" },
+    } as never);
+  }
+
   override getSession(id: string): ReturnType<ControlPlane["getSession"]> {
     return id === "ack-session"
       ? ({
@@ -360,6 +368,7 @@ class TerminalAuthorizationPlane extends ControlPlane {
   constructor(session: Record<string, unknown>) {
     super();
     this.session = session;
+    this.state.sessions.set("ack-session", { hostId: "ack-host", ...session } as never);
   }
 
   override getSession(id: string): ReturnType<ControlPlane["getSession"]> {

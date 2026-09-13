@@ -718,16 +718,15 @@ function isAllowedMessage(
   if (msg.type === "host:keepalive" || msg.type === "host:status") return msg.hostId === hostId;
   const session = plane.getSession(msg.sessionId);
   if (!session) return false;
-  if (
-    msg.type === "session:terminal-hook-complete" &&
-    ((session.terminalHookHandoff?.hostId === hostId &&
-      session.terminalHookHandoff.handoffId === msg.handoffId) ||
-      (session.terminalHookHandoffSettled?.hostId === hostId &&
-        session.terminalHookHandoffSettled.handoffId === msg.handoffId))
-  ) {
-    return true;
+  if (msg.type === "session:terminal-hook-complete") {
+    const stored = plane.state.sessions.get(msg.sessionId);
+    return (
+      (stored?.terminalHookHandoff?.hostId === hostId &&
+        stored.terminalHookHandoff.handoffId === msg.handoffId) ||
+      (stored?.terminalHookHandoffSettled?.hostId === hostId &&
+        stored.terminalHookHandoffSettled.handoffId === msg.handoffId)
+    );
   }
-  if (msg.type === "session:terminal-hook-complete") return false;
   if (session.hostId === hostId) return true;
   return (
     "attemptId" in msg &&
