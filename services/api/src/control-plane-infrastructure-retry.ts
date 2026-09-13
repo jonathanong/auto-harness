@@ -34,8 +34,11 @@ export function finishHostLostSession(
   state: ControlPlaneState,
   session: SessionRecord,
   handoff = hostLostTerminalHookHandoff(state, session),
+  options?: { emitExhausted?: boolean },
 ): SessionRecord {
-  if ((session.infrastructureRetryCount ?? 0) >= 1) emitInfrastructureRetryExhausted();
+  if ((options?.emitExhausted ?? true) && (session.infrastructureRetryCount ?? 0) >= 1) {
+    emitInfrastructureRetryExhausted();
+  }
   const next: SessionRecord = {
     ...session,
     status: "failed",

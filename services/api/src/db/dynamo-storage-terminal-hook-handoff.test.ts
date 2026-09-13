@@ -157,7 +157,7 @@ describe("DynamoDB Local terminal hook handoffs", () => {
         errorCode: "host_lost",
         terminalHookHandoff: handoff,
       }),
-    ).toBe(true);
+    ).toBe("committed");
     await expect(getSession(ctx, "finish-handoff")).resolves.toMatchObject({
       status: "failed",
       terminalHookHandoff: handoff,

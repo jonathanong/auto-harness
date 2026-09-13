@@ -6,6 +6,7 @@ import { statusShardAttr } from "./dynamo.ts";
 import {
   isConditionalTransactionFailed,
   type ArchiveMetadata,
+  type DurableWriteResult,
   type PlaneStorageCtx,
 } from "./plane-storage-types.ts";
 import {
@@ -363,20 +364,20 @@ async function finishSessionConflict(
   err: unknown,
   opts: FinishSessionOpts,
   cleanup: ReturnType<typeof sessionDrainActivityDelete>,
-): Promise<boolean> {
+): Promise<DurableWriteResult> {
   if (!isConditionalTransactionFailed(err)) throw err;
   const current = await getSession(ctx, opts.sessionId);
   if (current?.status === opts.status && cleanup.length) {
     await ctx.doc.send(new TransactWriteCommand({ TransactItems: cleanup }));
   }
-  return current?.status === opts.status;
+  return current?.status === opts.status ? "duplicate" : false;
 }
 
 /** Atomically apply a terminal transition and release its worktree. */
 export async function finishSession(
   ctx: PlaneStorageCtx,
   opts: FinishSessionOpts,
-): Promise<boolean> {
+): Promise<DurableWriteResult> {
   const cleanup = await finishSessionCleanup(ctx, opts);
   try {
     await ctx.doc.send(
@@ -384,7 +385,7 @@ export async function finishSession(
         TransactItems: finishSessionItems(ctx, opts, finishSessionUpdate(opts), cleanup),
       }),
     );
-    return true;
+    return "committed";
   } catch (err) {
     return finishSessionConflict(ctx, err, opts, cleanup);
   }

@@ -315,7 +315,10 @@ export async function reclaimReconnectDeadlines(
       if (!finished) continue;
       await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
-      state.sessions.set(session.id, finishHostLostSession(state, session, handoff));
+      state.sessions.set(
+        session.id,
+        finishHostLostSession(state, session, handoff, { emitExhausted: finished === "committed" }),
+      );
       state.worktrees.set(worktree.id, {
         ...worktree,
         status: "idle",

@@ -7,6 +7,7 @@ import type { DynamoTableNames } from "./dynamo.ts";
 import type { SessionRecord, UsageRecord, WorkspaceSlotRecord, WorktreeRecord } from "./types.ts";
 import {
   type AssignmentWriteResult,
+  type DurableWriteResult,
   type HostInventoryRecord,
   type ArchiveMetadata,
   type ConnectionRecord,
@@ -899,7 +900,7 @@ export class DynamoPlaneStorageBase {
     terminalHookHandoff?: SessionRecord["terminalHookHandoff"];
     expectedTerminalHookHandoffAbsent?: boolean;
     expectedStatus?: string;
-  }): Promise<boolean> {
+  }): Promise<DurableWriteResult> {
     return sessions.finishSession(this.ctx, opts);
   }
 

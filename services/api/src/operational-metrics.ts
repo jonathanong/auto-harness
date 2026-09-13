@@ -97,6 +97,15 @@ export function emitInfrastructureRetryExhausted(): void {
   emitOperationalMetric(OPERATIONAL_METRICS.infrastructureRetryExhausted, 1);
 }
 
+/** Emit only for the CAS winner that actually wrote the terminal row. */
+export function emitInfrastructureRetryExhaustedOnCommit(
+  write: false | "committed" | "duplicate",
+  retryCount: number | undefined,
+): void {
+  if (write !== "committed" || (retryCount ?? 0) < 1) return;
+  emitInfrastructureRetryExhausted();
+}
+
 export function emitCronSweepMetrics(input: {
   ackTimeouts: number;
   staleHosts: number;

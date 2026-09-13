@@ -128,7 +128,12 @@ export async function offlineHostAndRequeueDurableImpl(
           if (finished) {
             await releaseLegacyHostAssignmentAfterDurableTransition(state, latestSession);
             releaseProviderAccountLease(state, latestSession);
-            state.sessions.set(sessionId, finishHostLostSession(state, latestSession, handoff));
+            state.sessions.set(
+              sessionId,
+              finishHostLostSession(state, latestSession, handoff, {
+                emitExhausted: finished === "committed",
+              }),
+            );
             state.worktrees.set(wt.id, {
               ...latestWorktree,
               status: "idle",
