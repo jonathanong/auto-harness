@@ -333,7 +333,9 @@ only `{prompt, idempotencyKey, ref?}` and sign the exact request bytes with HMAC
 x-auto-harness-signature-256: sha256=<lowercase hex digest>
 ```
 
-Unknown fields and invalid signatures are rejected. A successful request returns a small `202`
+Unknown fields, invalid signatures, and bodies over 1 MiB are rejected. Oversized
+bodies are drained until the request ends so keep-alive reuse does not treat leftover
+bytes as a later request. A successful request returns a small `202`
 acknowledgment after the durable session write; assignment is detached from that response.
 `idempotencyKey` is scoped to the integration generation and uses the existing atomic session concurrency lock to make concurrent or
 active-session redelivery safe. An already-active lock owner is acknowledged even when a catalog

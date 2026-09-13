@@ -114,28 +114,27 @@ export function readRawBody(req: IncomingMessage, maxBytes = MAX_JSON_BODY_BYTES
     const chunks: Buffer[] = [];
     let size = 0;
     let rejected = false;
+    const oversized = new Error(
+      maxBytes === MAX_JSON_BODY_BYTES
+        ? "request body exceeds 1 MiB"
+        : "request body exceeds route limit",
+    );
     req.on("data", (chunk: Buffer) => {
       if (rejected) return;
       size += chunk.length;
       if (size > maxBytes) {
         rejected = true;
-        // Keep the connection usable so callers can send the documented 413 response. The
-        // data listener remains installed until the request ends, but no further chunks are
-        // retained after the bounded prefix has been read.
-        req.resume();
-        reject(
-          new Error(
-            maxBytes === MAX_JSON_BODY_BYTES
-              ? "request body exceeds 1 MiB"
-              : "request body exceeds route limit",
-          ),
-        );
+        // Stop retaining bytes, then drain until `end` so keep-alive reuse does not parse
+        // leftover body bytes as the next request. Callers send 413/400 after this promise
+        // settles. Lambda's already-buffered Readable ends immediately after resume.
+        if (typeof req.resume === "function") req.resume();
         return;
       }
       chunks.push(chunk);
     });
     req.on("end", () => {
-      if (!rejected) resolve(Buffer.concat(chunks));
+      if (rejected) reject(oversized);
+      else resolve(Buffer.concat(chunks));
     });
     req.on("error", reject);
   });

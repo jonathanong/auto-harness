@@ -391,7 +391,7 @@ drains **with the old key** before consumers drop that credential. See
 `POST /api/v1/webhooks/custom/:integrationId` is the public, unauthenticated ingress for an
 operator-configured custom webhook. The request body is strictly limited to `prompt`,
 `idempotencyKey`, and optional `ref`; repository and target routing are never accepted from the
-caller. Send `x-auto-harness-signature-256: sha256=<64 lowercase hex characters>`, where the
+caller. Bodies over 1 MiB are drained and rejected before JSON parsing. Send `x-auto-harness-signature-256: sha256=<64 lowercase hex characters>`, where the
 digest is HMAC-SHA256 of the exact request bytes using the integration secret. Valid requests
 create (or find) a `source: "webhook"` session using an integration-generation-scoped concurrency key and
 return a small `202` acknowledgment (`accepted`, `sessionId`, and `created`). Assignment dispatch
