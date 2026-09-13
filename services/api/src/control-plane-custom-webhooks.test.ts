@@ -269,6 +269,79 @@ describe("custom webhook integration lifecycle", () => {
     });
   });
 
+  it.each([
+    {
+      name: "repository",
+      mutate: (value: ControlPlane) => {
+        expect(
+          value.createRepository({
+            id: "other",
+            name: "other",
+            url: "https://example.test/other",
+          }).ok,
+        ).toBe(true);
+      },
+    },
+    {
+      name: "provider",
+      mutate: (value: ControlPlane) => {
+        expect(
+          value.createProvider({
+            id: "other-provider",
+            name: "other-provider",
+            defaultCommandId: "command",
+          }).ok,
+        ).toBe(true);
+      },
+    },
+    {
+      name: "command",
+      mutate: (value: ControlPlane) => {
+        expect(
+          value.createCommand({
+            id: "other-command",
+            name: "other-command",
+            argv: ["echo"],
+          }).ok,
+        ).toBe(true);
+      },
+    },
+  ])(
+    "does not delete an in-memory webhook after a concurrent $name catalog write",
+    async ({ mutate }) => {
+      const value = plane();
+      await expect(value.createCustomWebhookIntegration(config())).resolves.toMatchObject({
+        ok: true,
+      });
+      const pending = value.deleteCustomWebhookIntegration("deploy");
+      await Promise.resolve();
+      mutate(value);
+      await expect(pending).resolves.toMatchObject({ ok: false, conflict: true });
+      expect(value.state.customWebhookIntegrations.has("deploy")).toBe(true);
+    },
+  );
+
+  it("does not delete an in-memory webhook after the live row is replaced", async () => {
+    const value = plane();
+    await expect(value.createCustomWebhookIntegration(config())).resolves.toMatchObject({
+      ok: true,
+    });
+    const pending = value.deleteCustomWebhookIntegration("deploy");
+    await Promise.resolve();
+    const current = value.state.customWebhookIntegrations.get("deploy");
+    expect(current).toBeDefined();
+    value.state.customWebhookIntegrations.set("deploy", {
+      ...current!,
+      version: current!.version + 1,
+      generation: "newer-generation",
+    });
+    await expect(pending).resolves.toMatchObject({ ok: false, conflict: true });
+    expect(value.state.customWebhookIntegrations.get("deploy")).toMatchObject({
+      version: 2,
+      generation: "newer-generation",
+    });
+  });
+
   it("accepts legacy delete fences and rejects them for generated records", async () => {
     const value = plane();
     await value.createCustomWebhookIntegration(config());
