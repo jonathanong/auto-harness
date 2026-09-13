@@ -6,6 +6,7 @@ import {
   getArchiveDownloadDurable,
   retrySessionArchiveIfNeeded,
 } from "./control-plane-archive.ts";
+import { queueLegacyArchiveRetry } from "./control-plane-archive-replace.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { ArchiveMetadata } from "./control-plane-types.ts";
 
@@ -335,6 +336,61 @@ describe("archive replacement preserves the last complete generation", () => {
     });
   });
 
+  it("does not queue a legacy retry over a later version-pinned complete generation", async () => {
+    const putArchive = vi.fn(async () => undefined);
+    let reads = 0;
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          throw new Error("object store unavailable");
+        },
+      },
+      storage: {
+        getArchive: async () =>
+          reads++ === 0 ? storedComplete("legacy-race") : storedComplete("legacy-race", "winner-v"),
+        listLogs: async () => [],
+        putArchive,
+      } as never,
+    });
+
+    await expect(archiveSessionLogs(state, "legacy-race")).rejects.toThrow(
+      "object store unavailable",
+    );
+    expect(putArchive).not.toHaveBeenCalled();
+  });
+
+  it("queues a fenced legacy retry through replaceCompleteArchivePending", async () => {
+    const putArchive = vi.fn(async () => undefined);
+    const replaceCompleteArchivePending = vi.fn(async () => true);
+    const current = storedComplete("legacy-pending");
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          throw new Error("object store unavailable");
+        },
+      },
+      storage: {
+        getArchive: async () => current,
+        listLogs: async () => [],
+        putArchive,
+        replaceCompleteArchivePending,
+      } as never,
+    });
+
+    await expect(archiveSessionLogs(state, "legacy-pending")).rejects.toThrow(
+      "object store unavailable",
+    );
+    expect(replaceCompleteArchivePending).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "pending", objectStored: false }),
+      { updatedAt: current.updatedAt },
+    );
+    expect(putArchive).not.toHaveBeenCalled();
+    expect(state.archives.get(current.key)).toMatchObject({
+      status: "pending",
+      objectStored: false,
+    });
+  });
+
   it("replaces a legacy complete row after the new version commits", async () => {
     const putArchive = vi.fn(async () => undefined);
     const current = storedComplete("legacy-ok");
@@ -348,10 +404,10 @@ describe("archive replacement preserves the last complete generation", () => {
     });
 
     await archiveSessionLogs(state, "legacy-ok");
-    expect(putArchive).toHaveBeenCalledWith(expect.objectContaining({ status: "pending" }));
     expect(putArchive).toHaveBeenCalledWith(
       expect.objectContaining({ status: "complete", versionId: "repaired-v2" }),
     );
+    expect(putArchive).not.toHaveBeenCalledWith(expect.objectContaining({ status: "pending" }));
   });
 
   it("does not put a replacement when the stored row is no longer complete", async () => {
@@ -401,5 +457,69 @@ describe("archive replacement preserves the last complete generation", () => {
 
     await archiveSessionLogs(state, "first-cache");
     expect(putArchive).toHaveBeenCalledWith(expect.objectContaining({ status: "pending" }));
+  });
+
+  it("queues an in-memory legacy retry after a failed upload", async () => {
+    const current = storedComplete("legacy-mem");
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          throw new Error("object store unavailable");
+        },
+      },
+    });
+    state.archives.set(current.key, current);
+
+    await expect(archiveSessionLogs(state, "legacy-mem")).rejects.toThrow(
+      "object store unavailable",
+    );
+    expect(state.archives.get(current.key)).toMatchObject({
+      status: "pending",
+      objectStored: false,
+    });
+  });
+
+  it("leaves a complete row when a fenced legacy retry loses", async () => {
+    const putArchive = vi.fn(async () => undefined);
+    const current = storedComplete("legacy-lost");
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          throw new Error("object store unavailable");
+        },
+      },
+      storage: {
+        getArchive: async () => current,
+        listLogs: async () => [],
+        putArchive,
+        replaceCompleteArchivePending: async () => false,
+      } as never,
+    });
+
+    await expect(archiveSessionLogs(state, "legacy-lost")).rejects.toThrow(
+      "object store unavailable",
+    );
+    expect(putArchive).not.toHaveBeenCalled();
+    expect(state.archives.get(current.key)).toEqual(current);
+  });
+
+  it("does not queue a version-pinned generation as a legacy retry", async () => {
+    const putArchive = vi.fn(async () => undefined);
+    const current = storedComplete("legacy-pinned", "complete-v1");
+    const state = createControlPlaneState({
+      storage: { getArchive: async () => current, putArchive } as never,
+    });
+    await expect(
+      queueLegacyArchiveRetry(
+        state,
+        {
+          ...current,
+          status: "pending",
+          objectStored: false,
+        },
+        { versionId: "complete-v1", updatedAt: current.updatedAt },
+      ),
+    ).resolves.toBe(false);
+    expect(putArchive).not.toHaveBeenCalled();
   });
 });

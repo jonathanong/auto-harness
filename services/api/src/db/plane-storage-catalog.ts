@@ -1588,6 +1588,46 @@ export async function replaceCompleteArchive(
   }
 }
 
+/** Demote a legacy complete row to pending only while that exact generation still wins. */
+export async function replaceCompleteArchivePending(
+  ctx: PlaneStorageCtx,
+  archive: ArchiveMetadata,
+  expected: { versionId?: string; updatedAt: string },
+): Promise<boolean> {
+  if (expected.versionId) return false;
+  const item: ArchiveMetadata = {
+    key: archive.key,
+    contentType: archive.contentType,
+    bodyBytes: archive.bodyBytes,
+    status: "pending",
+    objectStored: false,
+    updatedAt: archive.updatedAt,
+    retryState: archive.retryState ?? "pending",
+    retryOrder: archive.retryOrder ?? `${archive.updatedAt}#${archive.key}`,
+    ...(archive.objectKey ? { objectKey: archive.objectKey } : {}),
+  };
+  try {
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: ctx.tables.archives,
+        Item: item,
+        ConditionExpression:
+          "#status = :complete AND objectStored = :true AND attribute_not_exists(versionId) AND updatedAt = :expectedUpdatedAt",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":complete": "complete",
+          ":true": true,
+          ":expectedUpdatedAt": expected.updatedAt,
+        },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
+  }
+}
+
 /** Complete an upload only while the worker still owns the retry fence. */
 export async function completeArchiveRetry(
   ctx: PlaneStorageCtx,

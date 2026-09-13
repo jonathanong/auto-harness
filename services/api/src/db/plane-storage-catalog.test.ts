@@ -33,6 +33,7 @@ import {
   listPendingArchives,
   releaseArchiveRetry,
   replaceCompleteArchive,
+  replaceCompleteArchivePending,
 } from "./plane-storage-catalog.ts";
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import type { PlaneStorageCtx, ScheduleRecord } from "./plane-storage-types.ts";
@@ -332,6 +333,84 @@ describe("archive retry storage", () => {
       ),
     ).rejects.toThrow("archive replace unavailable");
   });
+
+  it("demotes a matching legacy complete archive to pending retry metadata", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      replaceCompleteArchivePending(
+        archiveCtx(send),
+        {
+          ...archive,
+          objectKey: "archives/session.jsonl",
+          status: "pending",
+          objectStored: false,
+        },
+        { updatedAt: archive.updatedAt },
+      ),
+    ).resolves.toBe(true);
+    expect(send.mock.calls[0]?.[0]).toMatchObject({
+      input: {
+        ConditionExpression:
+          "#status = :complete AND objectStored = :true AND attribute_not_exists(versionId) AND updatedAt = :expectedUpdatedAt",
+        Item: expect.objectContaining({
+          status: "pending",
+          objectStored: false,
+          objectKey: "archives/session.jsonl",
+          retryState: "processing",
+        }),
+      },
+    });
+  });
+
+  it("defaults retry fence fields when demoting a legacy complete archive", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const pending = {
+      key: archive.key,
+      contentType: archive.contentType,
+      bodyBytes: archive.bodyBytes,
+      status: "pending" as const,
+      objectStored: false,
+      updatedAt: archive.updatedAt,
+    };
+    await expect(
+      replaceCompleteArchivePending(archiveCtx(send), pending, { updatedAt: archive.updatedAt }),
+    ).resolves.toBe(true);
+    expect(send.mock.calls[0]?.[0].input.Item).toMatchObject({
+      retryState: "pending",
+      retryOrder: `${archive.updatedAt}#${archive.key}`,
+    });
+  });
+
+  it("does not demote a version-pinned complete archive to pending", async () => {
+    const send = vi.fn();
+    await expect(
+      replaceCompleteArchivePending(archiveCtx(send), archive, {
+        versionId: "archive-v1",
+        updatedAt: archive.updatedAt,
+      }),
+    ).resolves.toBe(false);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("returns false when another complete archive generation already won a pending demote", async () => {
+    await expect(
+      replaceCompleteArchivePending(
+        archiveCtx(vi.fn().mockRejectedValue({ name: "ConditionalCheckFailedException" })),
+        archive,
+        { updatedAt: archive.updatedAt },
+      ),
+    ).resolves.toBe(false);
+  });
+
+  it("propagates non-conditional legacy pending demote failures", async () => {
+    await expect(
+      replaceCompleteArchivePending(
+        archiveCtx(vi.fn().mockRejectedValue(new Error("archive pending unavailable"))),
+        archive,
+        { updatedAt: archive.updatedAt },
+      ),
+    ).rejects.toThrow("archive pending unavailable");
+  });
 });
 
 describe("archive and assignment base-storage delegators", () => {
@@ -398,6 +477,9 @@ describe("archive and assignment base-storage delegators", () => {
         { ...archive, status: "complete", objectStored: true, versionId: "archive-v2" },
         { versionId: "archive-v1", updatedAt: archive.updatedAt },
       ),
+    ).resolves.toBe(true);
+    await expect(
+      storage.replaceCompleteArchivePending(archive, { updatedAt: archive.updatedAt }),
     ).resolves.toBe(true);
     expect(send).toHaveBeenCalled();
   });
