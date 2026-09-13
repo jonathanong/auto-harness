@@ -233,4 +233,81 @@ describe("session live detail", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
     view.unmount();
   });
+
+  it("redirects to login when archive status returns 401", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("window", {
+      ...window,
+      location: { pathname: "/sessions/session%2Fone", search: "", assign },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo) => {
+        if (String(input).includes("/archive")) {
+          return { ok: false, status: 401, json: async () => ({}) };
+        }
+        return response(true, { id: "session/one", status: "completed" });
+      }),
+    );
+    const view = mount(
+      <SessionLiveDetail
+        initialSession={{ id: "session/one", status: "completed" }}
+        initialHosts={[]}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(assign).toHaveBeenCalledWith("/login?returnTo=%2Fsessions%2Fsession%252Fone");
+    view.unmount();
+  });
+
+  it("redirects to login when archive download minting returns 401", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("window", {
+      ...window,
+      location: { pathname: "/sessions/session%2Fone", search: "", assign },
+    });
+    let archiveCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo) => {
+        if (String(input).includes("/archive")) {
+          archiveCalls += 1;
+          if (archiveCalls === 1) {
+            return response(true, {
+              state: "archived",
+              downloadUrl: "https://s3.example/session.jsonl",
+              expiresAt: "now",
+              contentType: "application/x-ndjson",
+              bodyBytes: 1,
+            });
+          }
+          return { ok: false, status: 401, json: async () => ({}) };
+        }
+        return response(true, { id: "session/one", status: "completed" });
+      }),
+    );
+    const view = mount(
+      <SessionLiveDetail
+        initialSession={{ id: "session/one", status: "completed" }}
+        initialHosts={[]}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(assign).not.toHaveBeenCalled();
+    const download = view.container.querySelector('[data-pw="session-archive-download"]');
+    expect(download).not.toBeNull();
+    await act(async () => {
+      (download as HTMLButtonElement).click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(assign).toHaveBeenCalledWith("/login?returnTo=%2Fsessions%2Fsession%252Fone");
+    view.unmount();
+  });
 });

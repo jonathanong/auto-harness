@@ -132,6 +132,7 @@ export function SessionLiveDetail({
             sessionId={session.id}
             terminal={isTerminalSessionStatus(session.status)}
             refreshToken={archiveRefresh}
+            request={apiFetch}
           />
           {offline ? (
             <Alert variant="warning" className="p-4" data-pw="session-agent-offline" role="alert">

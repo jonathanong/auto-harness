@@ -30,12 +30,15 @@ function archiveRequest(timeoutMs = ARCHIVE_REQUEST_TIMEOUT_MS): {
   };
 }
 
+export type ArchiveRequest = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 async function fetchArchiveStatus(
   sessionId: string,
   signal: AbortSignal,
+  request: ArchiveRequest,
 ): Promise<SessionArchiveReadResponse> {
   const path = archivePath(sessionId);
-  const response = await fetch(path, { cache: "no-store", credentials: "same-origin", signal });
+  const response = await request(path, { cache: "no-store", credentials: "same-origin", signal });
   if (!response.ok) throw new Error(`GET ${path} failed`);
   const body: unknown = await response.json();
   if (!isSessionArchiveReadResponse(body)) throw new Error("Invalid archive status response");
@@ -56,10 +59,12 @@ export function SessionArchiveStatus({
   sessionId,
   terminal,
   refreshToken = 0,
+  request = fetch,
 }: {
   sessionId: string;
   terminal: boolean;
   refreshToken?: number;
+  request?: ArchiveRequest;
 }) {
   const [archive, setArchive] = useState<SessionArchiveReadResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -69,7 +74,7 @@ export function SessionArchiveStatus({
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let request: ReturnType<typeof archiveRequest> | undefined;
+    let pending: ReturnType<typeof archiveRequest> | undefined;
     const deadline = terminal ? Date.now() + ARCHIVE_POLL_MAX_MS : 0;
 
     const schedule = () => {
@@ -81,11 +86,11 @@ export function SessionArchiveStatus({
 
     async function refresh(automatic: boolean): Promise<void> {
       if (!active) return;
-      request?.dispose();
-      request = archiveRequest();
+      pending?.dispose();
+      pending = archiveRequest();
       setLoading(true);
       try {
-        const next = await fetchArchiveStatus(sessionId, request.signal);
+        const next = await fetchArchiveStatus(sessionId, pending.signal, request);
         if (!active) return;
         setArchive(next);
         setError(null);
@@ -95,8 +100,8 @@ export function SessionArchiveStatus({
         setError("Archive status could not be loaded; retrying may help.");
         schedule();
       } finally {
-        request?.dispose();
-        request = undefined;
+        pending?.dispose();
+        pending = undefined;
         if (active) setLoading(false);
       }
     }
@@ -104,18 +109,18 @@ export function SessionArchiveStatus({
     void refresh(true);
     return () => {
       active = false;
-      request?.dispose();
+      pending?.dispose();
       if (timer !== undefined) clearTimeout(timer);
     };
-  }, [manualRefresh, refreshToken, sessionId, terminal]);
+  }, [manualRefresh, refreshToken, request, sessionId, terminal]);
 
   const refresh = () => setManualRefresh((current) => current + 1);
   const download = async () => {
     setLoading(true);
-    const request = archiveRequest();
+    const pending = archiveRequest();
     try {
       // Always mint a fresh URL immediately before starting a download.
-      const next = await fetchArchiveStatus(sessionId, request.signal);
+      const next = await fetchArchiveStatus(sessionId, pending.signal, request);
       setArchive(next);
       setError(null);
       if (next.state !== "archived") return;
@@ -130,7 +135,7 @@ export function SessionArchiveStatus({
     } catch {
       setError("Archived transcript could not be downloaded.");
     } finally {
-      request.dispose();
+      pending.dispose();
       setLoading(false);
     }
   };
