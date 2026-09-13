@@ -282,6 +282,67 @@ describe("claimed session GitHub App credentials", () => {
     expect(logs.map((chunk) => chunk.content).join("")).not.toContain("ghs_exact-token");
   });
 
+  it("passes the minted token to a hook when resolved argv is empty", async () => {
+    const fetchMock = installTokenFetch();
+    let setupEnv: NodeJS.ProcessEnv | undefined;
+    let hookEnv: NodeJS.ProcessEnv | undefined;
+    let commandRan = false;
+    const systemRunner: ProcessRunner = {
+      async run(options) {
+        if (options.argv[0] === "/bin/sh" && options.argv[1] === "/hook.sh") {
+          hookEnv = options.env;
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        setupEnv = options.env;
+        return { exitCode: 0, timedOut: false, signal: null, environment: { ...options.env } };
+      },
+    };
+    const commandRunner: ProcessRunner = {
+      async run() {
+        commandRan = true;
+        throw new Error("must not spawn the assigned command");
+      },
+    };
+    const logs = [];
+    const result = await runClaimedSession(
+      systemRunner,
+      new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
+      logs,
+      baseAssign({ resolvedArgv: [], setupScript: "setup" }),
+      {
+        ...claimed,
+        currentHookTarget: async () => ({
+          cwd: claimed.cwd,
+          repository: { terminalHookScript: "/hook.sh" },
+        }),
+      },
+      undefined,
+      () => false,
+      () => 4_000_000,
+      commandRunner,
+      {
+        PATH: process.env.PATH,
+        HARNESS_CHILD_ENV_ALLOWLIST: "GH_TOKEN",
+        GH_TOKEN: "ambient-gh",
+      },
+      undefined,
+      undefined,
+      app(),
+      () => now,
+    );
+
+    expect(result).toMatchObject({
+      status: "failed",
+      errorCode: "unknown_command_profile",
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(commandRan).toBe(false);
+    expect(setupEnv?.GH_TOKEN).toBeUndefined();
+    expect(hookEnv?.GH_TOKEN).toBe("ghs_exact-token");
+    expect(hookEnv?.GIT_AUTHOR_NAME).toBe("auto-harness[bot]");
+    expect(logs.map((chunk) => chunk.content).join("")).not.toContain("ghs_exact-token");
+  });
+
   it("fails closed when the App token is too close to expiry", async () => {
     const fetchMock = installTokenFetch("2026-09-12T00:04:59.999Z");
     const runner: ProcessRunner = {

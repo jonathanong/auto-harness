@@ -310,7 +310,7 @@ export async function runClaimedSession(
 
   if (assign.resolvedArgv.length === 0) {
     return await finishClaimedSession(
-      processRunner,
+      effectiveTerminalRunner,
       streamer,
       logs,
       assign,
@@ -322,7 +322,7 @@ export async function runClaimedSession(
         errorMessage: "no resolved command argv for this session",
         ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       },
-      setup.environment,
+      authenticatedTerminalEnvironment,
       baseline,
       true,
       githubApp,
