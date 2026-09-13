@@ -31,3 +31,8 @@ export function can(principal: MePrincipal | null | undefined, capability: Capab
   if (principal === null) return false;
   return principalHas(principal, capability);
 }
+
+/** Repository-scoped principals cannot use the global workspace-pool catalog. */
+export function isRepositoryScoped(principal: MePrincipal | null | undefined): boolean {
+  return (principal?.allowedRepositoryIds?.length ?? 0) > 0;
+}

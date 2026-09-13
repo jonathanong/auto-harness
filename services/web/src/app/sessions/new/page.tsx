@@ -3,7 +3,7 @@ import {
   type WorkspacePoolOption,
 } from "../../../components/create-session-form.tsx";
 import { apiGet, apiGetAllPages } from "../../../lib/api.ts";
-import { can, loadPrincipal } from "../../../lib/principal.ts";
+import { can, isRepositoryScoped, loadPrincipal } from "../../../lib/principal.ts";
 import type { SessionTarget } from "../../../session-target.ts";
 import {
   cloneSourceId,
@@ -26,7 +26,9 @@ export default async function NewSessionPage({
   let workspacePools: WorkspacePoolOption[] = [];
   let draft: SessionCloneDraft | null = null;
   const errors: string[] = [];
-  const canWriteExecConfig = can(await loadPrincipal(), "fleet:exec-config");
+  const principal = await loadPrincipal();
+  const canWriteExecConfig = can(principal, "fleet:exec-config");
+  const allowWorkspace = !isRepositoryScoped(principal);
   const query = await searchParams;
   const requestedCloneId = cloneSourceId(query.cloneFrom);
   if (query.cloneFrom !== undefined && !requestedCloneId) errors.push("clone source: invalid id");
@@ -35,7 +37,9 @@ export default async function NewSessionPage({
       apiGetAllPages<SessionTarget>("/api/v1/session-targets?limit=100"),
       apiGetAllPages<{ id: string; name: string }>("/api/v1/repositories?limit=100"),
       apiGetAllPages<{ online?: boolean; labels?: string[] }>("/api/v1/worktrees?limit=100"),
-      apiGet<{ items?: WorkspacePoolOption[] }>("/api/v1/workspace-pools"),
+      allowWorkspace
+        ? apiGet<{ items?: WorkspacePoolOption[] }>("/api/v1/workspace-pools")
+        : Promise.resolve({ items: [] }),
       requestedCloneId
         ? apiGet<SessionCloneSource>(`/api/v1/sessions/${encodeURIComponent(requestedCloneId)}`)
         : Promise.resolve(null),
@@ -103,6 +107,7 @@ export default async function NewSessionPage({
         availableLabels={availableLabels}
         initialValues={draft}
         canWriteExecConfig={canWriteExecConfig}
+        allowWorkspace={allowWorkspace}
       />
     </div>
   );

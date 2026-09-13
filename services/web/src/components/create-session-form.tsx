@@ -22,6 +22,7 @@ export function CreateSessionForm({
   availableLabels = [],
   initialValues,
   canWriteExecConfig = false,
+  allowWorkspace = true,
 }: {
   targets: SessionTarget[];
   repositories: Array<{ id: string; name: string }>;
@@ -29,11 +30,12 @@ export function CreateSessionForm({
   availableLabels?: string[];
   initialValues?: SessionCloneDraft | null;
   canWriteExecConfig?: boolean;
+  allowWorkspace?: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [mode, setMode] = useState<"repository" | "workspace">(
-    initialValues?.workspacePoolId ? "workspace" : "repository",
+    allowWorkspace && initialValues?.workspacePoolId ? "workspace" : "repository",
   );
   const [workspacePoolId, setWorkspacePoolId] = useState(initialValues?.workspacePoolId ?? "");
   const canSubmit =
@@ -120,7 +122,7 @@ export function CreateSessionForm({
         })();
       }}
     >
-      <SessionExecutionMode mode={mode} onModeChange={setMode} />
+      {allowWorkspace ? <SessionExecutionMode mode={mode} onModeChange={setMode} /> : null}
       {mode === "repository" ? (
         <div className="space-y-1">
           <Label

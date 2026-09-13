@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { can, loadPrincipal, type MePrincipal } from "./principal.ts";
+import { can, isRepositoryScoped, loadPrincipal, type MePrincipal } from "./principal.ts";
 
 const original = process.env.HARNESS_AUTH_MODE;
 
@@ -36,6 +36,30 @@ describe("can", () => {
         "accounts:write",
       ),
     ).toBe(false);
+  });
+});
+
+describe("isRepositoryScoped", () => {
+  it("is true only when allowedRepositoryIds is a nonempty list", () => {
+    expect(isRepositoryScoped(undefined)).toBe(false);
+    expect(isRepositoryScoped(null)).toBe(false);
+    expect(isRepositoryScoped({ username: "op", role: "operator", kind: "user" })).toBe(false);
+    expect(
+      isRepositoryScoped({
+        username: "op",
+        role: "operator",
+        kind: "user",
+        allowedRepositoryIds: [],
+      }),
+    ).toBe(false);
+    expect(
+      isRepositoryScoped({
+        username: "scoped",
+        role: "author",
+        kind: "user",
+        allowedRepositoryIds: ["repo"],
+      }),
+    ).toBe(true);
   });
 });
 
