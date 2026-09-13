@@ -3,9 +3,9 @@ import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { readDeclaredSetupFiles } from "./setup-script-cache-file.ts";
+import { forEachDeclaredSetupFile } from "./setup-script-cache-file.ts";
 
-export { readDeclaredSetupFiles };
+export { readDeclaredSetupFiles } from "./setup-script-cache-file.ts";
 
 export function defaultSetupCacheDir(home = homedir()): string {
   return join(home, ".auto-harness", "setup-cache");
@@ -29,19 +29,36 @@ function writeLengthPrefixed(hash: ReturnType<typeof createHash>, value: Buffer)
   hash.update(value);
 }
 
-/** Stable digest of the operator-supplied inputs that may skip a later setup. */
-export function fingerprintSetup(parts: SetupFingerprintParts): string {
+function startSetupFingerprint(
+  checkoutSha: string,
+  scripts: readonly string[],
+  extraCount: number,
+): ReturnType<typeof createHash> {
   const hash = createHash("sha256");
   writeLengthPrefixed(hash, Buffer.from("v1", "utf8"));
-  writeLengthPrefixed(hash, Buffer.from(parts.checkoutSha, "utf8"));
-  writeLengthPrefixed(hash, Buffer.from(String(parts.scripts.length)));
-  for (const script of parts.scripts) {
+  writeLengthPrefixed(hash, Buffer.from(checkoutSha, "utf8"));
+  writeLengthPrefixed(hash, Buffer.from(String(scripts.length)));
+  for (const script of scripts) {
     writeLengthPrefixed(hash, Buffer.from(script, "utf8"));
   }
-  writeLengthPrefixed(hash, Buffer.from(String(parts.extraFiles.length)));
+  writeLengthPrefixed(hash, Buffer.from(String(extraCount)));
+  return hash;
+}
+
+function appendExtraFile(
+  hash: ReturnType<typeof createHash>,
+  path: string,
+  contents: Buffer,
+): void {
+  writeLengthPrefixed(hash, Buffer.from(path, "utf8"));
+  writeLengthPrefixed(hash, contents);
+}
+
+/** Stable digest of the operator-supplied inputs that may skip a later setup. */
+export function fingerprintSetup(parts: SetupFingerprintParts): string {
+  const hash = startSetupFingerprint(parts.checkoutSha, parts.scripts, parts.extraFiles.length);
   for (const extra of parts.extraFiles) {
-    writeLengthPrefixed(hash, Buffer.from(extra.path, "utf8"));
-    writeLengthPrefixed(hash, extra.contents);
+    appendExtraFile(hash, extra.path, extra.contents);
   }
   return hash.digest("hex");
 }
@@ -131,13 +148,17 @@ export async function resolveSetupCacheState(input: {
   { skip: true; environment: NodeJS.ProcessEnv } | { skip: false; fingerprintToStore?: string }
 > {
   if (!input.cacheDir || !input.checkoutSha) return { skip: false };
-  const extraFiles = await readDeclaredSetupFiles(input.cwd, input.extraPaths, input.signal);
-  if (!extraFiles) return { skip: false };
-  const fingerprint = fingerprintSetup({
-    checkoutSha: input.checkoutSha,
-    scripts: input.scripts,
-    extraFiles,
-  });
+  const hash = startSetupFingerprint(input.checkoutSha, input.scripts, input.extraPaths.length);
+  const hashed = await forEachDeclaredSetupFile(
+    input.cwd,
+    input.extraPaths,
+    (path, contents) => {
+      appendExtraFile(hash, path, contents);
+    },
+    input.signal,
+  );
+  if (!hashed) return { skip: false };
+  const fingerprint = hash.digest("hex");
   const stored = await readStoredSetupCache(input.cacheDir, input.worktreeId, input.cwd);
   if (!stored || stored.fingerprint !== fingerprint) {
     return { skip: false, fingerprintToStore: fingerprint };

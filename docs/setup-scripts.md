@@ -37,6 +37,12 @@ command can read the resulting final values, not necessarily every value setup o
 Setup shares the session deadline and has a ten-minute cap. It may run again for another fresh
 assignment, so it must tolerate repetition and partially prepared state.
 
+Cache skip does not fingerprint sourced host files such as `/opt/auto-harness/setup/host-environment`;
+change the setup script text (or a declared checkout input) when those files change. It also does
+not reconstruct or revalidate ignored outputs such as `node_modules` from a prior session; leave
+cache unused or bump a declared input or script if those outputs must be rebuilt. Cache sidecars
+are mode-0600 files in the daemon cache directory (`~/.auto-harness/setup-cache` by default).
+
 ### Workspace profile boundary
 
 Workspace profile script bodies are accepted only by the admin workspace-pool configuration APIs.

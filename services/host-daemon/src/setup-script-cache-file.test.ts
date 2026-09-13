@@ -8,6 +8,7 @@ import {
   MAX_SETUP_CACHE_INPUT_BYTES,
   readBoundedRegularFile,
   readDeclaredSetupFiles,
+  readFileHandleCompletely,
 } from "./setup-script-cache-file.ts";
 import { resolveSetupCacheState } from "./setup-script-cache.ts";
 
@@ -93,6 +94,77 @@ describe("declared setup cache extra files", () => {
       signal: AbortSignal.abort(),
     });
     expect(cache.skip).toBe(false);
+  });
+
+  it("loops a short read until the declared size is complete", async () => {
+    const expected = Buffer.from("abcdef");
+    let calls = 0;
+    const handle = {
+      async read(
+        buffer: NodeJS.ArrayBufferView,
+        offset = 0,
+        _length = 0,
+        position: number | null = 0,
+      ) {
+        calls += 1;
+        const start = position ?? 0;
+        const chunk = calls === 1 ? 2 : expected.length - start;
+        expected.copy(buffer as Buffer, offset, start, start + chunk);
+        return { bytesRead: chunk };
+      },
+    };
+    expect(await readFileHandleCompletely(handle, expected.length)).toEqual(expected);
+    expect(calls).toBe(2);
+    expect(await readFileHandleCompletely(handle, 0)).toEqual(Buffer.alloc(0));
+    expect(
+      await readFileHandleCompletely(
+        {
+          async read() {
+            return { bytesRead: 0 };
+          },
+        },
+        4,
+      ),
+    ).toBeUndefined();
+    expect(
+      await readFileHandleCompletely(handle, expected.length, AbortSignal.abort()),
+    ).toBeUndefined();
+    let abortAfterChunk = 0;
+    expect(
+      await readFileHandleCompletely(
+        {
+          async read(buffer: NodeJS.ArrayBufferView, offset = 0) {
+            (buffer as Buffer)[offset] = 1;
+            return { bytesRead: 1 };
+          },
+        },
+        4,
+        {
+          get aborted() {
+            abortAfterChunk += 1;
+            return abortAfterChunk > 1;
+          },
+        } as AbortSignal,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("does not skip when declared extras exceed the aggregate byte cap", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-aggregate-"));
+    await writeFile(join(cwd, "small.lock"), "x");
+    await writeFile(join(cwd, "big.lock"), "");
+    await truncate(join(cwd, "big.lock"), MAX_SETUP_CACHE_INPUT_BYTES);
+    expect(await readDeclaredSetupFiles(cwd, ["small.lock", "big.lock"])).toBeUndefined();
+    const cache = await resolveSetupCacheState({
+      cacheDir: cwd,
+      checkoutSha: "abc",
+      cwd,
+      worktreeId: "wt-1",
+      scripts: ["true"],
+      extraPaths: ["small.lock", "big.lock"],
+    });
+    expect(cache.skip).toBe(false);
+    expect("fingerprintToStore" in cache).toBe(false);
   });
 
   it("does not skip without a cache directory or checkout sha", async () => {

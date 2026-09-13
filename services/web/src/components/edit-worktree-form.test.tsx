@@ -4,6 +4,7 @@
 import React, { act } from "react";
 import { describe, expect, it } from "vitest";
 
+import type { HostWorktree } from "@auto-harness/shared";
 import {
   createApiFake,
   field,
@@ -17,7 +18,7 @@ import {
 } from "../../test-helpers/form-test-helpers.tsx";
 import { EditWorktreeForm } from "./edit-worktree-form.tsx";
 
-const worktree = {
+const worktree: HostWorktree = {
   id: "worktree-1",
   name: "feature",
   path: "/repo/feature",
@@ -37,7 +38,7 @@ const inventory = {
   commandProfiles: {},
 };
 
-function form(worktreeValue = worktree) {
+function form(worktreeValue: HostWorktree = worktree) {
   return (
     <EditWorktreeForm
       hostId="host/one"
