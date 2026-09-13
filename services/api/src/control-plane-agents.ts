@@ -362,13 +362,14 @@ function requeueUnackedWorktree(
   state: ControlPlaneState,
   worktree: WorktreeRecord,
   reason: string,
-): string | undefined {
+): string[] {
   const session = worktree.currentSessionId
     ? state.sessions.get(worktree.currentSessionId)
     : undefined;
-  if (!isUnackedProvisionalAssignment(session)) return;
+  if (!isUnackedProvisionalAssignment(session)) return [];
   releaseWorktree(state, worktree.id);
-  return releaseUnackedProvisionalAssignment(state, session, reason, "worktree");
+  const sessionId = releaseUnackedProvisionalAssignment(state, session, reason, "worktree");
+  return sessionId === undefined ? [] : [sessionId];
 }
 
 function dropReplacementOnlyCapacity(
@@ -384,8 +385,7 @@ function dropReplacementOnlyCapacity(
   const winnerSlots = advertisedSlotIds(winnerInventory);
   for (const [id, wt] of state.worktrees) {
     if (wt.hostId !== hostId || snapshot.worktrees.has(id) || winnerWorktrees.has(id)) continue;
-    const sessionId = requeueUnackedWorktree(state, wt, reason);
-    if (sessionId) requeued.push(sessionId);
+    requeued.push(...requeueUnackedWorktree(state, wt, reason));
     if (wt.status === "busy" || wt.currentSessionId) continue;
     state.worktrees.delete(id);
   }

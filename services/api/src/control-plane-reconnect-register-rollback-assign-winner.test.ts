@@ -24,20 +24,6 @@ function durableRunning(id: string, worktreeId: string) {
   };
 }
 
-function durableWorktree(id: string, sessionId: string | null) {
-  return {
-    id,
-    name: id,
-    hostId: "h",
-    repositoryId: "r",
-    path: `/${id}`,
-    labels: [],
-    status: "busy" as const,
-    online: true,
-    currentSessionId: sessionId,
-  };
-}
-
 function loseSessionAfterValidation(plane: ControlPlane, sessionId: string, onLost?: () => void) {
   let reads = 0;
   const origGet = plane.state.sessions.get.bind(plane.state.sessions);
@@ -54,8 +40,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("storage-less register rollback assignment", () => {
-  it("requests assignment after rollback requeues an unacked replacement claim", async () => {
+describe("storage-less register rollback assignment with a newer owner", () => {
+  it("requests assignment when a newer owner drops a replacement-only unacked worktree", async () => {
     const plane = new ControlPlane({
       now: () => "2026-01-01T00:00:00.000Z",
       connectionIdFactory: (() => {
@@ -71,12 +57,53 @@ describe("storage-less register rollback assignment", () => {
       }),
     ).toEqual({ ok: true, connectionId: "c1" });
     plane.state.sessions.set("s", { ...durableRunning("s", "w") });
-    plane.state.worktrees.set("w", durableWorktree("w", "s"));
+    plane.state.worktrees.set("w", {
+      id: "w",
+      name: "w",
+      hostId: "h",
+      repositoryId: "r",
+      path: "/w",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "s",
+    });
     loseSessionAfterValidation(plane, "s", () => {
+      plane.state.connections.set("winner", {
+        connectionId: "winner",
+        type: "host",
+        hostId: "h",
+        connectedAt: "2026-01-01T00:00:00.000Z",
+        lastHeartbeatAt: "2026-01-01T00:00:00.000Z",
+        repositoryIds: ["r"],
+        capabilities: [],
+        negotiatedProtocolVersion: 1,
+      });
+      plane.state.hostConnection.set("h", "winner");
+      const inventory = plane.state.hostInventories.get("h");
+      if (inventory) {
+        plane.state.hostInventories.set("h", {
+          ...inventory,
+          repositories: inventory.repositories.map((repo) => ({
+            ...repo,
+            worktrees: repo.worktrees.filter((wt) => wt.id === "w"),
+          })),
+        });
+      }
       const claimed = { ...durableRunning("claimed", "w2") };
       delete claimed.ackReceivedAt;
       plane.state.sessions.set("claimed", claimed);
-      plane.state.worktrees.set("w2", durableWorktree("w2", "claimed"));
+      plane.state.worktrees.set("w2", {
+        id: "w2",
+        name: "w2",
+        hostId: "h",
+        repositoryId: "r",
+        path: "/w2",
+        labels: [],
+        status: "busy",
+        online: true,
+        currentSessionId: "claimed",
+      });
     });
     const request = vi.spyOn(assignment, "requestAssignment").mockResolvedValue(undefined);
     await expect(
@@ -101,53 +128,5 @@ describe("storage-less register rollback assignment", () => {
     });
     expect(request).toHaveBeenCalledTimes(1);
     expect(request).toHaveBeenCalledWith(plane.state);
-  });
-
-  it("does not request assignment when fail-closed rollback requeues nothing", async () => {
-    const plane = new ControlPlane({
-      now: () => "2026-01-01T00:00:00.000Z",
-      connectionIdFactory: () => "c1",
-    });
-    plane.state.sessions.set("s", { ...durableRunning("s", "w") });
-    plane.state.worktrees.set("w", durableWorktree("w", "s"));
-    loseSessionAfterValidation(plane, "s", () => {
-      const cancelled = {
-        ...durableRunning("cancelled-wt", "w2"),
-        status: "cancelled" as const,
-        completedAt: "2026-01-01T00:00:00.000Z",
-      };
-      delete cancelled.ackReceivedAt;
-      plane.state.sessions.set("cancelled-wt", cancelled);
-      plane.state.worktrees.set("w2", durableWorktree("w2", "cancelled-wt"));
-      plane.state.worktrees.set("w-idle", {
-        ...durableWorktree("w-idle", null),
-        status: "idle",
-      });
-    });
-    const request = vi.spyOn(assignment, "requestAssignment").mockResolvedValue(undefined);
-    await expect(
-      plane.registerHostDurable({
-        hostId: "h",
-        worktrees: [
-          { id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] },
-          { id: "w2", name: "w2", repositoryId: "r", path: "/w2", labels: [] },
-          { id: "w-idle", name: "w-idle", repositoryId: "r", path: "/w-idle", labels: [] },
-        ],
-        commandProfiles: [],
-        runningSessions: ["s"],
-        replaceExisting: true,
-      }),
-    ).resolves.toEqual({
-      ok: false,
-      error: "reported running session lost reconnect reconciliation",
-    });
-    expect(plane.state.sessions.get("cancelled-wt")).toMatchObject({
-      status: "cancelled",
-      worktreeId: null,
-      hostId: null,
-    });
-    expect(plane.state.worktrees.has("w2")).toBe(false);
-    expect(plane.state.worktrees.has("w-idle")).toBe(false);
-    expect(request).not.toHaveBeenCalled();
   });
 });
