@@ -272,30 +272,45 @@ describe("custom webhook integration lifecycle", () => {
   it.each([
     {
       name: "repository",
-      config: {},
       mutate: (value: ControlPlane) => {
-        value.state.repositories.delete("repo");
+        expect(
+          value.createRepository({
+            id: "other",
+            name: "other",
+            url: "https://example.test/other",
+          }).ok,
+        ).toBe(true);
       },
     },
     {
       name: "provider",
-      config: { fallbacks: [{ commandId: "command" }] },
       mutate: (value: ControlPlane) => {
-        value.state.providers.delete("provider");
+        expect(
+          value.createProvider({
+            id: "other-provider",
+            name: "other-provider",
+            defaultCommandId: "command",
+          }).ok,
+        ).toBe(true);
       },
     },
     {
       name: "command",
-      config: { target: { commandId: "command" } },
       mutate: (value: ControlPlane) => {
-        value.state.commands.delete("command");
+        expect(
+          value.createCommand({
+            id: "other-command",
+            name: "other-command",
+            argv: ["echo"],
+          }).ok,
+        ).toBe(true);
       },
     },
   ])(
-    "does not delete an in-memory webhook after a $name catalog reference disappears",
-    async ({ config: overrides, mutate }) => {
+    "does not delete an in-memory webhook after a concurrent $name catalog write",
+    async ({ mutate }) => {
       const value = plane();
-      await expect(value.createCustomWebhookIntegration(config(overrides))).resolves.toMatchObject({
+      await expect(value.createCustomWebhookIntegration(config())).resolves.toMatchObject({
         ok: true,
       });
       const pending = value.deleteCustomWebhookIntegration("deploy");

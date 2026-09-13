@@ -392,11 +392,19 @@ function conflict(): Failure {
   };
 }
 
+function catalogIds(records: Map<string, unknown>): string {
+  return [...records.keys()].toSorted().join(",");
+}
+
 function inMemoryWebhookCatalogFingerprint(
   state: ControlPlaneState,
   record: CustomWebhookIntegrationRecord,
 ): string {
   const parts = [
+    `repositoryRevision:${state.repositoryRevision}`,
+    `repositories:${catalogIds(state.repositories)}`,
+    `providers:${catalogIds(state.providers)}`,
+    `commands:${catalogIds(state.commands)}`,
     `repository:${record.repositoryId}:${state.repositories.has(record.repositoryId)}`,
   ];
   for (const route of [record.target, ...record.fallbacks]) {
