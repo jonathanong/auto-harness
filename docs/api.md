@@ -431,6 +431,9 @@ admission flag. It requires the last observed positive integer `version` plus op
 configuration; send `enabled: true` to turn admission back on. `DELETE` requires those fences in `If-Match` and
 `If-Match-Generation`; stale mutations, including across delete/recreate, return `409`. A binding's
 default ref is a canonical `refs/heads/...` branch used for issue comments; pull-request comments use `refs/pull/<number>/head`.
+Persisted short branch names from before that contract (`main`) are treated as `refs/heads/<name>`
+when serving the admin GET and when creating issue-comment sessions. New writes still require the
+canonical form; tag refs, pull refs, and revision expressions stay invalid.
 Every eligible host must already have `HARNESS_GITHUB_PULL_REF_CONFIG` provisioned; otherwise
 checkout fails closed with `Configured pull-ref checkout has no operator policy`. See
 [GitHub pull-ref checkout policy](deploy-host-daemon.md#github-pull-ref-checkout-policy).

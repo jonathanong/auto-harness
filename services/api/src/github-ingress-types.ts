@@ -1,4 +1,4 @@
-import type { TargetRef } from "@auto-harness/shared";
+import { canonicalizeGitHubIngressDefaultRef, type TargetRef } from "@auto-harness/shared";
 
 import type { GitHubIngressConfigRecord } from "./db/plane-storage-types.ts";
 
@@ -35,5 +35,12 @@ export function toPublicGitHubIngressConfig(
   record: GitHubIngressConfigRecord,
 ): PublicGitHubIngressConfig {
   const { encryptedSecret: _encryptedSecret, ...publicRecord } = record;
-  return { ...publicRecord, secretConfigured: true };
+  return {
+    ...publicRecord,
+    secretConfigured: true,
+    bindings: publicRecord.bindings.map((binding) => ({
+      ...binding,
+      defaultRef: canonicalizeGitHubIngressDefaultRef(binding.defaultRef) ?? binding.defaultRef,
+    })),
+  };
 }

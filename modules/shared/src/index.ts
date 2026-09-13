@@ -280,6 +280,7 @@ export {
   isValidSessionRef,
   isValidScheduledBranchRef,
   isValidGitHubIngressDefaultRef,
+  canonicalizeGitHubIngressDefaultRef,
   MAX_SCHEDULED_BRANCH_REF_BYTES,
 } from "./scheduled-branch-ref.ts";
 
