@@ -31,6 +31,7 @@ import {
   completeArchiveRetry,
   expireArchive,
   listPendingArchives,
+  recordArchiveRetryCapture,
   releaseArchiveRetry,
   replaceCompleteArchive,
   replaceCompleteArchivePending,
@@ -213,15 +214,38 @@ describe("archive retry storage", () => {
         UpdateExpression:
           "SET #status = :expired, updatedAt = :updatedAt REMOVE retryState, retryOrder",
         ConditionExpression:
-          "#status = :expired OR (objectStored = :false AND (attribute_not_exists(#status) OR #status = :pending) AND (attribute_not_exists(retryState) OR retryState <> :processing))",
+          "#status = :expired OR (objectStored = :false AND (attribute_not_exists(#status) OR #status = :pending) AND (attribute_not_exists(retryState) OR retryState <> :processing OR attribute_not_exists(bodyBytes) OR bodyBytes = :zero))",
         ExpressionAttributeValues: expect.objectContaining({
           ":expired": "expired",
           ":pending": "pending",
           ":processing": "processing",
+          ":zero": 0,
         }),
       },
     });
     expect(send.mock.calls[0]?.[0].input.ConditionExpression).not.toContain(":complete");
+  });
+
+  it("records captured retry bytes on an owned processing claim", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const ctx = archiveCtx(send);
+
+    await expect(
+      recordArchiveRetryCapture(ctx, archive.key, "claimed-order", 42, "2026-01-08T00:00:00.000Z"),
+    ).resolves.toBe(true);
+    expect(send.mock.calls[0]?.[0]).toMatchObject({
+      input: {
+        UpdateExpression: "SET bodyBytes = :bodyBytes, updatedAt = :updatedAt",
+        ConditionExpression:
+          "objectStored = :false AND retryState = :processing AND retryOrder = :expected AND (attribute_not_exists(#status) OR #status <> :expired)",
+        ExpressionAttributeValues: expect.objectContaining({
+          ":bodyBytes": 42,
+          ":expected": "claimed-order",
+          ":processing": "processing",
+          ":expired": "expired",
+        }),
+      },
+    });
   });
 
   it("returns false when another worker changes an archive retry fence", async () => {
@@ -236,6 +260,9 @@ describe("archive retry storage", () => {
     ).resolves.toBe(false);
     await expect(completeArchiveRetry(ctx, archive, "claimed-order")).resolves.toBe(false);
     await expect(expireArchive(ctx, archive.key, "2026-01-08T00:00:00.000Z")).resolves.toBe(false);
+    await expect(
+      recordArchiveRetryCapture(ctx, archive.key, "claimed-order", 42, "2026-01-08T00:00:00.000Z"),
+    ).resolves.toBe(false);
   });
 
   it("propagates non-conditional archive retry failures", async () => {
@@ -252,6 +279,9 @@ describe("archive retry storage", () => {
     await expect(expireArchive(ctx, archive.key, "2026-01-08T00:00:00.000Z")).rejects.toThrow(
       "archive retry unavailable",
     );
+    await expect(
+      recordArchiveRetryCapture(ctx, archive.key, "claimed-order", 42, "2026-01-08T00:00:00.000Z"),
+    ).rejects.toThrow("archive retry unavailable");
   });
 
   it("replaces a complete archive only while the previous generation still wins", async () => {
@@ -470,6 +500,9 @@ describe("archive and assignment base-storage delegators", () => {
       storage.releaseArchiveRetry(archive.key, "claimed-order", "pending-order"),
     ).resolves.toBe(true);
     await expect(storage.completeArchiveRetry(archive, "claimed-order")).resolves.toBe(true);
+    await expect(
+      storage.recordArchiveRetryCapture(archive.key, "claimed-order", 42, archive.updatedAt),
+    ).resolves.toBe(true);
     await expect(storage.expireArchive(archive.key, "2026-01-08T00:00:00.000Z")).resolves.toBe(
       true,
     );

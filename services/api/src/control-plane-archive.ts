@@ -119,6 +119,29 @@ export async function archiveSessionLogs(
       retryOrder: retryPending.retryOrder ?? `${state.now()}#${key}`,
     };
   }
+  if (ownedRetry && pending.bodyBytes > 0) {
+    const claimed = state.archives.get(object.key);
+    if (
+      claimed?.retryState === "processing" &&
+      claimed.retryOrder === ownedRetry.retryOrder &&
+      claimed.status !== "expired"
+    ) {
+      state.archives.set(object.key, {
+        ...claimed,
+        bodyBytes: pending.bodyBytes,
+        updatedAt: pending.updatedAt,
+      });
+    }
+    if (state.storage && typeof state.storage.recordArchiveRetryCapture === "function") {
+      const recorded = await state.storage.recordArchiveRetryCapture(
+        object.key,
+        ownedRetry.retryOrder,
+        pending.bodyBytes,
+        pending.updatedAt,
+      );
+      if (!recorded) return object;
+    }
+  }
   const writeResult = await state.archiveWriter.putArchive(object);
   const versionId = archiveVersionId(writeResult);
   if (replacement && !ownedRetry) {

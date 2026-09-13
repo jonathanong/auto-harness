@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Dynamo archive expiry covers captured vs empty processing claims. */
 import { describe, expect, it } from "vitest";
 
 import { archiveSessionLogs, retrySessionArchiveIfNeeded } from "./control-plane-lifecycle.ts";
@@ -129,6 +130,26 @@ describe("archive writer with real DynamoDB Local", () => {
       status: "complete",
       objectStored: true,
       versionId: "archive-v1",
+    });
+  });
+
+  it("expires an empty processing archive retry claim", async () => {
+    if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
+    const key = "sessions/session-empty-processing/logs.jsonl";
+    await ctx.storage.putArchive({
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "empty-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await expect(ctx.storage.expireArchive(key, "2026-01-08T00:00:00.000Z")).resolves.toBe(true);
+    expect(await ctx.storage.getArchive(key)).toMatchObject({
+      status: "expired",
+      objectStored: false,
     });
   });
 

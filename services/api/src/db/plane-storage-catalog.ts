@@ -1514,6 +1514,40 @@ export async function claimArchiveRetry(
   }
 }
 
+/** Persist captured transcript bytes on an owned processing claim before the object PUT. */
+export async function recordArchiveRetryCapture(
+  ctx: PlaneStorageCtx,
+  key: string,
+  retryOrder: string,
+  bodyBytes: number,
+  updatedAt: string,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.archives,
+        Key: { key },
+        UpdateExpression: "SET bodyBytes = :bodyBytes, updatedAt = :updatedAt",
+        ConditionExpression:
+          "objectStored = :false AND retryState = :processing AND retryOrder = :expected AND (attribute_not_exists(#status) OR #status <> :expired)",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":false": false,
+          ":processing": "processing",
+          ":expected": retryOrder,
+          ":bodyBytes": bodyBytes,
+          ":updatedAt": updatedAt,
+          ":expired": "expired",
+        },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
+  }
+}
+
 /** Return a failed or expired claim to the pending queue only if its fence matches. */
 export async function releaseArchiveRetry(
   ctx: PlaneStorageCtx,
@@ -1669,7 +1703,7 @@ export async function completeArchiveRetry(
   }
 }
 
-/** Persist expired and drop retry GSI keys only while a complete winner and in-flight processing claim are absent. */
+/** Persist expired and drop retry GSI keys only while a complete winner and a captured processing claim are absent. */
 export async function expireArchive(
   ctx: PlaneStorageCtx,
   key: string,
@@ -1683,7 +1717,7 @@ export async function expireArchive(
         UpdateExpression:
           "SET #status = :expired, updatedAt = :updatedAt REMOVE retryState, retryOrder",
         ConditionExpression:
-          "#status = :expired OR (objectStored = :false AND (attribute_not_exists(#status) OR #status = :pending) AND (attribute_not_exists(retryState) OR retryState <> :processing))",
+          "#status = :expired OR (objectStored = :false AND (attribute_not_exists(#status) OR #status = :pending) AND (attribute_not_exists(retryState) OR retryState <> :processing OR attribute_not_exists(bodyBytes) OR bodyBytes = :zero))",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
           ":expired": "expired",
@@ -1691,6 +1725,7 @@ export async function expireArchive(
           ":false": false,
           ":pending": "pending",
           ":processing": "processing",
+          ":zero": 0,
         },
       }),
     );

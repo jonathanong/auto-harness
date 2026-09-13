@@ -128,7 +128,7 @@ describe("archive expire persistence", () => {
 
   it("does not expire an in-flight processing claim", async () => {
     const expireArchive = vi.fn(async () => true);
-    const processing: ArchiveMetadata = { ...pending, retryState: "processing" };
+    const processing: ArchiveMetadata = { ...pending, retryState: "processing", bodyBytes: 42 };
     const state = createControlPlaneState({
       now: () => "now",
       storage: { expireArchive, getArchive: async () => processing } as never,
@@ -167,6 +167,17 @@ describe("archive expire persistence", () => {
       "expired",
     );
     expect(expireArchive).not.toHaveBeenCalled();
+  });
+
+  it("expires a processing claim that captured no logs", async () => {
+    const expireArchive = vi.fn(async () => true);
+    const empty: ArchiveMetadata = { ...pending, retryState: "processing" };
+    const state = createControlPlaneState({
+      now: () => "now",
+      storage: { expireArchive, getArchive: async () => empty } as never,
+    });
+    await expect(persistExpiredArchive(state, empty.key, empty)).resolves.toBe("expired");
+    expect(expireArchive).toHaveBeenCalledWith(empty.key, "now");
   });
 
   it("refuses to clobber an in-memory complete winner", async () => {

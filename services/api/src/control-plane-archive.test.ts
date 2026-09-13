@@ -344,6 +344,67 @@ describe("archive retry state", () => {
     });
   });
 
+  it("records captured retry bytes before the object PUT", async () => {
+    const order: string[] = [];
+    const recordArchiveRetryCapture = vi.fn(async () => true);
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          order.push("object");
+        },
+      },
+      storage: {
+        getArchive: async () => undefined,
+        listLogs: async () => [{ timestamp: "1", stream: "stdout", content: "captured" }],
+        recordArchiveRetryCapture: async (...args: unknown[]) => {
+          order.push("capture");
+          return recordArchiveRetryCapture(...args);
+        },
+        completeArchiveRetry: async () => true,
+      } as never,
+    });
+    const key = "sessions/capture/logs.jsonl";
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "claim-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await retrySessionArchiveIfNeeded(state, "capture", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(order).toEqual(["capture", "object"]);
+    expect(recordArchiveRetryCapture).toHaveBeenCalledWith(
+      key,
+      "claim-order",
+      expect.any(Number),
+      expect.any(String),
+    );
+  });
+
+  it("does not upload when a processing claim loses the capture fence", async () => {
+    let uploaded = 0;
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+      storage: {
+        getArchive: async () => undefined,
+        listLogs: async () => [{ timestamp: "1", stream: "stdout", content: "captured" }],
+        recordArchiveRetryCapture: async () => false,
+        completeArchiveRetry: async () => true,
+      } as never,
+    });
+    await retrySessionArchiveIfNeeded(state, "lost-capture", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(uploaded).toBe(0);
+  });
+
   it("writes a durable pending marker when an in-memory claim has storage but no retry fence", async () => {
     const putArchive = vi.fn(async () => undefined);
     const key = "sessions/storage-claim/logs.jsonl";

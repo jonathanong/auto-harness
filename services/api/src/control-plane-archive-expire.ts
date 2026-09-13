@@ -49,7 +49,7 @@ export async function persistExpiredArchive(
     mirrorExpired(state, key, metadata);
     return "expired";
   }
-  if (metadata.retryState === "processing") {
+  if (metadata.retryState === "processing" && metadata.bodyBytes > 0) {
     const storage = state.storage;
     if (storage) {
       const latest = await storage.getArchive(key);
