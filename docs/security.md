@@ -47,8 +47,9 @@ identity for the D3 failure-escalation flow. It is redacted from streamed output
 the session ends before its GitHub expiry. The injected identity names are canonicalized in the
 child allowlist exactly once so a differently cased operator spelling cannot suppress `GH_TOKEN` or
 the Git author/committer keys. Before minting succeeds, early terminal-hook paths stay
-scrubbed. After minting succeeds, an unavailable execution profile still runs the terminal hook
-with that scoped identity; setup and ordinary ambient command environments stay credential-free. Mapped sessions also use a fresh private empty `GH_CONFIG_DIR`, preventing an ordinary
+scrubbed. After minting succeeds, an unavailable execution profile or empty `resolvedArgv` still
+runs the terminal hook with that scoped identity; setup and ordinary ambient command environments
+stay credential-free. Mapped sessions also use a fresh private empty `GH_CONFIG_DIR`, preventing an ordinary
 hook from falling back to a stored `gh` login. This is not an OS boundary: a compromised session
 running as the same user can unset that variable or read other same-user credential stores. That
 remains the accepted risk documented below; selected-repository App installation limits its blast
