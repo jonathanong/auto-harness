@@ -371,7 +371,9 @@ List all service accounts. **Admin only.**
 
 Delete a service account and revoke its API key. **Admin only.** Returns `409 CONFLICT`
 while the account still owns a schedule or an unreleased
-[principal session drain](#principal-session-drains). Rotation therefore requires
+[principal session drain](#principal-session-drains). That guard is role-agnostic: any
+`author`, `operator`, `maintainer`, or unscoped `admin` key can own those blockers.
+Rotation therefore requires
 deleting and recreating owned schedules under the new account, then releasing those
 drains **with the old key** before consumers drop that credential. See
 [service-account rotation](auth.md#service-accounts-api-keys).

@@ -127,7 +127,8 @@ Service accounts are for machines — CI/CD systems, VPS agents, and external in
 
 Service accounts have the same role system as user accounts (`read-only`, `author`, `operator`, `maintainer`, `agent`, `admin`) and can optionally be scoped to specific repositories. `agent` additionally requires `boundHostId`.
 
-Rotating an `operator` or `maintainer` key creates a **new** account. Schedules keep
+Rotating a service-account key that can own schedules or a principal session drain
+(`author`, `operator`, `maintainer`, or unscoped `admin`) creates a **new** account. Schedules keep
 the old `principalId`; they are not rewritten onto the replacement. An unreleased
 [principal session drain](api.md#principal-session-drains) likewise stays on the old
 principal, and only that principal can release it — the replacement key and an admin
