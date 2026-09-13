@@ -31,7 +31,7 @@ import {
   syncHostWorkspaceSlotsDurable,
 } from "./control-plane-agent-hosts.ts";
 import type { HostInventoryRecord } from "./db/plane-storage-types.ts";
-import type { WorkspaceSlotRecord, WorktreeRecord } from "./db/types.ts";
+import type { SessionRecord, WorkspaceSlotRecord, WorktreeRecord } from "./db/types.ts";
 import { inventoryReferenceMarkers } from "./control-plane-delete-reference-markers.ts";
 import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 import { repositoryEnvironmentReadiness } from "./control-plane-host-environment.ts";
@@ -319,6 +319,34 @@ function advertisedSlotIds(inventory: HostInventoryRecord | undefined): Set<stri
   );
 }
 
+function isUnackedProvisionalAssignment(
+  session: SessionRecord | undefined,
+): session is SessionRecord {
+  return (
+    session !== undefined &&
+    (session.status === "running" || session.status === "cancelled") &&
+    !session.ackReceivedAt
+  );
+}
+
+function releaseUnackedProvisionalAssignment(
+  state: ControlPlaneState,
+  session: SessionRecord,
+  reason: string,
+  target: "worktree" | "slot",
+): void {
+  releaseProviderAccountLease(state, session);
+  if (session.status === "running") {
+    session.status = "queued";
+    session.errorMessage = reason;
+    delete session.completedAt;
+  }
+  if (target === "worktree") session.worktreeId = null;
+  else session.workspaceSlotId = null;
+  session.hostId = null;
+  persistSession(state, session);
+}
+
 function requeueUnackedWorktree(
   state: ControlPlaneState,
   worktree: WorktreeRecord,
@@ -327,15 +355,9 @@ function requeueUnackedWorktree(
   const session = worktree.currentSessionId
     ? state.sessions.get(worktree.currentSessionId)
     : undefined;
-  if (!session || session.status !== "running" || session.ackReceivedAt) return;
+  if (!isUnackedProvisionalAssignment(session)) return;
   releaseWorktree(state, worktree.id);
-  releaseProviderAccountLease(state, session);
-  session.status = "queued";
-  session.worktreeId = null;
-  session.hostId = null;
-  session.errorMessage = reason;
-  delete session.completedAt;
-  persistSession(state, session);
+  releaseUnackedProvisionalAssignment(state, session, reason, "worktree");
 }
 
 function dropReplacementOnlyCapacity(
@@ -361,13 +383,8 @@ function dropReplacementOnlyCapacity(
     if (slot.hostId !== hostId || snapshot.slots.has(id) || winnerSlots.has(id)) continue;
     if (winnerOwnsHost && slot.currentSessionId) {
       const session = state.sessions.get(slot.currentSessionId);
-      if (session?.status === "running" && !session.ackReceivedAt) {
-        releaseProviderAccountLease(state, session);
-        session.status = "queued";
-        session.workspaceSlotId = null;
-        session.hostId = null;
-        session.errorMessage = reason;
-        persistSession(state, session);
+      if (isUnackedProvisionalAssignment(session)) {
+        releaseUnackedProvisionalAssignment(state, session, reason, "slot");
         state.workspaceSlots.set(id, { ...slot, status: "idle", currentSessionId: null });
       }
     }
