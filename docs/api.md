@@ -415,6 +415,9 @@ fixed routing. `PUT` may omit `secret` to retain it and requires the last observ
 `version` plus opaque `generation`. `DELETE` requires those fences in `If-Match` and
 `If-Match-Generation`; stale mutations, including across delete/recreate, return `409`. A binding's
 default ref is used for issue comments; pull-request comments use `refs/pull/<number>/head`.
+Every eligible host must already have `HARNESS_GITHUB_PULL_REF_CONFIG` provisioned; otherwise
+checkout fails closed with `Configured pull-ref checkout has no operator policy`. See
+[GitHub pull-ref checkout policy](deploy-host-daemon.md#github-pull-ref-checkout-policy).
 
 The numeric repository and comment ID form a reserved session concurrency identity. Concurrent or
 active-session redelivery returns the existing session, including when a catalog deletion marker is
