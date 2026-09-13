@@ -291,6 +291,7 @@ function snapshotInMemoryRegistration(
   state: ControlPlaneState,
   hostId: string,
 ): InMemoryRegistrationSnapshot {
+  const inventory = state.hostInventories.get(hostId);
   return {
     worktrees: new Map(
       [...state.worktrees.values()]
@@ -302,7 +303,7 @@ function snapshotInMemoryRegistration(
         .filter((slot) => slot.hostId === hostId)
         .map((slot) => [slot.id, { ...slot }]),
     ),
-    inventory: state.hostInventories.get(hostId),
+    inventory,
     disconnected: state.disconnectedHosts.get(hostId),
   };
 }
@@ -314,9 +315,11 @@ function advertisedWorktreeIds(inventory: HostInventoryRecord | undefined): Set<
 }
 
 function advertisedSlotIds(inventory: HostInventoryRecord | undefined): Set<string> {
-  return new Set(
-    (inventory?.workspacePools ?? []).flatMap((pool) => pool.slots.map((slot) => slot.id)),
-  );
+  const ids = new Set<string>();
+  for (const pool of inventory?.workspacePools ?? []) {
+    for (const slot of pool.slots) ids.add(slot.id);
+  }
+  return ids;
 }
 
 function isUnackedProvisionalAssignment(
@@ -402,26 +405,31 @@ function restoreInMemoryRegistration(
   hostId: string,
   failedConnectionId: string,
   snapshot: InMemoryRegistrationSnapshot,
+  registrationInventory: HostInventoryRecord | undefined,
 ): void {
   const winnerOwnsHost = state.hostConnection.get(hostId) !== failedConnectionId;
+  const catalogMoved = state.hostInventories.get(hostId) !== registrationInventory;
   const reason = "reported running session lost reconnect reconciliation";
   state.connections.delete(failedConnectionId);
   if (!winnerOwnsHost) {
     state.hostConnection.delete(hostId);
-    if (snapshot.inventory) state.hostInventories.set(hostId, snapshot.inventory);
-    else state.hostInventories.delete(hostId);
-    for (const [id, wt] of snapshot.worktrees) {
-      if (!state.worktrees.has(id)) state.worktrees.set(id, { ...wt });
-    }
-    for (const [id, slot] of snapshot.slots) {
-      if (!state.workspaceSlots.has(id)) state.workspaceSlots.set(id, { ...slot });
+    if (!catalogMoved) {
+      if (snapshot.inventory) state.hostInventories.set(hostId, snapshot.inventory);
+      else state.hostInventories.delete(hostId);
+      state.hostInventoryRevision += 1;
+      for (const [id, wt] of snapshot.worktrees) {
+        if (!state.worktrees.has(id)) state.worktrees.set(id, { ...wt });
+      }
+      for (const [id, slot] of snapshot.slots) {
+        if (!state.workspaceSlots.has(id)) state.workspaceSlots.set(id, { ...slot });
+      }
     }
     state.drainingHosts.delete(hostId);
     offlineHostAndRequeue(state, hostId, reason);
     offlineWorkspaceSlotsLocal(state, hostId, reason);
     state.disconnectedHosts.set(hostId, snapshot.disconnected ?? { lastHeartbeatAt: state.now() });
   }
-  dropReplacementOnlyCapacity(state, hostId, snapshot, winnerOwnsHost, reason);
+  dropReplacementOnlyCapacity(state, hostId, snapshot, winnerOwnsHost || catalogMoved, reason);
 }
 
 function ownedReportedRunningSessionIds(
@@ -948,9 +956,16 @@ export async function registerHostDurable(
     const previous = snapshotInMemoryRegistration(state, opts.hostId);
     const result = registerHost(state, { ...opts, deferRunningSessionReconcile: true });
     if (!result.ok) return result;
+    const registrationInventory = state.hostInventories.get(opts.hostId);
     const reconciled = await reconcileReportedRunningSessions(state, opts);
     if (reconciled !== false) return result;
-    restoreInMemoryRegistration(state, opts.hostId, result.connectionId, previous);
+    restoreInMemoryRegistration(
+      state,
+      opts.hostId,
+      result.connectionId,
+      previous,
+      registrationInventory,
+    );
     return { ok: false, error: "reported running session lost reconnect reconciliation" };
   }
   const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);
