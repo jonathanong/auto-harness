@@ -195,6 +195,7 @@ export function GitHubIngressSettings() {
             .filter(Boolean),
         })),
       };
+      const submittedSecret = secret;
       try {
         const response = await apiFetch("/api/v1/integrations/github-ingress", {
           method: configured ? "PUT" : "POST",
@@ -206,7 +207,7 @@ export function GitHubIngressSettings() {
         setVersion(saved.version);
         setGeneration(saved.generation ?? null);
         setConfigured(true);
-        setSecret("");
+        setSecret((current) => (current === submittedSecret ? "" : current));
         showToast("GitHub ingress configuration saved.", { pw: "github-ingress-success" });
       } catch {
         showToast("Unable to save GitHub ingress configuration.", {

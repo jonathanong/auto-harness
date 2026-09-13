@@ -250,6 +250,63 @@ describe("GitHubIngressSettings", () => {
     expect(document.body.textContent).toContain("Unable to save");
   });
 
+  it("keeps a secret edited while the save is in flight", async () => {
+    let resolveSave!: (response: Response) => void;
+    const fake = createApiFake(
+      json(existing),
+      () => new Promise<Response>((resolve) => (resolveSave = resolve)),
+      json({ ...existing, version: 4, generation: "generation-2" }),
+    );
+    const view = mountForm(<GitHubIngressSettings />);
+    await settle();
+    setValue(field(view.container, "github-ingress-secret"), "old-secret");
+    press(field(view.container, "github-ingress-save"));
+    setValue(field(view.container, "github-ingress-secret"), "new-secret");
+    resolveSave(json({ ...existing, version: 3, generation: "generation-2" }));
+    await settle();
+    expect(field<HTMLInputElement>(view.container, "github-ingress-secret").value).toBe(
+      "new-secret",
+    );
+    expect(document.body.textContent).toContain("GitHub ingress configuration saved.");
+    press(field(view.container, "github-ingress-save"));
+    await settle();
+    expect(JSON.parse(String(fake.requests[2]?.[1]?.body))).toMatchObject({
+      version: 3,
+      generation: "generation-2",
+      secret: "new-secret",
+    });
+  });
+
+  it("clears the submitted secret after the current save succeeds", async () => {
+    createApiFake(json(existing), json({ ...existing, version: 3 }));
+    const view = mountForm(<GitHubIngressSettings />);
+    await settle();
+    setValue(field(view.container, "github-ingress-secret"), "submitted-secret");
+    press(field(view.container, "github-ingress-save"));
+    await settle();
+    expect(field<HTMLInputElement>(view.container, "github-ingress-secret").value).toBe("");
+    expect(document.body.textContent).toContain("GitHub ingress configuration saved.");
+  });
+
+  it("does not clear a newer secret when the save fails", async () => {
+    let resolveSave!: (response: Response) => void;
+    createApiFake(
+      json(existing),
+      () => new Promise<Response>((resolve) => (resolveSave = resolve)),
+    );
+    const view = mountForm(<GitHubIngressSettings />);
+    await settle();
+    setValue(field(view.container, "github-ingress-secret"), "old-secret");
+    press(field(view.container, "github-ingress-save"));
+    setValue(field(view.container, "github-ingress-secret"), "new-secret");
+    resolveSave(json({ error: { code: "NO" } }, 400));
+    await settle();
+    expect(field<HTMLInputElement>(view.container, "github-ingress-secret").value).toBe(
+      "new-secret",
+    );
+    expect(document.body.textContent).toContain("Unable to save");
+  });
+
   it.each([
     [403, "You do not have permission"],
     [500, "Unable to load"],
