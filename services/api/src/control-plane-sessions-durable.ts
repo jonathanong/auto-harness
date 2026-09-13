@@ -1,4 +1,6 @@
 /* eslint-disable max-lines -- durable create, resume, clone, and webhook fences share admission semantics. */
+import { isActiveSessionStatus } from "@auto-harness/shared";
+
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { noteSlackSessionLifecycle, toPublic } from "./control-plane-state.ts";
@@ -53,6 +55,12 @@ export async function createSessionDurable(
   | { ok: false; error: string; code?: string; operationId?: string }
 > {
   if (!state.storage) {
+    if (options.allowGitHubCommentConcurrencyId) {
+      const active = activeInMemoryGitHubIngressSession(state, body);
+      if (active) {
+        return { ok: true, session: toPublic(state, active), created: false };
+      }
+    }
     if (options.integrationFence && !matchesIntegrationFence(state, options.integrationFence)) {
       return {
         ok: false,
@@ -172,10 +180,7 @@ function matchesIntegrationFence(
   );
 }
 
-async function activeGitHubIngressSession(
-  state: ControlPlaneState,
-  body: unknown,
-): Promise<SessionRecord | null> {
+function githubCommentConcurrencyId(body: unknown): string | null {
   if (
     typeof body !== "object" ||
     body === null ||
@@ -184,7 +189,29 @@ async function activeGitHubIngressSession(
   ) {
     return null;
   }
-  const concurrencyId = (body as { concurrencyId: string }).concurrencyId;
+  return (body as { concurrencyId: string }).concurrencyId;
+}
+
+function activeInMemoryGitHubIngressSession(
+  state: ControlPlaneState,
+  body: unknown,
+): SessionRecord | null {
+  const concurrencyId = githubCommentConcurrencyId(body);
+  if (!concurrencyId) return null;
+  for (const session of state.sessions.values()) {
+    if (session.concurrencyId === concurrencyId && isActiveSessionStatus(session.status)) {
+      return session;
+    }
+  }
+  return null;
+}
+
+async function activeGitHubIngressSession(
+  state: ControlPlaneState,
+  body: unknown,
+): Promise<SessionRecord | null> {
+  const concurrencyId = githubCommentConcurrencyId(body);
+  if (!concurrencyId) return null;
   // The process-local session cache is only an observation. Another Lambda can
   // settle the session and release its concurrency lock, so durable ingress
   // deduplication must always consult the storage-owned active lock.

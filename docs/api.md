@@ -445,7 +445,9 @@ checkout fails closed with `Configured pull-ref checkout has no operator policy`
 The numeric repository and comment ID form a reserved session concurrency identity. Concurrent or
 active-session redelivery returns the existing session, including when a catalog deletion marker is
 acquired after that lock owner already committed, and including when the integration
-version/generation fence loses in the same transaction as the lock Put. Marker-only conflicts with
+version/generation fence loses in the same transaction as the lock Put. The storage-less local
+path checks that same in-memory lock before rejecting a stale fence, so local GitHub ingress also
+returns the existing session instead of `409`. Marker-only conflicts with
 no active lock owner still fail closed. Terminal sessions release the identity so a later
 redelivery can create a new run. This endpoint does not provide exactly-once execution or maintain a
 separate durable receipt.
