@@ -35,7 +35,7 @@ function startSetupFingerprint(
   extraCount: number,
 ): ReturnType<typeof createHash> {
   const hash = createHash("sha256");
-  writeLengthPrefixed(hash, Buffer.from("v1", "utf8"));
+  writeLengthPrefixed(hash, Buffer.from("v2", "utf8"));
   writeLengthPrefixed(hash, Buffer.from(checkoutSha, "utf8"));
   writeLengthPrefixed(hash, Buffer.from(String(scripts.length)));
   for (const script of scripts) {
