@@ -67,5 +67,5 @@ export function presentSetupCacheInputs(value: unknown, ctx: string): string[] |
 }
 
 export function parseSetupCacheInputsField(text: string, ctx: string): string[] {
-  return parseSetupCacheInputs(splitSetupCacheInputLines(text), ctx) ?? [];
+  return parseSetupCacheInputs(splitSetupCacheInputLines(text), ctx)!;
 }

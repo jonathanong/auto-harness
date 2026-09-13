@@ -7,6 +7,7 @@ import {
   listExecConfigEdits,
   parseHostExecConfig,
   preserveHostExecConfig,
+  reconcileInventoryWrite,
 } from "./host-exec-config.ts";
 import {
   addHostWorktree,
@@ -179,12 +180,16 @@ describe("setupCacheInputs exec-config", () => {
 
 describe("setupCacheInputs inventory helpers", () => {
   it("upserts and updates declared extra paths without wiping siblings", () => {
-    let inv = upsertHostRepository(null, {
-      id: "demo",
-      path: "/repo",
-      defaultBranch: "main",
-      setupCacheInputs: ["pnpm-lock.yaml"],
-    });
+    let inv = upsertHostRepository(
+      { ...emptyHostInventory(), setupCacheInputs: ["host.lock"] },
+      {
+        id: "demo",
+        path: "/repo",
+        defaultBranch: "main",
+        setupCacheInputs: ["pnpm-lock.yaml"],
+      },
+    );
+    expect(inv.setupCacheInputs).toEqual(["host.lock"]);
     inv = addHostWorktree(inv, "demo", {
       id: "wt",
       name: "wt",
@@ -216,5 +221,41 @@ describe("setupCacheInputs inventory helpers", () => {
       setupCacheInputs: [],
     });
     expect(inv.repositories[0]).not.toHaveProperty("setupCacheInputs");
+  });
+
+  it("reconciles present extras on a capable full inventory write", () => {
+    const incoming = {
+      ...emptyHostInventory(),
+      setupCacheInputs: ["host.lock"],
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          defaultBranch: "main",
+          setupCacheInputs: ["pnpm-lock.yaml"],
+          worktrees: [
+            {
+              id: "wt-1",
+              name: "wt",
+              path: "/repo/wt",
+              labels: [],
+              setupCacheInputs: ["Cargo.lock"],
+            },
+          ],
+        },
+      ],
+    };
+    const written = reconcileInventoryWrite({
+      existing: emptyHostInventory(),
+      incoming,
+      allowExecConfig: true,
+    });
+    expect(written.ok).toBe(true);
+    if (!written.ok) return;
+    expect(written.inventory.setupCacheInputs).toEqual(["host.lock"]);
+    expect(written.inventory.repositories[0]?.setupCacheInputs).toEqual(["pnpm-lock.yaml"]);
+    expect(written.inventory.repositories[0]?.worktrees[0]?.setupCacheInputs).toEqual([
+      "Cargo.lock",
+    ]);
   });
 });
