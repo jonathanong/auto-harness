@@ -34,7 +34,8 @@ export async function handleCustomWebhookRoute(ctx: RouteCtx): Promise<boolean> 
   try {
     body = await readRawBody(ctx.req);
   } catch {
-    if (!(await audit(ctx, integrationId, "failed"))) return true;
+    const scoped = await ctx.plane.getCustomWebhookIntegration(integrationId).catch(() => null);
+    if (!(await audit(ctx, integrationId, "failed", undefined, scoped?.repositoryId))) return true;
     send(ctx.res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid request body" } });
     return true;
   }
