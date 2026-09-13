@@ -24,13 +24,14 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { SpawnProcessRunner } from "./executor.ts";
 import { createGitClient } from "./git.ts";
+import { resetPriorWorktreeState } from "./git-worktree-reset.ts";
 
-async function git(cwd: string, args: string[]): Promise<string> {
+async function git(cwd: string, args: string[], stdin?: Buffer): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn("git", args, {
       cwd,
       shell: false,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [stdin ? "pipe" : "ignore", "pipe", "pipe"],
     });
     let stdout = "";
     let stderr = "";
@@ -47,6 +48,35 @@ async function git(cwd: string, args: string[]): Promise<string> {
         return;
       }
       resolve(stdout);
+    });
+    if (stdin) {
+      child.stdin?.end(stdin);
+    }
+  });
+}
+
+async function gitRaw(cwd: string, args: string[]): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", args, {
+      cwd,
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const chunks: Buffer[] = [];
+    let stderr = "";
+    child.stdout?.on("data", (c: Buffer) => chunks.push(c));
+    child.stderr?.on("data", (c: Buffer) => {
+      stderr += c.toString("utf8");
+    });
+    child.on("error", reject);
+    child.on("close", (status) => {
+      if (status !== 0) {
+        reject(
+          new Error(`git ${args.join(" ")}: ${stderr || Buffer.concat(chunks).toString("utf8")}`),
+        );
+        return;
+      }
+      resolve(Buffer.concat(chunks));
     });
   });
 }
@@ -506,6 +536,62 @@ describe("createGitClient real git", () => {
 
     expect(readFileSync(join(worktree, "tracked.txt"), "utf8")).toBe("target\n");
     expect(readFileSync(join(worktree, "obstructed.txt"), "utf8")).toBe("target-owned\n");
+  });
+
+  it("clears skip-worktree on a non-UTF-8 tracked path without argv round-trip", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-index-bytes-"));
+    roots.push(root);
+    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
+    await createGitClient(new SpawnProcessRunner()).checkoutRef({
+      cwd: worktree,
+      repoPath: repo,
+      ref: targetSha,
+    });
+    const pathBytes = Buffer.from([0xff, 0x2e, 0x74, 0x78, 0x74]);
+    const blob = (
+      await git(worktree, ["hash-object", "-w", "--stdin"], Buffer.from("hidden\n"))
+    ).trim();
+    await git(
+      worktree,
+      ["update-index", "-z", "--index-info"],
+      Buffer.concat([Buffer.from(`100644 ${blob} 0\t`), pathBytes, Buffer.from([0])]),
+    );
+    await git(worktree, ["commit", "-m", "non-utf8 path"]);
+    await git(
+      worktree,
+      ["update-index", "--skip-worktree", "-z", "--stdin"],
+      Buffer.concat([pathBytes, Buffer.from([0])]),
+    );
+    const gitDir = (
+      await git(worktree, ["rev-parse", "--path-format=absolute", "--git-dir"])
+    ).trim();
+
+    await resetPriorWorktreeState(new SpawnProcessRunner(), worktree, gitDir);
+
+    const listed = await gitRaw(worktree, ["ls-files", "-v", "-z"]);
+    expect(listed.includes(Buffer.concat([Buffer.from("S "), pathBytes]))).toBe(false);
+    expect(listed.includes(pathBytes)).toBe(true);
+  });
+
+  it("clears skip-worktree on a multibyte UTF-8 path and keeps untracked files", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-index-utf8-"));
+    roots.push(root);
+    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
+    const client = createGitClient(new SpawnProcessRunner());
+    await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: targetSha });
+    const cafe = "café.txt";
+    writeFileSync(join(worktree, cafe), "cafe\n");
+    await git(worktree, ["add", cafe]);
+    await git(worktree, ["commit", "-m", "utf8 path"]);
+    const committed = (await git(worktree, ["rev-parse", "HEAD"])).trim();
+    await git(worktree, ["update-index", "--skip-worktree", cafe]);
+    writeFileSync(join(worktree, cafe), "hidden cafe\n");
+    writeFileSync(join(worktree, "keep-me.txt"), "keep me\n");
+
+    await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: committed });
+
+    expect(readFileSync(join(worktree, cafe), "utf8")).toBe("cafe\n");
+    expect(readFileSync(join(worktree, "keep-me.txt"), "utf8")).toBe("keep me\n");
   });
 
   it("aborts an interrupted cherry-pick before recycling", async () => {

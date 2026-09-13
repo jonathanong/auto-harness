@@ -89,4 +89,38 @@ describe("SpawnProcessRunner", () => {
       }),
     ).rejects.toThrow(/working directory does not exist/);
   });
+
+  it("preserves latin1 stdout bytes across chunk boundaries", async () => {
+    const chunks: string[] = [];
+    const result = await new SpawnProcessRunner().run({
+      argv: [
+        process.execPath,
+        "-e",
+        "process.stdout.write(Buffer.from([0xc3])); process.stdout.write(Buffer.from([0xa9, 0x00]))",
+      ],
+      cwd: process.cwd(),
+      timeoutMs: 5_000,
+      preserveOutputChunks: true,
+      outputEncoding: "latin1",
+      onChunk: (chunk) => chunks.push(chunk.data),
+    });
+    expect(result.exitCode).toBe(0);
+    expect(Buffer.from(chunks.join(""), "latin1")).toEqual(Buffer.from([0xc3, 0xa9, 0x00]));
+  });
+
+  it("writes stdin bytes to the child", async () => {
+    const chunks: string[] = [];
+    const payload = Buffer.from([0xff, 0x00, 0x61]);
+    const result = await new SpawnProcessRunner().run({
+      argv: [process.execPath, "-e", "process.stdin.pipe(process.stdout)"],
+      cwd: process.cwd(),
+      timeoutMs: 5_000,
+      preserveOutputChunks: true,
+      outputEncoding: "latin1",
+      stdin: payload,
+      onChunk: (chunk) => chunks.push(chunk.data),
+    });
+    expect(result.exitCode).toBe(0);
+    expect(Buffer.from(chunks.join(""), "latin1")).toEqual(payload);
+  });
 });
