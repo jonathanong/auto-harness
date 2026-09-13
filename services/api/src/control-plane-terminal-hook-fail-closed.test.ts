@@ -278,4 +278,46 @@ describe("terminal hook fail-closed result settlement", () => {
       },
     ]);
   });
+
+  it("rejects mismatched local tombstone completions after the first acknowledgement is lost", async () => {
+    const state = connectedState(6);
+    const acknowledged: unknown[] = [];
+    state.onHostMessage = (hostId, message) => {
+      acknowledged.push({ hostId, message });
+    };
+    state.hostConnection.set("other-host", "other-connection");
+    state.sessions.set("session", failedHandoff());
+    expect(
+      handleHostMessage(
+        state,
+        { type: "session:terminal-hook-complete", sessionId: "session", handoffId: "handoff" },
+        "connection",
+      ),
+    ).toEqual({ ok: true });
+    await Promise.resolve();
+    acknowledged.length = 0;
+
+    expect(
+      handleHostMessage(
+        state,
+        { type: "session:terminal-hook-complete", sessionId: "session", handoffId: "other" },
+        "connection",
+      ),
+    ).toEqual({ ok: false, error: "terminal hook handoff not found" });
+    expect(
+      handleHostMessage(
+        state,
+        { type: "session:terminal-hook-complete", sessionId: "session", handoffId: "handoff" },
+        "other-connection",
+      ),
+    ).toEqual({ ok: false, error: "terminal hook handoff not found" });
+    expect(
+      handleHostMessage(state, {
+        type: "session:terminal-hook-complete",
+        sessionId: "session",
+        handoffId: "handoff",
+      }),
+    ).toEqual({ ok: false, error: "terminal hook handoff not found" });
+    expect(acknowledged).toEqual([]);
+  });
 });
