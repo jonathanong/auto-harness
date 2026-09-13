@@ -18,6 +18,7 @@ type GitHubIngressBindingInput = {
 export type GitHubIngressConfigInput = {
   /** Omit only on update to retain the encrypted webhook secret. */
   secret?: string;
+  /** Defaults to true on create. Omit on update to retain the current value. */
   enabled?: boolean;
   bindings: GitHubIngressBindingInput[];
 };

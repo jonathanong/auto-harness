@@ -54,6 +54,24 @@ describe("GitHub ingress config", () => {
     await expect(getGitHubIngressConfig(plane.state)).resolves.toBeNull();
   });
 
+  it("retains enabled when an update omits it", async () => {
+    const plane = createPlane();
+    await plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
+    await expect(
+      plane.updateGitHubIngressConfig({ enabled: false, bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: true, integration: { enabled: false } });
+    await expect(plane.updateGitHubIngressConfig({ bindings: [binding] })).resolves.toMatchObject({
+      ok: true,
+      integration: { enabled: false },
+    });
+    await expect(
+      plane.updateGitHubIngressConfig({ secret: "y".repeat(16), bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: true, integration: { enabled: false } });
+    await expect(
+      plane.updateGitHubIngressConfig({ enabled: true, bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: true, integration: { enabled: true } });
+  });
+
   it("retains a secret on update and exposes no plaintext", async () => {
     const plane = createPlane();
     await expect(

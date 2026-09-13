@@ -883,7 +883,9 @@ components:
           maxLength: 512
           writeOnly: true
           description: Required on create; omit on update to retain the encrypted secret.
-        enabled: { type: boolean }
+        enabled:
+          type: boolean
+          description: Defaults to true on create. Omit on update to retain the current value.
         bindings:
           type: array
           minItems: 1
@@ -905,7 +907,9 @@ components:
           maxLength: 512
           writeOnly: true
           description: Omit on update to retain the encrypted secret.
-        enabled: { type: boolean }
+        enabled:
+          type: boolean
+          description: Omit on update to retain the current value.
         bindings:
           type: array
           minItems: 1
