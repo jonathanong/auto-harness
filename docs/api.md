@@ -157,7 +157,8 @@ in scope just like an API- or webhook-started one.
   session still holding a worktree or main-checkout lease.
 - `POST /repositories/:id/session-drains/:operationId/release` explicitly removes the fence after
   either terminal result. Releasing `failed` permits new admission but does not change the retained
-  operation proof to success.
+  operation proof to success. Release always uses the authenticated principal; an admin
+  session cannot release another principal's drain.
 
 While fenced, direct create, clone, resume, schedule fire, and assignment fail atomically with
 `409 DRAINING`; the error includes the operation ID and status URL. Running work receives the
@@ -297,7 +298,9 @@ Delete a user account. **Admin only.** Returns `409 CONFLICT` while the account 
 owns a schedule or an unreleased [principal session drain](#principal-session-drains).
 Delete owned schedules to clear that conflict; recreate them under a replacement
 account only when continued execution is intended. Offboarding does not require
-minting a replacement user. Release unreleased drains, then retry.
+minting a replacement user. The account holder must release every terminal drain
+while still authenticated — an admin cannot release another principal's drain, so if
+the user has already lost access the account cannot be deleted through the API.
 
 **Response:** `204 No Content`
 
