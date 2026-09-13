@@ -111,6 +111,29 @@ describe("GitHubIngressSettings", () => {
     });
   });
 
+  it("resets enabled after deleting a disabled configuration", async () => {
+    const fake = createApiFake(
+      json({ ...existing, enabled: false }),
+      json({}, 204),
+      json({ ...existing, version: 1 }),
+    );
+    const view = mountForm(<GitHubIngressSettings />);
+    await settle();
+    expect(field<HTMLInputElement>(view.container, "github-ingress-enabled").checked).toBe(false);
+    press(field(view.container, "github-ingress-delete"));
+    press(field(view.container, "github-ingress-delete-confirm-submit"));
+    await settle();
+    expect(field<HTMLInputElement>(view.container, "github-ingress-enabled").checked).toBe(true);
+    setValue(field(view.container, "github-ingress-secret"), "s".repeat(32));
+    setValue(labelled(view.container, "GitHub repository id"), "42");
+    setValue(labelled(view.container, "Auto Harness repository id"), "repo");
+    setValue(labelled(view.container, "Target id"), "provider");
+    press(field(view.container, "github-ingress-save"));
+    await settle();
+    const created = JSON.parse(String(fake.requests[2]?.[1]?.body)) as { enabled: boolean };
+    expect(created.enabled).toBe(true);
+  });
+
   it("round-trips required labels containing commas", async () => {
     const commaExisting = {
       ...existing,
