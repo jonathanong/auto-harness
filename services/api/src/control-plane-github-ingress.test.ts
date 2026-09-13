@@ -316,6 +316,75 @@ describe("GitHub ingress config", () => {
     await expect(missingTarget.getGitHubIngressConfig()).resolves.toBeNull();
   });
 
+  it("does not commit an in-memory update when the live catalog or CAS fence fails", async () => {
+    const missingRepo = createPlane();
+    await missingRepo.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
+    missingRepo.state.repositories.has = () => false;
+    await expect(
+      missingRepo.updateGitHubIngressConfig({ bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: false, error: "repository not found" });
+
+    const versionRace = createPlane();
+    await versionRace.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
+    const original = versionRace.state.githubIngressConfig;
+    if (!original) throw new Error("expected created GitHub ingress config");
+    const originalHas = versionRace.state.repositories.has.bind(versionRace.state.repositories);
+    versionRace.state.repositories.has = ((id: string) => {
+      versionRace.state.githubIngressConfig = { ...original, version: original.version + 1 };
+      return originalHas(id);
+    }) as typeof versionRace.state.repositories.has;
+    await expect(
+      versionRace.updateGitHubIngressConfig({ bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: false, conflict: true });
+
+    const generationRace = createPlane();
+    await generationRace.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
+    const created = generationRace.state.githubIngressConfig;
+    if (!created) throw new Error("expected created GitHub ingress config");
+    const createdHas = generationRace.state.repositories.has.bind(
+      generationRace.state.repositories,
+    );
+    generationRace.state.repositories.has = ((id: string) => {
+      generationRace.state.githubIngressConfig = { ...created, generation: "other" };
+      return createdHas(id);
+    }) as typeof generationRace.state.repositories.has;
+    await expect(
+      generationRace.updateGitHubIngressConfig({ bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: false, conflict: true });
+  });
+
+  it("does not commit an in-memory create after a concurrent config appears", async () => {
+    const plane = createPlane();
+    const originalHas = plane.state.repositories.has.bind(plane.state.repositories);
+    plane.state.repositories.has = ((id: string) => {
+      plane.state.githubIngressConfig = {
+        id: "github-ingress",
+        type: "github-ingress",
+        encryptedSecret: "cipher",
+        enabled: true,
+        generation: "other",
+        bindings: [],
+        version: 1,
+        createdAt: "now",
+        updatedAt: "now",
+      };
+      return originalHas(id);
+    }) as typeof plane.state.repositories.has;
+    await expect(
+      plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: false, conflict: true });
+  });
+
+  it("assigns a creation generation when updating a legacy in-memory config", async () => {
+    const plane = createPlane();
+    await plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
+    delete plane.state.githubIngressConfig!.generation;
+    const updated = await plane.updateGitHubIngressConfig({ bindings: [binding] });
+    expect(updated).toMatchObject({ ok: true });
+    if (!updated.ok) throw new Error("expected update to succeed");
+    expect(updated.integration.generation).toEqual(expect.any(String));
+  });
+
   it("allows only one concurrent in-memory create after delayed encryption", async () => {
     let release!: () => void;
     let ready!: () => void;
