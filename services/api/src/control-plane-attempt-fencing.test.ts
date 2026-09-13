@@ -142,7 +142,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
     const first = plane.assignQueued()[0]!;
     plane.enforceAckDeadlines(Date.parse(now) + 15_000);
     const second = plane.assignQueued()[0]!;
-    const persisted = { ...plane.getSession("sess-1")! };
+    const persisted = { ...plane.state.sessions.get("sess-1")! };
     let logs = 0;
     let finished = 0;
     plane.state.storage = {
@@ -400,7 +400,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
     const first = plane.assignQueued()[0]!;
     const fences: Array<{ attempts?: Array<{ sessionId: string; attemptId: string }> }> = [];
     plane.state.storage = {
-      getSession: async () => plane.getSession("sess-1"),
+      getSession: async () => plane.state.sessions.get("sess-1"),
       getHostLock: async () => "connection",
       putLogFenced: async (
         _record: unknown,
@@ -446,7 +446,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
     });
     let writes = 0;
     plane.state.storage = {
-      getSession: async () => plane.getSession("sess-1"),
+      getSession: async () => plane.state.sessions.get("sess-1"),
       getHostLock: async (hostId: string) =>
         hostId === "host-2" ? "new-connection" : "old-connection",
       putLogFenced: async () => (writes++, true),
@@ -485,7 +485,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
       attemptId: "attempt-2",
     });
     plane.state.storage = {
-      getSession: async () => plane.getSession("sess-1"),
+      getSession: async () => plane.state.sessions.get("sess-1"),
       getHostLock: async (hostId: string) =>
         hostId === "host-2" ? "new-connection" : "old-connection",
       finishSession: async () => true,
@@ -551,7 +551,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
       infrastructureRetryCount: 0,
     });
     plane.state.storage = {
-      getSession: async () => plane.getSession("sess-1"),
+      getSession: async () => plane.state.sessions.get("sess-1"),
       getHostLock: async () => "new-connection",
     } as never;
 
@@ -627,7 +627,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
     plane.assignQueued();
     plane.state.storage = {
       getSession: async (sessionId: string) =>
-        sessionId === "sess-1" ? plane.getSession("sess-1") : null,
+        sessionId === "sess-1" ? (plane.state.sessions.get("sess-1") ?? null) : null,
       getHostLock: async () => "owner-connection",
       putLogFenced: async () => true,
       putLog: async () => undefined,
