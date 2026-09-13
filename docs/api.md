@@ -295,8 +295,9 @@ List all user accounts. **Admin only.**
 
 Delete a user account. **Admin only.** Returns `409 CONFLICT` while the account still
 owns a schedule or an unreleased [principal session drain](#principal-session-drains).
-Delete and recreate owned schedules under a replacement account, then release those
-drains, before retrying.
+Delete owned schedules to clear that conflict; recreate them under a replacement
+account only when continued execution is intended. Offboarding does not require
+minting a replacement user. Release unreleased drains, then retry.
 
 **Response:** `204 No Content`
 
