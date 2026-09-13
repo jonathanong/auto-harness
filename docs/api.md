@@ -874,7 +874,10 @@ Get session details.
 
 Internal terminal-hook handoff fences (`terminalHookHandoff`, `terminalHookHandoffSettled`,
 `terminalHookHandoffExpiredAt`) and `infrastructureRetryAttemptId` are durable coordination fields
-only. They are omitted from session detail and list responses.
+only. They are omitted from session detail and list responses. The storage-less local control plane
+keeps `terminalHookHandoffSettled` after clearing the pending handoff. A later
+`session:terminal-hook-complete` for that exact handoff ID on the settled host's current connection
+re-emits `session:terminal-hook-acknowledged`; mismatched handoff IDs and host owners stay rejected.
 
 `result` is captured after the terminal hook and is untrusted agent/worktree-derived data. Its
 `summarySource` is `agent` only when a supported structured CLI result supplied the summary;

@@ -675,10 +675,16 @@ export function handleHostMessage(
       const handoff = session?.terminalHookHandoff;
       if (!handoff) {
         const settledHandoff = session?.terminalHookHandoffSettled;
-        if (settledHandoff?.handoffId !== msg.handoffId) {
+        // Exact tombstone match on handoff ID and the settled host's current
+        // connection. A lost first acknowledgement must still stop retries.
+        if (
+          !settledHandoff ||
+          settledHandoff.handoffId !== msg.handoffId ||
+          sourceConnectionId === undefined ||
+          state.hostConnection.get(settledHandoff.hostId) !== sourceConnectionId
+        ) {
           return { ok: false, error: "terminal hook handoff not found" };
         }
-        // A lost first acknowledgement must still stop the daemon retry loop.
         state.onHostMessage?.(settledHandoff.hostId, {
           type: "session:terminal-hook-acknowledged",
           sessionId: msg.sessionId,
