@@ -46,7 +46,7 @@ function isCapturedCurrentRetry(metadata: ArchiveMetadata): boolean {
   );
 }
 
-function isStoredCompleteArchive(metadata: ArchiveMetadata | undefined): boolean {
+function isStoredCompleteArchive(metadata: ArchiveMetadata | null | undefined): boolean {
   return metadata?.status === "complete" && metadata.objectStored === true;
 }
 
