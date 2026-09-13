@@ -57,7 +57,7 @@ export async function runSetupIfNeeded(
       claimed.hostSetupCacheInputs,
       claimed.worktree.setupCacheInputs ?? claimed.repository.setupCacheInputs,
     ),
-    signal,
+    ...(signal ? { signal } : {}),
   });
   if (cache.skip) {
     streamer.write("system", "Setup unchanged; skipping.");
