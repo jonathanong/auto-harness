@@ -586,25 +586,9 @@ export function handleHostMessage(
         ...(msg.draining ? { draining: true } : {}),
       });
       if (!r.ok) return { ok: false, error: r.error };
-      for (const session of connectionProtocolVersion(state.connections.get(r.connectionId)) >=
-      TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
-        ? state.sessions.values()
-        : []) {
-        const handoff = session.terminalHookHandoff;
-        if (!handoff || handoff.hostId !== msg.hostId) continue;
-        state.onHostMessage?.(msg.hostId, {
-          type: "session:terminal-hook",
-          handoffId: handoff.handoffId,
-          sessionId: session.id,
-          repositoryId: handoff.repositoryId,
-          worktreeId: handoff.worktreeId,
-          status: handoff.status,
-          expiresAt: handoff.expiresAt,
-          ...(handoff.errorCode !== undefined ? { errorCode: handoff.errorCode } : {}),
-          ...(handoff.ref !== undefined ? { ref: handoff.ref } : {}),
-          ...(handoff.metadata !== undefined ? { metadata: handoff.metadata } : {}),
-        });
-      }
+      // Recovery handoffs leave this synchronous path as a result of
+      // `handleHostMessageDurable`. The local WS hub installs the replacement
+      // socket and emits `host:registered` before delivering that list.
       return { ok: true };
     }
     case "session:ack": {
@@ -859,27 +843,26 @@ export async function handleHostMessageDurable(
     ) {
       await requestAssignment(state);
     }
-    if (result.ok && msg.type === "host:keepalive" && msg.runningSessions !== undefined) {
+    if (result.ok && msg.type === "host:keepalive") {
       // The synchronous local handler above only updates the heartbeat
       // timestamp; run the same keepalive-time reconciliation the durable
       // path gets via `heartbeatDurable`, so a non-durable control plane also
       // bounds a lost/orphaned session to one keepalive interval.
-      const terminalHookHandoffSessionIds: string[] = [];
-      const requeued = await reconcileHostOwnedSessions(
-        state,
-        msg.hostId,
-        state.hostConnection.get(msg.hostId),
-        new Set(msg.runningSessions),
-        "daemon no longer reports session as running; requeued",
-        terminalHookHandoffSessionIds,
-      );
-      if (requeued.length > 0) await requestAssignment(state);
-      if (terminalHookHandoffSessionIds.length > 0) {
-        const handoffs = await pendingTerminalHookHandoffs(state, msg.hostId, {
-          sessionIds: terminalHookHandoffSessionIds,
-        });
-        return { ...result, ...(handoffs.length > 0 ? { terminalHookHandoffs: handoffs } : {}) };
+      if (msg.runningSessions !== undefined) {
+        const requeued = await reconcileHostOwnedSessions(
+          state,
+          msg.hostId,
+          state.hostConnection.get(msg.hostId),
+          new Set(msg.runningSessions),
+          "daemon no longer reports session as running; requeued",
+        );
+        if (requeued.length > 0) await requestAssignment(state);
       }
+      // Re-list every still-pending handoff. Registration can create a
+      // handoff before the replacement socket is installed; a later healthy
+      // keepalive is the retry path for a transient local delivery loss.
+      const handoffs = await pendingTerminalHookHandoffs(state, msg.hostId);
+      return { ...result, ...(handoffs.length > 0 ? { terminalHookHandoffs: handoffs } : {}) };
     }
     return result;
   }
