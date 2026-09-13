@@ -293,7 +293,10 @@ List all user accounts. **Admin only.**
 
 #### `DELETE /auth/users/:id`
 
-Delete a user account. **Admin only.**
+Delete a user account. **Admin only.** Returns `409 CONFLICT` while the account still
+owns a schedule or an unreleased [principal session drain](#principal-session-drains).
+Delete and recreate owned schedules under a replacement account, then release those
+drains, before retrying.
 
 **Response:** `204 No Content`
 
@@ -366,7 +369,12 @@ List all service accounts. **Admin only.**
 
 #### `DELETE /auth/service-accounts/:id`
 
-Delete a service account and revoke its API key. **Admin only.**
+Delete a service account and revoke its API key. **Admin only.** Returns `409 CONFLICT`
+while the account still owns a schedule or an unreleased
+[principal session drain](#principal-session-drains). Rotation therefore requires
+deleting and recreating owned schedules under the new account, then releasing those
+drains **with the old key** before consumers drop that credential. See
+[service-account rotation](auth.md#service-accounts-api-keys).
 
 **Response:** `204 No Content`
 
