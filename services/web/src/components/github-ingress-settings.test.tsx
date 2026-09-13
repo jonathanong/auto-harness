@@ -363,6 +363,26 @@ describe("GitHubIngressSettings", () => {
     expect(fake.requests).toHaveLength(1);
   });
 
+  it("rejects a valid binding count whose expanded catalog references exceed the limit", async () => {
+    const oversized = {
+      ...existing,
+      bindings: Array.from({ length: 50 }, (_, index) => ({
+        ...existing.bindings[0]!,
+        githubRepositoryId: index + 1,
+        repositoryId: `repository-${index}`,
+        target: { commandId: `command-${index}` },
+        fallbacks: [],
+      })),
+    };
+    const fake = createApiFake(json(oversized));
+    const view = mountForm(<GitHubIngressSettings />);
+    await settle();
+    press(field(view.container, "github-ingress-save"));
+    await settle();
+    expect(document.body.textContent).toContain("at most 99 unique catalog entries");
+    expect(fake.requests).toHaveLength(1);
+  });
+
   it("creates a new configuration and reports save and delete failures", async () => {
     const fake = createApiFake(
       json({}, 404),

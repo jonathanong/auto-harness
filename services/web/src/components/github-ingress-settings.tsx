@@ -13,7 +13,11 @@ import {
   showToast,
 } from "@auto-harness/ui";
 
-import { isValidGitHubIngressDefaultRef } from "@auto-harness/shared";
+import {
+  githubIngressCatalogReferenceKeys,
+  githubIngressCatalogReferenceLimitError,
+  isValidGitHubIngressDefaultRef,
+} from "@auto-harness/shared";
 
 import { apiFetch } from "../lib/client-api.ts";
 import {
@@ -167,6 +171,22 @@ export function GitHubIngressSettings() {
           variant: "destructive",
           pw: "github-ingress-error",
         });
+        return;
+      }
+      const catalogRefs = githubIngressCatalogReferenceLimitError(
+        githubIngressCatalogReferenceKeys(
+          bindings.map((binding, index) => ({
+            repositoryId: binding.repositoryId,
+            target:
+              binding.targetType === "providerId"
+                ? { providerId: binding.targetId }
+                : { commandId: binding.targetId },
+            fallbacks: validFallbacks[index],
+          })),
+        ).length,
+      );
+      if (catalogRefs) {
+        showToast(catalogRefs, { variant: "destructive", pw: "github-ingress-error" });
         return;
       }
       const body = {

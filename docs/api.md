@@ -428,7 +428,8 @@ small `202` ignored response; eligible events receive a small `202` session ackn
 Admin `GET`/`POST`/`PUT`/`DELETE` configuration is at
 `/api/v1/integrations/github-ingress`. The singleton config contains an encrypted webhook secret
 and one or more numeric GitHub repository ID bindings to admitted Auto Harness repositories and
-fixed routing. Secret length is 16–512 Unicode characters (code points), the same unit as custom
+fixed routing. Unique Auto Harness repository, command, and provider ids across every binding
+target and fallback must not exceed 99, even when the binding count itself is still within 100. Secret length is 16–512 Unicode characters (code points), the same unit as custom
 webhook secrets; UTF-16 code-unit length is not used. `PUT` may omit `secret` to retain it and may omit `enabled` to retain the current
 admission flag. It requires the last observed positive integer `version` plus opaque
 `generation`. An omitted `enabled` must not re-enable a deliberately disabled

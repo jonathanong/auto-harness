@@ -645,6 +645,48 @@ describe("GitHub ingress config", () => {
       ),
     });
 
+    const expanded = new ControlPlane({ secretEncryptor: encryptor });
+    expanded.createCommand({ id: "command", name: "command", argv: ["echo"] });
+    const expandedBindings = Array.from({ length: 50 }, (_, index) => {
+      const repositoryId = `repository-${index}`;
+      const commandId = `command-${index}`;
+      expanded.createRepository({
+        id: repositoryId,
+        name: repositoryId,
+        url: `https://example.test/${repositoryId}`,
+      });
+      expanded.createCommand({ id: commandId, name: commandId, argv: ["echo"] });
+      return {
+        ...binding,
+        githubRepositoryId: index + 1,
+        repositoryId,
+        target: { commandId },
+      };
+    });
+    await expect(
+      expanded.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: expandedBindings }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining(
+        `at most ${MAX_GITHUB_INGRESS_CATALOG_REFS} unique catalog entries`,
+      ),
+    });
+
+    const boundary = new ControlPlane({ secretEncryptor: encryptor });
+    boundary.createCommand({ id: "command", name: "command", argv: ["echo"] });
+    const boundaryBindings = Array.from({ length: 98 }, (_, index) => {
+      const repositoryId = `repository-${index}`;
+      boundary.createRepository({
+        id: repositoryId,
+        name: repositoryId,
+        url: `https://example.test/${repositoryId}`,
+      });
+      return { ...binding, githubRepositoryId: index + 1, repositoryId };
+    });
+    await expect(
+      boundary.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: boundaryBindings }),
+    ).resolves.toMatchObject({ ok: true });
+
     const oversizedUpdate = createPlane();
     await oversizedUpdate.createGitHubIngressConfig({
       secret: "x".repeat(16),
