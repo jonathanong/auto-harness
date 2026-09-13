@@ -89,4 +89,69 @@ describe("archive writer with real DynamoDB Local", () => {
     expect(JSON.stringify(metadata).length).toBeLessThan(1_000);
     expect(metadata).not.toHaveProperty("body");
   });
+
+  it("expires a pending archive so a late retry cannot mark it complete", async () => {
+    if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
+    const key = "sessions/session-expired/logs.jsonl";
+    await ctx.storage.putArchive({
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "claimed-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await ctx.storage.putArchive({
+      key: "sessions/session-complete/logs.jsonl",
+      contentType: "application/x-ndjson",
+      bodyBytes: 1,
+      status: "complete",
+      objectStored: true,
+      versionId: "archive-v1",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    await expect(ctx.storage.expireArchive(key, "2026-01-08T00:00:00.000Z")).resolves.toBe(true);
+    expect(await ctx.storage.getArchive(key)).toEqual({
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "expired",
+      objectStored: false,
+      updatedAt: "2026-01-08T00:00:00.000Z",
+    });
+    await expect(ctx.storage.listPendingArchives(25)).resolves.not.toContainEqual(
+      expect.objectContaining({ key }),
+    );
+    await expect(
+      ctx.storage.claimArchiveRetry(key, "processing", "claimed-order", "next-claim"),
+    ).resolves.toBe(false);
+    await expect(
+      ctx.storage.completeArchiveRetry(
+        {
+          key,
+          contentType: "application/x-ndjson",
+          bodyBytes: 0,
+          status: "complete",
+          objectStored: true,
+          updatedAt: "2026-01-08T00:00:00.000Z",
+        },
+        "claimed-order",
+      ),
+    ).resolves.toBe(false);
+    expect(await ctx.storage.getArchive(key)).toMatchObject({
+      status: "expired",
+      objectStored: false,
+    });
+    await expect(
+      ctx.storage.expireArchive("sessions/session-complete/logs.jsonl", "2026-01-08T00:00:00.000Z"),
+    ).resolves.toBe(false);
+    expect(await ctx.storage.getArchive("sessions/session-complete/logs.jsonl")).toMatchObject({
+      status: "complete",
+      objectStored: true,
+      versionId: "archive-v1",
+    });
+  });
 });

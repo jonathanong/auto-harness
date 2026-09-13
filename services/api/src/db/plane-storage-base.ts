@@ -1236,6 +1236,10 @@ export class DynamoPlaneStorageBase {
     return catalog.completeArchiveRetry(this.ctx, archive, expectedRetryOrder);
   }
 
+  expireArchive(key: string, updatedAt: string): Promise<boolean> {
+    return catalog.expireArchive(this.ctx, key, updatedAt);
+  }
+
   /** Returns false when `expectedVersion` no longer matches the stored document. */
   putHostInventory(
     rec: HostInventoryRecord,

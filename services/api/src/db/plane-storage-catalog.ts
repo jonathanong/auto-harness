@@ -1495,13 +1495,15 @@ export async function claimArchiveRetry(
         Key: { key },
         UpdateExpression: "SET retryState = :processing, retryOrder = :claimed",
         ConditionExpression:
-          "objectStored = :false AND retryState = :expectedState AND retryOrder = :expected",
+          "objectStored = :false AND retryState = :expectedState AND retryOrder = :expected AND (attribute_not_exists(#status) OR #status <> :expired)",
+        ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
           ":false": false,
           ":processing": "processing",
           ":expectedState": retryState,
           ":expected": retryOrder,
           ":claimed": claimedOrder,
+          ":expired": "expired",
         },
       }),
     );
@@ -1526,13 +1528,15 @@ export async function releaseArchiveRetry(
         Key: { key },
         UpdateExpression: "SET retryState = :pending, retryOrder = :retryOrder",
         ConditionExpression:
-          "objectStored = :false AND retryState = :processing AND retryOrder = :claimed",
+          "objectStored = :false AND retryState = :processing AND retryOrder = :claimed AND (attribute_not_exists(#status) OR #status <> :expired)",
+        ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
           ":false": false,
           ":processing": "processing",
           ":pending": "pending",
           ":claimed": claimedOrder,
           ":retryOrder": retryOrder,
+          ":expired": "expired",
         },
       }),
     );
@@ -1560,7 +1564,7 @@ export async function completeArchiveRetry(
           (archive.versionId ? ", versionId = :versionId" : "") +
           " REMOVE retryState, retryOrder",
         ConditionExpression:
-          "objectStored = :false AND retryState = :processing AND retryOrder = :expected",
+          "objectStored = :false AND retryState = :processing AND retryOrder = :expected AND (attribute_not_exists(#status) OR #status <> :expired)",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
           ":contentType": archive.contentType,
@@ -1573,6 +1577,38 @@ export async function completeArchiveRetry(
           ":false": false,
           ":processing": "processing",
           ":expected": expectedRetryOrder,
+          ":expired": "expired",
+        },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
+  }
+}
+
+/** Persist expired and drop retry GSI keys only while a complete winner is absent. */
+export async function expireArchive(
+  ctx: PlaneStorageCtx,
+  key: string,
+  updatedAt: string,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.archives,
+        Key: { key },
+        UpdateExpression:
+          "SET #status = :expired, updatedAt = :updatedAt REMOVE retryState, retryOrder",
+        ConditionExpression:
+          "#status = :expired OR (objectStored = :false AND (attribute_not_exists(#status) OR #status = :pending))",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":expired": "expired",
+          ":updatedAt": updatedAt,
+          ":false": false,
+          ":pending": "pending",
         },
       }),
     );

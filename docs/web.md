@@ -265,7 +265,8 @@ length, or content type differs from the verified DynamoDB metadata; it is withh
 until repaired.
 **Transcript expired before archival completed** means the terminal session's seven-day recent-log
 retention elapsed and a bounded strongly consistent probe found no recent log row before a durable
-archive became retrievable.
+archive became retrievable. That expired metadata is persisted so a later archive retry cannot
+replace the data-loss state with an empty transcript.
 Queued and running sessions always remain in the recent/not-archived state, even if stale complete
 archive metadata exists; archived retrieval is exposed only after the authoritative session is terminal.
 
