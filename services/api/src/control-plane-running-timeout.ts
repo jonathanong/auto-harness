@@ -186,25 +186,27 @@ async function commitDurableTimeout(
       timedOutAssignmentConnectionId: session.assignmentConnectionId,
     });
   }
-  return storage.finishSession({
-    sessionId: session.id,
-    worktreeId: session.worktreeId ?? null,
-    ...(session.workspaceSlotId ? { workspaceSlotId: session.workspaceSlotId } : {}),
-    attemptId: session.attemptId!,
-    status: "timed_out",
-    queueShard: session.queueShard,
-    completedAt,
-    errorMessage: TIMEOUT_ERROR,
-    ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
-    preserveProviderAccountLease: true,
-    preserveHostAssignmentLease: true,
-    ...(timedOutHostId ? { timedOutHostId } : {}),
-    ...(timedOutAssignmentConnectionId ? { timedOutAssignmentConnectionId } : {}),
-    ...(session.workspaceSlotId ? { preserveWorkspaceSlotLease: true } : {}),
-    ...(session.workspaceSlotId && session.reconnectDeadlineAt
-      ? { preserveReconnectDeadlineAt: true }
-      : {}),
-  });
+  return (
+    (await storage.finishSession({
+      sessionId: session.id,
+      worktreeId: session.worktreeId ?? null,
+      ...(session.workspaceSlotId ? { workspaceSlotId: session.workspaceSlotId } : {}),
+      attemptId: session.attemptId!,
+      status: "timed_out",
+      queueShard: session.queueShard,
+      completedAt,
+      errorMessage: TIMEOUT_ERROR,
+      ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
+      preserveProviderAccountLease: true,
+      preserveHostAssignmentLease: true,
+      ...(timedOutHostId ? { timedOutHostId } : {}),
+      ...(timedOutAssignmentConnectionId ? { timedOutAssignmentConnectionId } : {}),
+      ...(session.workspaceSlotId ? { preserveWorkspaceSlotLease: true } : {}),
+      ...(session.workspaceSlotId && session.reconnectDeadlineAt
+        ? { preserveReconnectDeadlineAt: true }
+        : {}),
+    })) !== false
+  );
 }
 
 async function listRunningSessions(state: ControlPlaneState): Promise<SessionRecord[]> {
