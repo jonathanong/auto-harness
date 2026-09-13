@@ -166,6 +166,12 @@ type PendingTerminalStatus = {
    * waiter must not occupy, or it deadlocks itself at maxConcurrentAssignments.
    */
   settlementOccupies?: boolean | undefined;
+  /**
+   * ACK settlement claimed a CLI slot. Same-process handoff reconciliation
+   * sets `settlementOccupies` without this, so replacement occupancy stays on
+   * `activeTerminalHookHandoffs`.
+   */
+  claimedExecutionSlot?: boolean | undefined;
   /** The shared hook result for a same-process handoff that overlaps its status ACK. */
   settlementResult?: Promise<import("@auto-harness/shared").SessionResult | undefined> | undefined;
   resolveDeferredDisposition?: (() => void) | undefined;
@@ -1143,12 +1149,14 @@ export class DaemonLoop {
             if (
               !(await this.acquireExecutionSlot(entry, pending.controller.signal, () => {
                 pending.settlementOccupies = true;
+                pending.claimedExecutionSlot = true;
               }))
             ) {
               return;
             }
           } else {
             pending.settlementOccupies = true;
+            pending.claimedExecutionSlot = true;
             if (this.hasSpareExecutionCapacity()) this.notifyExecutionCapacityWaiters();
           }
         }
@@ -1304,14 +1312,14 @@ export class DaemonLoop {
   }
 
   /**
-   * Drain resume and abortInflight can leave a settling hook without a live
+   * Drain resume and abortInflight can leave an ACK-claimed hook without a live
    * inflight entry. Replacement handoffs still occupy only through
    * `activeTerminalHookHandoffs`.
    */
   private occupyingOrphanedDeferredSettlements(): number {
     let count = 0;
     for (const [key, pending] of this.pendingTerminalStatus) {
-      if (pending.settlementOccupies !== true) continue;
+      if (pending.claimedExecutionSlot !== true) continue;
       const entry = this.inflight.get(key);
       if (entry && !entry.controller.signal.aborted) continue;
       count += 1;
