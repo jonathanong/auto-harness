@@ -1,7 +1,11 @@
 import { isTerminalSessionStatus } from "@auto-harness/shared";
 
 import { Alert } from "./alert.tsx";
-import { sessionErrorLabel, sessionInfrastructureRetryReason } from "./session-status-cell.tsx";
+import {
+  isActiveInfrastructureRetry,
+  sessionErrorLabel,
+  sessionInfrastructureRetryReason,
+} from "./session-status-cell.tsx";
 
 export type SessionExecutionSummaryProps = {
   status: string;
@@ -25,7 +29,7 @@ export function SessionExecutionSummary({
 }: SessionExecutionSummaryProps) {
   const terminal = isTerminalSessionStatus(status);
   const showError = Boolean(errorMessage || (terminal && errorCode));
-  const retrying = status === "queued" && (infrastructureRetryCount ?? 0) > 0;
+  const retrying = isActiveInfrastructureRetry(status, infrastructureRetryCount, errorCode);
   const retryReason =
     sessionInfrastructureRetryReason(lastInfrastructureErrorCode) ?? "an infrastructure failure";
   return (

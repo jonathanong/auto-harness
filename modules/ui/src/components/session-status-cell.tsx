@@ -24,13 +24,29 @@ export function sessionErrorLabel(errorCode?: string | null): string | null {
 }
 
 function infrastructureRetryCopy(
+  status: string,
   infrastructureRetryCount?: number | null,
   lastInfrastructureErrorCode?: string | null,
+  errorCode?: string | null,
 ): string | null {
-  if (!infrastructureRetryCount || infrastructureRetryCount < 1) return null;
+  if (!isActiveInfrastructureRetry(status, infrastructureRetryCount, errorCode)) return null;
   const reason =
-    sessionInfrastructureRetryReason(lastInfrastructureErrorCode) ?? "an infrastructure failure";
+    sessionInfrastructureRetryReason(lastInfrastructureErrorCode ?? errorCode) ??
+    "an infrastructure failure";
   return `Automatic retry ${infrastructureRetryCount} of 1 in progress after ${reason}.`;
+}
+
+/** Historical retry counts stay visible after a later unrelated requeue; this is the live marker. */
+export function isActiveInfrastructureRetry(
+  status: string,
+  infrastructureRetryCount?: number | null,
+  errorCode?: string | null,
+): boolean {
+  return (
+    status === "queued" &&
+    (infrastructureRetryCount ?? 0) > 0 &&
+    (errorCode === "checkout_fetch_failed" || errorCode === "host_lost")
+  );
 }
 
 /** Status badge plus the documented human-readable terminal reason. */
@@ -51,7 +67,12 @@ export function SessionStatusCell({
 }) {
   const reason =
     status === "failed" ? sessionStatusReason(errorCode) || errorMessage || errorCode : null;
-  const retry = infrastructureRetryCopy(infrastructureRetryCount, lastInfrastructureErrorCode);
+  const retry = infrastructureRetryCopy(
+    status,
+    infrastructureRetryCount,
+    lastInfrastructureErrorCode,
+    errorCode,
+  );
   return (
     <div className="space-y-1" data-pw={`session-status-${sessionId}`}>
       <SessionStatusBadge status={status} />
@@ -88,7 +109,12 @@ export function SessionStatusDetail({
   lastInfrastructureErrorCode?: string | null | undefined;
 }) {
   const reason = status === "failed" ? sessionStatusReason(errorCode) : null;
-  const retry = infrastructureRetryCopy(infrastructureRetryCount, lastInfrastructureErrorCode);
+  const retry = infrastructureRetryCopy(
+    status,
+    infrastructureRetryCount,
+    lastInfrastructureErrorCode,
+    errorCode,
+  );
   return (
     <div className="space-y-1" data-pw="session-detail-status">
       <SessionStatusBadge status={status} />

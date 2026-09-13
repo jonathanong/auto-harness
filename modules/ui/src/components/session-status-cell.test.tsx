@@ -105,6 +105,7 @@ describe("SessionStatusCell", () => {
       <SessionStatusCell
         status="queued"
         sessionId="retry"
+        errorCode="host_lost"
         infrastructureRetryCount={1}
         lastInfrastructureErrorCode="host_lost"
       />,
@@ -115,6 +116,7 @@ describe("SessionStatusCell", () => {
     const detail = renderToStaticMarkup(
       <SessionStatusDetail
         status="queued"
+        errorCode="checkout_fetch_failed"
         infrastructureRetryCount={1}
         lastInfrastructureErrorCode="checkout_fetch_failed"
       />,
@@ -123,6 +125,17 @@ describe("SessionStatusCell", () => {
     expect(detail).toContain("Checkout fetch failed");
     expect(
       renderToStaticMarkup(<SessionStatusDetail status="running" infrastructureRetryCount={1} />),
+    ).not.toContain("Automatic retry");
+    expect(
+      renderToStaticMarkup(
+        <SessionStatusCell
+          status="queued"
+          sessionId="stale"
+          errorCode="usage_limit"
+          infrastructureRetryCount={1}
+          lastInfrastructureErrorCode="host_lost"
+        />,
+      ),
     ).not.toContain("Automatic retry");
   });
 

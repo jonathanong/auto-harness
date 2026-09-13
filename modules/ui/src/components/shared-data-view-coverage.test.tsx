@@ -99,11 +99,23 @@ describe("shared data display composites", () => {
       render(
         <SessionExecutionSummary
           status="queued"
+          errorCode="checkout_fetch_failed"
           infrastructureRetryCount={1}
           lastInfrastructureErrorCode="checkout_fetch_failed"
         />,
       ),
     ).toContain("Automatic retry 1 of 1");
+    expect(
+      render(
+        <SessionExecutionSummary
+          status="queued"
+          errorCode="usage_limit"
+          errorMessage="Provider limit; retry pending"
+          infrastructureRetryCount={1}
+          lastInfrastructureErrorCode="host_lost"
+        />,
+      ),
+    ).not.toContain("Automatic retry");
     expect(render(<SessionExecutionSummary status="failed" errorCode="host_lost" />)).toContain(
       "Host lost",
     );
@@ -118,6 +130,7 @@ describe("shared data display composites", () => {
         session={{
           id: "retry",
           status: "queued",
+          errorCode: "usage_limit",
           infrastructureRetryCount: 1,
           lastInfrastructureErrorCode: "host_lost",
         }}
