@@ -409,6 +409,7 @@ opaque `generation` (`legacy` when the stored row has none). `DELETE` requires t
 stale writes and deletes (including a delete/recreate of the same integration ID) return `409`.
 In-memory control-plane deletes re-check the live webhook row and its catalog references immediately
 before mutation, and return the same concurrent-change conflict when either observation moved.
+Unrelated repository, provider, or command writes do not abort a valid delete.
 
 Outbound HTTP deliveries use the same raw-body HMAC format in `x-auto-harness-signature-256`, plus
 stable `x-auto-harness-event` and `x-auto-harness-delivery` headers. HTTPS is the secure default;
