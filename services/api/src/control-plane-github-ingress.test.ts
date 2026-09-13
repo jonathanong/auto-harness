@@ -453,9 +453,11 @@ describe("GitHub ingress config", () => {
 
   it("documents the runtime UTF-8 byte bound for defaultRef", () => {
     const openapi = readFileSync(new URL("../../../docs/openapi.yaml", import.meta.url), "utf8");
+    expect(openapi).toContain('pattern: "^refs/heads/[^~^:?*\\\\\\\\[]+$"');
     expect(openapi).toMatch(
-      /defaultRef:\n\s+type: string\n\s+minLength: 1\n\s+pattern: "\^refs\/heads\/"\n\s+description: .*255 bytes\./,
+      /defaultRef:\n\s+type: string\n\s+minLength: 1\n\s+pattern: "\^refs\/heads\//,
     );
+    expect(openapi).toMatch(/description: .*255 bytes\./);
     expect(openapi).not.toMatch(/defaultRef:.*maxLength:/);
   });
 

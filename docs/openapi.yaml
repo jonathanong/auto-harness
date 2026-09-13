@@ -874,7 +874,7 @@ components:
         defaultRef:
           type: string
           minLength: 1
-          pattern: "^refs/heads/[^~^:?*\\\\]+$"
+          pattern: "^refs/heads/[^~^:?*\\\\[]+$"
           description: Canonical refs/heads/... branch with a nonempty Git-safe suffix and a maximum UTF-8 encoded length of 255 bytes.
         allowedLogins:
           type: array
