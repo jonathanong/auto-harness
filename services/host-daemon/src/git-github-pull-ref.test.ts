@@ -163,6 +163,30 @@ describe("isolated GitHub pull-ref fetch", () => {
   });
 
   it.each([
+    ["Error", new Error("socket hang up")],
+    ["non-Error", "socket hang up"],
+  ])(
+    "classifies a thrown pull-ref transport %s as a checkout fetch failure",
+    async (_kind, thrown) => {
+      const runner = {
+        async run(options: import("./executor.ts").RunProcessOptions) {
+          const args = options.argv.slice(1);
+          if (args[0] === "rev-parse") {
+            options.onChunk({ stream: "stdout", data: "false\n" });
+            return { exitCode: 0, timedOut: false, signal: null };
+          }
+          if (args[0] === "config") return { exitCode: 1, timedOut: false, signal: null };
+          if (args[0] === "ls-remote") throw thrown;
+          throw new Error(`unexpected git ${args.join(" ")}`);
+        },
+      };
+      await expect(
+        fetchGitHubPullRequestRef(runner, cwd, ref, remoteUrl, objectDirectory),
+      ).rejects.toBeInstanceOf(CheckoutFetchError);
+    },
+  );
+
+  it.each([
     ["empty successful advertisement", [{ ...advertised, stdout: "" }]],
     [
       "ambiguous advertisement lines",
