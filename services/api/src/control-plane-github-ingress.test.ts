@@ -214,6 +214,69 @@ describe("GitHub ingress config", () => {
     await expect(plane.getGitHubIngressConfig()).resolves.toEqual(recreated);
   });
 
+  it("does not commit in-memory GitHub ingress bindings deleted during encryption", async () => {
+    async function race(
+      kind: "repository" | "command" | "provider",
+      mode: "create" | "update",
+    ): Promise<void> {
+      let release!: () => void;
+      let entered!: () => void;
+      let delay = false;
+      const delayed = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const encrypting = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const plane = new ControlPlane({
+        secretEncryptor: {
+          encrypt: async (value) => {
+            if (delay) {
+              entered();
+              await delayed;
+            }
+            return `cipher:${value}`;
+          },
+          decrypt: encryptor.decrypt,
+        },
+      });
+      plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo" });
+      plane.createCommand({ id: "command", name: "command", argv: ["echo"] });
+      plane.createProvider({ id: "provider", name: "provider", defaultCommandId: "command" });
+      const providerBinding = {
+        ...binding,
+        target: { providerId: "provider" },
+        fallbacks: [{ commandId: "command" }],
+      };
+      const writeBinding = kind === "provider" ? providerBinding : binding;
+      if (mode === "update") {
+        await plane.createGitHubIngressConfig({
+          secret: "x".repeat(16),
+          bindings: [binding],
+        });
+      }
+      delay = true;
+      const pending =
+        mode === "create"
+          ? plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [writeBinding] })
+          : plane.updateGitHubIngressConfig({ secret: "z".repeat(16), bindings: [writeBinding] });
+      await encrypting;
+      if (kind === "repository") plane.state.repositories.delete("repo");
+      if (kind === "command") plane.state.commands.delete("command");
+      if (kind === "provider") plane.state.providers.delete("provider");
+      release();
+      await expect(pending).resolves.toMatchObject({ ok: false });
+      if (mode === "create") {
+        await expect(plane.getGitHubIngressConfig()).resolves.toBeNull();
+      }
+    }
+
+    for (const kind of ["repository", "command", "provider"] as const) {
+      await race(kind, "create");
+      await race(kind, "update");
+    }
+  });
+
   it("allows only one concurrent in-memory create after delayed encryption", async () => {
     let release!: () => void;
     let ready!: () => void;

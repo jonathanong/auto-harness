@@ -379,7 +379,9 @@ that lock owner already committed. Marker-only conflicts with no active lock own
 closed. Terminal sessions release that identity and a later
 redelivery can start a new run; ingress adds no second receipt store and does not promise
 exactly-once execution. Secret rotation, disablement, and deletion are version-fenced against
-session creation with an immutable creation generation. Configuration updates carry the operator's
+session creation with an immutable creation generation. In-memory configuration writes revalidate
+binding catalog references after secret encryption, so a concurrent repository, provider, or
+command deletion cannot commit a dangling binding. Configuration updates carry the operator's
 observed version and generation, while deletes carry the same fences in `If-Match` and
 `If-Match-Generation`, so stale tabs cannot mutate a delete-and-recreated singleton.
 

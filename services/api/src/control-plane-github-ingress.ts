@@ -75,6 +75,8 @@ export async function createGitHubIngressConfig(
     const record = await makeRecord(state, input, randomUUID(), 1, now, now);
     const size = configSizeError(record);
     if (size) return { ok: false, error: size };
+    const catalogAfter = await validateConfiguredBindings(state, input);
+    if (!catalogAfter.ok) return catalogAfter;
     if (!state.storage && state.githubIngressConfig) return conflict();
     if (state.storage && !(await state.storage.putGitHubIngressConfig(record, null, markers)))
       return conflict();
@@ -116,6 +118,8 @@ export async function updateGitHubIngressConfig(
     );
     const size = configSizeError(record);
     if (size) return { ok: false, error: size };
+    const catalogAfter = await validateConfiguredBindings(state, input);
+    if (!catalogAfter.ok) return catalogAfter;
     if (
       !state.storage &&
       (state.githubIngressConfig?.version !== current.version ||
