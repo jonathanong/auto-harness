@@ -411,7 +411,7 @@ plain HTTP needs an explicit non-production development/test escape. Redirects a
 
 `POST /api/v1/webhooks/github` is the public webhook receiver for the dedicated ingress GitHub
 App. It requires GitHub's `x-hub-signature-256` HMAC over the exact request bytes, a bounded
-`x-github-delivery`, and either the `issue_comment` or `pull_request_review_comment` event. Only
+`x-github-delivery` (1–128 characters from `A-Z a-z 0-9 . _ : -`), and either the `issue_comment` or `pull_request_review_comment` event. Only
 created comments from repository owners, members, collaborators, or explicitly allowlisted logins
 are eligible, and `@auto-harness` must be the first token. Verified but ineligible events receive a
 small `202` ignored response; eligible events receive a small `202` session acknowledgement.
