@@ -75,11 +75,16 @@ export async function createGitHubIngressConfig(
     const record = await makeRecord(state, input, randomUUID(), 1, now, now);
     const size = configSizeError(record);
     if (size) return { ok: false, error: size };
-    const catalogAfter = await validateConfiguredBindings(state, input);
+    const catalogAfter = await revalidateInMemoryBindings(state, input);
     if (!catalogAfter.ok) return catalogAfter;
-    if (!state.storage && state.githubIngressConfig) return conflict();
-    if (state.storage && !(await state.storage.putGitHubIngressConfig(record, null, markers)))
-      return conflict();
+    if (!state.storage) {
+      const present = configuredBindingsPresent(state, input);
+      if (!present.ok) return present;
+      if (state.githubIngressConfig) return conflict();
+      state.githubIngressConfig = record;
+      return { ok: true, integration: toPublicGitHubIngressConfig(record) };
+    }
+    if (!(await state.storage.putGitHubIngressConfig(record, null, markers))) return conflict();
     state.githubIngressConfig = record;
     return { ok: true, integration: toPublicGitHubIngressConfig(record) };
   });
@@ -118,16 +123,20 @@ export async function updateGitHubIngressConfig(
     );
     const size = configSizeError(record);
     if (size) return { ok: false, error: size };
-    const catalogAfter = await validateConfiguredBindings(state, input);
+    const catalogAfter = await revalidateInMemoryBindings(state, input);
     if (!catalogAfter.ok) return catalogAfter;
+    if (!state.storage) {
+      const present = configuredBindingsPresent(state, input);
+      if (!present.ok) return present;
+      if (
+        state.githubIngressConfig?.version !== current.version ||
+        state.githubIngressConfig.generation !== current.generation
+      )
+        return conflict();
+      state.githubIngressConfig = record;
+      return { ok: true, integration: toPublicGitHubIngressConfig(record) };
+    }
     if (
-      !state.storage &&
-      (state.githubIngressConfig?.version !== current.version ||
-        state.githubIngressConfig.generation !== current.generation)
-    )
-      return conflict();
-    if (
-      state.storage &&
       !(await state.storage.putGitHubIngressConfig(
         record,
         current.version,
@@ -343,6 +352,28 @@ async function validateConfiguredBindings(
   for (const binding of input.bindings) {
     const repository = await getRepositoryDurable(state, binding.repositoryId);
     if (!repository) return { ok: false, error: "repository not found" };
+    const candidate = validateSessionTargetCatalog(state, binding.target, binding.fallbacks ?? []);
+    if (!candidate.ok) return { ok: false, error: candidate.error };
+  }
+  return { ok: true };
+}
+
+async function revalidateInMemoryBindings(
+  state: ControlPlaneState,
+  input: GitHubIngressConfigInput,
+): Promise<{ ok: true } | Failure> {
+  if (state.storage) return { ok: true };
+  return validateConfiguredBindings(state, input);
+}
+
+function configuredBindingsPresent(
+  state: ControlPlaneState,
+  input: GitHubIngressConfigInput,
+): { ok: true } | Failure {
+  for (const binding of input.bindings) {
+    if (!state.repositories.has(binding.repositoryId)) {
+      return { ok: false, error: "repository not found" };
+    }
     const candidate = validateSessionTargetCatalog(state, binding.target, binding.fallbacks ?? []);
     if (!candidate.ok) return { ok: false, error: candidate.error };
   }
