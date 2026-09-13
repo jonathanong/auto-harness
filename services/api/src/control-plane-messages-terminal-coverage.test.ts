@@ -54,7 +54,7 @@ function busyWorktree(): WorktreeRecord {
 }
 
 describe("control-plane terminal message coverage", () => {
-  it("replays a pending terminal hook with its optional context on a modern registration", () => {
+  it("replays a pending terminal hook with its optional context on a modern registration", async () => {
     const deliveries: unknown[] = [];
     const state = createControlPlaneState({
       now: () => "2026-01-01T00:00:00.000Z",
@@ -65,6 +65,8 @@ describe("control-plane terminal message coverage", () => {
       running({
         status: "failed",
         worktreeId: null,
+        activeHostId: "host",
+        activeHostOrder: "2026-01-01T00:00:00.000Z#session",
         terminalHookHandoff: {
           handoffId: "handoff",
           hostId: "host",
@@ -79,31 +81,34 @@ describe("control-plane terminal message coverage", () => {
       }),
     );
 
-    expect(
-      handleHostMessage(state, {
+    await expect(
+      handleHostMessageDurable(state, {
         type: "host:register",
         hostId: "host",
         worktrees: [],
         protocolVersion: 7,
       }),
-    ).toEqual({ ok: true });
-    expect(deliveries).toEqual([
-      {
-        type: "session:terminal-hook",
-        handoffId: "handoff",
-        sessionId: "session",
-        repositoryId: "repo",
-        worktreeId: "worktree",
-        status: "failed",
-        expiresAt: "2026-01-02T00:00:00.000Z",
-        errorCode: "checkout_fetch_failed",
-        ref: "feature/terminal-hook",
-        metadata: { createdBy: "operator" },
-      },
-    ]);
+    ).resolves.toMatchObject({
+      ok: true,
+      terminalHookHandoffs: [
+        {
+          type: "session:terminal-hook",
+          handoffId: "handoff",
+          sessionId: "session",
+          repositoryId: "repo",
+          worktreeId: "worktree",
+          status: "failed",
+          expiresAt: "2026-01-02T00:00:00.000Z",
+          errorCode: "checkout_fetch_failed",
+          ref: "feature/terminal-hook",
+          metadata: { createdBy: "operator" },
+        },
+      ],
+    });
+    expect(deliveries).toEqual([]);
   });
 
-  it("replays a pending terminal hook without optional context on a modern registration", () => {
+  it("replays a pending terminal hook without optional context on a modern registration", async () => {
     const deliveries: unknown[] = [];
     const state = createControlPlaneState({
       now: () => "2026-01-01T00:00:00.000Z",
@@ -114,6 +119,8 @@ describe("control-plane terminal message coverage", () => {
       running({
         status: "failed",
         worktreeId: null,
+        activeHostId: "host",
+        activeHostOrder: "2026-01-01T00:00:00.000Z#session",
         terminalHookHandoff: {
           handoffId: "handoff",
           hostId: "host",
@@ -125,25 +132,28 @@ describe("control-plane terminal message coverage", () => {
       }),
     );
 
-    expect(
-      handleHostMessage(state, {
+    await expect(
+      handleHostMessageDurable(state, {
         type: "host:register",
         hostId: "host",
         worktrees: [],
         protocolVersion: 7,
       }),
-    ).toEqual({ ok: true });
-    expect(deliveries).toEqual([
-      {
-        type: "session:terminal-hook",
-        handoffId: "handoff",
-        sessionId: "session",
-        repositoryId: "repo",
-        worktreeId: null,
-        status: "failed",
-        expiresAt: "2026-01-02T00:00:00.000Z",
-      },
-    ]);
+    ).resolves.toMatchObject({
+      ok: true,
+      terminalHookHandoffs: [
+        {
+          type: "session:terminal-hook",
+          handoffId: "handoff",
+          sessionId: "session",
+          repositoryId: "repo",
+          worktreeId: null,
+          status: "failed",
+          expiresAt: "2026-01-02T00:00:00.000Z",
+        },
+      ],
+    });
+    expect(deliveries).toEqual([]);
   });
 
   it("confirms a local first checkout failure with its accepted retry disposition", () => {

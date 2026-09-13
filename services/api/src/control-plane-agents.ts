@@ -262,6 +262,22 @@ function reportedRunningSessionIds(opts: {
   return [...(opts.runningSessions ?? [])];
 }
 
+function reconcileReportedRunningSessions(
+  state: ControlPlaneState,
+  opts: {
+    hostId: string;
+    runningSessions?: readonly string[];
+    runningAttempts?: readonly HostRunningAttempt[];
+  },
+) {
+  return reconcileHostRunningSessions(
+    state,
+    opts.hostId,
+    reportedRunningSessionIds(opts),
+    opts.runningAttempts ?? [],
+  );
+}
+
 function ownedReportedRunningSessionIds(
   state: ControlPlaneState,
   opts: {
@@ -597,6 +613,12 @@ export function registerHost(
     connectionId?: string;
     /** Atomically promote an authenticated transport-owned pending row. */
     consumePendingConnection?: boolean;
+    /**
+     * Skip the fire-and-forget omitted-session reconcile. Durable
+     * storage-less registration awaits that pass before listing recovery
+     * handoffs so they cannot race the replacement socket install.
+     */
+    deferRunningSessionReconcile?: boolean;
   },
 ): { ok: true; connectionId: string } | { ok: false; error: string } {
   if (
@@ -731,12 +753,9 @@ export function registerHost(
       persistWorktree(state, { ...wt, connectionId });
     }
   }
-  void reconcileHostRunningSessions(
-    state,
-    opts.hostId,
-    reportedRunningSessionIds(opts),
-    opts.runningAttempts ?? [],
-  );
+  if (!opts.deferRunningSessionReconcile) {
+    void reconcileReportedRunningSessions(state, opts);
+  }
   return { ok: true, connectionId };
 }
 
@@ -780,7 +799,10 @@ export async function registerHostDurable(
     return { ok: false, error: "runtime report is invalid" };
   }
   if (!state.storage) {
-    return registerHost(state, opts);
+    const result = registerHost(state, { ...opts, deferRunningSessionReconcile: true });
+    if (!result.ok) return result;
+    await reconcileReportedRunningSessions(state, opts);
+    return result;
   }
   const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);
   if (nameError) {
