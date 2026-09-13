@@ -3,7 +3,12 @@ import { lstat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import type { ProcessRunner } from "./executor.ts";
-import { gitFailure, MAX_CAPTURED_GIT_STDOUT_BYTES, runGit } from "./git-commands.ts";
+import {
+  checkoutFetchFailure,
+  gitFailure,
+  MAX_CAPTURED_GIT_STDOUT_BYTES,
+  runGit,
+} from "./git-commands.ts";
 
 const MAX_UPDATE_INDEX_PATHS = 128;
 const MAX_UPDATE_INDEX_PATH_CHARACTERS = 8_000;
@@ -215,10 +220,14 @@ export async function resetInitializedSubmodules(
     environment,
   );
   if (synced.exitCode !== 0) throw gitFailure("Failed to sync submodules", synced.stderr);
+  const fetched = await runGit(runner, cwd, ["fetch", "--recurse-submodules"], signal, environment);
+  if (fetched.exitCode !== 0) {
+    throw checkoutFetchFailure("Failed to fetch submodule objects", fetched.stderr);
+  }
   const updated = await runGit(
     runner,
     cwd,
-    ["submodule", "update", "--recursive", "--checkout", "--force"],
+    ["submodule", "update", "--recursive", "--checkout", "--force", "--no-fetch"],
     signal,
     environment,
   );

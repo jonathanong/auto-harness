@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { ProcessRunner, RunProcessOptions } from "./executor.ts";
-import { resetPriorWorktreeState } from "./git-worktree-reset.ts";
+import { CheckoutFetchError } from "./git-commands.ts";
+import { resetInitializedSubmodules, resetPriorWorktreeState } from "./git-worktree-reset.ts";
+import { scripted } from "../test-helpers/git-test-helpers.ts";
 
 const roots: string[] = [];
 
@@ -223,5 +225,73 @@ describe("resetPriorWorktreeState", () => {
         ]),
       },
     ]);
+  });
+});
+
+describe("resetInitializedSubmodules", () => {
+  it("brands a submodule object-fetch failure as a checkout fetch failure", async () => {
+    await expect(
+      resetInitializedSubmodules(
+        scripted([
+          { match: ["submodule", "sync", "--recursive"], exitCode: 0 },
+          {
+            match: ["fetch", "--recurse-submodules"],
+            exitCode: 1,
+            stderr:
+              "fatal: unable to access 'https://github.com/example/sub.git/': Could not resolve host",
+          },
+        ]),
+        "/repo",
+      ),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        name: "CheckoutFetchError",
+        message: expect.stringContaining("Failed to fetch submodule objects"),
+      }),
+    );
+  });
+
+  it("keeps a local submodule checkout failure as an ordinary Git failure", async () => {
+    const error = await resetInitializedSubmodules(
+      scripted([
+        { match: ["submodule", "sync", "--recursive"], exitCode: 0 },
+        { match: ["fetch", "--recurse-submodules"], exitCode: 0 },
+        {
+          match: ["submodule", "update", "--recursive", "--checkout", "--force", "--no-fetch"],
+          exitCode: 1,
+          stderr: "fatal: Unable to create index.lock",
+        },
+      ]),
+      "/repo",
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(CheckoutFetchError);
+    expect(error).toEqual(
+      expect.objectContaining({ message: expect.stringContaining("Failed to update submodules") }),
+    );
+  });
+
+  it("keeps a submodule URL sync failure as an ordinary Git failure", async () => {
+    const error = await resetInitializedSubmodules(
+      scripted([
+        {
+          match: ["submodule", "sync", "--recursive"],
+          exitCode: 1,
+          stderr: "fatal: not a git repository",
+        },
+      ]),
+      "/repo",
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(CheckoutFetchError);
+    expect(error).toEqual(
+      expect.objectContaining({ message: expect.stringContaining("Failed to sync submodules") }),
+    );
   });
 });
