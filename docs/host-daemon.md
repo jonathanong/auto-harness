@@ -624,9 +624,12 @@ be mutated concurrently by operator Git processes.
 If both detached-checkout forms still fail, the daemon checks that target
 commit's object connectivity. Only an incomplete graph gets one repair
 attempt: refetch every configured remote with `--refetch`, then retry the
-detached checkout. If that exact checkout-stage fetch/refetch operation fails, report
+detached checkout. If that exact checkout-stage fetch/refetch operation fails — including a GitHub pull-request
+`ls-remote` or `fetch` used to obtain a `refs/pull/*/head` — report
 `errorCode: checkout_fetch_failed` so the control plane may consume its single bounded
-infrastructure retry. Do not classify other checkout, setup, or CLI failures as this code, and
+infrastructure retry. Policy and materialization failures (shallow or partial clones, missing
+operator pull-ref policy, identity mismatch, submodule presence) stay `setup_failed`. Do not
+classify other checkout, setup, or CLI failures as this code, and
 never inspect Git stderr text to decide retryability.
 The terminal failure includes a bounded, credential-redacted Git diagnostic.
 
