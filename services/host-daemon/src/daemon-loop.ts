@@ -1264,11 +1264,20 @@ export class DaemonLoop {
     this.startTerminalHookHandoff(pending);
   }
 
+  /**
+   * Ordinary terminal-status retries do not occupy CLI capacity while waiting
+   * for ACK. Once a protocol-v6 deferred hook has begun settlement, it keeps
+   * the same slot a replacement handoff uses while executing.
+   */
+  private pendingOccupiesAssignmentCapacity(entry: InflightSession): boolean {
+    const pending = this.pendingTerminalStatus.get(inflightKey(entry.sessionId, entry.attemptId));
+    if (!pending) return true;
+    return pending.settlement !== undefined || pending.settlementResult !== undefined;
+  }
+
   private activeAssignmentCount(): number {
     return [...this.inflight.values()].filter(
-      (entry) =>
-        !entry.controller.signal.aborted &&
-        !this.pendingTerminalStatus.has(inflightKey(entry.sessionId, entry.attemptId)),
+      (entry) => !entry.controller.signal.aborted && this.pendingOccupiesAssignmentCapacity(entry),
     ).length;
   }
 
@@ -1277,7 +1286,7 @@ export class DaemonLoop {
       (entry) =>
         entry.executing &&
         !entry.controller.signal.aborted &&
-        !this.pendingTerminalStatus.has(inflightKey(entry.sessionId, entry.attemptId)),
+        this.pendingOccupiesAssignmentCapacity(entry),
     ).length;
   }
 
