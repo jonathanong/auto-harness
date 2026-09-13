@@ -93,6 +93,7 @@ export async function archiveSessionLogs(
     retryState: retryClaim?.retryState ?? "pending",
     retryOrder: retryClaim?.retryOrder ?? `${state.now()}#${key}`,
   };
+  let ownedRetry = retryClaim;
   if (!replacement) {
     if (state.storage && !retryClaim) await state.storage.putArchive(pending);
     if (!retryClaim) state.archives.set(object.key, pending);
@@ -109,17 +110,18 @@ export async function archiveSessionLogs(
     state.archives.set(object.key, complete);
     return object;
   }
-  let writeResult: ArchiveWriteResult | void | undefined;
-  try {
-    writeResult = await state.archiveWriter.putArchive(object);
-  } catch (error) {
-    if (legacyUnversioned && replacement) {
-      await queueLegacyArchiveRetry(state, pending, replacement);
-    }
-    throw error;
+  if (legacyUnversioned && replacement && !ownedRetry) {
+    const retryPending: ArchiveMetadata = { ...pending, retryState: "processing" };
+    const queued = await queueLegacyArchiveRetry(state, retryPending, replacement);
+    if (!queued) return object;
+    ownedRetry = {
+      retryState: "processing",
+      retryOrder: retryPending.retryOrder ?? `${state.now()}#${key}`,
+    };
   }
+  const writeResult = await state.archiveWriter.putArchive(object);
   const versionId = archiveVersionId(writeResult);
-  if (replacement) {
+  if (replacement && !ownedRetry) {
     if (versionId) {
       await publishCompleteArchiveReplacement(
         state,
@@ -150,19 +152,19 @@ export async function archiveSessionLogs(
       ? {}
       : { retryState: "pending" as const, retryOrder: `${state.now()}#${key}` }),
   };
-  if (state.storage && retryClaim && typeof state.storage.completeArchiveRetry === "function") {
-    const committed = await state.storage.completeArchiveRetry(complete, retryClaim.retryOrder);
+  if (state.storage && ownedRetry && typeof state.storage.completeArchiveRetry === "function") {
+    const committed = await state.storage.completeArchiveRetry(complete, ownedRetry.retryOrder);
     if (committed) state.archives.set(object.key, complete);
     else await rewriteWinningArchive(state, sessionId, key);
     // A generation that loses the durable fence must never mark the archive complete.
-  } else if (retryClaim) {
+  } else if (ownedRetry) {
     // In-memory mode has no conditional write primitive, so apply the same fence locally.
     // A newer claim may have replaced this row while the object upload was in flight.
     const claimed = state.archives.get(object.key);
     if (
       claimed?.status !== "expired" &&
       claimed?.retryState === "processing" &&
-      claimed.retryOrder === retryClaim.retryOrder
+      claimed.retryOrder === ownedRetry.retryOrder
     ) {
       if (state.storage) await state.storage.putArchive(complete);
       state.archives.set(object.key, complete);

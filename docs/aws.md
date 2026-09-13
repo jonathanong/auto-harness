@@ -339,9 +339,10 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
      First-time archives persist pending metadata before the PUT so Cron can retry the same key.
      A complete, stored, version-pinned archive keeps that metadata until a replacement object
      version is committed; a failed replacement leaves the prior complete row downloadable. A
-     complete stored row with no `versionId` records pending retry metadata only while that exact
-     legacy generation still wins, so a failed upload remains retryable without clobbering a newer
-     version-pinned complete row.
+     complete stored row with no `versionId` records that fenced pending retry metadata before the
+     replacement PUT, so a Lambda timeout or hung upload remains recoverable without clobbering a
+     newer version-pinned complete row. Completing that upload uses the retry fence, not
+     `replaceCompleteArchive`, because the row is no longer complete.
    - Leave DynamoDB rows intact after upload; this archive path never deletes them
      REST and Cron write the object from those workers; there is no separate archival Lambda.
      WebSocket terminal transitions persist pending archive metadata without S3 access; Cron
