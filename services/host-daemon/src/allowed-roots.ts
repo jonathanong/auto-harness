@@ -138,7 +138,10 @@ export function resolveHookPath(repositoryPath: string, terminalHookScript: stri
 }
 
 export function isForeignWindowsAbsolutePath(path: string): boolean {
-  return process.platform !== "win32" && (path.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(path));
+  return (
+    process.platform !== "win32" &&
+    (path.startsWith("\\\\") || path.startsWith("//") || /^[A-Za-z]:[\\/]/.test(path))
+  );
 }
 
 export type ClaimedPathsAllowed = {

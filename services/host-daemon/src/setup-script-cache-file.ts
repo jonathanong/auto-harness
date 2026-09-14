@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import { isSetupCacheHostInputPath, isSetupCacheInputPath } from "@auto-harness/shared";
 
+import { isForeignWindowsAbsolutePath } from "./allowed-roots.ts";
+
 /** Upper bound for each operator-declared setup-cache extra file, and for their aggregate. */
 export const MAX_SETUP_CACHE_INPUT_BYTES = 16 * 1024 * 1024;
 
@@ -22,7 +24,7 @@ function resolveDeclaredPath(cwd: string, relativePath: string): string | undefi
 }
 
 function resolveHostPath(path: string): string | undefined {
-  if (!isSetupCacheHostInputPath(path)) return undefined;
+  if (!isSetupCacheHostInputPath(path) || isForeignWindowsAbsolutePath(path)) return undefined;
   return path;
 }
 

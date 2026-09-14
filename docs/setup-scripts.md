@@ -39,7 +39,8 @@ assignment, so it must tolerate repetition and partially prepared state.
 
 Cache skip fingerprints operator-declared host-absolute files (`setupCacheHostInputs`) such as
 `/opt/auto-harness/setup/host-environment`; omit that list to keep the SHA/script/relative-extra
-fingerprint. The filtered child environment from `createChildEnv()` is also part of the fingerprint,
+fingerprint. POSIX daemons reject Windows-absolute and UNC host paths when applying that list;
+the control plane still accepts those spellings for mixed fleets. The filtered child environment from `createChildEnv()` is also part of the fingerprint,
 so a rotated allowlisted token, changed `PATH`, or removed variable after a daemon restart is a
 cache miss. App-generated per-session `GH_CONFIG_DIR` isolation directories are omitted from that
 fingerprint and restored from the live child environment, so GitHub App sessions can still skip

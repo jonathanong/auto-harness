@@ -782,7 +782,9 @@ startup. A missing sidecar is a miss, never `setup_failed`. Configure `setupCach
 setup scripts (`fleet:exec-config`); those paths must be relative checkout paths with no `..`
 segments or absolute prefixes. Declare host-owned files such as
 `/opt/auto-harness/setup/host-environment` as `setupCacheHostInputs` (absolute paths, no `..`
-segments). Omitting that list keeps the SHA/script/relative-extra fingerprint. The host never
+segments). POSIX daemons reject Windows-absolute and UNC spellings the same way they reject
+foreign terminal-hook paths; the control plane still accepts those spellings for mixed fleets.
+Omitting that list keeps the SHA/script/relative-extra fingerprint. The host never
 auto-detects sourced files.
 
 ### Command resolution hardening

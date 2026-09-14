@@ -191,6 +191,21 @@ describe("setupCacheInputs exec-config", () => {
     ).toEqual({
       setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
     });
+    expect(
+      parseHostInventory({
+        repositories: [],
+        setupCacheHostInputs: ["C:\\auto-harness\\setup\\env", "\\\\host\\share\\env"],
+      }),
+    ).toMatchObject({
+      setupCacheHostInputs: ["C:\\auto-harness\\setup\\env", "\\\\host\\share\\env"],
+    });
+    expect(
+      parseHostExecConfig({
+        setupCacheHostInputs: ["C:\\auto-harness\\setup\\env"],
+      }),
+    ).toEqual({
+      setupCacheHostInputs: ["C:\\auto-harness\\setup\\env"],
+    });
     const existing = emptyHostInventory();
     const applied = applyHostExecConfig(existing, {
       setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
