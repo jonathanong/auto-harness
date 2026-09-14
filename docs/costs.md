@@ -46,9 +46,9 @@ That is a **product constraint**, not an implementation preference: it is how yo
 
 Auto Harness AWS infrastructure is designed to be nearly free to operate. Costs scale with usage but stay negligible next to **subscription seats**, **plan quotas**, and **VPS** capacity. The control plane should not be the line item you worry about.
 
-**Modelled AWS coordination floor at the reference workload: ~$121/month.** That is list-price
-arithmetic on measured volumes, not an invoice — table under
-[Modelled monthly AWS subtotal](#modelled-monthly-aws-subtotal-the-number-this-page-was-missing).
+**Modelled AWS coordination floor at the reference workload: ~$155/month** (premature;
+list-price arithmetic, not an invoice). Table under
+[Modelled monthly AWS subtotal](#modelled-monthly-aws-subtotal).
 Seats and the VPS are extra and dominate.
 
 ## AWS cost model (measured implementation + modelled workload)
@@ -113,26 +113,25 @@ At that workload `estimateMonthlyCapacity(REFERENCE_WORKLOAD)` reports:
 Queue throughput is 100 assigns/day plus the one-minute repair sweep. Re-run
 `estimateMonthlyCapacity` when the session mix changes; do not scale by session count alone.
 
-### Modelled monthly AWS subtotal (the number this page was missing)
+### Modelled monthly AWS subtotal
 
-There is **no invoice** in this repository and **no measured AWS bill**. The table below is the
-reference workload × the list prices already on this page. Lambda **duration** is omitted (it
-needs measured GB-seconds). DynamoDB is a **1 WRU per 1 KB item floor** — `TransactWriteItems`
-bills 2 WRU per item, and larger chunks cost more.
+Premature: no invoice exists. Deployed logs go through one `TransactWriteItems` Put per chunk
+(`putLogsFenced`), which bills **2 WRU per 1 KB item**. Chunks larger than 1 KB cost more. Lambda
+**duration** is omitted (needs measured GB-seconds).
 
-| Line                                     | Arithmetic            | Modelled $/month |
-| ---------------------------------------- | --------------------- | ---------------- |
-| Lambda invocations                       | 27.3444M × $0.20 / 1M | $5.47            |
-| API Gateway REST                         | 30K × $3.50 / 1M      | $0.11            |
-| API Gateway WebSocket messages           | 81.5304M × $1.00 / 1M | $81.53           |
-| API Gateway WebSocket connection-minutes | 172,800 × $0.25 / 1M  | $0.04            |
-| DynamoDB log writes (1 WRU/item floor)   | 27M × $1.25 / 1M      | $33.75           |
-| S3 archive PUT volume                    | 750 MiB × $0.023 / GB | $0.02            |
-| **Coordination floor**                   | sum of priced rows    | **~$121**        |
+| Line                                     | Arithmetic                  | Modelled $/month |
+| ---------------------------------------- | --------------------------- | ---------------- |
+| Lambda invocations                       | 27.3444M × $0.20 / 1M       | $5.47            |
+| API Gateway REST                         | 30K × $3.50 / 1M            | $0.11            |
+| API Gateway WebSocket messages           | 81.5304M × $1.00 / 1M       | $81.53           |
+| API Gateway WebSocket connection-minutes | 172,800 × $0.25 / 1M        | $0.04            |
+| DynamoDB log writes (2 WRU/item)         | 27M × 2 × $1.25 / 1M        | $67.50           |
+| S3 archive storage (first-month bytes)   | 750 MiB × $0.023 / GB       | $0.02            |
+| S3 archive PUTs                          | 3,000 objects × $0.005 / 1K | $0.02            |
+| **Coordination floor**                   | sum of priced rows          | **~$155**        |
 
-Add Lambda duration on top (example only: 256 MB × 100 ms × 27.3444M invokes ≈ **+$12**). If every
-log write is a 1 KB `TransactWriteItems` item, DynamoDB doubles to **$67.50** and the floor becomes
-**~$155**. WebSocket **messages** dominate. Vendor seats and the VPS are **not** in this subtotal
+Add Lambda duration on top (example only: 256 MB × 100 ms × 27.3444M invokes ≈ **+$12** → **~$167**).
+WebSocket **messages** dominate the AWS line. Vendor seats and the VPS are **not** in this subtotal
 and are the real bill — see [The real cost](#the-real-cost-subscriptions--hosts-not-api-tokens).
 
 Unit prices are illustrative; verify current regional AWS pricing before budgeting.
@@ -182,15 +181,15 @@ Per session, approximate DynamoDB operations:
 
 - Create session: 1 write
 - Status updates (queued → running → completed): 3 writes
-- Log entries: one item write and one transactional item per received chunk. Up to 25 adjacent
-  local WebSocket chunks can share a connection-fence batch, which reduces local coordination but
-  does not reduce deployed transactional item capacity; chunk count must be measured from the
-  chosen CLI and workload.
+- Log entries: one transactional `SessionLogs` Put per received chunk (`putLogsFenced`). Up to 25
+  adjacent local WebSocket chunks can share a connection-fence batch, which reduces local
+  coordination but does not reduce deployed transactional item capacity; chunk count must be
+  measured from the chosen CLI and workload.
 - Scheduler queries: ~5 reads
 - UI/API reads: ~10 reads
 
-Do not aggregate these into a monthly DynamoDB figure until chunk counts and real read behavior
-are measured.
+Log-write volume is in the subtotal above. Catalog/session reads and item sizes above 1 KB are
+still unmodelled.
 
 #### SessionLogs Cost Control
 

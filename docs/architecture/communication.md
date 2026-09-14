@@ -4,8 +4,8 @@ Short version: **hosts do not poll for work.** They hold a WebSocket. The contro
 **pushes** `session:assign`. The one-minute EventBridge rule is a **repair sweep**, not the
 dispatcher.
 
-Cost model: **[costs.md](../costs.md)** — modelled AWS coordination floor **~$121/month** at the
-reference workload (not an invoice). Wire types: [websocket.md](../websocket.md). Request-lifetime split:
+Cost model: **[costs.md](../costs.md)** — modelled AWS coordination floor **~$155/month** at the
+reference workload (premature, not an invoice). Wire types: [websocket.md](../websocket.md). Request-lifetime split:
 [request-lifetime.md](request-lifetime.md).
 
 ## Who talks how
@@ -34,6 +34,7 @@ flowchart TB
     Cron -->|"every 60s"| DDB
     REST -.->|"async Event invoke"| Cron
     WSL -->|"postToConnection"| Agent
+    Cron -->|"postToConnection"| Agent
     WSL -->|"PostToConnection"| Browser
 ```
 
