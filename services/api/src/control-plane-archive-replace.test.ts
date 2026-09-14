@@ -171,7 +171,9 @@ describe("archive replacement preserves the last complete generation", () => {
     await archiveSessionLogs(state, "replace-commit");
     expect(replaceCompleteArchive).toHaveBeenCalledOnce();
     expect(putArchive).not.toHaveBeenCalled();
-    expect(state.archives.get("sessions/replace-commit/logs.jsonl.gz")?.versionId).toBe("complete-v2");
+    expect(state.archives.get("sessions/replace-commit/logs.jsonl.gz")?.versionId).toBe(
+      "complete-v2",
+    );
   });
 
   it("leaves the previous complete row when a replacement upload has no version id", async () => {

@@ -44,7 +44,7 @@ That is a **product constraint**, not an implementation preference: it is how yo
 
 ## Overview
 
-Auto Harness AWS infrastructure is designed to be nearly free to operate. Costs scale with usage but stay negligible next to **subscription seats**, **plan quotas**, and **VPS** capacity. The control plane should not be the line item you worry about.
+Auto Harness AWS infrastructure is designed to be nearly free to operate. The control plane is serverless (API Gateway, Lambda, DynamoDB on-demand) and idle cost is designed to sit near zero. Costs scale with usage but stay negligible next to **subscription seats**, **plan quotas**, and **host** capacity. The control plane should not be the line item you worry about. Hosts do not autoscale to zero — that is the point of the queue.
 
 **Modelled AWS coordination floor at the reference workload: ~$1/month** with S3 gzip
 parts and **upload off by default** (~$0.60 keepalive-only). The legacy path that wrote every

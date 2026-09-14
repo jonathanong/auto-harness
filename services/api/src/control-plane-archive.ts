@@ -300,7 +300,7 @@ export async function retrySessionArchiveIfNeeded(
 }
 
 function archiveSessionId(key: string): string | null {
-  const match = /^sessions\/([^/]+)\/logs\.jsonl$/.exec(key);
+  const match = /^sessions\/([^/]+)\/logs\.jsonl\.gz$/.exec(key);
   return match?.[1] ?? null;
 }
 

@@ -210,7 +210,10 @@ describe("archive writer with real DynamoDB Local", () => {
       objectStored: false,
     });
     await expect(
-      ctx.storage.expireArchive("sessions/session-complete/logs.jsonl.gz", "2026-01-08T00:00:00.000Z"),
+      ctx.storage.expireArchive(
+        "sessions/session-complete/logs.jsonl.gz",
+        "2026-01-08T00:00:00.000Z",
+      ),
     ).resolves.toBe(false);
     expect(await ctx.storage.getArchive("sessions/session-complete/logs.jsonl.gz")).toMatchObject({
       status: "complete",

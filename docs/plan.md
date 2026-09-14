@@ -13,8 +13,9 @@ in those files.
 
 **Driving constraint, restated:** Auto Harness exists to spend **subscription plan capacity**
 (Codex, Claude Code, etc.) on unattended coding work by driving each vendor's **non-interactive
-CLI natively**—no intermediary Agent SDK or universal harness, and not a pay-per-token API. See
-[why.md](why.md) and [costs.md](costs.md). Every design
+CLI natively**—no intermediary Agent SDK or universal harness, and not a pay-per-token API. The
+shape is a serverless **control plane** (web + queue + API) plus a **host plane** (daemons on
+machines you provision). See [why.md](why.md) and [costs.md](costs.md). Every design
 choice below is in service of that — cheap coordination, not a second AI vendor account, not a
 generic multi-tenant agent platform.
 

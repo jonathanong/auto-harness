@@ -1,8 +1,8 @@
 # AWS Layer (Control Plane)
 
-This document describes the **AWS control plane** in depth: API Gateway, Lambda handlers, DynamoDB, S3, scheduling, WebSocket fan-out, and how those pieces talk to VPS agents.
+This document describes the **AWS control plane** in depth: API Gateway, Lambda handlers, DynamoDB, S3, scheduling, WebSocket fan-out, and how those pieces talk to host-plane agents. The control plane is serverless and designed to idle near zero.
 
-Execution plane: [host-daemon.md](host-daemon.md). Overview: [architecture/](architecture/README.md).  
+Host plane: [host-daemon.md](host-daemon.md). Overview: [architecture/](architecture/README.md).  
 REST: [api.md](api.md). WebSocket: [websocket.md](websocket.md). Install: [setup.md](setup.md). AWS deploy/update/teardown: [deploy-aws.md](deploy-aws.md). Ops index: [deploy.md](deploy.md). Local stack: [local-development.md](local-development.md).
 
 ---
@@ -695,7 +695,7 @@ Execution always happens on the agent. The control plane only **schedules and ob
 | [local-development.md](local-development.md) | Local DynamoDB + `pnpm local:*` |
 | [api.md](api.md)                             | REST                            |
 | [websocket.md](websocket.md)                 | Real-time protocol              |
-| [host-daemon.md](host-daemon.md)             | Execution plane                 |
+| [host-daemon.md](host-daemon.md)             | Host plane                      |
 | [architecture/](architecture/README.md)      | Cross-plane flows               |
 | [auth.md](auth.md)                           | Authn / authz                   |
 | [security.md](security.md)                   | Trust boundaries / hardening    |
