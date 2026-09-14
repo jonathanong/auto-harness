@@ -7,6 +7,7 @@ type SetupFingerprintParts = {
   scripts: readonly string[];
   extraFiles: ReadonlyArray<{ path: string; contents: Buffer }>;
   childEnv?: NodeJS.ProcessEnv;
+  appGeneratedGitHubConfigDir?: string;
 };
 
 function writeLengthPrefixed(hash: ReturnType<typeof createHash>, value: Buffer): void {
@@ -44,7 +45,7 @@ export function appendExtraFile(
 /** Overlay these live keys on a cache hit; stored snapshots may hold a prior session's path. */
 const EPHEMERAL_SETUP_CACHE_ENV_KEYS = new Set(["GH_CONFIG_DIR"]);
 
-/** Must match mkdtemp(join(tmpdir(), "auto-harness-gh-config-")) for mapped App sessions. */
+/** Overlay-only fallback when this session has no mint (unmapped App). */
 const APP_GENERATED_GH_CONFIG_DIR_PREFIX = "auto-harness-gh-config-";
 
 function isAppGeneratedGitHubConfigDir(value: string): boolean {
@@ -54,15 +55,23 @@ function isAppGeneratedGitHubConfigDir(value: string): boolean {
   );
 }
 
-function isEphemeralSetupCacheEnvValue(key: string, value: string): boolean {
-  return key === "GH_CONFIG_DIR" && isAppGeneratedGitHubConfigDir(value);
+function isStaleAppGeneratedGitHubConfigDir(
+  storedValue: string,
+  appGeneratedGitHubConfigDir?: string,
+): boolean {
+  if (appGeneratedGitHubConfigDir !== undefined) return storedValue === appGeneratedGitHubConfigDir;
+  return isAppGeneratedGitHubConfigDir(storedValue);
 }
 
-function isFingerprintedChildEnvValue(key: string, value: unknown): value is string {
+function isFingerprintedChildEnvValue(
+  key: string,
+  value: unknown,
+  appGeneratedGitHubConfigDir?: string,
+): value is string {
   return (
     typeof value === "string" &&
     !key.toUpperCase().startsWith("HARNESS_") &&
-    !isEphemeralSetupCacheEnvValue(key, value)
+    !(key === "GH_CONFIG_DIR" && value === appGeneratedGitHubConfigDir)
   );
 }
 
@@ -70,10 +79,13 @@ function isFingerprintedChildEnvValue(key: string, value: unknown): value is str
 export function appendChildEnv(
   hash: ReturnType<typeof createHash>,
   environment: NodeJS.ProcessEnv = {},
+  appGeneratedGitHubConfigDir?: string,
 ): void {
   const entries: Array<[string, string]> = [];
   for (const [key, value] of Object.entries(environment)) {
-    if (isFingerprintedChildEnvValue(key, value)) entries.push([key, value]);
+    if (isFingerprintedChildEnvValue(key, value, appGeneratedGitHubConfigDir)) {
+      entries.push([key, value]);
+    }
   }
   const sorted = entries.toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
   writeLengthPrefixed(hash, Buffer.from(String(sorted.length)));
@@ -87,6 +99,7 @@ export function appendChildEnv(
 export function applyLiveEphemeralChildEnv(
   stored: NodeJS.ProcessEnv,
   live: NodeJS.ProcessEnv = {},
+  appGeneratedGitHubConfigDir?: string,
 ): NodeJS.ProcessEnv {
   const environment = { ...stored };
   for (const key of EPHEMERAL_SETUP_CACHE_ENV_KEYS) {
@@ -94,7 +107,10 @@ export function applyLiveEphemeralChildEnv(
     if (typeof value === "string") environment[key] = value;
     else {
       const storedValue = environment[key];
-      if (typeof storedValue === "string" && isEphemeralSetupCacheEnvValue(key, storedValue)) {
+      if (
+        typeof storedValue === "string" &&
+        isStaleAppGeneratedGitHubConfigDir(storedValue, appGeneratedGitHubConfigDir)
+      ) {
         delete environment[key];
       }
     }
@@ -108,6 +124,6 @@ export function fingerprintSetup(parts: SetupFingerprintParts): string {
   for (const extra of parts.extraFiles) {
     appendExtraFile(hash, extra.path, extra.contents);
   }
-  appendChildEnv(hash, parts.childEnv);
+  appendChildEnv(hash, parts.childEnv, parts.appGeneratedGitHubConfigDir);
   return hash.digest("hex");
 }

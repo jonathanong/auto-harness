@@ -752,10 +752,12 @@ host-absolute file, and the filtered child environment from `createChildEnv()` m
 successful setup for that worktree — and only until a later command can mutate the worktree.
 After the assigned command is authorized to spawn, the daemon deletes that sidecar so leftover
 ignored outputs such as `node_modules` cannot be reused on the next fresh checkout. Native resume
-still skips every setup script. App-generated per-session `GH_CONFIG_DIR` isolation directories
-are omitted from that fingerprint; a cache hit keeps the live directory and drops a stored
-App-generated isolation directory when live child env no longer has it. A setup-exported
-`GH_CONFIG_DIR` is restored. Operator-allowlisted `GH_CONFIG_DIR` values are fingerprinted.
+still skips every setup script. The session-minted App-generated `GH_CONFIG_DIR` isolation
+directory is omitted from that fingerprint because it is the exact path this session minted, not
+because of a path prefix; a cache hit keeps the live directory and drops a stored App-generated
+isolation directory when live child env no longer has it. A setup-exported `GH_CONFIG_DIR` is
+restored. Operator-allowlisted `GH_CONFIG_DIR` values stay fingerprinted even if they share that
+path shape.
 After setup succeeds, the daemon rehashes those declared extras. If they changed, it does not store
 a cache entry, so the next fresh checkout (which restores the original bytes) re-runs setup.
 Unchanged extras may still be stored. The fingerprint schema version is part of the digest, so

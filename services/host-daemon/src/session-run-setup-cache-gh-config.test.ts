@@ -22,7 +22,11 @@ function childSource(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   };
 }
 
-async function primedCache(captured: NodeJS.ProcessEnv, source: NodeJS.ProcessEnv) {
+async function primedCache(
+  captured: NodeJS.ProcessEnv,
+  source: NodeJS.ProcessEnv,
+  isolatedGitHubConfigDir?: string,
+) {
   const cacheDir = await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-gh-config-run-"));
   const { claimed } = await claimSetupCache({
     worktreeSetup: "pnpm install",
@@ -38,6 +42,7 @@ async function primedCache(captured: NodeJS.ProcessEnv, source: NodeJS.ProcessEn
     "abc123",
     undefined,
     source,
+    isolatedGitHubConfigDir,
   );
   expect(firstRun.failure).toBeNull();
   expect(first.calls()).toBe(1);
@@ -46,9 +51,11 @@ async function primedCache(captured: NodeJS.ProcessEnv, source: NodeJS.ProcessEn
 
 describe("runSetupIfNeeded GH_CONFIG_DIR cache", () => {
   it("does not restore a deleted GH_CONFIG_DIR after the repo is unmapped", async () => {
+    const stale = appDir("stale");
     const { cacheDir, claimed } = await primedCache(
-      { SETUP_TOKEN: "from-setup", GH_CONFIG_DIR: appDir("stale") },
-      childSource({ GH_CONFIG_DIR: appDir("stale") }),
+      { SETUP_TOKEN: "from-setup", GH_CONFIG_DIR: stale },
+      childSource({ GH_CONFIG_DIR: stale }),
+      stale,
     );
     const second = countingSetupRunner({ SETUP_TOKEN: "must-not-run" });
     const secondRun = await runCachedSetup(
@@ -70,7 +77,7 @@ describe("runSetupIfNeeded GH_CONFIG_DIR cache", () => {
     expect(secondRun.environment).toEqual({ SETUP_TOKEN: "from-setup" });
     expect(secondRun.environment).not.toHaveProperty("GH_CONFIG_DIR");
     expect(secondRun.system.join("\n")).not.toContain("from-setup");
-    expect(secondRun.system.join("\n")).not.toContain(appDir("stale"));
+    expect(secondRun.system.join("\n")).not.toContain(stale);
   });
 
   it("restores a setup-exported GH_CONFIG_DIR on a cache hit", async () => {
@@ -125,10 +132,35 @@ describe("runSetupIfNeeded GH_CONFIG_DIR cache", () => {
     expect(rotatedRun.system.join("\n")).not.toContain("from-setup");
   });
 
-  it("skips setup when only App-generated GH_CONFIG_DIR differs across sessions", async () => {
+  it("re-runs setup when an operator App-shaped GH_CONFIG_DIR rotates", async () => {
     const { cacheDir, claimed } = await primedCache(
       { SETUP_TOKEN: "from-setup", GH_CONFIG_DIR: appDir("aaaaaa") },
       childSource({ GH_CONFIG_DIR: appDir("aaaaaa") }),
+    );
+    const rotated = countingSetupRunner();
+    const rotatedRun = await runCachedSetup(
+      baseAssign(),
+      claimed,
+      rotated.runner,
+      cacheDir,
+      "abc123",
+      undefined,
+      childSource({ GH_CONFIG_DIR: appDir("bbbbbb") }),
+    );
+    expect(rotated.calls()).toBe(1);
+    expect(rotatedRun.system).not.toContain("Setup unchanged; skipping.");
+    expect(rotatedRun.system.join("\n")).not.toContain(appDir("aaaaaa"));
+    expect(rotatedRun.system.join("\n")).not.toContain(appDir("bbbbbb"));
+    expect(rotatedRun.system.join("\n")).not.toContain("from-setup");
+  });
+
+  it("skips setup when only the minted GH_CONFIG_DIR differs across sessions", async () => {
+    const mintedA = appDir("aaaaaa");
+    const mintedB = appDir("bbbbbb");
+    const { cacheDir, claimed } = await primedCache(
+      { SETUP_TOKEN: "from-setup", GH_CONFIG_DIR: mintedA },
+      childSource({ GH_CONFIG_DIR: mintedA }),
+      mintedA,
     );
     const second = countingSetupRunner({ SETUP_TOKEN: "must-not-run" });
     const secondRun = await runCachedSetup(
@@ -138,14 +170,15 @@ describe("runSetupIfNeeded GH_CONFIG_DIR cache", () => {
       cacheDir,
       "abc123",
       undefined,
-      childSource({ GH_CONFIG_DIR: appDir("bbbbbb") }),
+      childSource({ GH_CONFIG_DIR: mintedB }),
+      mintedB,
     );
     expect(second.calls()).toBe(0);
     expect(secondRun.system).toContain("Setup unchanged; skipping.");
-    expect(secondRun.environment.GH_CONFIG_DIR).toBe(appDir("bbbbbb"));
+    expect(secondRun.environment.GH_CONFIG_DIR).toBe(mintedB);
     expect(secondRun.environment).toMatchObject({ SETUP_TOKEN: "from-setup" });
-    expect(secondRun.system.join("\n")).not.toContain(appDir("aaaaaa"));
-    expect(secondRun.system.join("\n")).not.toContain(appDir("bbbbbb"));
+    expect(secondRun.system.join("\n")).not.toContain(mintedA);
+    expect(secondRun.system.join("\n")).not.toContain(mintedB);
     expect(secondRun.system.join("\n")).not.toContain("from-setup");
   });
 });
