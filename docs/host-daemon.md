@@ -759,6 +759,11 @@ a cache entry, so the next fresh checkout (which restores the original bytes) re
 Unchanged extras may still be stored. The fingerprint schema version is part of the digest, so
 sidecars from an older daemon miss and re-run setup once. The daemon stores that fingerprint and the
 captured environment (minus `HARNESS_*`) as a mode-0600 host filesystem sidecar outside the checkout.
+Sidecar names and payloads are MAC-bound to the worktree identity with a daemon process-lifetime
+key that is not exported to session commands, so one worktree's command cannot turn another
+worktree's sidecar into a hit. A missing, unsigned, or overwritten sidecar is a miss, never
+`setup_failed`. Same-user processes can still read the on-disk snapshot; that residual read risk
+needs a later service-account split of the cache directory.
 On a matching fingerprint it restores those exports and skips the scripts. Missing, non-regular,
 oversized (larger than 16 MiB), or unreadable declared files, a corrupt or missing sidecar, a changed
 script, a different ref, a changed declared file, or a changed filtered child environment (rotated

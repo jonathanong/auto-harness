@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -10,18 +8,21 @@ import {
   applyLiveEphemeralChildEnv,
   startSetupFingerprint,
 } from "./setup-script-cache-hash.ts";
+import { readStoredSetupCache } from "./setup-script-cache-store.ts";
 
 export { readDeclaredSetupFiles } from "./setup-script-cache-file.ts";
 export { fingerprintSetup } from "./setup-script-cache-hash.ts";
+export {
+  invalidateStoredSetupCache,
+  readStoredSetupCache,
+  sanitizeCapturedSetupEnvironment,
+  setupCacheFileName,
+  writeStoredSetupCache,
+} from "./setup-script-cache-store.ts";
 
 export function defaultSetupCacheDir(home = homedir()): string {
   return join(home, ".auto-harness", "setup-cache");
 }
-
-export type StoredSetupCache = {
-  fingerprint: string;
-  environment: NodeJS.ProcessEnv;
-};
 
 async function digestDeclaredInputs(input: {
   checkoutSha: string;
@@ -49,79 +50,6 @@ async function digestDeclaredInputs(input: {
   if (!hashed) return undefined;
   appendChildEnv(hash, input.childEnv);
   return hash.digest("hex");
-}
-
-export function setupCacheFileName(worktreeId: string, cwd: string): string {
-  return createHash("sha256").update(`${worktreeId}\0${cwd}`).digest("hex");
-}
-
-export function sanitizeCapturedSetupEnvironment(value: unknown): NodeJS.ProcessEnv | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const environment: NodeJS.ProcessEnv = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (typeof entry === "string" && !key.toUpperCase().startsWith("HARNESS_")) {
-      environment[key] = entry;
-    }
-  }
-  return environment;
-}
-
-export async function readStoredSetupCache(
-  cacheDir: string,
-  worktreeId: string,
-  cwd: string,
-): Promise<StoredSetupCache | undefined> {
-  try {
-    const raw = await readFile(join(cacheDir, setupCacheFileName(worktreeId, cwd)), "utf8");
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
-    const fingerprint = (parsed as { fingerprint?: unknown }).fingerprint;
-    const environment = sanitizeCapturedSetupEnvironment(
-      (parsed as { environment?: unknown }).environment,
-    );
-    if (typeof fingerprint !== "string" || fingerprint.length === 0 || !environment) {
-      return undefined;
-    }
-    return { fingerprint, environment };
-  } catch {
-    return undefined;
-  }
-}
-
-/** Drop the sidecar after a command can mutate ignored worktree outputs. */
-export async function invalidateStoredSetupCache(
-  cacheDir: string | undefined,
-  worktreeId: string,
-  cwd: string,
-): Promise<void> {
-  if (!cacheDir) return;
-  try {
-    await unlink(join(cacheDir, setupCacheFileName(worktreeId, cwd)));
-  } catch {
-    // Missing or unreadable sidecars are already a miss.
-  }
-}
-
-export async function writeStoredSetupCache(
-  cacheDir: string,
-  worktreeId: string,
-  cwd: string,
-  fingerprint: string,
-  environment: NodeJS.ProcessEnv,
-): Promise<void> {
-  const persisted: Record<string, string> = {};
-  for (const [key, value] of Object.entries(environment)) {
-    if (typeof value === "string" && !key.toUpperCase().startsWith("HARNESS_")) {
-      persisted[key] = value;
-    }
-  }
-  await mkdir(cacheDir, { recursive: true });
-  const file = join(cacheDir, setupCacheFileName(worktreeId, cwd));
-  await writeFile(file, `${JSON.stringify({ fingerprint, environment: persisted })}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  await chmod(file, 0o600);
 }
 
 export function mergeSetupCacheInputs(

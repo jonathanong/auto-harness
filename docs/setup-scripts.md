@@ -48,6 +48,11 @@ is authorized to spawn, the daemon drops the sidecar rather than reconstructing 
 such as `node_modules`; a later fresh session with matching inputs re-runs setup. Native resume
 still skips every setup script. Cache sidecars
 are mode-0600 files in the daemon cache directory (`~/.auto-harness/setup-cache` by default).
+Filenames and contents are MAC-bound to the worktree identity with a process-lifetime key that is
+never written to the checkout, DynamoDB, or the session child environment, so a session command
+cannot forge or retarget another worktree's sidecar into a cache hit. Replacing sidecar bytes is a
+miss, not `setup_failed`. Same-user session processes can still read those files; a later OS-user
+split of the cache directory would close that residual read risk.
 On daemon start and after inventory apply, sidecars whose worktree id and checkout path are no
 longer in inventory (removed or relocated worktrees, including scheduled main checkouts) are
 deleted. A missing sidecar is a cache miss and re-runs setup; it never fails the session.
