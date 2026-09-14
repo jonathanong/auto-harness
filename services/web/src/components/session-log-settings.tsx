@@ -73,7 +73,11 @@ export function SessionLogSettingsForm() {
     return (
       <div className="space-y-3" data-pw="session-log-settings-forbidden">
         <h3 className="text-lg font-medium">Session logs</h3>
-        <p className="text-sm text-red-700" role="alert" data-pw="settings-forbidden-error">
+        <p
+          className="text-sm text-red-700"
+          role="alert"
+          data-pw="session-log-settings-forbidden-error"
+        >
           You do not have permission to manage global settings. Session log upload requires an
           unscoped admin account.
         </p>
@@ -84,7 +88,7 @@ export function SessionLogSettingsForm() {
     return (
       <div className="space-y-3" data-pw="session-log-settings-error">
         <h3 className="text-lg font-medium">Session logs</h3>
-        <p className="text-sm text-red-700" role="alert" data-pw="settings-load-error">
+        <p className="text-sm text-red-700" role="alert" data-pw="session-log-settings-load-error">
           Unable to load settings. Try again later.
         </p>
       </div>
@@ -109,7 +113,7 @@ export function SessionLogSettingsForm() {
         if (!response.ok) {
           showToast("Unable to save session log settings.", {
             variant: "destructive",
-            pw: "session-log-settings-error",
+            pw: "session-log-settings-save-error",
           });
           return;
         }
@@ -124,7 +128,7 @@ export function SessionLogSettingsForm() {
       } catch {
         showToast("Unable to save session log settings.", {
           variant: "destructive",
-          pw: "session-log-settings-error",
+          pw: "session-log-settings-save-error",
         });
       }
     });

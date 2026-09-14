@@ -32,3 +32,26 @@ test("host-pane session detail reports a live refresh failure", async ({ page, r
   await page.goto(`/sessions/${encodeURIComponent(id)}`);
   await expect(page.getByTestId("session-live-state-error")).toContainText("refresh paused");
 });
+
+test("host-pane session detail shows the local live log stream", async ({ page, request }) => {
+  const suffix = `${test.info().parallelIndex}-${Date.now()}`;
+  const command = await request.post(`${API_BASE}/api/v1/commands`, {
+    data: { name: `pw-host-live-logs-${suffix}`, argv: ["echo"], appendPrompt: true },
+  });
+  expect(command.ok()).toBe(true);
+  const { id: commandId } = (await command.json()) as { id: string };
+  const repositoryId = await createCatalogRepository(request, `pw-host-live-logs-repo-${suffix}`);
+  const created = await request.post(`${API_BASE}/api/v1/sessions`, {
+    data: {
+      repositoryId,
+      prompt: "show host live logs",
+      target: { commandId },
+      timeout: 30,
+    },
+  });
+  expect(created.ok()).toBe(true);
+  const { id } = (await created.json()) as { id: string };
+  await page.goto(`/sessions/${encodeURIComponent(id)}`);
+  await expect(page.getByTestId("session-logs-host-live")).toBeVisible();
+  await expect(page.getByTestId("session-logs-host-live-state")).toBeVisible();
+});

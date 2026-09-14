@@ -87,6 +87,7 @@ test.describe("live session logs", () => {
       await page.goto(`/sessions/${session.id}`);
       expect((await ticketResponse).status()).toBe(200);
       await expect(page.getByTestId("session-logs-live-tail")).toBeVisible();
+      await expect(page.getByTestId("session-logs-s3-note")).toContainText("host pane");
       await expect(page.getByTestId("session-terminal-controls")).toBeVisible();
       await expect(page.getByTestId("session-logs-empty")).toHaveCount(0);
       await expect(page.getByTestId("session-logs-live-error")).toHaveCount(0);
