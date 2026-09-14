@@ -179,6 +179,7 @@ describe("parseDaemonConfig", () => {
     for (const terminalHookScript of [
       "C:\\hooks\\done.cmd",
       "\\\\server\\share\\done.cmd",
+      "\\\\\\server\\share\\hook.cmd",
       "//server/share/done.cmd",
       "/\\host/share/env",
       "\\/host/share/env",

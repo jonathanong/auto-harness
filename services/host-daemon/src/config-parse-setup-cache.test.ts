@@ -86,5 +86,11 @@ describe("parseDaemonConfig setup cache inputs", () => {
         setupCacheHostInputs: ["\\/host/share/env"],
       }),
     ).toThrow(/setupCacheHostInputs/);
+    expect(() =>
+      parseDaemonConfig({
+        ...valid,
+        setupCacheHostInputs: ["\\\\\\server\\share\\env"],
+      }),
+    ).toThrow(/setupCacheHostInputs/);
   });
 });
