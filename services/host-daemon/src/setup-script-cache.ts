@@ -4,55 +4,23 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { forEachDeclaredSetupFile } from "./setup-script-cache-file.ts";
+import {
+  appendChildEnv,
+  appendExtraFile,
+  startSetupFingerprint,
+} from "./setup-script-cache-hash.ts";
 
 export { readDeclaredSetupFiles } from "./setup-script-cache-file.ts";
+export { fingerprintSetup } from "./setup-script-cache-hash.ts";
 
 export function defaultSetupCacheDir(home = homedir()): string {
   return join(home, ".auto-harness", "setup-cache");
 }
 
-export type SetupFingerprintParts = {
-  checkoutSha: string;
-  scripts: readonly string[];
-  extraFiles: ReadonlyArray<{ path: string; contents: Buffer }>;
-};
-
 export type StoredSetupCache = {
   fingerprint: string;
   environment: NodeJS.ProcessEnv;
 };
-
-function writeLengthPrefixed(hash: ReturnType<typeof createHash>, value: Buffer): void {
-  const header = Buffer.alloc(4);
-  header.writeUInt32BE(value.length);
-  hash.update(header);
-  hash.update(value);
-}
-
-function startSetupFingerprint(
-  checkoutSha: string,
-  scripts: readonly string[],
-  extraCount: number,
-): ReturnType<typeof createHash> {
-  const hash = createHash("sha256");
-  writeLengthPrefixed(hash, Buffer.from("v2", "utf8"));
-  writeLengthPrefixed(hash, Buffer.from(checkoutSha, "utf8"));
-  writeLengthPrefixed(hash, Buffer.from(String(scripts.length)));
-  for (const script of scripts) {
-    writeLengthPrefixed(hash, Buffer.from(script, "utf8"));
-  }
-  writeLengthPrefixed(hash, Buffer.from(String(extraCount)));
-  return hash;
-}
-
-function appendExtraFile(
-  hash: ReturnType<typeof createHash>,
-  path: string,
-  contents: Buffer,
-): void {
-  writeLengthPrefixed(hash, Buffer.from(path, "utf8"));
-  writeLengthPrefixed(hash, contents);
-}
 
 async function digestDeclaredInputs(input: {
   checkoutSha: string;
@@ -60,6 +28,7 @@ async function digestDeclaredInputs(input: {
   scripts: readonly string[];
   extraPaths: readonly string[];
   hostPaths: readonly string[];
+  childEnv?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
 }): Promise<string | undefined> {
   const hash = startSetupFingerprint(
@@ -76,15 +45,8 @@ async function digestDeclaredInputs(input: {
     input.signal,
     input.hostPaths,
   );
-  return hashed ? hash.digest("hex") : undefined;
-}
-
-/** Stable digest of the operator-supplied inputs that may skip a later setup. */
-export function fingerprintSetup(parts: SetupFingerprintParts): string {
-  const hash = startSetupFingerprint(parts.checkoutSha, parts.scripts, parts.extraFiles.length);
-  for (const extra of parts.extraFiles) {
-    appendExtraFile(hash, extra.path, extra.contents);
-  }
+  if (!hashed) return undefined;
+  appendChildEnv(hash, input.childEnv);
   return hash.digest("hex");
 }
 
@@ -169,6 +131,7 @@ export async function resolveSetupCacheState(input: {
   scripts: readonly string[];
   extraPaths: readonly string[];
   hostPaths?: readonly string[];
+  childEnv?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
 }): Promise<
   { skip: true; environment: NodeJS.ProcessEnv } | { skip: false; fingerprintToStore?: string }
@@ -180,6 +143,7 @@ export async function resolveSetupCacheState(input: {
     scripts: input.scripts,
     extraPaths: input.extraPaths,
     hostPaths: input.hostPaths ?? [],
+    ...(input.childEnv ? { childEnv: input.childEnv } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
   });
   if (!fingerprint) return { skip: false };
@@ -197,6 +161,7 @@ export async function matchingSetupFingerprintAfterSetup(input: {
   scripts: readonly string[];
   extraPaths: readonly string[];
   hostPaths?: readonly string[];
+  childEnv?: NodeJS.ProcessEnv;
   expectedFingerprint: string;
   signal?: AbortSignal;
 }): Promise<string | undefined> {
@@ -206,6 +171,7 @@ export async function matchingSetupFingerprintAfterSetup(input: {
     scripts: input.scripts,
     extraPaths: input.extraPaths,
     hostPaths: input.hostPaths ?? [],
+    ...(input.childEnv ? { childEnv: input.childEnv } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
   });
   return fingerprint === input.expectedFingerprint ? fingerprint : undefined;

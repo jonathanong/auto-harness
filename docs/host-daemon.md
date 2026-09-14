@@ -747,18 +747,20 @@ conversation's existing worktree.
 
 A later fresh session skips those scripts when the fingerprint of the checked-out SHA, the exact
 setup script texts that would run (host then scoped), the contents of every
-operator-declared `setupCacheInputs` path, and every operator-declared `setupCacheHostInputs`
-host-absolute file matches the last successful setup for that worktree.
+operator-declared `setupCacheInputs` path, every operator-declared `setupCacheHostInputs`
+host-absolute file, and the filtered child environment from `createChildEnv()` matches the last
+successful setup for that worktree.
 After setup succeeds, the daemon rehashes those declared extras. If they changed, it does not store
 a cache entry, so the next fresh checkout (which restores the original bytes) re-runs setup.
 Unchanged extras may still be stored. The fingerprint schema version is part of the digest, so
 sidecars from an older daemon miss and re-run setup once. The daemon stores that fingerprint and the
-captured
-environment (minus `HARNESS_*`) as a mode-0600 host filesystem sidecar outside the checkout. On a matching fingerprint it restores those
-exports and skips the scripts. Missing, non-regular, oversized (larger than 16 MiB), or
-unreadable declared files, a corrupt or missing sidecar, a changed script, a different ref, or a
-changed declared file are cache misses and run setup again. Declared extra files are opened as
-bounded regular files; the daemon does not follow symlinks into devices and does not read FIFOs.
+captured environment (minus `HARNESS_*`) as a mode-0600 host filesystem sidecar outside the checkout.
+On a matching fingerprint it restores those exports and skips the scripts. Missing, non-regular,
+oversized (larger than 16 MiB), or unreadable declared files, a corrupt or missing sidecar, a changed
+script, a different ref, a changed declared file, or a changed filtered child environment (rotated
+allowlisted token, `PATH`, or removed variable) are cache misses and run setup again. Captured
+environment values are not written to session logs. Declared extra files are opened as bounded
+regular files; the daemon does not follow symlinks into devices and does not read FIFOs.
 The host never inspects undeclared manifests or lockfiles. Failed setup does not record a
 successful cache. If setup succeeds but the sidecar cannot be written, the session still succeeds
 and the next fresh session re-runs setup. Sidecars whose worktree id and checkout path are no

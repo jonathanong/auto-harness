@@ -71,6 +71,7 @@ export async function runCachedSetup(
   cacheDir: string,
   baseline = "abc123",
   signal?: AbortSignal,
+  childEnvSource: NodeJS.ProcessEnv = process.env,
 ) {
   const logs: SessionLogChunk[] = [];
   const streamer = new LogStreamer(
@@ -88,10 +89,10 @@ export async function runCachedSetup(
     signal,
     () => false,
     () => 30_000,
-    process.env,
+    childEnvSource,
     baseline,
     runner,
-    process.env,
+    childEnvSource,
     false,
     undefined,
     undefined,
