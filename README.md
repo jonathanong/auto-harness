@@ -8,10 +8,10 @@ You keep control of secrets and machines. Auto Harness queues the work, assigns 
 
 ## What it is
 
-| Plane               | What it is                                                                 | Owns                                                    | Idle cost                              |
-| ------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------- |
-| **Control plane**   | Web UI, REST/webhooks, session queue, assignment, logs, schedules          | Auth, catalog, queue, observation                       | Serverless — scales to zero            |
-| **Host plane**      | `auto-harness-agent` on a machine you provision                            | Worktrees/slots, CLI processes, git + vendor credentials | The machine itself                     |
+| Plane             | What it is                                                        | Owns                                                     | Idle cost                   |
+| ----------------- | ----------------------------------------------------------------- | -------------------------------------------------------- | --------------------------- |
+| **Control plane** | Web UI, REST/webhooks, session queue, assignment, logs, schedules | Auth, catalog, queue, observation                        | Serverless — scales to zero |
+| **Host plane**    | `auto-harness-agent` on a machine you provision                   | Worktrees/slots, CLI processes, git + vendor credentials | The machine itself          |
 
 The control plane is AWS (API Gateway, Lambda, DynamoDB, S3). It has no standing app server. Hosts are capacity you bring: a VPS, a spare workstation, whatever can run the daemon and the CLIs. Work can sit in the queue with zero hosts online.
 
@@ -23,12 +23,12 @@ Topology and ownership: [docs/architecture/](docs/architecture/README.md). Vocab
 
 ## What it does and does not
 
-| Does                                                                                          | Does not                                                                                                                                                          |
-| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Queue non-interactive CLI sessions (priority, labels, concurrency, resume)                    | Interactive / human-in-the-loop driving — no pairing TTY, no in-browser IDE, no multiplayer session                                                               |
-| Trigger work from the API, GitHub Actions, GitHub App mentions, and schedules                 | Hold or mint provider tokens, git credentials, or SSH keys — those stay on the host. Do not put secrets in prompts; prompts are stored and visible operationally |
-| Run on a serverless control plane that scales to zero                                         | Care which agent harness you use — every session is a catalog Command (fixed argv). Register Codex, Claude Code, Grok, or any other CLI                           |
-| Observe live logs, history, and (optional) Slack lifecycle                                    | Own the target repo’s GitHub policy, prompt templates, or review workflow — that is the repo harness plus [pr-shepherd](https://github.com/jonathanong/pr-shepherd) |
+| Does                                                                          | Does not                                                                                                                                                            |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Queue non-interactive CLI sessions (priority, labels, concurrency, resume)    | Interactive / human-in-the-loop driving — no pairing TTY, no in-browser IDE, no multiplayer session                                                                 |
+| Trigger work from the API, GitHub Actions, GitHub App mentions, and schedules | Hold or mint provider tokens, git credentials, or SSH keys — those stay on the host. Do not put secrets in prompts; prompts are stored and visible operationally    |
+| Run on a serverless control plane that scales to zero                         | Care which agent harness you use — every session is a catalog Command (fixed argv). Register Codex, Claude Code, Grok, or any other CLI                             |
+| Observe live logs, history, and (optional) Slack lifecycle                    | Own the target repo’s GitHub policy, prompt templates, or review workflow — that is the repo harness plus [pr-shepherd](https://github.com/jonathanong/pr-shepherd) |
 
 Sessions target a **named catalog Command**, not a free-form shell string. Operators can register any CLI; callers cannot send arbitrary argv through the API.
 

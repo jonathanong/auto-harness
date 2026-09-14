@@ -26,10 +26,10 @@ The **control plane** is the serverless web + queue + API half (it can idle at z
 called the execution plane). Hosts do not autoscale to zero — that is the point of the
 queue. [terminology.md](../terminology.md) disambiguates **host plane** from **host pane**.
 
-| Plane             | Where                                                                          | Doc                                     |
-| ----------------- | ------------------------------------------------------------------------------ | --------------------------------------- |
-| **Control plane** | Target: AWS — API Gateway, Lambda, DynamoDB, S3, EventBridge                   | **[aws.md](../aws.md)**                 |
-| **Host plane**    | VPS / laptop / any machine — Node.js daemon, git worktrees, AI CLIs            | **[host-daemon.md](../host-daemon.md)** |
+| Plane             | Where                                                               | Doc                                     |
+| ----------------- | ------------------------------------------------------------------- | --------------------------------------- |
+| **Control plane** | Target: AWS — API Gateway, Lambda, DynamoDB, S3, EventBridge        | **[aws.md](../aws.md)**                 |
+| **Host plane**    | VPS / laptop / any machine — Node.js daemon, git worktrees, AI CLIs | **[host-daemon.md](../host-daemon.md)** |
 
 ```mermaid
 graph TB
