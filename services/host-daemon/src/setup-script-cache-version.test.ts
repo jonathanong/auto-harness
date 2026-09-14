@@ -15,6 +15,7 @@ function fingerprintVersion(
   checkoutSha: string,
   scripts: readonly string[],
   extras: ReadonlyArray<{ path: string; contents: Buffer }>,
+  childEnv: NodeJS.ProcessEnv = {},
 ): string {
   const hash = createHash("sha256");
   const write = (value: Buffer) => {
@@ -32,6 +33,17 @@ function fingerprintVersion(
     write(Buffer.from(extra.path, "utf8"));
     write(extra.contents);
   }
+  if (version === "v3") {
+    const entries = Object.entries(childEnv)
+      .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+      .filter(([key]) => !key.toUpperCase().startsWith("HARNESS_"))
+      .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+    write(Buffer.from(String(entries.length)));
+    for (const [key, value] of entries) {
+      write(Buffer.from(key, "utf8"));
+      write(Buffer.from(value, "utf8"));
+    }
+  }
   return hash.digest("hex");
 }
 
@@ -46,10 +58,12 @@ describe("setup cache fingerprint version", () => {
       scripts: ["pnpm install"],
       extraFiles: extras,
     });
-    const legacy = fingerprintVersion("v1", "abc", ["pnpm install"], extras);
-    expect(current).not.toBe(legacy);
-    expect(current).toBe(fingerprintVersion("v2", "abc", ["pnpm install"], extras));
-    await writeStoredSetupCache(cacheDir, "wt-1", cwd, legacy, { TOKEN: "x" });
+    const legacyV1 = fingerprintVersion("v1", "abc", ["pnpm install"], extras);
+    const legacyV2 = fingerprintVersion("v2", "abc", ["pnpm install"], extras);
+    expect(current).not.toBe(legacyV1);
+    expect(current).not.toBe(legacyV2);
+    expect(current).toBe(fingerprintVersion("v3", "abc", ["pnpm install"], extras));
+    await writeStoredSetupCache(cacheDir, "wt-1", cwd, legacyV2, { TOKEN: "x" });
     const resolved = await resolveSetupCacheState({
       cacheDir,
       checkoutSha: "abc",

@@ -41,7 +41,9 @@ export async function runSetupIfNeeded(
   nowMs?: () => number,
   setupCacheDir?: string,
 ): Promise<SessionSetupResult> {
-  let environment = createChildEnv(childEnvSource);
+  // Fingerprint this pre-setup env; setup replaces `environment` with captured exports.
+  const baseEnvironment = createChildEnv(childEnvSource);
+  let environment = baseEnvironment;
   const scopedSetupScript =
     assign.setupScript ?? claimed.worktree.setupScript ?? claimed.repository.setupScript;
   const setupScripts = [claimed.hostSetupScript, scopedSetupScript].filter(
@@ -61,6 +63,7 @@ export async function runSetupIfNeeded(
     scripts: setupScripts,
     extraPaths,
     hostPaths,
+    childEnv: baseEnvironment,
     ...(signal ? { signal } : {}),
   });
   if (cache.skip) {
@@ -160,6 +163,7 @@ export async function runSetupIfNeeded(
         scripts: setupScripts,
         extraPaths,
         hostPaths,
+        childEnv: baseEnvironment,
         expectedFingerprint: cache.fingerprintToStore,
         ...(signal ? { signal } : {}),
       });
