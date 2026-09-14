@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { gzipJsonlLines } from "@auto-harness/shared";
 
+import { getLogsDurable } from "./control-plane-durable-read-runtime.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import {
   gzipLogRecords,
@@ -46,9 +47,14 @@ describe("session log objects", () => {
         timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
       },
     ]);
+    const committed: Array<{ key: string; seqStart: number; seqEnd: number }> = [];
+    state.onLogPartCommitted = (event) => committed.push(event);
     await putSessionLogPart(state, "sess", 1, 1, gzipped);
     const records = await readSessionLogObjects(state, "sess");
     expect(records?.map((record) => record.content)).toEqual(["a"]);
+    expect(committed).toEqual([
+      { sessionId: "sess", key: "sessions/sess/parts/1-1.jsonl.gz", seqStart: 1, seqEnd: 1 },
+    ]);
   });
 
   it("rejects empty parts and seqs outside the declared range", async () => {
@@ -219,5 +225,26 @@ describe("session log objects", () => {
       },
     });
     expect(await readSessionLogObjects(empty, "empty")).toBeUndefined();
+  });
+
+  it("falls back to in-memory logs when listed gzip objects have no body", async () => {
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => undefined,
+        listKeys: async () => ["sessions/sess/parts/1-1.jsonl.gz"],
+        getGzipObject: async () => undefined,
+      },
+    });
+    state.logs.set("sess", [
+      {
+        sessionId: "sess",
+        timestampSeq: "1",
+        stream: "stdout",
+        content: "memory",
+        timestamp: "t",
+        seq: 1,
+      },
+    ]);
+    await expect(getLogsDurable(state, "sess")).resolves.toMatchObject([{ content: "memory" }]);
   });
 });

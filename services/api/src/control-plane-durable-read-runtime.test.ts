@@ -393,6 +393,26 @@ describe("durable runtime read-through", () => {
     await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([session]);
     await expect(getLogsDurable(state, session.id)).resolves.toHaveLength(1);
     await expect(getLogsDurable(state, "missing")).resolves.toEqual([]);
+    const listed = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => undefined,
+        listKeys: async () => [`sessions/${session.id}/parts/1-1.jsonl.gz`],
+        getGzipObject: async () => undefined,
+      },
+    });
+    listed.logs.set(session.id, [
+      {
+        sessionId: session.id,
+        timestampSeq: "2",
+        stream: "stdout",
+        content: "memory",
+        timestamp: "t",
+        seq: 2,
+      },
+    ]);
+    await expect(getLogsDurable(listed, session.id)).resolves.toMatchObject([
+      { content: "memory" },
+    ]);
     await expect(listWorktreesDurable(state)).resolves.toEqual([worktree]);
     await expect(listWorktreesForRepositoryDurable(state, "repository")).resolves.toEqual([
       worktree,
