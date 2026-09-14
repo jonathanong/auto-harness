@@ -109,7 +109,9 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
       if (connection?.type !== "client") return false;
       for (const subscription of connection.viewerSubscriptions ?? []) {
         await removeViewerFanout(dependencies.storage, subscription.sessionId, connectionId);
-        const remaining = await viewerConnectionIds(dependencies.storage, subscription.sessionId);
+        const remaining = (
+          await viewerConnectionIds(dependencies.storage, subscription.sessionId)
+        ).filter((id) => id !== connectionId);
         if (remaining.length === 0) {
           const session = await dependencies.storage.getSession(subscription.sessionId);
           if (session?.hostId) {

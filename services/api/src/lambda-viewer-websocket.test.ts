@@ -400,7 +400,10 @@ describe("Lambda viewer WebSocket adapter", () => {
       JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
     );
     await expect(sockets.disconnect("viewer-1")).resolves.toBe(true);
-    expect(watches[0]).toEqual(["host-1", "session-1", true]);
+    expect(watches).toEqual([
+      ["host-1", "session-1", true],
+      ["host-1", "session-1", false],
+    ]);
     await sockets.connect("viewer-2", "ticket", origin);
     ctx.management.send.mockRejectedValueOnce(new Error("apigw down"));
     await expect(
