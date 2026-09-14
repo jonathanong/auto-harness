@@ -58,8 +58,10 @@ radius. Git continues to use the existing SSH transport.
 
 If a terminal hook is handed to a replacement daemon or deferred until after the original
 assignment ends, recovery mints a fresh repository-scoped token, uses a new isolated `gh` config
-directory, and bounds hook execution by both the handoff deadline and token expiry. A failed
-credential mint does not fall back to the daemon's ambient GitHub credentials.
+directory, and bounds hook execution by both the handoff deadline and token expiry, including
+SIGKILL by that instant so a SIGTERM-ignoring hook cannot keep mutating the checkout for the
+POSIX grace window. A failed credential mint does not fall back to the daemon's ambient GitHub
+credentials.
 
 The App private key remains a host secret, but the daemon and its session CLIs run as the same OS
 user. A compromised session can therefore read it; mode `0600` prevents other local users, not the

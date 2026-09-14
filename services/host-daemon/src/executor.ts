@@ -3,10 +3,9 @@ import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 
 import { createChildEnv } from "./child-env.ts";
+import { DEFAULT_TERMINATION_GRACE_MS } from "./hard-timeout-kill-budget.ts";
 import { killWindowsProcessTree, type WindowsProcessTreeKill } from "./windows-process-tree.ts";
 import type { SessionUsage } from "@auto-harness/shared";
-
-const DEFAULT_TERMINATION_GRACE_MS = 5_000;
 export const MAX_OUTPUT_CHUNK_BYTES = 32 * 1024;
 export const OUTPUT_CHUNK_TRUNCATION_MARKER = "\n[output chunk truncated]\n";
 
@@ -35,7 +34,11 @@ export type RunProcessOptions = {
   timeoutMs: number;
   /** Cancels the child (and its POSIX process group, or Windows process tree) promptly. */
   signal?: AbortSignal;
-  /** Test-only/advanced override; production uses a five second grace period. */
+  /**
+   * POSIX SIGTERM-to-SIGKILL gap. Production uses five seconds; `0` SIGKILLs
+   * immediately after SIGTERM. Windows `taskkill /F` ignores this and never
+   * schedules a delayed second kill (PID reuse).
+   */
   terminationGraceMs?: number;
   /**
    * Preserve complete stdout/stderr reads for an internal structured-data consumer.
@@ -108,25 +111,15 @@ export class SpawnProcessRunner implements ProcessRunner {
   }
 
   async run(options: RunProcessOptions): Promise<ProcessResult> {
-    if (options.argv.length === 0) {
-      throw new Error("argv must be non-empty");
-    }
     const [command, ...args] = options.argv;
-    if (!command) {
-      throw new Error("argv must be non-empty");
-    }
+    if (!command) throw new Error("argv must be non-empty");
 
     if (!existsSync(options.cwd)) {
       throw new Error(formatSpawnEnoent(command, options.cwd));
     }
 
     if (options.signal?.aborted) {
-      return {
-        exitCode: null,
-        timedOut: false,
-        cancelled: true,
-        signal: null,
-      };
+      return { exitCode: null, timedOut: false, cancelled: true, signal: null };
     }
 
     return await new Promise<ProcessResult>((resolve, reject) => {
@@ -209,12 +202,17 @@ export class SpawnProcessRunner implements ProcessRunner {
         // escalates because a reaped pid is inert to `process.kill`/`child.kill`
         // (ESRCH), not silently redirected to a different process.
         if (this.platform === "win32") return;
+        const graceMs = options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS;
+        if (graceMs <= 0) {
+          signalProcess("SIGKILL");
+          return;
+        }
         escalation = setTimeout(() => {
           // The direct child may close after SIGTERM while descendants in its
           // detached POSIX process group survive. Escalate the group anyway.
           signalProcess("SIGKILL");
           escalation = undefined;
-        }, options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS);
+        }, graceMs);
       };
 
       const timer = setTimeout(() => stop("timeout"), options.timeoutMs);

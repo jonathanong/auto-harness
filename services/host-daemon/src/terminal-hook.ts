@@ -4,6 +4,7 @@ import type { SessionErrorCode, SessionStatus } from "@auto-harness/shared";
 import { assertPathWithinAllowedRoots, resolveHookPath } from "./allowed-roots.ts";
 import { createChildEnv } from "./child-env.ts";
 import type { ProcessRunner } from "./executor.ts";
+import { hardTimeoutKillBudget } from "./hard-timeout-kill-budget.ts";
 
 type TerminalHookInput = {
   scriptPath: string;
@@ -62,7 +63,7 @@ export async function runTerminalHook(
       argv: ["/bin/sh", scriptPath],
       cwd: input.cwd,
       env,
-      timeoutMs: input.timeoutMs ?? 60_000,
+      ...hardTimeoutKillBudget(input.timeoutMs ?? 60_000),
       onChunk: () => {
         /* discard hook output */
       },
