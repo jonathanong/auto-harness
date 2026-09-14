@@ -128,12 +128,6 @@ export const DYNAMO_TABLES: TableDef[] = [
     ttlAttribute: "ttl",
   },
   {
-    name: "SessionLogs",
-    partitionKey: { name: "sessionId", type: "S" },
-    sortKey: { name: "timestampSeq", type: "S" },
-    ttlAttribute: "ttl",
-  },
-  {
     name: "Schedules",
     partitionKey: { name: "id", type: "S" },
     gsis: [

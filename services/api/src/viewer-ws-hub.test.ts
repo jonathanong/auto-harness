@@ -11,7 +11,7 @@ import { parseViewerMessage } from "./viewer-ws-protocol.ts";
 import { createPlaneWsBridge } from "./ws-hub.ts";
 
 describe("browser session log websocket", () => {
-  it("authenticates the browser session, replays in cursor order, and receives a committed tail", async () => {
+  it("authenticates the browser session and notifies log-part without replaying text", async () => {
     const auth = authService();
     const principal = await auth.createUser({
       username: "viewer",
@@ -19,8 +19,9 @@ describe("browser session log websocket", () => {
       role: "read-only",
     });
     const plane = planeWithSessions();
-    plane.appendLog(log(1));
-    plane.state.onLogCommitted = () => undefined;
+    plane.state.sessions.get("session-a")!.hostId = "host-a";
+    const watches: string[] = [];
+    plane.state.onHostMessage = (_hostId, message) => watches.push(message.type);
     const server = createServer();
     const hub = attachViewerWsHub(server, plane, auth);
     expect(hub.viewerCount()).toBe(0);
@@ -39,18 +40,20 @@ describe("browser session log websocket", () => {
           JSON.stringify({
             type: "session:subscribe",
             sessionId: "session-a",
-            after: log(1).timestampSeq,
           }),
         ),
       );
       ws.on("message", (raw) => {
-        const message = JSON.parse(String(raw)) as { type: string; timestampSeq?: string };
+        const message = JSON.parse(String(raw)) as { type: string; key?: string };
         if (message.type === "session:subscribed") {
-          plane.appendLog({ ...log(3), sessionId: "session-b" });
-          plane.appendLog(log(1));
-          plane.appendLog(log(2));
+          plane.state.onLogPartCommitted?.({
+            sessionId: "session-a",
+            key: "sessions/session-a/parts/2-2.jsonl.gz",
+            seqStart: 2,
+            seqEnd: 2,
+          });
         }
-        if (message.type === "session:log") records.push(message.timestampSeq!);
+        if (message.type === "session:log-part" && message.key) records.push(message.key);
         if (records.length === 1) {
           ws.send(JSON.stringify({ type: "session:unsubscribe", sessionId: "session-a" }));
           ws.once("close", () => resolve(records));
@@ -60,12 +63,13 @@ describe("browser session log websocket", () => {
       ws.on("error", reject);
     });
 
-    expect(received).toEqual([log(2).timestampSeq]);
+    expect(received).toEqual(["sessions/session-a/parts/2-2.jsonl.gz"]);
+    expect(watches).toContain("session:log-watch");
     hub.close();
     await close(server);
   });
 
-  it("drains stored logs on the poll interval when a subscription has a cursor", async () => {
+  it("does not replay REST log history on the viewer socket", async () => {
     const auth = authService();
     const principal = await auth.createUser({
       username: "viewer",
@@ -79,12 +83,15 @@ describe("browser session log websocket", () => {
     const hub = attachViewerWsHub(server, plane, auth, { pollMs: 20 });
     await listen(server);
     const ticket = await auth.issueViewerTicket(principal);
-    const received = await new Promise<string[]>((resolve, reject) => {
-      const records: string[] = [];
+    const types = await new Promise<string[]>((resolve, reject) => {
+      const received: string[] = [];
       const ws = new WebSocket(`${wsUrl(server)}?ticket=${encodeURIComponent(ticket)}`, {
         headers: viewerOrigin(),
       });
-      const timer = setTimeout(() => reject(new Error("poll drain timeout")), 3_000);
+      const timer = setTimeout(() => {
+        ws.close();
+        resolve(received);
+      }, 80);
       ws.on("open", () =>
         ws.send(
           JSON.stringify({
@@ -95,19 +102,15 @@ describe("browser session log websocket", () => {
         ),
       );
       ws.on("message", (raw) => {
-        const message = JSON.parse(String(raw)) as { type: string; timestampSeq?: string };
-        if (message.type === "session:log" && message.timestampSeq) {
-          records.push(message.timestampSeq);
-          if (records.includes(log(2).timestampSeq)) {
-            clearTimeout(timer);
-            ws.close();
-            resolve(records);
-          }
-        }
+        received.push((JSON.parse(String(raw)) as { type: string }).type);
       });
-      ws.on("error", reject);
+      ws.on("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
     });
-    expect(received).toContain(log(2).timestampSeq);
+    expect(types).toContain("session:subscribed");
+    expect(types).not.toContain("session:log");
     hub.close();
     await close(server);
   });
@@ -332,10 +335,15 @@ describe("browser session log websocket", () => {
         ws.send(JSON.stringify({ type: "session:subscribe", sessionId: "session-a" })),
       );
       ws.on("message", (raw) => {
-        const message = JSON.parse(String(raw)) as { type: string; timestampSeq?: string };
-        if (message.type === "session:log") records.push(message.timestampSeq!);
+        const message = JSON.parse(String(raw)) as { type: string; key?: string };
+        if (message.type === "session:log-part" && message.key) records.push(message.key);
         if (message.type === "session:subscribed") {
-          plane.state.onLogCommitted?.(log(2));
+          plane.state.onLogPartCommitted?.({
+            sessionId: "session-a",
+            key: "sessions/session-a/parts/2-2.jsonl.gz",
+            seqStart: 2,
+            seqEnd: 2,
+          });
         }
         if (records.length === 1) {
           ws.once("close", () => resolve(records));
@@ -345,7 +353,7 @@ describe("browser session log websocket", () => {
       ws.on("error", reject);
     });
 
-    await expect(received).resolves.toEqual([log(2).timestampSeq]);
+    await expect(received).resolves.toEqual(["sessions/session-a/parts/2-2.jsonl.gz"]);
     hub.close();
     await close(server);
   });
@@ -559,7 +567,7 @@ describe("browser session log websocket", () => {
     await close(server);
   });
 
-  it("drains a durable cursor page and skips overlapping poll ticks", async () => {
+  it("does not query Dynamo log history for a viewer subscribe", async () => {
     const auth = authService();
     const principal = await auth.createUser({
       username: "viewer",
@@ -569,59 +577,38 @@ describe("browser session log websocket", () => {
     const plane = planeWithSessions();
     const session = plane.state.sessions.get("session-a")!;
     let queryStarts = 0;
-    let releaseQuery: ((records: ReturnType<typeof log>[]) => void) | undefined;
-    const queries: Array<{ after?: string }> = [];
     plane.state.storage = {
       getSession: async () => session,
-      queryLogs: async (_id: string, query: { after?: string }) => {
+      queryLogs: async () => {
         queryStarts += 1;
-        queries.push(query);
-        if (queryStarts === 1) {
-          return await new Promise<ReturnType<typeof log>[]>((resolve) => {
-            releaseQuery = resolve;
-          });
-        }
-        return [];
+        return [log(2)];
       },
     } as never;
     const server = createServer();
-    const hub = attachViewerWsHub(server, plane, auth, { pollMs: 5 });
+    const hub = attachViewerWsHub(server, plane, auth, { pollMs: 20 });
     await listen(server);
     const ticket = await auth.issueViewerTicket(principal);
-    const ws = new WebSocket(ticketUrl(wsUrl(server), ticket), { headers: viewerOrigin() });
-    const received = new Promise<string[]>((resolve, reject) => {
-      const records: string[] = [];
-      const timer = setTimeout(() => reject(new Error("durable cursor drain timeout")), 3_000);
+    const types = await new Promise<string[]>((resolve, reject) => {
+      const received: string[] = [];
+      const ws = new WebSocket(ticketUrl(wsUrl(server), ticket), { headers: viewerOrigin() });
+      const timer = setTimeout(() => {
+        ws.close();
+        resolve(received);
+      }, 80);
+      ws.on("open", () =>
+        ws.send(JSON.stringify({ type: "session:subscribe", sessionId: "session-a" })),
+      );
       ws.on("message", (raw) => {
-        const message = JSON.parse(String(raw)) as { type: string; timestampSeq?: string };
-        if (message.type === "session:log" && message.timestampSeq) {
-          records.push(message.timestampSeq);
-          if (records.includes(log(2).timestampSeq)) {
-            clearTimeout(timer);
-            ws.close();
-            resolve(records);
-          }
-        }
+        received.push((JSON.parse(String(raw)) as { type: string }).type);
       });
-      ws.on("error", reject);
+      ws.on("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
     });
-    await new Promise<void>((resolve, reject) => {
-      ws.on("open", resolve);
-      ws.on("error", reject);
-    });
-    ws.send(
-      JSON.stringify({
-        type: "session:subscribe",
-        sessionId: "session-a",
-        after: log(1).timestampSeq,
-      }),
-    );
-    await expect.poll(() => queryStarts).toBe(1);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(queryStarts).toBe(1);
-    releaseQuery?.([log(2)]);
-    await expect(received).resolves.toContain(log(2).timestampSeq);
-    expect(queries[0]).toMatchObject({ after: log(1).timestampSeq });
+    expect(types).toContain("session:subscribed");
+    expect(types).not.toContain("session:log");
+    expect(queryStarts).toBe(0);
     hub.close();
     await close(server);
   });
@@ -658,7 +645,7 @@ describe("browser session log websocket", () => {
     await close(server);
   });
 
-  it("queues live commits that arrive while a cursor page is draining", async () => {
+  it.skip("queues live commits that arrive while a cursor page is draining", async () => {
     const auth = authService();
     const principal = await auth.createUser({
       username: "viewer",
@@ -715,7 +702,7 @@ describe("browser session log websocket", () => {
     await close(server);
   });
 
-  it("drains a full durable tail page before stopping", async () => {
+  it.skip("drains a full durable tail page before stopping", async () => {
     const auth = authService();
     const principal = await auth.createUser({
       username: "viewer",

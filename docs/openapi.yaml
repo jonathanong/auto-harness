@@ -200,6 +200,85 @@ paths:
       responses:
         "204": { description: Deleted }
         default: { $ref: "#/components/responses/Error" }
+  /session-log-settings:
+    get:
+      operationId: getSessionLogSettings
+      summary: Operator session-log upload and control-plane poll knobs
+      responses:
+        "200":
+          description: Current settings, or defaults with version 0 when unset
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionLogSettings" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: putSessionLogSettings
+      summary: Replace session-log settings with compare-and-swap versioning
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SessionLogSettingsUpdate" }
+      responses:
+        "200":
+          description: Saved settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionLogSettings" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}/log-parts:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - name: seqStart
+        in: query
+        required: true
+        schema: { type: integer, minimum: 0 }
+      - name: seqEnd
+        in: query
+        required: true
+        schema: { type: integer, minimum: 0 }
+    put:
+      operationId: putSessionLogPart
+      summary: Host PUT of one gzip JSONL log part
+      requestBody:
+        required: true
+        content:
+          application/gzip:
+            schema: { type: string, format: binary }
+      responses:
+        "200":
+          description: Stored object key
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [key]
+                properties:
+                  key: { type: string }
+        default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}/log-archive:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    put:
+      operationId: putSessionLogArchive
+      summary: Host PUT of the concatenated gzip JSONL archive
+      requestBody:
+        required: true
+        content:
+          application/gzip:
+            schema: { type: string, format: binary }
+      responses:
+        "200":
+          description: Stored object key
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [key]
+                properties:
+                  key: { type: string }
+        default: { $ref: "#/components/responses/Error" }
   /sessions:
     post:
       operationId: createSession
@@ -1089,6 +1168,32 @@ components:
         priority: { type: integer, minimum: -10000, maximum: 10000 }
         queueTtlSeconds: { type: integer, minimum: 1, maximum: 2592000 }
       additionalProperties: false
+    SessionLogSettings:
+      type: object
+      required: [uploadMode, batchMaxKb, batchMaxLines, batchMaxWaitMs, controlPlanePollMs, version]
+      additionalProperties: false
+      properties:
+        uploadMode:
+          type: string
+          enum: [off, subscribed, always]
+        batchMaxKb: { type: integer, minimum: 1, maximum: 5120 }
+        batchMaxLines: { type: integer, minimum: 1, maximum: 50000 }
+        batchMaxWaitMs: { type: integer, minimum: 1000, maximum: 300000 }
+        controlPlanePollMs: { type: integer, minimum: 5000, maximum: 300000 }
+        version: { type: integer, minimum: 0 }
+    SessionLogSettingsUpdate:
+      type: object
+      required: [version]
+      additionalProperties: false
+      properties:
+        uploadMode:
+          type: string
+          enum: [off, subscribed, always]
+        batchMaxKb: { type: integer, minimum: 1, maximum: 5120 }
+        batchMaxLines: { type: integer, minimum: 1, maximum: 50000 }
+        batchMaxWaitMs: { type: integer, minimum: 1000, maximum: 300000 }
+        controlPlanePollMs: { type: integer, minimum: 5000, maximum: 300000 }
+        version: { type: integer, minimum: 0 }
     Session:
       type: object
       required: [id, repositoryId, prompt, target, status, createdAt, url]

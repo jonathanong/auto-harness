@@ -18,6 +18,7 @@ import type {
   ProviderRecord,
   CustomWebhookIntegrationRecord,
   GitHubIngressConfigRecord,
+  SessionLogSettingsRecord,
   RepositoryRecord,
   WorkspacePoolRecord,
 } from "./db/plane-storage.ts";
@@ -100,6 +101,7 @@ export type ControlPlaneState = {
   /** Ciphertext-only cache for operator-owned generic webhook integrations. */
   customWebhookIntegrations: Map<string, CustomWebhookIntegrationRecord>;
   githubIngressConfig: GitHubIngressConfigRecord | undefined;
+  sessionLogSettings: SessionLogSettingsRecord | undefined;
   /** True when this process (or its deployed sibling cron) can run the Slack outbox. */
   slackOutboundEnabled: boolean;
   /** OAuth signing credentials were injected into this REST runtime. */
@@ -164,6 +166,9 @@ export type ControlPlaneState = {
   onHostMessage: ((hostId: string, msg: HostWireMessage) => void) | undefined;
   /** Called only after a log is durable (or committed in the in-memory plane). */
   onLogCommitted: ((record: LogRecord) => void) | undefined;
+  onLogPartCommitted:
+    | ((event: { sessionId: string; key: string; seqStart: number; seqEnd: number }) => void)
+    | undefined;
   /**
    * Browser REST assignment enqueue. When set, skip the in-process sweep so the
    * HTTP invocation never waits on host delivery (Invariant 12).
@@ -206,6 +211,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     slackInboundEvents: new Map(),
     customWebhookIntegrations: new Map(),
     githubIngressConfig: undefined,
+    sessionLogSettings: undefined,
     slackOutboundEnabled: false,
     slackInboundEnabled: false,
     slackOAuthClient: options.slackOAuthClient,
@@ -259,6 +265,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     onHostMessage: options.onHostMessage,
     onAssignmentRequested: options.onAssignmentRequested,
     onLogCommitted: undefined,
+    onLogPartCommitted: undefined,
   };
   attachPendingTerminalHookHandoffIndex(state);
   return state;

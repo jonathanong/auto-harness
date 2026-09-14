@@ -1320,7 +1320,7 @@ describe("archive retry state", () => {
       configurable: true,
       get() {
         writerReads += 1;
-        return writerReads <= 3 ? writer : undefined;
+        return writerReads <= 4 ? writer : undefined;
       },
     });
 

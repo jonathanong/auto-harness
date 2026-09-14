@@ -125,19 +125,8 @@ export async function getLogsDurable(
 ): Promise<LogRecord[]> {
   const fromObjects = await readSessionLogObjects(state, sessionId, query);
   if (fromObjects && fromObjects.length > 0) return fromObjects;
-  if (!state.storage) {
-    const logs = [...(state.logs.get(sessionId) ?? [])];
-    return query ? selectLogs(logs, query) : logs;
-  }
-  const logs = (
-    await (query ? state.storage.queryLogs(sessionId, query) : state.storage.listLogs(sessionId))
-  ).toSorted((a, b) => a.timestampSeq.localeCompare(b.timestampSeq));
-  if (!query)
-    state.logs.set(
-      sessionId,
-      logs.map((log) => ({ ...log })),
-    );
-  return logs.map((log) => ({ ...log }));
+  const logs = [...(state.logs.get(sessionId) ?? [])];
+  return query ? selectLogs(logs, query) : logs;
 }
 
 export async function listWorktreesDurable(state: ControlPlaneState): Promise<WorktreeRecord[]> {

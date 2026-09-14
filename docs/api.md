@@ -456,6 +456,16 @@ separate durable receipt.
 The ingress App is separate from the host credential App. The control plane stores only the
 ingress webhook secret. It never receives the credential App private key or installation tokens.
 
+### Session log settings
+
+`GET /session-log-settings` is an authenticated read of the operator knobs (upload mode, batch
+size/time, control-plane poll). Missing config returns defaults with `version: 0`.
+`PUT /session-log-settings` is admin-only (`integrations:write`) and compare-and-swaps on
+`version`. Host daemons receive a snapshot of these knobs on `session:assign.logSettings`.
+
+Host `PUT /sessions/:id/log-parts` and `PUT /sessions/:id/log-archive` require `agent:protocol`
+and write gzip objects under `sessions/{id}/`.
+
 ### Integrations — Slack
 
 Slack configuration is the singleton `/integrations/slack`. Every method
@@ -1154,7 +1164,8 @@ Cancel a queued or running session. **Operator (own sessions) or admin.**
 Get a bounded page of session logs from **S3** (gzip parts while running, or the final
 `logs.jsonl.gz` after terminal). The control-plane UI **polls** this endpoint. Live PTY streaming
 is the host pane, not this API. Viewer WebSocket does not replace this query and does not carry
-log text.
+log text. Hosts upload gzip parts with `PUT /sessions/:id/log-parts` and the concatenated archive
+with `PUT /sessions/:id/log-archive`.
 
 **Query parameters:**
 

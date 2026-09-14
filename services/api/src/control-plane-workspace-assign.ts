@@ -9,6 +9,7 @@ import { buildProviderCatalog } from "./control-plane-session-target.ts";
 import { orderedQueuedSessions } from "./control-plane-ordering.ts";
 import { planWorkspacePlacement } from "./queue-placement-planner.ts";
 import { connectionProtocolVersion } from "./control-plane-protocol.ts";
+import { assignLogSettings, getSessionLogSettings } from "./control-plane-session-log-settings.ts";
 import {
   accountHasLeaseCapacity,
   hostAssignmentOccupancyCount,
@@ -49,6 +50,7 @@ function assignMessage(
   attemptId: string,
   assignedAt: string,
   setupScript: string | undefined,
+  logSettings: import("@auto-harness/shared").SessionLogSettings,
 ): HostWireMessage {
   return {
     type: "session:assign",
@@ -75,6 +77,7 @@ function assignMessage(
     ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
     commandId: route.commandId,
     targetIndex: route.targetIndex,
+    logSettings,
   };
 }
 
@@ -165,6 +168,7 @@ export async function assignWorkspaceQueuedDurable(
     await refreshSchedulerReadModel(state);
     await listQueuedSessionsDurable(state, "workspace");
   }
+  await getSessionLogSettings(state);
   const assigned: WorkspaceAssignment[] = [];
   const now = state.now();
   const nowMs = Date.parse(now);
@@ -215,6 +219,7 @@ export async function assignWorkspaceQueuedDurable(
         attemptId,
         now,
         session.workspaceSetupScript ?? setupScriptFor(state, session),
+        assignLogSettings(state),
       );
       // Never commit a lease whose control frame the daemon cannot receive.
       // The session remains queued for an operator to reduce its opted-in

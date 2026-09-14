@@ -97,16 +97,11 @@ export async function reconcileSlackSession(input: {
  */
 async function ensureFailedSessionLogsLoaded(
   state: SlackSessionWriterState,
-  storage: SlackSessionStorage,
+  _storage: SlackSessionStorage,
   session: SessionRecord,
 ): Promise<void> {
   const failed = session.status === "failed" || session.status === "timed_out";
-  if (!failed || state.logs.has(session.id) || typeof storage.listLogs !== "function") return;
-  try {
-    state.logs.set(session.id, await storage.listLogs(session.id, true));
-  } catch (error) {
-    console.error("failed to load durable logs for a failed-session Slack snapshot", error);
-  }
+  if (!failed || state.logs.has(session.id)) return;
 }
 
 /**

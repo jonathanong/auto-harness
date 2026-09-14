@@ -4,6 +4,7 @@ import {
   DEFAULT_SESSION_LOG_SETTINGS,
   isSessionLogObjectKey,
   normalizeSessionLogSettings,
+  publicSessionLogSettings,
   sessionLogArchiveKey,
   sessionLogPartKey,
 } from "./session-log-settings.ts";
@@ -35,6 +36,18 @@ describe("session log settings", () => {
     expect(normalizeSessionLogSettings({ uploadMode: "sometimes" as never }).uploadMode).toBe(
       "off",
     );
+  });
+
+  it("exposes a versioned public snapshot and defaults version to zero", () => {
+    expect(publicSessionLogSettings(undefined)).toEqual({
+      ...DEFAULT_SESSION_LOG_SETTINGS,
+      version: 0,
+    });
+    expect(publicSessionLogSettings({ uploadMode: "always", version: 3 })).toMatchObject({
+      uploadMode: "always",
+      version: 3,
+    });
+    expect(publicSessionLogSettings({ version: -1 }).version).toBe(0);
   });
 
   it("builds gzip part and archive keys", () => {

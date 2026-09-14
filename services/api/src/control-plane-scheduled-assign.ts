@@ -18,6 +18,7 @@ import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import { commandStartStateForProtocol } from "./control-plane-command-start.ts";
 import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
+import { assignLogSettings, getSessionLogSettings } from "./control-plane-session-log-settings.ts";
 import { planScheduledPlacement } from "./queue-placement-planner.ts";
 import {
   accountHasLeaseCapacity,
@@ -83,6 +84,7 @@ async function eligibleHosts(state: ControlPlaneState, repositoryId: string) {
 }
 
 function wire(
+  state: ControlPlaneState,
   session: import("./db/types.ts").SessionRecord,
   now: string,
   sessionApiKey?: string,
@@ -107,6 +109,7 @@ function wire(
     ...(route?.providerId ? { providerId: route.providerId } : {}),
     ...(route?.commandId ? { commandId: route.commandId } : {}),
     ...(route?.targetIndex !== undefined ? { targetIndex: route.targetIndex } : {}),
+    logSettings: assignLogSettings(state),
   };
 }
 
@@ -122,6 +125,7 @@ export async function assignScheduledQueuedDurable(
     await refreshSchedulerReadModel(state);
     await listQueuedSessionsDurable(state, "scheduled");
   }
+  await getSessionLogSettings(state);
   const assigned: ScheduledAssignment[] = [];
   const now = state.now();
   const catalog = buildProviderCatalog(state);
@@ -302,7 +306,7 @@ export async function assignScheduledQueuedDurable(
       attemptId,
       assignedAtMs: Date.parse(now),
     });
-    state.onHostMessage?.(hostId, wire(next, now, sessionApiKey?.key));
+    state.onHostMessage?.(hostId, wire(state, next, now, sessionApiKey?.key));
     assigned.push({ session: toPublic(state, next), hostId, worktreeId: null });
   }
   return assigned;

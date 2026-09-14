@@ -9,7 +9,7 @@ import {
 } from "./control-plane-sessions-page.ts";
 import { readRawBody, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { parseLogQuery } from "./log-query.ts";
-import { putSessionLogPart } from "./session-log-objects.ts";
+import { putSessionLogArchive, putSessionLogPart } from "./session-log-objects.ts";
 
 type SessionListQueryParam =
   | "limit"
@@ -166,6 +166,34 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
         return true;
       }
       const key = await putSessionLogPart(plane.state, sessionId, seqStart, seqEnd, body);
+      send(res, 200, { key });
+    } catch {
+      sendInternalError(res);
+    }
+    return true;
+  }
+
+  const logArchiveMatch = /^\/api\/v1\/sessions\/([^/]+)\/log-archive$/.exec(url.pathname);
+  if (method === "PUT" && logArchiveMatch) {
+    const sessionId = logArchiveMatch[1]!;
+    try {
+      const session = await plane.getSessionDurable(sessionId);
+      const hostId = ctx.principal?.boundHostId;
+      const sessionScoped = ctx.sessionParentId === sessionId;
+      if (
+        !session ||
+        (!sessionScoped && hostId !== session.hostId) ||
+        !mayAccessHost(ctx.principal, session.hostId)
+      ) {
+        send(res, 404, { error: { code: "NOT_FOUND", message: "session not found" } });
+        return true;
+      }
+      const body = await readRawBody(ctx.req);
+      if (body.length === 0) {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: "empty log archive" } });
+        return true;
+      }
+      const key = await putSessionLogArchive(plane.state, sessionId, body);
       send(res, 200, { key });
     } catch {
       sendInternalError(res);

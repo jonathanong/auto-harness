@@ -167,7 +167,7 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
       new DeleteCommand({ TableName: ctx.tables.webhookDeliveries, Key: { id: delivery.id } }),
     );
   }
-  {
+  try {
     let startKey: Record<string, unknown> | undefined;
     do {
       const res = await ctx.doc.send(
@@ -189,6 +189,8 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
       }
       startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
     } while (startKey !== undefined);
+  } catch (error) {
+    if ((error as { name?: string }).name !== "ResourceNotFoundException") throw error;
   }
 }
 

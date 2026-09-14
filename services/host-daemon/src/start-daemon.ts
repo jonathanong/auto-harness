@@ -6,6 +6,7 @@ import type { DaemonConfig } from "./config.ts";
 import { fetchHostInventory, HostInventoryPolicyError, inventoryFingerprint } from "./bootstrap.ts";
 import type { DaemonTransport } from "./daemon-transport-types.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
+import { liveLogPortFromEnv, startLiveLogHttp } from "./live-log-http.ts";
 import { startLivenessLog } from "./liveness-log.ts";
 import { RepeatedLogSuppressor } from "./repeated-log-suppressor.ts";
 import { loadExecutionProfiles } from "./execution-profiles.ts";
@@ -412,6 +413,7 @@ function daemonStop(
   stopInventoryPoll: () => Promise<void>,
   stopUpdatePoll: () => Promise<void>,
   stopLivenessLog: () => void,
+  stopLiveLogs: () => Promise<void>,
 ): () => Promise<void> {
   return async () => {
     // Keep this channel alive until the fenced drain commits. If it fails,
@@ -421,6 +423,7 @@ function daemonStop(
     await stopInventoryPoll();
     clearInterval(keepalive);
     stopLivenessLog();
+    await stopLiveLogs().catch(() => undefined);
     // Keep active commands and their transport alive while making a lost v4
     // retry-disposition ACK fail closed instead of blocking this idle wait.
     loop.prepareForShutdown();
@@ -463,7 +466,22 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
     queuedCount: () => transport.queuedCount!(),
     log,
   });
-  const stop = daemonStop(loop, keepalive, stopInventoryPoll, stopUpdatePoll, stopLivenessLog);
+  const liveLogPort = liveLogPortFromEnv();
+  const liveLogs = liveLogPort
+    ? startLiveLogHttp({
+        port: liveLogPort,
+        subscribe: (sessionId, emit) => loop.subscribeLogs(sessionId, emit),
+        log,
+      })
+    : { close: async () => undefined };
+  const stop = daemonStop(
+    loop,
+    keepalive,
+    stopInventoryPoll,
+    stopUpdatePoll,
+    stopLivenessLog,
+    liveLogs.close,
+  );
 
   if (options.runUntil) {
     await options.runUntil;

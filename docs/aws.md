@@ -232,7 +232,7 @@ provision `SessionCancelRedeliveries` before an API/Cron deploy that calls
 | WS Message    | `$default`                                            | Agent/client messages; log writes; status updates; subscribe                                                                                  |
 | Cron          | EventBridge rate(1 minute)                            | Due schedules → sessions; archive retry; stale-host/ack sweeps; queued assignment; Slack outbox                                               |
 | Scheduler     | Invoked in-process or as shared service from above    | Match queue → worktrees; `session:assign`                                                                                                     |
-| Archival      | On session terminal status plus bounded Cron retry    | DynamoDB SessionLogs → S3 JSONL                                                                                                               |
+| Archival      | On session terminal status plus bounded Cron retry    | Host gzip parts/final object in S3; Archives table holds pointer metadata                                                                     |
 
 Handlers share:
 
@@ -282,7 +282,6 @@ need a catalog page still Scan or Query at request time, not at init.
 | Sessions                  | `id`              | —              | `statusShard-createdAt`, `statusShard-createdOrder`, `statusShard-queueOrder`, priority-order indexes | Sharded queue and bounded total-order list queries                   |
 | HostLocks                 | `hostId`          | —              | —                                                                                                     | Conditional host assignment lock                                     |
 | ConcurrencyLocks          | `concurrencyId`   | —              | —                                                                                                     | Conditional concurrency lock                                         |
-| SessionLogs               | `sessionId`       | `timestampSeq` | —                                                                                                     | Append/range read; `ttl` is epoch-seconds 7-day expiry on new writes |
 | Schedules                 | `id`              | —              | `repositoryId-id`                                                                                     | CRUD by id; count schedules by repository                            |
 | Connections               | `connectionId`    | —              | —                                                                                                     | Connection state                                                     |
 | Archives                  | `key`             | —              | —                                                                                                     | Archive metadata                                                     |
@@ -317,23 +316,20 @@ remain totally ordered even when their timestamps are equal. The API cursor
 encodes the last evaluated DynamoDB key and is opaque to callers. Audit table
 writes are conditional inserts; no lifecycle code deletes or updates records.
 
-### SessionLogs retention and archival
+### Session log objects and archival
 
-1. New SessionLogs writes set `ttl` to Unix-epoch seconds **7 days** from the write
-   (`SESSION_LOGS_TTL_SECONDS` in `services/api/src/db/dynamo.ts`). CDK and local table creation
-   enable DynamoDB TTL on that attribute (`services/cdk/src/tables.ts`,
-   `services/api/src/db/ensure-tables.ts`). Table-level TTL only deletes items that carry a past
-   Unix-epoch `ttl`, so rows written before this change — which omit the attribute and are not
-   backfilled — do not expire this way (see
-   [costs.md](costs.md#sessionlogs-cost-control)).
+1. Log **bodies** are gzip JSONL objects in S3 (`sessions/{id}/parts/*.jsonl.gz` then
+   `sessions/{id}/logs.jsonl.gz`). DynamoDB no longer stores transcript chunks. The host PUTs
+   parts and the concatenated archive over REST (`agent:protocol`). See
+   [architecture/logs.md](architecture/logs.md) and [costs.md](costs.md).
 2. The foundation provides the encrypted, versioned bucket and a narrowly scoped
    archive-write policy (`s3:PutObject` only below `sessions/*`). REST and Cron receive the bucket
    name and that write policy; REST alone also receives `s3:GetObject` and `s3:GetObjectVersion`
    below `sessions/*` for authorized, version-pinned archive retrieval. The WebSocket worker
    receives neither archive access.
    Terminal-session processing:
-   - Query all SessionLogs for `sessionId`
-   - Write the `sessions/{sessionId}/logs.jsonl` object and track pending/completed/expired state.
+   - Concatenate gzip parts (host `PUT /log-archive`, or Cron concat if parts exist)
+   - Write the `sessions/{sessionId}/logs.jsonl.gz` object and track pending/completed/expired state.
      `expired` is a durable terminal metadata status: retry GSI attributes are removed so Cron
      cannot later serialize an empty log set and mark the archive complete. Read-time expiry does
      not preempt an in-flight `processing` retry claim that already recorded captured transcript

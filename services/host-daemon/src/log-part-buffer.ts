@@ -1,5 +1,5 @@
 import {
-  DEFAULT_SESSION_LOG_SETTINGS,
+  concatGzipMembers,
   gzipJsonlLines,
   normalizeSessionLogSettings,
   type SessionLogChunk,
@@ -20,6 +20,7 @@ export class LogPartBuffer {
   private pending: SessionLogChunk[] = [];
   private pendingBytes = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private readonly uploaded: Buffer[] = [];
   watching = false;
 
   constructor(
@@ -70,11 +71,28 @@ export class LogPartBuffer {
         }),
       ),
     );
+    this.uploaded.push(gzipped);
+    await this.put(
+      `/api/v1/sessions/${encodeURIComponent(this.sessionId)}/log-parts?seqStart=${Math.min(...seqs)}&seqEnd=${Math.max(...seqs)}`,
+      gzipped,
+    );
+  }
+
+  async flushFinal(): Promise<void> {
+    await this.flush();
+    if (this.uploaded.length === 0 || !this.upload) return;
+    await this.put(
+      `/api/v1/sessions/${encodeURIComponent(this.sessionId)}/log-archive`,
+      concatGzipMembers(this.uploaded),
+    );
+  }
+
+  private async put(path: string, gzipped: Buffer): Promise<void> {
+    if (!this.upload) return;
     const base = this.upload.apiUrl.replace(/\/$/, "").replace(/\/ws$/i, "");
-    const url = `${base}/api/v1/sessions/${encodeURIComponent(this.sessionId)}/log-parts?seqStart=${Math.min(...seqs)}&seqEnd=${Math.max(...seqs)}`;
     const headers: Record<string, string> = { "content-type": "application/gzip" };
     if (this.upload.apiKey) headers.authorization = `Bearer ${this.upload.apiKey}`;
-    const response = await (this.upload.fetchFn ?? fetch)(url, {
+    const response = await (this.upload.fetchFn ?? fetch)(`${base}${path}`, {
       method: "PUT",
       headers,
       body: new Uint8Array(gzipped),
@@ -88,5 +106,3 @@ export class LogPartBuffer {
     return this.watching;
   }
 }
-
-export const defaultLogPartSettings = DEFAULT_SESSION_LOG_SETTINGS;

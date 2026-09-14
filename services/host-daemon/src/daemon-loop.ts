@@ -332,6 +332,7 @@ export class DaemonLoop {
   private readonly transport: DaemonTransport;
   private readonly outbound: OutboundQueue;
   private readonly logParts = new Map<string, LogPartBuffer>();
+  private readonly liveLogListeners = new Map<string, Set<(chunk: SessionLogChunk) => void>>();
   private readonly reconnectAbortMs: number;
   private readonly ackConfirmationMs: number;
   private readonly drainRetryMs: number;
@@ -811,6 +812,12 @@ export class DaemonLoop {
         return;
       case "session:assign":
         await this.handleAssign(msg);
+        return;
+      case "session:log-watch":
+        this.ensureLogBuffer(msg.sessionId).watching = true;
+        return;
+      case "session:log-unwatch":
+        this.ensureLogBuffer(msg.sessionId).watching = false;
         return;
       default:
         return;
@@ -1863,6 +1870,7 @@ export class DaemonLoop {
       return;
     }
 
+    this.ensureLogBuffer(msg.sessionId, msg.logSettings);
     this.abortSupersededAttempts(msg.sessionId, msg.attemptId);
     // A terminal result has already stopped executing, even though its
     // `runAssign` remains in-flight while its status is delivered. It must not
@@ -2149,6 +2157,8 @@ export class DaemonLoop {
         ...(resolveDeferredDisposition ? { resolveDeferredDisposition } : {}),
       });
     }
+    await this.logParts.get(msg.sessionId)?.flushFinal();
+    this.logParts.delete(msg.sessionId);
     await this.outbound.flush();
     await this.outbound
       .send(statusMessage, { signal: controller.signal })
@@ -2176,17 +2186,47 @@ export class DaemonLoop {
     }
   }
 
+  subscribeLogs(sessionId: string, emit: (chunk: SessionLogChunk) => void): () => void {
+    let listeners = this.liveLogListeners.get(sessionId);
+    if (!listeners) {
+      listeners = new Set();
+      this.liveLogListeners.set(sessionId, listeners);
+    }
+    listeners.add(emit);
+    return () => {
+      listeners!.delete(emit);
+      if (listeners!.size === 0) this.liveLogListeners.delete(sessionId);
+    };
+  }
+
+  private ensureLogBuffer(
+    sessionId: string,
+    settings?: import("@auto-harness/shared").SessionLogSettings,
+  ): LogPartBuffer {
+    let buffer = this.logParts.get(sessionId);
+    if (!buffer) {
+      buffer = new LogPartBuffer(
+        sessionId,
+        settings,
+        {
+          apiUrl: this.config.apiUrl,
+          ...(this.config.apiKey ? { apiKey: this.config.apiKey } : {}),
+        },
+        (chunk) => {
+          const listeners = this.liveLogListeners.get(chunk.sessionId);
+          if (!listeners) return;
+          for (const emit of listeners) emit(chunk);
+        },
+      );
+      if (settings?.uploadMode === "always") buffer.watching = true;
+      this.logParts.set(sessionId, buffer);
+    }
+    return buffer;
+  }
+
   private async emitLog(chunk: SessionLogChunk): Promise<void> {
     this.onLog?.(`[${chunk.stream}#${chunk.seq}] ${chunk.content}`);
-    let buffer = this.logParts.get(chunk.sessionId);
-    if (!buffer) {
-      buffer = new LogPartBuffer(chunk.sessionId, undefined, {
-        apiUrl: this.config.apiUrl,
-        ...(this.config.apiKey ? { apiKey: this.config.apiKey } : {}),
-      });
-      this.logParts.set(chunk.sessionId, buffer);
-    }
-    buffer.push(chunk);
+    this.ensureLogBuffer(chunk.sessionId).push(chunk);
   }
 
   private async waitForAcknowledgement(

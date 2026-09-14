@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { handleHostLogBatchDurable } from "./control-plane-messages.ts";
-import { SESSION_LOGS_TTL_SECONDS } from "./db/dynamo.ts";
 import { OPERATIONAL_METRIC_ENVIRONMENT_VAR } from "./operational-metrics.ts";
 
 function withMetrics(): { payloads: () => Record<string, unknown>[] } {
@@ -83,11 +82,6 @@ describe("durable host log batches", () => {
       ),
     ).resolves.toEqual({ ok: true });
     expect(plane.getLogs("session").map(({ seq }) => seq)).toEqual([1, 2]);
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    for (const record of plane.getLogs("session")) {
-      expect(record.ttl).toBeGreaterThanOrEqual(nowSeconds + SESSION_LOGS_TTL_SECONDS - 2);
-      expect(record.ttl).toBeLessThanOrEqual(nowSeconds + SESSION_LOGS_TTL_SECONDS + 2);
-    }
   });
 
   it("validates chunk bounds and a single current host lease", async () => {
@@ -142,11 +136,6 @@ describe("durable host log batches", () => {
       getHostLock: async () => "connection",
       putLogsFenced: async (records: Array<{ seq: number; ttl?: number }>) => {
         written.push(records.map(({ seq }) => seq));
-        const nowSeconds = Math.floor(Date.now() / 1000);
-        for (const record of records) {
-          expect(record.ttl).toBeGreaterThanOrEqual(nowSeconds + SESSION_LOGS_TTL_SECONDS - 2);
-          expect(record.ttl).toBeLessThanOrEqual(nowSeconds + SESSION_LOGS_TTL_SECONDS + 2);
-        }
         return true;
       },
       deleteLog: async (_sessionId: string, timestampSeq: string) => {

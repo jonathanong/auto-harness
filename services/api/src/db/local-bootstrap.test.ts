@@ -1,7 +1,5 @@
-import { DescribeTimeToLiveCommand } from "@aws-sdk/client-dynamodb";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SESSION_LOGS_TTL_ATTRIBUTE } from "./dynamo.ts";
 import {
   createDynamoClients,
   ensureControlPlaneTables,
@@ -22,15 +20,6 @@ describe("local Dynamo bootstrap", () => {
 
     await expect(listDynamoTables(client)).resolves.toEqual(
       expect.arrayContaining([names.sessions, names.users]),
-    );
-    const sessionLogsTtl = await client.send(
-      new DescribeTimeToLiveCommand({ TableName: names.sessionLogs }),
-    );
-    expect(sessionLogsTtl.TimeToLiveDescription).toMatchObject({
-      AttributeName: SESSION_LOGS_TTL_ATTRIBUTE,
-    });
-    expect(["ENABLED", "ENABLING"]).toContain(
-      sessionLogsTtl.TimeToLiveDescription?.TimeToLiveStatus,
     );
   });
 

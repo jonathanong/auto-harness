@@ -17,7 +17,6 @@ import {
   queueWrite,
   trackLogPersist,
 } from "./control-plane-state.ts";
-import { sessionLogsTtlEpochSeconds } from "./db/dynamo.ts";
 import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import {
   heartbeat,
@@ -140,7 +139,6 @@ function logRecord(opts: {
     timestamp: opts.timestamp,
     seq: opts.seq,
     ...(opts.dropped !== undefined ? { dropped: opts.dropped } : {}),
-    ttl: sessionLogsTtlEpochSeconds(),
   };
 }
 
@@ -477,17 +475,6 @@ function resolvedLogAttemptId(
   return message.attemptId ?? session?.attemptId;
 }
 
-function logAttemptFence(
-  messages: readonly { sessionId: string; attemptId?: string | undefined }[],
-): Array<{ sessionId: string; attemptId: string }> {
-  const attempts: Array<{ sessionId: string; attemptId: string }> = [];
-  for (const message of messages) {
-    if (message.attemptId)
-      attempts.push({ sessionId: message.sessionId, attemptId: message.attemptId });
-  }
-  return attempts;
-}
-
 /** Durable log fencing must not trust a warm worker's session cache. */
 async function loadDurableSession(
   state: ControlPlaneState,
@@ -525,13 +512,7 @@ export function appendLog(
   const rec = logRecord(opts);
   emitLogDrops(opts.dropped);
   state.logs.set(opts.sessionId, commitLogRecord(state, rec));
-  if (state.storage) {
-    const persisted = queueWrite(state, async (storage) => {
-      await storage!.putLog(rec);
-      state.onLogCommitted?.(rec);
-    });
-    trackLogPersist(state, opts.sessionId, persisted);
-  } else state.onLogCommitted?.(rec);
+  state.onLogCommitted?.(rec);
   return rec;
 }
 
@@ -549,9 +530,6 @@ export async function appendLogDurable(
 ): Promise<LogRecord> {
   const rec = logRecord(opts);
   emitLogDrops(opts.dropped);
-  if (state.storage) {
-    await state.storage.putLog(rec);
-  }
   state.logs.set(opts.sessionId, commitLogRecord(state, rec));
   state.onLogCommitted?.(rec);
   return rec;
@@ -992,27 +970,11 @@ export async function handleHostMessageDurable(
       if (!hostId || (await storage.getHostLock(hostId)) !== sourceConnectionId) {
         return { ok: false, error: "stale host connection" };
       }
-      const attempts = logAttemptFence([
-        attemptId !== undefined
-          ? { sessionId: msg.sessionId, attemptId }
-          : { sessionId: msg.sessionId },
-      ]);
-      if (
-        !(await storage.putLogFenced(log, {
-          hostId,
-          connectionId: sourceConnectionId,
-          ...(attempts.length > 0 ? { attempts } : {}),
-        }))
-      ) {
-        return { ok: false, error: "stale host connection" };
-      }
-      emitLogDrops(msg.dropped);
-      const retained = commitLogRecord(state, log);
-      state.logs.set(log.sessionId, retained);
-      state.onLogCommitted?.(log);
-    } else {
-      await appendLogDurable(state, log);
     }
+    await putSessionLogPart(state, log.sessionId, log.seq, log.seq, gzipLogRecords([log]));
+    emitLogDrops(msg.dropped);
+    state.logs.set(log.sessionId, commitLogRecord(state, log));
+    state.onLogCommitted?.(log);
     return { ok: true };
   }
   let fence: { hostId: string; connectionId: string } | undefined;

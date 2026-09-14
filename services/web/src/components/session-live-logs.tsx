@@ -24,6 +24,19 @@ export function SessionLiveLogs({
   const [connectionState, setConnectionState] = useState<LiveLogsConnectionState>("connecting");
   const [sessionStatus] = useState(initialStatus);
   const [error, setError] = useState<string | null>(null);
+  const [pollMs, setPollMs] = useState(60_000);
+
+  useEffect(() => {
+    void fetch("/api/v1/session-log-settings", { credentials: "same-origin", cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const body = (await response.json()) as { controlPlanePollMs?: number };
+        if (typeof body.controlPlanePollMs === "number" && body.controlPlanePollMs >= 5_000) {
+          setPollMs(body.controlPlanePollMs);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -50,7 +63,7 @@ export function SessionLiveLogs({
           }
         })
         .finally(() => {
-          if (!stopped) retryTimer = setTimeout(poll, 60_000);
+          if (!stopped) retryTimer = setTimeout(poll, pollMs);
         });
     };
     poll();
@@ -58,7 +71,7 @@ export function SessionLiveLogs({
       stopped = true;
       if (retryTimer !== undefined) clearTimeout(retryTimer);
     };
-  }, [sessionId]);
+  }, [sessionId, pollMs]);
 
   return (
     <div className="space-y-2" data-pw="session-logs-live-tail">

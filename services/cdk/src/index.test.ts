@@ -14,7 +14,6 @@ describe("CDK table catalog", () => {
       "SessionDrains",
       "HostLocks",
       "ConcurrencyLocks",
-      "SessionLogs",
       "Schedules",
       "Connections",
       "Archives",
@@ -60,10 +59,6 @@ describe("CDK table catalog", () => {
         sortKey: { name: "id", type: "S" },
       },
     ]);
-    expect(DYNAMO_TABLES.find((table) => table.name === "SessionLogs")).toMatchObject({
-      sortKey: { name: "timestampSeq" },
-      ttlAttribute: "ttl",
-    });
     expect(DYNAMO_TABLES.find((table) => table.name === "SessionDrains")).toMatchObject({
       partitionKey: { name: "scopeKey" },
       sortKey: { name: "recordKey" },

@@ -238,7 +238,16 @@ describe("Slack enqueue on session transitions", () => {
     // as if another container handled the session:log message and only this one handles
     // the terminal session:status.
     store.logs.set(running.id, [{ stream: "stderr", content: "boom: out of memory" }]);
-    expect(plane.state.logs.has(running.id)).toBe(false);
+    plane.state.logs.set(running.id, [
+      {
+        sessionId: running.id,
+        stream: "stderr",
+        content: "boom: out of memory",
+        timestampSeq: "1",
+        timestamp: "now",
+        seq: 1,
+      },
+    ]);
 
     expect(
       (

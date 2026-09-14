@@ -67,6 +67,8 @@ export type SessionAssign = {
    * `GET /sessions/<this session id>/prior-context` and write the result to
    * the fixed prior-context path. No URL or path ever crosses the wire. */
   priorContext?: { sourceSessionId: string };
+  /** Operator log upload/batch knobs snapshotted at assign time. */
+  logSettings?: import("./session-log-settings.ts").SessionLogSettings;
 };
 
 export type SessionLogChunk = {
@@ -166,7 +168,11 @@ export type HostWireMessage =
       assignedAt: string;
       /** Immutable execution-attempt fence; echo in ACK and status messages. */
       attemptId: string;
+      /** Operator log upload/batch knobs snapshotted at assign time. */
+      logSettings?: import("./session-log-settings.ts").SessionLogSettings;
     }
+  | { type: "session:log-watch"; sessionId: string }
+  | { type: "session:log-unwatch"; sessionId: string }
   /** Sent only after the control plane durably commits `session:ack` for the
    * current host connection. A successful WebSocket write is not an ACK. */
   | { type: "session:acknowledged"; sessionId: string; attemptId?: string | undefined }

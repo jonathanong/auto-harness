@@ -1,13 +1,9 @@
 import { thrownMessage } from "@auto-harness/shared";
 import Link from "next/link";
-import {
-  resolveSessionDetailTab,
-  SectionError,
-  SessionTerminalViewer,
-  type SessionSummary,
-} from "@auto-harness/ui";
+import { resolveSessionDetailTab, SectionError, type SessionSummary } from "@auto-harness/ui";
 
 import { SessionLiveDetail } from "../../../components/session-live-detail.tsx";
+import { SessionLiveHostLogs } from "../../../components/session-live-host-logs.tsx";
 import { ApiError, apiGet } from "../../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
@@ -80,7 +76,7 @@ export default async function SessionDetailPage({
         {logsError ? (
           <SectionError resource="session logs" message={logsError} selector="session-logs" />
         ) : (
-          <SessionTerminalViewer sessionId={id} items={logs} />
+          <SessionLiveHostLogs sessionId={id} initialItems={logs} />
         )}
       </SessionLiveDetail>
     </div>

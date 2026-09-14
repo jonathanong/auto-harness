@@ -67,6 +67,7 @@ export async function putSessionLogPart(
   const key = sessionLogPartKey(sessionId, seqStart, seqEnd);
   state.logObjects.set(key, gzipped);
   await state.archiveWriter?.putGzipObject?.(key, gzipped);
+  state.onLogPartCommitted?.({ sessionId, key, seqStart, seqEnd });
   return key;
 }
 

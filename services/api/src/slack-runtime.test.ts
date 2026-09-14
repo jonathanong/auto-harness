@@ -270,10 +270,18 @@ describe("Slack production runtime", () => {
     expect(await worker!.runOnce()).toBe(true);
     expect(await worker!.runOnce()).toBe(true);
     listRunning = false;
+    plane.state.logs.set("running-1", [
+      {
+        sessionId: "running-1",
+        stream: "stderr",
+        content: "boom",
+        timestampSeq: "1",
+        timestamp: now,
+        seq: 1,
+      },
+    ]);
     expect(await worker!.runOnce()).toBe(true);
-    // consistentRead: true — this feeds an immutable Slack outbox row, so it must not
-    // risk missing the host's last log write to an eventually consistent read.
-    expect(listLogs).toHaveBeenCalledWith("running-1", true);
+    // Transcript bodies live in S3/memory, not Dynamo SessionLogs.
     expect(
       fetchImpl.mock.calls.some((call) => String(call[1].body).includes("Session failed")),
     ).toBe(true);
