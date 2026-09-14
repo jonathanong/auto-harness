@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- durable create, resume, and restart share one orchestration. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, join } from "node:path";
@@ -97,6 +98,13 @@ describe("durable full-stack orchestration", () => {
       scheduler: { intervalMs: 25 },
     });
     const base = `http://127.0.0.1:${port}`;
+    await createdPlane.plane.putSessionLogSettings({
+      version: 0,
+      uploadMode: "always",
+      batchMaxKb: 1,
+      batchMaxLines: 1,
+      batchMaxWaitMs: 1000,
+    });
     const hostId = "durable-integration-host";
 
     const repository = await jsonRequest<{ id: string }>(base, "/api/v1/repositories", 201, {
@@ -153,6 +161,7 @@ describe("durable full-stack orchestration", () => {
       config,
       childEnvSource: {
         ...process.env,
+        HARNESS_DAEMON_LIVE_LOG_PORT: "off",
         PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ""}`,
       },
       inventoryPollMs: 0,

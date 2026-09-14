@@ -80,9 +80,9 @@ describe("Lambda viewer WebSocket delivery", () => {
     ctx.connections.set("host-1", { ...viewer, connectionId: "host-1", type: "host" });
 
     await ctx.sockets.publishLog(log("2026-08-17T00:00:01.000Z#0000000001", 1));
-    expect(ctx.sent).toHaveLength(0);
-    await ctx.sockets.publishLog(log("2026-08-17T00:00:02.000Z#0000000002", 2));
     expect(ctx.sent).toHaveLength(1);
+    await ctx.sockets.publishLog(log("2026-08-17T00:00:02.000Z#0000000002", 2));
+    expect(ctx.sent).toHaveLength(2);
     expect(ctx.connections.get("viewer-1")?.viewerSubscriptions?.[0]?.after).toContain(
       "0000000001",
     );

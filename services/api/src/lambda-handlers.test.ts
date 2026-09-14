@@ -1166,20 +1166,18 @@ describe("Lambda runtime adapters", () => {
       JSON.parse(String(fixture.management.send.mock.calls.at(-1)?.[0].input.Data)),
     ).toMatchObject({ type: "session:subscribed", sessionId: "session-1" });
     fixture.management.send.mockClear();
-    fixture.plane.state.onLogCommitted?.({
+    fixture.plane.state.onLogPartCommitted?.({
       sessionId: "session-1",
-      timestampSeq: "2026-08-12T00:00:01.000Z#0000000001",
-      seq: 1,
-      stream: "stdout",
-      content: "hosted log",
-      timestamp: "2026-08-12T00:00:01.000Z",
+      key: "sessions/session-1/parts/1-1.jsonl.gz",
+      seqStart: 1,
+      seqEnd: 1,
     });
     await vi.waitFor(() => expect(fixture.management.send).toHaveBeenCalledOnce());
     expect(JSON.parse(String(fixture.management.send.mock.calls[0]?.[0].input.Data))).toMatchObject(
       {
-        type: "session:log",
+        type: "session:log-part",
         sessionId: "session-1",
-        content: "hosted log",
+        key: "sessions/session-1/parts/1-1.jsonl.gz",
       },
     );
     await expect(
@@ -1193,7 +1191,7 @@ describe("Lambda runtime adapters", () => {
   it("preserves an existing log callback and rejects malformed client connection rows", async () => {
     const fixture = runtimeFixture();
     const previous = vi.fn();
-    fixture.plane.state.onLogCommitted = previous;
+    fixture.plane.state.onLogPartCommitted = previous;
     const runtime = await createLambdaRuntime({
       auth: fixture.auth as never,
       created: { plane: fixture.plane, storage: fixture.storage } as never,
@@ -1201,13 +1199,11 @@ describe("Lambda runtime adapters", () => {
     });
     const record = {
       sessionId: "session-1",
-      timestampSeq: "2026-08-12T00:00:01.000Z#0000000001",
-      seq: 1,
-      stream: "stdout" as const,
-      content: "log",
-      timestamp: "2026-08-12T00:00:01.000Z",
+      key: "sessions/session-1/parts/1-1.jsonl.gz",
+      seqStart: 1,
+      seqEnd: 1,
     };
-    fixture.plane.state.onLogCommitted?.(record);
+    fixture.plane.state.onLogPartCommitted?.(record);
     expect(previous).toHaveBeenCalledWith(record);
     fixture.connections.set("viewer-1", {
       connectionId: "viewer-1",
@@ -1221,7 +1217,7 @@ describe("Lambda runtime adapters", () => {
     });
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     fixture.management.send.mockRejectedValueOnce(new Error("gone"));
-    fixture.plane.state.onLogCommitted?.(record);
+    fixture.plane.state.onLogPartCommitted?.(record);
     await vi.waitFor(() =>
       expect(error).toHaveBeenCalledWith(
         "failed to deliver API Gateway viewer message",

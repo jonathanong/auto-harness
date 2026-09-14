@@ -415,6 +415,12 @@ export async function createLambdaRuntime(
     auth,
     management,
     storage: created.storage,
+    onSessionWatch: (hostId, sessionId, watching) => {
+      trackDelivery(hostId, {
+        type: watching ? "session:log-watch" : "session:log-unwatch",
+        sessionId,
+      });
+    },
     resolvePublicBaseUrl: async () => {
       if (viewerPublicBaseUrl !== undefined) return viewerPublicBaseUrl;
       /* v8 ignore next 3 -- @preserve production SSM refetch after a transient cold-start miss */
@@ -490,11 +496,11 @@ export async function createLambdaRuntime(
       console.error("failed to enqueue assignment sweep", error);
     }),
   );
-  const previousOnLogCommitted = created.plane.state.onLogCommitted;
-  created.plane.state.onLogCommitted = (record) => {
-    previousOnLogCommitted?.(record);
+  const previousOnLogPartCommitted = created.plane.state.onLogPartCommitted;
+  created.plane.state.onLogPartCommitted = (event) => {
+    previousOnLogPartCommitted?.(event);
     track(
-      viewerSockets.publishLog(record).catch((error: unknown) => {
+      viewerSockets.publishLogPart(event).catch((error: unknown) => {
         console.error("failed to deliver API Gateway viewer message", error);
       }),
     );

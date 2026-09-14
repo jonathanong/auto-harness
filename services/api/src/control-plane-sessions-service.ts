@@ -30,6 +30,7 @@ import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 import * as priorContext from "./control-plane-prior-context.ts";
 import * as reconnect from "./control-plane-reconnect.ts";
 import * as usage from "./control-plane-usage.ts";
+import * as sessionLogSettings from "./control-plane-session-log-settings.ts";
 import {
   encodeSessionCursor,
   sessionCursorScopeHash,
@@ -216,6 +217,16 @@ export class ControlPlaneSessionsService {
 
   getLogsDurable(sessionId: string, query?: LogQuery): Promise<LogRecord[]> {
     return durableRuntime.getLogsDurable(this.state, sessionId, query);
+  }
+
+  getSessionLogSettings(): ReturnType<typeof sessionLogSettings.getSessionLogSettings> {
+    return sessionLogSettings.getSessionLogSettings(this.state);
+  }
+
+  putSessionLogSettings(
+    input: Parameters<typeof sessionLogSettings.putSessionLogSettings>[1],
+  ): ReturnType<typeof sessionLogSettings.putSessionLogSettings> {
+    return sessionLogSettings.putSessionLogSettings(this.state, input);
   }
 
   loadPriorSessionContextDurable(

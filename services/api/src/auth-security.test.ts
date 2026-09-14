@@ -434,6 +434,9 @@ describe("control-plane authentication security", () => {
     expect(requiredCapability("GET", "/api/v1/integrations/github-ingress")).toBe(
       "integrations:write",
     );
+    expect(requiredCapability("GET", "/api/v1/session-log-settings")).toBe("authenticated");
+    expect(requiredCapability("PUT", "/api/v1/session-log-settings")).toBe("integrations:write");
+    expect(requiredCapability("PUT", "/api/v1/sessions/s/log-archive")).toBe("agent:protocol");
     expect(requiredCapability("GET", "/api/v1/auth/users")).toBe("accounts:write");
     expect(requiredCapability("GET", "/api/v1/audit-logs")).toBe("audit:read");
     expect(requiredCapability("POST", "/api/v1/scheduler/assign")).toBe("scheduler:run");

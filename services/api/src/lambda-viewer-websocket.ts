@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- viewer connect, subscribe, and log-part fan-out share one adapter. */
 import {
   GoneException,
   PostToConnectionCommand,
@@ -20,7 +21,9 @@ const MAX_SUBSCRIPTIONS = 8;
 type ViewerStorage = {
   deleteConnection(connectionId: string): Promise<void>;
   getConnection(connectionId: string): Promise<ConnectionRecord | null>;
-  getSession(sessionId: string): Promise<{ repositoryId: string; status: string } | null>;
+  getSession(
+    sessionId: string,
+  ): Promise<{ repositoryId: string; status: string; hostId?: string | null } | null>;
   listConnections(): Promise<ConnectionRecord[]>;
   putConnection(connection: ConnectionRecord): Promise<void>;
   queryLogs?(sessionId: string, query: { after?: string; limit: number }): Promise<LogRecord[]>;
@@ -34,6 +37,7 @@ type ViewerDependencies = {
   publicBaseUrl?: string;
   /** Retry a missing origin after a transient cold-start SSM miss. */
   resolvePublicBaseUrl?: () => Promise<string | undefined>;
+  onSessionWatch?: (hostId: string, sessionId: string, watching: boolean) => void;
 };
 
 /** API Gateway WebSocket adapter for read-only browser log subscriptions. */
@@ -105,6 +109,15 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
       if (connection?.type !== "client") return false;
       for (const subscription of connection.viewerSubscriptions ?? []) {
         await removeViewerFanout(dependencies.storage, subscription.sessionId, connectionId);
+        const remaining = (
+          await viewerConnectionIds(dependencies.storage, subscription.sessionId)
+        ).filter((id) => id !== connectionId);
+        if (remaining.length === 0) {
+          const session = await dependencies.storage.getSession(subscription.sessionId);
+          if (session?.hostId) {
+            dependencies.onSessionWatch?.(session.hostId, subscription.sessionId, false);
+          }
+        }
       }
       await dependencies.storage.deleteConnection(connectionId);
       return true;
@@ -122,6 +135,13 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
         );
         await save(connection);
         await removeViewerFanout(dependencies.storage, message.sessionId, connectionId);
+        const remaining = await viewerConnectionIds(dependencies.storage, message.sessionId);
+        if (remaining.length === 0) {
+          const session = await dependencies.storage.getSession(message.sessionId);
+          if (session?.hostId) {
+            dependencies.onSessionWatch?.(session.hostId, message.sessionId, false);
+          }
+        }
         return 200;
       }
       const session = await dependencies.storage.getSession(message.sessionId);
@@ -153,6 +173,10 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
         : [...subscriptions, subscription];
       await save(connection);
       await addViewerFanout(dependencies.storage, message.sessionId, connectionId);
+      const ids = await viewerConnectionIds(dependencies.storage, message.sessionId);
+      if (ids.length === 1 && session.hostId) {
+        dependencies.onSessionWatch?.(session.hostId, message.sessionId, true);
+      }
       if (
         !(await post(connectionId, {
           type: "session:subscribed",
@@ -162,24 +186,48 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
         }))
       ) {
         await removeViewerFanout(dependencies.storage, message.sessionId, connectionId);
+        const remaining = await viewerConnectionIds(dependencies.storage, message.sessionId);
+        if (remaining.length === 0 && session.hostId) {
+          dependencies.onSessionWatch?.(session.hostId, message.sessionId, false);
+        }
       }
       return 200;
     },
 
-    async publishLog(record: LogRecord): Promise<void> {
-      for (const viewerId of await viewerConnectionIds(dependencies.storage, record.sessionId)) {
+    async publishLogPart(event: {
+      sessionId: string;
+      key: string;
+      seqStart: number;
+      seqEnd: number;
+    }): Promise<void> {
+      for (const viewerId of await viewerConnectionIds(dependencies.storage, event.sessionId)) {
         const connection = await dependencies.storage.getConnection(viewerId);
         if (connection?.type !== "client") continue;
-        const subscription = connection.viewerSubscriptions?.find(
-          ({ sessionId }) => sessionId === record.sessionId,
-        );
-        if (!subscription || (subscription.after && record.timestampSeq <= subscription.after)) {
+        if (
+          !connection.viewerSubscriptions?.some(({ sessionId }) => sessionId === event.sessionId)
+        ) {
           continue;
         }
-        if (!(await post(viewerId, { type: "session:log", ...record }))) {
-          await removeViewerFanout(dependencies.storage, record.sessionId, viewerId);
+        if (!(await post(viewerId, { type: "session:log-part", ...event }))) {
+          await removeViewerFanout(dependencies.storage, event.sessionId, viewerId);
+          const remaining = await viewerConnectionIds(dependencies.storage, event.sessionId);
+          if (remaining.length === 0) {
+            const session = await dependencies.storage.getSession(event.sessionId);
+            if (session?.hostId) {
+              dependencies.onSessionWatch?.(session.hostId, event.sessionId, false);
+            }
+          }
         }
       }
+    },
+
+    async publishLog(record: LogRecord): Promise<void> {
+      await this.publishLogPart({
+        sessionId: record.sessionId,
+        key: `sessions/${record.sessionId}/parts/${record.seq}-${record.seq}.jsonl.gz`,
+        seqStart: record.seq,
+        seqEnd: record.seq,
+      });
     },
   };
 }

@@ -35,6 +35,7 @@ import { handleCustomWebhookRoute } from "./local-routes-custom-webhooks.ts";
 import { handleCustomWebhookConfigRoutes } from "./local-routes-custom-webhook-config.ts";
 import { handleGitHubIngressRoute } from "./local-routes-github-ingress.ts";
 import { handleGitHubIngressConfigRoutes } from "./local-routes-github-ingress-config.ts";
+import { handleSessionLogSettingsRoutes } from "./local-routes-session-log-settings.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 import { enforceRateLimit } from "./local-rate-limit.ts";
 import {
@@ -264,6 +265,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     if (await handleSlackIntegrationRoutes(ctx)) return;
     if (await handleCustomWebhookConfigRoutes(ctx)) return;
     if (await handleGitHubIngressConfigRoutes(ctx)) return;
+    if (await handleSessionLogSettingsRoutes(ctx)) return;
     if (await handleSessionTargetRoutes(ctx)) return;
     send(res, 404, { error: { code: "NOT_FOUND", message: "not found" } });
   };

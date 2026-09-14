@@ -31,7 +31,7 @@ import {
   registerDaemon,
   type DaemonRuntimeIdentity,
 } from "./daemon-registration.ts";
-import { sendDaemonLog } from "./daemon-log-sender.ts";
+import { LogPartBuffer } from "./log-part-buffer.ts";
 import { OutboundQueue } from "./outbound-queue.ts";
 import {
   emptyExecutionProfiles,
@@ -331,6 +331,8 @@ export class DaemonLoop {
   private readonly config: DaemonConfig;
   private readonly transport: DaemonTransport;
   private readonly outbound: OutboundQueue;
+  private readonly logParts = new Map<string, LogPartBuffer>();
+  private readonly liveLogListeners = new Map<string, Set<(chunk: SessionLogChunk) => void>>();
   private readonly reconnectAbortMs: number;
   private readonly ackConfirmationMs: number;
   private readonly drainRetryMs: number;
@@ -810,6 +812,12 @@ export class DaemonLoop {
         return;
       case "session:assign":
         await this.handleAssign(msg);
+        return;
+      case "session:log-watch":
+        this.ensureLogBuffer(msg.sessionId).watching = true;
+        return;
+      case "session:log-unwatch":
+        this.ensureLogBuffer(msg.sessionId).watching = false;
         return;
       default:
         return;
@@ -1862,6 +1870,7 @@ export class DaemonLoop {
       return;
     }
 
+    this.ensureLogBuffer(msg.sessionId, msg.logSettings);
     this.abortSupersededAttempts(msg.sessionId, msg.attemptId);
     // A terminal result has already stopped executing, even though its
     // `runAssign` remains in-flight while its status is delivered. It must not
@@ -2148,6 +2157,21 @@ export class DaemonLoop {
         ...(resolveDeferredDisposition ? { resolveDeferredDisposition } : {}),
       });
     }
+    await new Promise<void>((resolve) => {
+      const timeout = this.timers.setTimeout(resolve, 5_000);
+      void (
+        this.logParts
+          .get(msg.sessionId)
+          ?.flushFinal()
+          .catch((error: unknown) => {
+            this.onLog?.(`log upload failed for ${msg.sessionId}: ${thrownMessage(error)}`);
+          }) ?? Promise.resolve()
+      ).finally(() => {
+        this.timers.clearTimeout(timeout);
+        resolve();
+      });
+    });
+    this.logParts.delete(msg.sessionId);
     await this.outbound.flush();
     await this.outbound
       .send(statusMessage, { signal: controller.signal })
@@ -2175,8 +2199,46 @@ export class DaemonLoop {
     }
   }
 
+  subscribeLogs(sessionId: string, emit: (chunk: SessionLogChunk) => void): () => void {
+    let listeners = this.liveLogListeners.get(sessionId);
+    if (!listeners) {
+      listeners = new Set();
+      this.liveLogListeners.set(sessionId, listeners);
+    }
+    listeners.add(emit);
+    return () => {
+      listeners!.delete(emit);
+      if (listeners!.size === 0) this.liveLogListeners.delete(sessionId);
+    };
+  }
+
+  private ensureLogBuffer(
+    sessionId: string,
+    settings?: import("@auto-harness/shared").SessionLogSettings,
+  ): LogPartBuffer {
+    let buffer = this.logParts.get(sessionId);
+    if (!buffer) {
+      const apiUrl = this.config.apiUrl;
+      const apiKey = this.config.apiKey;
+      buffer = new LogPartBuffer(
+        sessionId,
+        settings,
+        apiUrl ? { apiUrl, ...(apiKey ? { apiKey } : {}) } : undefined,
+        (chunk) => {
+          const listeners = this.liveLogListeners.get(chunk.sessionId);
+          if (!listeners) return;
+          for (const emit of listeners) emit(chunk);
+        },
+      );
+      if (settings?.uploadMode === "always") buffer.watching = true;
+      this.logParts.set(sessionId, buffer);
+    }
+    return buffer;
+  }
+
   private async emitLog(chunk: SessionLogChunk): Promise<void> {
-    await sendDaemonLog(this.outbound, this.onLog, chunk);
+    this.onLog?.(`[${chunk.stream}#${chunk.seq}] ${chunk.content}`);
+    this.ensureLogBuffer(chunk.sessionId).push(chunk);
   }
 
   private async waitForAcknowledgement(

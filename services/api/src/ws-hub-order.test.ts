@@ -177,11 +177,9 @@ describe("createPlaneWsBridge message ordering", () => {
     const plane = new ControlPlane({ onHostMessage: bridge.onHostMessage });
     plane.state.sessions.set("rejected-session", { hostId: "rejected-host" } as never);
     const opened = await registeredSocket(bridge, plane, "rejected-host");
-    const connectionId = plane.state.hostConnection.get("rejected-host")!;
     plane.state.storage = {
       getSession: async () => ({ hostId: "rejected-host" }),
-      getHostLock: async () => connectionId,
-      putLogsFenced: async () => false,
+      getHostLock: async () => "other-connection",
       releaseHostConnection: async () => true,
     } as never;
     const error = new Promise<{ type: string; message: string }>((resolve) => {
@@ -241,18 +239,21 @@ describe("createPlaneWsBridge message ordering", () => {
     plane.state.sessions.set("closing-session", { hostId: "closing-host" } as never);
     const opened = await registeredSocket(bridge, plane, "closing-host");
     const connectionId = plane.state.hostConnection.get("closing-host")!;
-    let resolveWrite: ((accepted: boolean) => void) | undefined;
+    let resolveWrite: (() => void) | undefined;
     const writeStarted = new Promise<void>((resolve) => {
       plane.state.storage = {
         getSession: async () => ({ hostId: "closing-host" }),
         getHostLock: async () => connectionId,
-        putLogsFenced: async () =>
-          new Promise<boolean>((finish) => {
-            resolveWrite = finish;
-            resolve();
-          }),
         releaseHostConnection: async () => true,
       } as never;
+      plane.state.archiveWriter = {
+        putArchive: async () => undefined,
+        putGzipObject: async () =>
+          new Promise<void>((finish) => {
+            resolveWrite = () => finish();
+            resolve();
+          }),
+      };
     });
     opened.ws.send(wireLog("closing-session"));
     await writeStarted;
@@ -261,7 +262,7 @@ describe("createPlaneWsBridge message ordering", () => {
     const closed = new Promise<void>((resolve) => opened.ws.on("close", () => resolve()));
     opened.ws.close();
     await closed;
-    resolveWrite!(false);
+    resolveWrite!();
     // The assertion targets the closed-socket response branch; use the local
     // disconnect path after that pending durable write settles.
     plane.state.storage = undefined;
@@ -308,16 +309,17 @@ describe("createPlaneWsBridge message ordering", () => {
         plane.state.storage = {
           getSession: async () => ({ hostId: "batched-host" }),
           getHostLock: async () => connectionId,
-          putLogsFenced: async (records: Array<{ seq: number }>) => {
-            observed.push(records.map(({ seq }) => seq));
-            return true;
-          },
           deleteLog: async () => {},
           heartbeatConnection: async () => {
             observed.push("host:keepalive");
             return true;
           },
         } as never;
+        plane.state.onLogPartCommitted = ({ seqStart, seqEnd }) => {
+          observed.push(
+            Array.from({ length: seqEnd - seqStart + 1 }, (_, index) => seqStart + index),
+          );
+        };
         for (let seq = 0; seq < 30; seq++) {
           ws.send(
             JSON.stringify({
@@ -378,14 +380,16 @@ describe("createPlaneWsBridge message ordering", () => {
     plane.state.storage = {
       getSession: async () => ({ hostId: "reconnect-host" }),
       getHostLock: async () => incumbentConnectionId,
-      putLogsFenced: async (records: Array<{ seq: number }>) => {
-        writeStarted();
-        await writeBlocked;
-        committed.push(records.map(({ seq }) => seq));
-        return true;
-      },
       deleteLog: async () => {},
     } as never;
+    plane.state.archiveWriter = {
+      putArchive: async () => undefined,
+      putGzipObject: async () => {
+        writeStarted();
+        await writeBlocked;
+        committed.push([7]);
+      },
+    };
     const originalHandle = plane.handleHostMessageDurable.bind(plane);
     plane.disconnectHostDurable = async () => [];
     let replacementStarted: () => void;

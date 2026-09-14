@@ -4,6 +4,7 @@ import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import type { SessionRecord, WorkspaceSlotRecord, WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { selectLogs } from "./log-query.ts";
+import { readSessionLogObjects } from "./session-log-objects.ts";
 import { rebuildProviderAccountLeasesFromSessions } from "./control-plane-provider-account-leases.ts";
 import {
   listHostInventoriesDurable,
@@ -122,19 +123,10 @@ export async function getLogsDurable(
   sessionId: string,
   query?: LogQuery,
 ): Promise<LogRecord[]> {
-  if (!state.storage) {
-    const logs = [...(state.logs.get(sessionId) ?? [])];
-    return query ? selectLogs(logs, query) : logs;
-  }
-  const logs = (
-    await (query ? state.storage.queryLogs(sessionId, query) : state.storage.listLogs(sessionId))
-  ).toSorted((a, b) => a.timestampSeq.localeCompare(b.timestampSeq));
-  if (!query)
-    state.logs.set(
-      sessionId,
-      logs.map((log) => ({ ...log })),
-    );
-  return logs.map((log) => ({ ...log }));
+  const fromObjects = await readSessionLogObjects(state, sessionId, query);
+  if (fromObjects && fromObjects.length > 0) return fromObjects;
+  const logs = [...(state.logs.get(sessionId) ?? [])];
+  return query ? selectLogs(logs, query) : logs;
 }
 
 export async function listWorktreesDurable(state: ControlPlaneState): Promise<WorktreeRecord[]> {

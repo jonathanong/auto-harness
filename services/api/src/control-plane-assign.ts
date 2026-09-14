@@ -24,6 +24,7 @@ import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import { planPromptPlacement } from "./queue-placement-planner.ts";
 import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
 import { connectionProtocolVersion } from "./control-plane-protocol.ts";
+import { assignLogSettings, getSessionLogSettings } from "./control-plane-session-log-settings.ts";
 import {
   accountHasLeaseCapacity,
   hostProviderAccountReady,
@@ -152,6 +153,7 @@ export function assignQueued(
         ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
         commandId: route.commandId,
         targetIndex: route.targetIndex,
+        logSettings: assignLogSettings(state),
         ...resumeWireFields(session, hostAdvertisesPriorContext(state, candidate.hostId)),
       };
       state.onHostMessage?.(candidate.hostId, msg);
@@ -183,6 +185,7 @@ export async function assignQueuedDurable(
     await refreshSchedulerReadModel(state);
     await listQueuedSessionsDurable(state, "prompt");
   }
+  await getSessionLogSettings(state);
   const assigned: Array<{ session: PublicSession; worktree: WorktreeRecord }> = [];
   const nowIso = state.now();
   const nowMs = Date.parse(nowIso);
@@ -371,6 +374,7 @@ export async function assignQueuedDurable(
         ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
         commandId: route.commandId,
         targetIndex: route.targetIndex,
+        logSettings: assignLogSettings(state),
         ...resumeWireFields(
           session,
           hasHostCapability(

@@ -1,0 +1,97 @@
+import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
+import { describe, expect, it, vi } from "vitest";
+
+import { DEFAULT_SESSION_LOG_SETTINGS, SESSION_LOG_SETTINGS_ID } from "@auto-harness/shared";
+
+import {
+  getSessionLogSettings,
+  putSessionLogSettings,
+} from "./db/plane-storage-session-log-settings.ts";
+
+const record = {
+  id: SESSION_LOG_SETTINGS_ID,
+  type: SESSION_LOG_SETTINGS_ID,
+  ...DEFAULT_SESSION_LOG_SETTINGS,
+  version: 1,
+  createdAt: "now",
+  updatedAt: "now",
+} as const;
+
+describe("session log settings storage (unit)", () => {
+  it("returns null when the singleton is missing or the wrong type", async () => {
+    await expect(
+      getSessionLogSettings({
+        tables: { integrations: "Integrations" } as never,
+        doc: { send: vi.fn().mockResolvedValue({}) } as never,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      getSessionLogSettings({
+        tables: { integrations: "Integrations" } as never,
+        doc: { send: vi.fn().mockResolvedValue({ Item: { type: "slack" } }) } as never,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      getSessionLogSettings({
+        tables: { integrations: "Integrations" } as never,
+        doc: { send: vi.fn().mockResolvedValue({ Item: record }) } as never,
+      }),
+    ).resolves.toMatchObject({ version: 1, type: SESSION_LOG_SETTINGS_ID });
+  });
+
+  it("writes with a create fence and reports CAS failure", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      putSessionLogSettings(
+        { tables: { integrations: "Integrations" } as never, doc: { send } as never },
+        record,
+        null,
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      putSessionLogSettings(
+        { tables: { integrations: "Integrations" } as never, doc: { send } as never },
+        record,
+        1,
+      ),
+    ).resolves.toBe(true);
+    const conflict = new ConditionalCheckFailedException({
+      message: "conflict",
+      $metadata: {},
+    });
+    await expect(
+      putSessionLogSettings(
+        {
+          tables: { integrations: "Integrations" } as never,
+          doc: { send: vi.fn().mockRejectedValue(conflict) } as never,
+        },
+        record,
+        1,
+      ),
+    ).resolves.toBe(false);
+    const canceled = {
+      name: "TransactionCanceledException",
+      CancellationReasons: [{ Code: "ConditionalCheckFailed" }],
+    };
+    await expect(
+      putSessionLogSettings(
+        {
+          tables: { integrations: "Integrations" } as never,
+          doc: { send: vi.fn().mockRejectedValue(canceled) } as never,
+        },
+        record,
+        1,
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      putSessionLogSettings(
+        {
+          tables: { integrations: "Integrations" } as never,
+          doc: { send: vi.fn().mockRejectedValue(new Error("unavailable")) } as never,
+        },
+        record,
+        1,
+      ),
+    ).rejects.toThrow("unavailable");
+  });
+});

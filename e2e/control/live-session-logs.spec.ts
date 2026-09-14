@@ -9,17 +9,6 @@ test.describe("live session logs", () => {
     page,
     request,
   }) => {
-    await page.addInitScript(() => {
-      const NativeWebSocket = window.WebSocket;
-      window.WebSocket = class extends NativeWebSocket {
-        constructor(url: string | URL, protocols?: string | string[]) {
-          super(url, protocols);
-          if (String(url).includes("/ws/viewer")) {
-            (window as typeof window & { testViewerSocket?: WebSocket }).testViewerSocket = this;
-          }
-        }
-      };
-    });
     const suffix = `${test.info().parallelIndex}-${Date.now()}`;
     const hostId = `pw-live-host-${suffix}`;
     const repoId = await createCatalogRepository(request, `pw-live-repo-${suffix}`);
@@ -87,6 +76,7 @@ test.describe("live session logs", () => {
       await page.goto(`/sessions/${session.id}`);
       expect((await ticketResponse).status()).toBe(200);
       await expect(page.getByTestId("session-logs-live-tail")).toBeVisible();
+      await expect(page.getByTestId("session-logs-s3-note")).toContainText("host pane");
       await expect(page.getByTestId("session-terminal-controls")).toBeVisible();
       await expect(page.getByTestId("session-logs-empty")).toHaveCount(0);
       await expect(page.getByTestId("session-logs-live-error")).toHaveCount(0);
@@ -98,19 +88,6 @@ test.describe("live session logs", () => {
         "history from the real host socket",
       );
       await expect(page.getByTestId("session-terminal")).toHaveAttribute("data-view", "readable");
-
-      await page.evaluate(() => {
-        (window as typeof window & { testViewerSocket?: WebSocket }).testViewerSocket?.close(4001);
-      });
-      await expect(page.getByTestId("session-logs-reconnect-banner")).toContainText(
-        "Real-time updates paused",
-      );
-      const reconnectTicket = page.waitForResponse((response) =>
-        response.url().endsWith("/api/v1/auth/viewer-ticket"),
-      );
-      await page.getByTestId("session-logs-reconnect-now").click();
-      expect((await reconnectTicket).status()).toBe(200);
-      await expect(page.getByTestId("session-logs-live-state")).toContainText("Live — running");
 
       host.socket.send(
         logFrame(

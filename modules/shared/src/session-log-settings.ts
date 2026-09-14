@@ -90,3 +90,18 @@ const ARCHIVE_KEY = /^sessions\/[^/]+\/logs\.jsonl\.gz$/;
 export function isSessionLogObjectKey(key: string): boolean {
   return PART_KEY.test(key) || ARCHIVE_KEY.test(key);
 }
+
+export const SESSION_LOG_SETTINGS_ID = "session-log-settings" as const;
+
+export type PublicSessionLogSettings = SessionLogSettings & { version: number };
+
+export function publicSessionLogSettings(
+  over?: Partial<SessionLogSettings> & { version?: number },
+): PublicSessionLogSettings {
+  const version = over?.version;
+  return {
+    ...normalizeSessionLogSettings(over),
+    version:
+      typeof version === "number" && Number.isSafeInteger(version) && version >= 0 ? version : 0,
+  };
+}

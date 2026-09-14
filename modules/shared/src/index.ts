@@ -63,12 +63,15 @@ export type {
 
 export {
   DEFAULT_SESSION_LOG_SETTINGS,
+  SESSION_LOG_SETTINGS_ID,
   SESSION_LOG_UPLOAD_MODES,
   isSessionLogObjectKey,
   isSessionLogUploadMode,
   normalizeSessionLogSettings,
+  publicSessionLogSettings,
   sessionLogArchiveKey,
   sessionLogPartKey,
+  type PublicSessionLogSettings,
   type SessionLogSettings,
   type SessionLogUploadMode,
 } from "./session-log-settings.ts";

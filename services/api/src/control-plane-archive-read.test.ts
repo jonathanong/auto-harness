@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import { gzipLogRecords } from "./session-log-objects.ts";
 
 describe("durable archive reads", () => {
   it("distinguishes terminal transcripts whose recent-log retention has expired", async () => {
@@ -102,17 +103,29 @@ describe("durable archive reads", () => {
   });
 
   it("uses one bounded durable log read before declaring an old row expired", async () => {
-    const queryLogs = vi
-      .fn(async (_sessionId: string, query: { limit: number; consistentRead: boolean }) => {
-        expect(query).toEqual({ limit: 1, consistentRead: true });
-        return [];
-      })
-      .mockResolvedValueOnce([{}])
+    const gzipped = gzipLogRecords([
+      {
+        sessionId: "session",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        stream: "stdout",
+        content: "retained",
+        seq: 1,
+        timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+      },
+    ]);
+    const listKeys = vi
+      .fn(async () => [] as string[])
+      .mockResolvedValueOnce(["sessions/session/parts/1-1.jsonl.gz"])
       .mockResolvedValueOnce([])
       .mockRejectedValueOnce(new Error("read unavailable"));
     const plane = new ControlPlane({
       now: () => "2026-01-08T00:00:00.000Z",
-      storage: { getArchive: async () => null, queryLogs } as never,
+      storage: { getArchive: async () => null } as never,
+      archiveWriter: {
+        putArchive: async () => undefined,
+        listKeys,
+        getGzipObject: async () => gzipped,
+      },
     });
 
     await expect(
@@ -124,6 +137,6 @@ describe("durable archive reads", () => {
     await expect(
       plane.getArchiveDownloadDurable("session", "2026-01-01T00:00:00.000Z"),
     ).resolves.toEqual({ state: "dynamodb" });
-    expect(queryLogs).toHaveBeenCalledTimes(3);
+    expect(listKeys).toHaveBeenCalledTimes(3);
   });
 });

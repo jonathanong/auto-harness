@@ -4,6 +4,7 @@ import type { ArchiveMetadata, ArchiveObject } from "./control-plane-types.ts";
 import type { SessionArchiveReadResponse } from "@auto-harness/shared";
 import type { ArchiveWriteResult } from "./archive-writer.ts";
 import { persistExpiredArchive, archiveRetentionElapsed } from "./control-plane-archive-expire.ts";
+import { readSessionLogObjects } from "./session-log-objects.ts";
 import {
   archiveGeneration,
   isCompleteStoredArchive,
@@ -282,21 +283,26 @@ function storedArchiveObject(
 
 /** A TTL cutoff is only evidence of expiry after a bounded read confirms no log remains. */
 async function recentLogsRemain(state: ControlPlaneState, sessionId: string): Promise<boolean> {
-  if (!state.storage) return (state.logs.get(sessionId)?.length ?? 0) > 0;
+  if ((state.logs.get(sessionId)?.length ?? 0) > 0) return true;
   try {
-    return (
-      (await state.storage.queryLogs(sessionId, { limit: 1, consistentRead: true })).length > 0
-    );
+    const fromObjects = await readSessionLogObjects(state, sessionId);
+    return (fromObjects?.length ?? 0) > 0;
   } catch {
-    // A failed existence check must retain the conservative recent state.
     return true;
   }
 }
 
 async function archiveBody(state: ControlPlaneState, sessionId: string): Promise<string> {
-  const logs = state.storage
-    ? await state.storage.listLogs(sessionId)
-    : [...(state.logs.get(sessionId) ?? [])];
+  const fromObjects = await readSessionLogObjects(state, sessionId);
+  let logs =
+    fromObjects && fromObjects.length > 0 ? fromObjects : [...(state.logs.get(sessionId) ?? [])];
+  if (logs.length === 0 && state.storage && typeof state.storage.listLogs === "function") {
+    try {
+      logs = await state.storage.listLogs(sessionId);
+    } catch {
+      logs = [];
+    }
+  }
   const body = logs
     .map(({ timestamp, stream, content }) => JSON.stringify({ timestamp, stream, content }))
     .join("\n");

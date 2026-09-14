@@ -1,10 +1,12 @@
+/* eslint-disable max-lines -- git readiness, workspace-only, and GitHub App assignment share one runtime fixture. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
+import * as githubApp from "./github-app.ts";
 import { ensureDaemonReady, runAssignedSession } from "./runtime.ts";
 
 /**
@@ -121,6 +123,13 @@ describe("runtime helpers", () => {
   });
 
   it("runAssignedSession completes", async () => {
+    const load = vi.spyOn(githubApp, "loadGitHubAppConfig").mockReturnValue({
+      appId: "1",
+      privateKey: {} as never,
+      botLogin: "bot",
+      botUserId: 1,
+      repositories: new Map(),
+    });
     const runner: ProcessRunner = {
       async run(opts) {
         if (isGit(opts.argv[0])) {
@@ -153,6 +162,8 @@ describe("runtime helpers", () => {
     );
     expect(result.status).toBe("completed");
     expect(lines.length).toBeGreaterThan(0);
+    expect(load).toHaveBeenCalled();
+    load.mockRestore();
   });
 
   it("refuses an assignment when Git is unavailable", async () => {

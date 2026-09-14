@@ -40,9 +40,9 @@ sequenceDiagram
     Agent->>Tool: Spawn argv, no shell
     loop Logs
         Tool-->>Agent: output
-        Agent->>API: session:log
-        API->>DDB: SessionLogs
-        API->>UI: session:log if subscribed
+        Agent->>S3: gzip parts when upload on
+        UI->>API: GET /logs poll
+        API->>UI: session:log-part if subscribed
     end
     Tool-->>Agent: exit
     Agent->>API: session:status

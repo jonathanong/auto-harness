@@ -436,7 +436,7 @@ describe("durable host-message fencing", () => {
         },
         "c",
       ),
-    ).toEqual({ ok: false, error: "stale host connection" });
+    ).toEqual({ ok: true });
     plane.state.storage.putLogFenced = async () => {
       logFence = true;
       return true;
@@ -547,7 +547,7 @@ describe("durable host-message fencing", () => {
       ok: true,
       sessionStatusAcknowledged: { sessionId: "s", attemptId: "a" },
     });
-    expect(calls).toEqual(["log", "cancel-true", "session-lock"]);
+    expect(calls).toEqual(["cancel-true", "session-lock"]);
 
     const local = new ControlPlane();
     local.state.sessions.set("done", { ...running("done"), status: "completed" });

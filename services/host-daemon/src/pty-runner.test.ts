@@ -75,6 +75,28 @@ describe("PtyProcessRunner boundary", () => {
     expect(chunks).toEqual(["stdout:ready\r\n"]);
   });
 
+  it("ignores a second stop after timeout has already begun teardown", async () => {
+    const pty = fakePty();
+    const controller = new AbortController();
+    const runner = new PtyProcessRunner({
+      spawn: () => {
+        setTimeout(() => pty.emitExit({ exitCode: 0 }), 80);
+        return pty.terminal;
+      },
+    });
+    const run = runner.run({
+      argv: ["./tool"],
+      cwd: process.cwd(),
+      signal: controller.signal,
+      timeoutMs: 5,
+      terminationGraceMs: 50,
+      onChunk: () => undefined,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    controller.abort();
+    await expect(run).resolves.toMatchObject({ timedOut: true });
+  });
+
   it("does not spawn after cancellation and explains invalid inputs", async () => {
     let calls = 0;
     const runner = new PtyProcessRunner({

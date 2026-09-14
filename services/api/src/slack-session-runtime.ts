@@ -1,4 +1,6 @@
 import type { SessionRecord } from "./db/types.ts";
+import type { ControlPlaneState } from "./control-plane-state.ts";
+import { readSessionLogObjects } from "./session-log-objects.ts";
 import type { SlackIntegrationRecord, SlackNotifications } from "./slack-integration-types.ts";
 import { planSlackLifecycle } from "./slack-lifecycle.ts";
 import { enqueueSlackDeliveries } from "./slack-outbox.ts";
@@ -97,15 +99,16 @@ export async function reconcileSlackSession(input: {
  */
 async function ensureFailedSessionLogsLoaded(
   state: SlackSessionWriterState,
-  storage: SlackSessionStorage,
+  _storage: SlackSessionStorage,
   session: SessionRecord,
 ): Promise<void> {
   const failed = session.status === "failed" || session.status === "timed_out";
-  if (!failed || state.logs.has(session.id) || typeof storage.listLogs !== "function") return;
+  if (!failed || state.logs.has(session.id)) return;
   try {
-    state.logs.set(session.id, await storage.listLogs(session.id, true));
-  } catch (error) {
-    console.error("failed to load durable logs for a failed-session Slack snapshot", error);
+    const logs = await readSessionLogObjects(state as ControlPlaneState, session.id);
+    if (logs && logs.length > 0) state.logs.set(session.id, logs);
+  } catch {
+    return;
   }
 }
 

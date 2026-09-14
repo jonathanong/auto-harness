@@ -154,9 +154,11 @@ export function isActiveSession(session: SessionRecord | null): session is Sessi
 }
 
 export async function putLog(ctx: PlaneStorageCtx, rec: LogRecord): Promise<void> {
+  const table = ctx.tables.sessionLogs;
+  if (!table) return;
   await ctx.doc.send(
     new PutCommand({
-      TableName: ctx.tables.sessionLogs,
+      TableName: table,
       Item: sessionLogItem(rec),
     }),
   );
@@ -169,6 +171,7 @@ export async function putLogFenced(
 ): Promise<boolean> {
   const attempts = sessionAttemptChecks(ctx, fence);
   if (attempts === null) return false;
+  const table = ctx.tables.sessionLogs;
   try {
     await sendFencedLogTransaction(
       ctx,
@@ -176,7 +179,7 @@ export async function putLogFenced(
         TransactItems: [
           hostLockCheck(ctx, fence),
           ...attempts,
-          { Put: { TableName: ctx.tables.sessionLogs, Item: sessionLogItem(rec) } },
+          ...(table ? [{ Put: { TableName: table, Item: sessionLogItem(rec) } }] : []),
         ],
       }),
     );
@@ -199,6 +202,7 @@ export async function putLogsFenced(
   if (records.length === 0) return true;
   const attempts = sessionAttemptChecks(ctx, fence);
   if (attempts === null) return false;
+  const table = ctx.tables.sessionLogs;
   const uniqueRecords = new Map<string, LogRecord>();
   for (const record of records) {
     uniqueRecords.set(JSON.stringify([record.sessionId, record.timestampSeq]), record);
@@ -210,9 +214,11 @@ export async function putLogsFenced(
         TransactItems: [
           hostLockCheck(ctx, fence),
           ...attempts,
-          ...[...uniqueRecords.values()].map((record) => ({
-            Put: { TableName: ctx.tables.sessionLogs, Item: sessionLogItem(record) },
-          })),
+          ...(table
+            ? [...uniqueRecords.values()].map((record) => ({
+                Put: { TableName: table, Item: sessionLogItem(record) },
+              }))
+            : []),
         ],
       }),
     );
@@ -227,9 +233,9 @@ export async function deleteLog(
   sessionId: string,
   timestampSeq: string,
 ): Promise<void> {
-  await ctx.doc.send(
-    new DeleteCommand({ TableName: ctx.tables.sessionLogs, Key: { sessionId, timestampSeq } }),
-  );
+  const table = ctx.tables.sessionLogs;
+  if (!table) return;
+  await ctx.doc.send(new DeleteCommand({ TableName: table, Key: { sessionId, timestampSeq } }));
 }
 
 /**
@@ -246,12 +252,14 @@ export async function listLogs(
   sessionId: string,
   consistentRead = false,
 ): Promise<LogRecord[]> {
+  const table = ctx.tables.sessionLogs;
+  if (!table) return [];
   const records: LogRecord[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
     const res = await ctx.doc.send(
       new QueryCommand({
-        TableName: ctx.tables.sessionLogs,
+        TableName: table,
         KeyConditionExpression: "sessionId = :s",
         ExpressionAttributeValues: { ":s": sessionId },
         ScanIndexForward: true,
@@ -282,10 +290,12 @@ export async function queryLogs(
   sessionId: string,
   query: LogQuery,
 ): Promise<LogRecord[]> {
+  const table = ctx.tables.sessionLogs;
+  if (!table) return [];
   if (query.after) {
     const res = await ctx.doc.send(
       new QueryCommand({
-        TableName: ctx.tables.sessionLogs,
+        TableName: table,
         KeyConditionExpression: "sessionId = :sessionId AND timestampSeq > :after",
         ExpressionAttributeValues: {
           ":sessionId": sessionId,
@@ -310,7 +320,7 @@ export async function queryLogs(
   do {
     const res = await ctx.doc.send(
       new QueryCommand({
-        TableName: ctx.tables.sessionLogs,
+        TableName: table,
         KeyConditionExpression: query.since
           ? "sessionId = :s AND timestampSeq > :since"
           : "sessionId = :s",

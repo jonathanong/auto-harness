@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- session log part PUT shares this reads file. */
 import { isSessionStatus, isTerminalSessionStatus } from "@auto-harness/shared";
 
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
@@ -6,8 +7,9 @@ import {
   InvalidSessionListQueryError,
   type SessionListSort,
 } from "./control-plane-sessions-page.ts";
-import { send, sendInternalError, type RouteCtx } from "./local-http.ts";
+import { readRawBody, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { parseLogQuery } from "./log-query.ts";
+import { putSessionLogArchive, putSessionLogPart } from "./session-log-objects.ts";
 
 type SessionListQueryParam =
   | "limit"
@@ -62,6 +64,17 @@ function parseSort(value: string | undefined): SessionListSort | undefined {
 
 function canAccess(ctx: RouteCtx, repositoryId: string | null | undefined): boolean {
   return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
+}
+
+function canAccessAssignedSession(
+  ctx: RouteCtx,
+  session: { repositoryId: string | null; hostId?: string | null } | null,
+): session is { repositoryId: string | null; hostId?: string | null } {
+  return (
+    session !== null &&
+    canAccess(ctx, session.repositoryId) &&
+    mayAccessHost(ctx.principal, session.hostId)
+  );
 }
 
 function sessionScope(ctx: RouteCtx) {
@@ -122,15 +135,75 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
     }
     try {
       const session = await plane.getSessionDurable(logsMatch[1]!);
-      if (
-        !session ||
-        !canAccess(ctx, session.repositoryId) ||
-        !mayAccessHost(ctx.principal, session.hostId)
-      ) {
+      if (!canAccessAssignedSession(ctx, session)) {
         send(res, 404, { error: { code: "NOT_FOUND", message: "session not found" } });
       } else {
         send(res, 200, { items: await plane.getLogsDurable(logsMatch[1]!, query.query) });
       }
+    } catch {
+      sendInternalError(res);
+    }
+    return true;
+  }
+
+  const logPartMatch = /^\/api\/v1\/sessions\/([^/]+)\/log-parts$/.exec(url.pathname);
+  if (method === "PUT" && logPartMatch) {
+    const sessionId = logPartMatch[1]!;
+    const seqStart = Number(url.searchParams.get("seqStart"));
+    const seqEnd = Number(url.searchParams.get("seqEnd"));
+    if (!Number.isSafeInteger(seqStart) || !Number.isSafeInteger(seqEnd) || seqEnd < seqStart) {
+      send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid seq range" } });
+      return true;
+    }
+    try {
+      const session = await plane.getSessionDurable(sessionId);
+      if (!canAccessAssignedSession(ctx, session)) {
+        send(res, 404, { error: { code: "NOT_FOUND", message: "session not found" } });
+        return true;
+      }
+      const body = await readRawBody(ctx.req);
+      if (body.length === 0) {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: "empty log part" } });
+        return true;
+      }
+      try {
+        const key = await putSessionLogPart(plane.state, sessionId, seqStart, seqEnd, body);
+        send(res, 200, { key });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "invalid log part";
+        if (
+          message === "empty log part" ||
+          message === "seq outside declared range" ||
+          message.includes("incorrect header check") ||
+          message.includes("unexpected end of file")
+        ) {
+          send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid gzip log part" } });
+          return true;
+        }
+        throw error;
+      }
+    } catch {
+      sendInternalError(res);
+    }
+    return true;
+  }
+
+  const logArchiveMatch = /^\/api\/v1\/sessions\/([^/]+)\/log-archive$/.exec(url.pathname);
+  if (method === "PUT" && logArchiveMatch) {
+    const sessionId = logArchiveMatch[1]!;
+    try {
+      const session = await plane.getSessionDurable(sessionId);
+      if (!canAccessAssignedSession(ctx, session)) {
+        send(res, 404, { error: { code: "NOT_FOUND", message: "session not found" } });
+        return true;
+      }
+      const body = await readRawBody(ctx.req);
+      if (body.length === 0) {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: "empty log archive" } });
+        return true;
+      }
+      const key = await putSessionLogArchive(plane.state, sessionId, body);
+      send(res, 200, { key });
     } catch {
       sendInternalError(res);
     }

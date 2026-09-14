@@ -1,36 +1,13 @@
-/* eslint-disable max-lines -- reconnect, status, and cursor cases share one fake socket. */
 // @vitest-environment happy-dom
+/* eslint-disable max-lines -- live poll, viewer notify, and unmount races share one fixture. */
 
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SESSION_QUEUED_WAIT_COPY } from "@auto-harness/ui";
 
-import { field, mountForm, press } from "../../test-helpers/form-test-helpers.tsx";
+import { field, mountForm } from "../../test-helpers/form-test-helpers.tsx";
 import { SessionLiveLogs } from "./session-live-logs.tsx";
-
-type Handler = (event: { code?: number; data?: string }) => void;
-
-class FakeWebSocket {
-  static OPEN = 1;
-  static instances: FakeWebSocket[] = [];
-  readyState = FakeWebSocket.OPEN;
-  handlers = new Map<string, Handler[]>();
-  send = vi.fn();
-  close = vi.fn();
-
-  constructor(readonly url: string) {
-    FakeWebSocket.instances.push(this);
-  }
-
-  addEventListener(type: string, handler: Handler) {
-    this.handlers.set(type, [...(this.handlers.get(type) ?? []), handler]);
-  }
-
-  emit(type: string, event: { code?: number; data?: string } = {}) {
-    for (const handler of this.handlers.get(type) ?? []) handler(event);
-  }
-}
 
 async function settle() {
   await act(async () => {
@@ -39,267 +16,559 @@ async function settle() {
   });
 }
 
-function emitStatus(socket: FakeWebSocket, type: string, status: string) {
-  act(() =>
-    socket.emit("message", {
-      data: JSON.stringify({ type, status }),
-    }),
-  );
-}
+describe("SessionLiveLogs", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
-afterEach(() => {
-  document.body.replaceChildren();
-  FakeWebSocket.instances = [];
-  vi.unstubAllGlobals();
-});
+  it("polls REST logs and notes the S3 delay", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        String(url).includes("/logs")
+          ? Response.json({
+              items: [
+                {
+                  timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+                  seq: 1,
+                  stream: "stdout",
+                  content: "hello",
+                  timestamp: "2026-01-01T00:00:00.000Z",
+                },
+              ],
+            })
+          : Response.json({ status: "completed" }),
+      ),
+    );
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    await settle();
+    expect(field(view.container, "session-logs-s3-note").textContent).toContain("host pane");
+    expect(field(view.container, "session-logs-live-state").textContent).toBe("completed");
+    expect(vi.mocked(fetch)).toHaveBeenCalled();
+    view.unmount();
+  });
 
-describe("SessionLiveLogs reconnect controls", () => {
-  it("announces a closed connection and reconnects immediately on request", async () => {
-    const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ticket: "ticket" }) }));
-    vi.stubGlobal("fetch", fetch);
+  it("shows queued wait copy and a poll error, then refetches on log-part notify", async () => {
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 1;
+      sent: string[] = [];
+      private readonly listeners = new Map<string, Array<(event: Event) => void>>();
+      constructor(public url: string) {
+        sockets.push(this);
+      }
+      addEventListener(type: string, handler: (event: Event) => void) {
+        const list = this.listeners.get(type) ?? [];
+        list.push(handler);
+        this.listeners.set(type, list);
+      }
+      send(data: string) {
+        this.sent.push(data);
+      }
+      close() {
+        this.readyState = 3;
+      }
+      emit(type: string, event: Event) {
+        for (const handler of this.listeners.get(type) ?? []) handler(event);
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    let allowLogs = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: { method?: string }) => {
+        const path = String(url);
+        if (path.includes("session-log-settings")) {
+          return Response.json({ controlPlanePollMs: 5_000 });
+        }
+        if (path.includes("viewer-ticket")) {
+          return Response.json({ ticket: "ticket" });
+        }
+        if (path.includes("/logs")) {
+          if (!allowLogs) return new Response(null, { status: 500 });
+          return Response.json({
+            items: [
+              {
+                timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+                seq: 1,
+                stream: "stdout",
+                content: "hello",
+                timestamp: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          });
+        }
+        if (init?.method === "POST") return Response.json({ ticket: "ticket" });
+        return Response.json({ status: "queued" });
+      }),
+    );
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="queued" />,
+    );
+    await settle();
+    await settle();
+    expect(view.container.textContent).toContain(SESSION_QUEUED_WAIT_COPY);
+    expect(field(view.container, "session-logs-live-error").textContent).toContain("unavailable");
+    const socket = sockets[0];
+    expect(socket).toBeTruthy();
+    allowLogs = true;
+    await act(async () => {
+      socket!.emit("open", new Event("open"));
+      socket!.emit(
+        "message",
+        new MessageEvent("message", { data: JSON.stringify({ type: "session:log-part" }) }),
+      );
+      socket!.emit("message", new MessageEvent("message", { data: "not-json" }));
+    });
+    await settle();
+    view.unmount();
+    expect(socket!.sent.some((frame) => frame.includes("unsubscribe"))).toBe(true);
+  });
+
+  it("ignores a failed settings fetch and a failed log-part refetch", async () => {
+    const sockets: Array<{
+      onMessage?: (event: Event) => void;
+      emit(type: string, event: Event): void;
+    }> = [];
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 1;
+      onMessage: ((event: Event) => void) | undefined;
+      constructor(public url: string) {
+        sockets.push(this);
+      }
+      addEventListener(type: string, handler: (event: Event) => void) {
+        if (type === "message") this.onMessage = handler;
+      }
+      emit(_type: string, event: Event) {
+        this.onMessage?.(event);
+      }
+      send() {}
+      close() {
+        this.readyState = 3;
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("session-log-settings")) throw new Error("offline");
+        if (path.includes("viewer-ticket")) return Response.json({ ticket: "ticket" });
+        if (path.includes("/logs")) throw new Error("refetch failed");
+        return Response.json({ status: "running" });
+      }),
+    );
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    await settle();
+    await act(async () => {
+      sockets[0]?.emit(
+        "message",
+        new MessageEvent("message", { data: JSON.stringify({ type: "session:log-part" }) }),
+      );
+      sockets[0]?.emit("message", new MessageEvent("message", { data: "{" }));
+    });
+    await settle();
+    view.unmount();
+  });
+
+  it("ignores in-flight polls after unmount and non-array log pages", async () => {
+    let releaseLogs!: () => void;
+    const logsGate = new Promise<void>((resolve) => {
+      releaseLogs = resolve;
+    });
+    let releaseStatus!: () => void;
+    const statusGate = new Promise<void>((resolve) => {
+      releaseStatus = resolve;
+    });
+    let releaseTicket!: () => void;
+    const ticketGate = new Promise<void>((resolve) => {
+      releaseTicket = resolve;
+    });
+    const sockets: Array<{ emit(type: string, event: Event): void }> = [];
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 1;
+      private readonly listeners = new Map<string, Array<(event: Event) => void>>();
+      constructor(public url: string) {
+        sockets.push(this);
+      }
+      addEventListener(type: string, handler: (event: Event) => void) {
+        const list = this.listeners.get(type) ?? [];
+        list.push(handler);
+        this.listeners.set(type, list);
+      }
+      emit(type: string, event: Event) {
+        for (const handler of this.listeners.get(type) ?? []) handler(event);
+      }
+      send() {}
+      close() {
+        this.readyState = 3;
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    let failLogs = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("session-log-settings")) return new Response(null, { status: 500 });
+        if (path.includes("viewer-ticket")) {
+          await ticketGate;
+          return Response.json({ ticket: "ticket" });
+        }
+        if (path.includes("/logs")) {
+          await logsGate;
+          return failLogs ? new Response(null, { status: 500 }) : Response.json({ items: "nope" });
+        }
+        await statusGate;
+        return Response.json({ status: 1 });
+      }),
+    );
+    const first = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    first.unmount();
+    releaseLogs();
+    releaseStatus();
+    releaseTicket();
+    await settle();
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    await settle();
+    failLogs = true;
+    await act(async () => {
+      sockets
+        .at(-1)
+        ?.emit(
+          "message",
+          new MessageEvent("message", { data: JSON.stringify({ type: "session:log-part" }) }),
+        );
+    });
+    await settle();
+    view.unmount();
+  });
+
+  it("ignores a rejected viewer ticket and skips unsubscribe when the socket is not open", async () => {
+    const sockets: Array<{ readyState: number; sent: string[]; close(): void }> = [];
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 0;
+      sent: string[] = [];
+      constructor(public url: string) {
+        sockets.push(this);
+      }
+      addEventListener() {}
+      send(data: string) {
+        this.sent.push(data);
+      }
+      close() {
+        this.readyState = 3;
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("viewer-ticket")) throw new Error("ticket down");
+        if (path.includes("session-log-settings")) return Response.json({});
+        if (path.includes("/logs")) return Response.json({ items: [] });
+        return Response.json({ status: "running" });
+      }),
+    );
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    await settle();
+    expect(sockets).toHaveLength(0);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("viewer-ticket")) return Response.json({ ticket: "ticket" });
+        if (path.includes("session-log-settings")) return Response.json({});
+        if (path.includes("/logs")) return Response.json({ items: [] });
+        return Response.json({ status: "running" });
+      }),
+    );
+    const openLater = mountForm(
+      <SessionLiveLogs sessionId="session-2" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    await settle();
+    expect(sockets.at(-1)?.readyState).toBe(0);
+    openLater.unmount();
+    expect(sockets.at(-1)?.sent).toEqual([]);
+    view.unmount();
+  });
+
+  it("drops in-flight log and status polls after unmount and a failed log-part refetch", async () => {
+    let releaseLogs!: () => void;
+    const logsGate = new Promise<void>((resolve) => {
+      releaseLogs = resolve;
+    });
+    const statusTimers: Array<() => void> = [];
+    const realSetTimeout = setTimeout;
+    vi.stubGlobal("setTimeout", ((fn: () => void, ms?: number) => {
+      if (ms === 2_000) {
+        statusTimers.push(fn);
+        return 0 as unknown as ReturnType<typeof setTimeout>;
+      }
+      return realSetTimeout(fn, ms);
+    }) as typeof setTimeout);
+    const sockets: Array<{ emit(type: string, event: Event): void }> = [];
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 1;
+      private readonly listeners = new Map<string, Array<(event: Event) => void>>();
+      constructor(public url: string) {
+        sockets.push(this);
+      }
+      addEventListener(type: string, handler: (event: Event) => void) {
+        const list = this.listeners.get(type) ?? [];
+        list.push(handler);
+        this.listeners.set(type, list);
+      }
+      emit(type: string, event: Event) {
+        for (const handler of this.listeners.get(type) ?? []) handler(event);
+      }
+      send() {}
+      close() {
+        this.readyState = 3;
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("viewer-ticket")) return Response.json({ ticket: "ticket" });
+        if (path.includes("session-log-settings")) return Response.json({});
+        if (path.includes("/logs")) {
+          await logsGate;
+          return new Response(null, { status: 500 });
+        }
+        return Response.json({ status: "running" });
+      }),
+    );
+    const first = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    first.unmount();
+    releaseLogs();
+    for (const timer of statusTimers) timer();
+    await settle();
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-2" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    await settle();
+    await act(async () => {
+      sockets
+        .at(-1)
+        ?.emit(
+          "message",
+          new MessageEvent("message", { data: JSON.stringify({ type: "session:log-part" }) }),
+        );
+    });
+    await settle();
+    view.unmount();
+  });
+
+  it("does not apply a log poll that finishes after unmount", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let logsCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("/logs")) {
+          logsCalls += 1;
+          await gate;
+          return Response.json({
+            items: [
+              {
+                timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+                seq: 1,
+                stream: "stdout",
+                content: "late",
+                timestamp: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          });
+        }
+        if (path.includes("viewer-ticket")) return Response.json({ ticket: "ticket" });
+        return Response.json({ status: "running" });
+      }),
+    );
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 1;
+      addEventListener() {}
+      send() {}
+      close() {
+        this.readyState = 3;
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await expect.poll(() => logsCalls).toBeGreaterThan(0);
+    view.unmount();
+    release();
+    await settle();
+    await settle();
+  });
+
+  it("ignores a non-ok log-part refetch while still mounted", async () => {
+    const sockets: Array<{ emit(type: string, event: Event): void }> = [];
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 1;
+      private readonly listeners = new Map<string, Array<(event: Event) => void>>();
+      constructor(public url: string) {
+        sockets.push(this);
+      }
+      addEventListener(type: string, handler: (event: Event) => void) {
+        const list = this.listeners.get(type) ?? [];
+        list.push(handler);
+        this.listeners.set(type, list);
+      }
+      emit(type: string, event: Event) {
+        for (const handler of this.listeners.get(type) ?? []) handler(event);
+      }
+      send() {}
+      close() {
+        this.readyState = 3;
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("viewer-ticket")) return Response.json({ ticket: "ticket" });
+        if (path.includes("session-log-settings")) return Response.json({});
+        if (path.includes("/logs")) return new Response(null, { status: 503 });
+        return Response.json({ status: "running" });
+      }),
+    );
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    await settle();
+    expect(sockets[0]).toBeTruthy();
+    await act(async () => {
+      sockets[0]!.emit(
+        "message",
+        new MessageEvent("message", { data: JSON.stringify({ type: "session:log-part" }) }),
+      );
+    });
+    await settle();
+    view.unmount();
+  });
+
+  it("applies a log-part page whose items are not an array", async () => {
+    const sockets: Array<{ emit(type: string, event: Event): void }> = [];
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 1;
+      private readonly listeners = new Map<string, Array<(event: Event) => void>>();
+      constructor(public url: string) {
+        sockets.push(this);
+      }
+      addEventListener(type: string, handler: (event: Event) => void) {
+        const list = this.listeners.get(type) ?? [];
+        list.push(handler);
+        this.listeners.set(type, list);
+      }
+      emit(type: string, event: Event) {
+        for (const handler of this.listeners.get(type) ?? []) handler(event);
+      }
+      send() {}
+      close() {
+        this.readyState = 3;
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("viewer-ticket")) return Response.json({ ticket: "ticket" });
+        if (path.includes("/logs")) return Response.json({ items: "nope" });
+        return Response.json({ status: "running" });
+      }),
+    );
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    await settle();
+    await act(async () => {
+      sockets[0]?.emit(
+        "message",
+        new MessageEvent("message", { data: JSON.stringify({ type: "session:log-part" }) }),
+      );
+    });
+    await settle();
+    view.unmount();
+  });
+
+  it("does not restart the log poll from a timer after unmount", async () => {
+    const pollTimers: Array<() => void> = [];
+    const realSetTimeout = setTimeout;
+    vi.stubGlobal("setTimeout", ((fn: () => void, ms?: number) => {
+      if (ms === 60_000) {
+        pollTimers.push(fn);
+        return 0 as unknown as ReturnType<typeof setTimeout>;
+      }
+      return realSetTimeout(fn, ms);
+    }) as typeof setTimeout);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("viewer-ticket")) return Response.json({ ticket: "ticket" });
+        if (path.includes("/logs")) return Response.json({ items: [] });
+        return Response.json({ status: "running" });
+      }),
+    );
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 1;
+      addEventListener() {}
+      send() {}
+      close() {
+        this.readyState = 3;
+      }
+    }
     vi.stubGlobal("WebSocket", FakeWebSocket);
     const view = mountForm(
       <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
     );
     await settle();
-    const first = FakeWebSocket.instances[0]!;
-    act(() => first.emit("open"));
-    expect(first.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
-    );
-    act(() =>
-      first.emit("message", {
-        data: JSON.stringify({ type: "session:subscribed", status: "running" }),
-      }),
-    );
-    expect(field(view.container, "session-logs-live-state").textContent).toContain("Live");
-
-    act(() => first.emit("close", { code: 1006 }));
-    expect(field(view.container, "session-logs-reconnect-banner").textContent).toContain(
-      "Real-time updates paused",
-    );
-    press(field(view.container, "session-logs-reconnect-now"));
     await settle();
-    expect(fetch).toHaveBeenCalledTimes(2);
-    expect(FakeWebSocket.instances).toHaveLength(2);
     view.unmount();
-  });
-
-  it("offers immediate reconnect while viewer-ticket retry is waiting", async () => {
-    const fetch = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("offline"))
-      .mockResolvedValue({ ok: true, json: async () => ({}) });
-    vi.stubGlobal("fetch", fetch);
-    vi.stubGlobal("WebSocket", FakeWebSocket);
-    const view = mountForm(
-      <SessionLiveLogs sessionId="session-2" initialItems={[]} initialStatus="queued" />,
-    );
+    for (const timer of pollTimers) timer();
     await settle();
-    press(field(view.container, "session-logs-reconnect-now"));
-    await settle();
-    expect(fetch).toHaveBeenCalledTimes(2);
-    expect(FakeWebSocket.instances[0]?.url).not.toContain("ticket=");
-    view.unmount();
-  });
-});
-
-describe("SessionLiveLogs status display", () => {
-  async function mountLive(sessionId: string, initialStatus: string) {
-    const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ticket: "ticket" }) }));
-    vi.stubGlobal("fetch", fetch);
-    vi.stubGlobal("WebSocket", FakeWebSocket);
-    const view = mountForm(
-      <SessionLiveLogs sessionId={sessionId} initialItems={[]} initialStatus={initialStatus} />,
-    );
-    await settle();
-    const socket = FakeWebSocket.instances[0]!;
-    act(() => socket.emit("open"));
-    return { view, socket };
-  }
-
-  it("keeps a terminal initialStatus when subscribe reports queued", async () => {
-    const { view, socket } = await mountLive("session-done", "completed");
-    emitStatus(socket, "session:subscribed", "queued");
-    const state = field(view.container, "session-logs-live-state").textContent;
-    expect(state).toBe("completed");
-    expect(state).not.toContain("Live —");
-    expect(view.container.textContent).not.toContain(SESSION_QUEUED_WAIT_COPY);
-    view.unmount();
-  });
-
-  it("keeps a terminal initialStatus when subscribe reports running", async () => {
-    const { view, socket } = await mountLive("session-done-running", "completed");
-    emitStatus(socket, "session:subscribed", "running");
-    const state = field(view.container, "session-logs-live-state").textContent;
-    expect(state).toBe("completed");
-    expect(state).not.toContain("Live —");
-    view.unmount();
-  });
-
-  it("does not label a later terminal session Live", async () => {
-    const { view, socket } = await mountLive("session-run", "running");
-    emitStatus(socket, "session:subscribed", "running");
-    expect(field(view.container, "session-logs-live-state").textContent).toBe("Live — running");
-    emitStatus(socket, "session:status", "completed");
-    expect(field(view.container, "session-logs-live-state").textContent).toBe("completed");
-    view.unmount();
-  });
-
-  it("explains that queued sessions wait for the one-minute scheduler", async () => {
-    const { view, socket } = await mountLive("session-wait", "queued");
-    emitStatus(socket, "session:subscribed", "queued");
-    expect(field(view.container, "session-logs-live-state").textContent).toBe("Live — queued");
-    expect(view.container.textContent).toContain(SESSION_QUEUED_WAIT_COPY);
-    view.unmount();
-  });
-
-  it("ignores malformed payloads and merges valid live log lines", async () => {
-    const { view, socket } = await mountLive("session-log", "running");
-    emitStatus(socket, "session:subscribed", "running");
-    act(() => socket.emit("message", { data: "not-json" }));
-    act(() => socket.emit("message", { data: JSON.stringify(["nope"]) }));
-    act(() =>
-      socket.emit("message", {
-        data: JSON.stringify({
-          type: "session:log",
-          timestampSeq: "ts-1",
-          seq: 1,
-          stream: "stdout",
-          content: "hello from pty",
-          timestamp: "2026-01-01T00:00:00.000Z",
-        }),
-      }),
-    );
-    expect(view.container.textContent).toContain("hello from pty");
-    view.unmount();
-  });
-
-  it("stops reconnecting after a terminal viewer error", async () => {
-    const { view, socket } = await mountLive("session-missing", "running");
-    emitStatus(socket, "session:subscribed", "running");
-    act(() =>
-      socket.emit("message", {
-        data: JSON.stringify({ type: "session:error", code: "NOT_FOUND" }),
-      }),
-    );
-    expect(field(view.container, "session-logs-live-error").textContent).toContain(
-      "unavailable for this session",
-    );
-    expect(socket.close).toHaveBeenCalledWith(1000, "viewer error");
-    act(() => socket.emit("close", { code: 1000 }));
-    expect(FakeWebSocket.instances).toHaveLength(1);
-    view.unmount();
-  });
-
-  it("pauses and reconnects after a non-terminal viewer error", async () => {
-    const { view, socket } = await mountLive("session-busy", "running");
-    emitStatus(socket, "session:subscribed", "running");
-    act(() =>
-      socket.emit("message", {
-        data: JSON.stringify({ type: "session:error", code: "UNAVAILABLE" }),
-      }),
-    );
-    expect(field(view.container, "session-logs-live-error").textContent).toContain("reconnecting");
-    expect(socket.close).toHaveBeenCalledWith(1011, "viewer error");
-    view.unmount();
-  });
-
-  it("stops reconnecting after a subscription-limit viewer error", async () => {
-    const { view, socket } = await mountLive("session-limited", "running");
-    emitStatus(socket, "session:subscribed", "running");
-    act(() =>
-      socket.emit("message", {
-        data: JSON.stringify({ type: "session:error", code: "SUBSCRIPTION_LIMIT" }),
-      }),
-    );
-    expect(field(view.container, "session-logs-live-error").textContent).toContain(
-      "unavailable for this session",
-    );
-    expect(socket.close).toHaveBeenCalledWith(1000, "viewer error");
-    view.unmount();
-    act(() => socket.emit("close", { code: 1000 }));
-    expect(FakeWebSocket.instances).toHaveLength(1);
-  });
-
-  it("ignores a stale queued status after the session has finished", async () => {
-    const { view, socket } = await mountLive("session-stale", "failed");
-    emitStatus(socket, "session:subscribed", "failed");
-    emitStatus(socket, "session:status", "queued");
-    expect(field(view.container, "session-logs-live-state").textContent).toBe("failed");
-    expect(view.container.textContent).not.toContain(SESSION_QUEUED_WAIT_COPY);
-    view.unmount();
-  });
-
-  it("ignores unrecognized viewer frames", async () => {
-    const { view, socket } = await mountLive("session-unknown", "running");
-    emitStatus(socket, "session:subscribed", "running");
-    act(() =>
-      socket.emit("message", {
-        data: JSON.stringify({ type: "session:pong" }),
-      }),
-    );
-    expect(field(view.container, "session-logs-live-state").textContent).toBe("Live — running");
-    view.unmount();
-  });
-
-  it("resumes from the last live cursor and ignores subscribe frames without a status", async () => {
-    const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ticket: "ticket" }) }));
-    vi.stubGlobal("fetch", fetch);
-    vi.stubGlobal("WebSocket", FakeWebSocket);
-    const view = mountForm(
-      <SessionLiveLogs
-        sessionId="session-cursor"
-        initialItems={[
-          {
-            timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
-            seq: 1,
-            stream: "stdout",
-            content: "seed",
-            timestamp: "2026-01-01T00:00:00.000Z",
-          },
-        ]}
-        initialStatus="running"
-      />,
-    );
-    await settle();
-    const socket = FakeWebSocket.instances[0]!;
-    act(() => socket.emit("open"));
-    expect(socket.send).toHaveBeenCalledWith(
-      JSON.stringify({
-        type: "session:subscribe",
-        sessionId: "session-cursor",
-        after: "2026-01-01T00:00:00.000Z#0000000001",
-      }),
-    );
-    act(() => socket.emit("message", { data: JSON.stringify({ type: "session:subscribed" }) }));
-    expect(field(view.container, "session-logs-live-state").textContent).toContain("Live");
-    view.unmount();
-  });
-
-  it("does not connect after unmount while a viewer ticket is in flight", async () => {
-    let resolveTicket:
-      | ((value: { ok: true; json: () => Promise<{ ticket: string }> }) => void)
-      | undefined;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          await new Promise((resolve) => {
-            resolveTicket = resolve;
-          }),
-      ),
-    );
-    vi.stubGlobal("WebSocket", FakeWebSocket);
-    const view = mountForm(
-      <SessionLiveLogs sessionId="session-unmount" initialItems={[]} initialStatus="running" />,
-    );
-    await settle();
-    expect(FakeWebSocket.instances).toHaveLength(0);
-    view.unmount();
-    await act(async () =>
-      resolveTicket?.({ ok: true, json: async () => ({ ticket: "late-ticket" }) }),
-    );
-    expect(FakeWebSocket.instances).toHaveLength(0);
   });
 });

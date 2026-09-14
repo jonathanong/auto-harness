@@ -8,6 +8,7 @@ import {
   DEFAULT_SLACK_NOTIFICATIONS,
   type SlackIntegrationRecord,
 } from "./slack-integration-types.ts";
+import { gzipLogRecords } from "./session-log-objects.ts";
 import { createSlackLifecycleWorker } from "./slack-runtime.ts";
 
 const now = "2026-08-12T10:00:00.000Z";
@@ -270,10 +271,18 @@ describe("Slack production runtime", () => {
     expect(await worker!.runOnce()).toBe(true);
     expect(await worker!.runOnce()).toBe(true);
     listRunning = false;
+    plane.state.logs.set("running-1", [
+      {
+        sessionId: "running-1",
+        stream: "stderr",
+        content: "boom",
+        timestampSeq: "1",
+        timestamp: now,
+        seq: 1,
+      },
+    ]);
     expect(await worker!.runOnce()).toBe(true);
-    // consistentRead: true — this feeds an immutable Slack outbox row, so it must not
-    // risk missing the host's last log write to an eventually consistent read.
-    expect(listLogs).toHaveBeenCalledWith("running-1", true);
+    // Transcript bodies live in S3/memory, not Dynamo SessionLogs.
     expect(
       fetchImpl.mock.calls.some((call) => String(call[1].body).includes("Session failed")),
     ).toBe(true);
@@ -355,5 +364,73 @@ describe("Slack production runtime", () => {
     expect(await worker!.runOnce()).toBe(true);
     expect(getSession).toHaveBeenCalledWith("disappeared");
     expect(fetchImpl).toHaveBeenCalled();
+  });
+
+  it("hydrates gzip logs for a failed session with no in-memory transcript", async () => {
+    const store = new MemoryOutbox();
+    const plane = new ControlPlane({
+      storage: Object.assign(store, {
+        getSlackIntegration: async () => slackRecord(),
+        listSessionsByStatus: async () => [],
+      }) as never,
+      secretEncryptor: encryptor(),
+      publicBaseUrl: "https://ui.test",
+      now: () => now,
+    });
+    plane.state.sessions.set(
+      "failed-gz",
+      sessionRecord("failed-gz", "failed", { completedAt: now, exitCode: 1 }),
+    );
+    plane.state.logObjects.set(
+      "sessions/failed-gz/logs.jsonl.gz",
+      gzipLogRecords([
+        {
+          sessionId: "failed-gz",
+          timestamp: now,
+          stream: "stderr",
+          content: "gzip-boom",
+          seq: 1,
+          timestampSeq: `${now}#0000000001`,
+        },
+      ]),
+    );
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true, channel: "C123", ts: "9.0" }), { status: 200 }),
+    );
+    const worker = createSlackLifecycleWorker(plane, {
+      fetch: fetchImpl,
+      worker: { now: () => now },
+    });
+    expect(await worker!.runOnce()).toBe(true);
+    expect(plane.state.logs.get("failed-gz")?.map((record) => record.content)).toEqual([
+      "gzip-boom",
+    ]);
+  });
+
+  it("does not cache empty gzip hydrate for a failed session", async () => {
+    const store = new MemoryOutbox();
+    const plane = new ControlPlane({
+      storage: Object.assign(store, {
+        getSlackIntegration: async () => slackRecord(),
+        listSessionsByStatus: async () => [],
+      }) as never,
+      secretEncryptor: encryptor(),
+      publicBaseUrl: "https://ui.test",
+      now: () => now,
+    });
+    plane.state.sessions.set(
+      "failed-empty",
+      sessionRecord("failed-empty", "failed", { completedAt: now, exitCode: 1 }),
+    );
+    const worker = createSlackLifecycleWorker(plane, {
+      fetch: vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ok: true, channel: "C123", ts: "9.1" }), { status: 200 }),
+      ),
+      worker: { now: () => now },
+    });
+    expect(await worker!.runOnce()).toBe(true);
+    expect(plane.state.logs.has("failed-empty")).toBe(false);
   });
 });

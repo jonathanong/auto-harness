@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- worktree and workspace rollback fences share one confirmation fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
@@ -187,6 +188,37 @@ describe("restoreConfirmedSessions", () => {
     expect(plane.state.workspaceSlots.has(workspacePlain.workspaceSlot.id)).toBe(false);
     expect(plane.state.workspaceSlots.get(workspaceFenced.workspaceSlot.id)).toEqual(
       workspaceFenced.workspaceSlot,
+    );
+  });
+
+  it("restores a cancelled workspace confirmation with the cancelled expected status", async () => {
+    const plane = new ControlPlane();
+    const restoreWorkspaceReconnectPending = vi.fn(async () => true);
+    plane.state.storage = { restoreWorkspaceReconnectPending } as never;
+    const cancelled = {
+      session: {
+        ...confirmation("cancelled-slot").session,
+        status: "cancelled" as const,
+        worktreeId: null,
+        workspaceSlotId: "slot-cancelled",
+      },
+      workspaceSlot: {
+        id: "slot-cancelled",
+        name: "slot-cancelled",
+        path: "/workspace/cancelled",
+        hostId: "h",
+        workspacePoolId: "pool",
+        status: "busy" as const,
+        online: true,
+        currentSessionId: "cancelled-slot",
+      },
+    } satisfies ReconnectConfirmation;
+    await restoreConfirmedSessions(plane.state, "h", "current", [cancelled]);
+    expect(restoreWorkspaceReconnectPending).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: cancelled.session.id,
+        expectedStatus: "cancelled",
+      }),
     );
   });
 });

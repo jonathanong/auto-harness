@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- the complete authoritative storage fake is intentionally centralized. */
 import type { RepositoryAdmissionState } from "@auto-harness/shared";
 
+import type { ArchiveWriter } from "../src/archive-writer.ts";
 import type {
   CommandRecord,
   HostInventoryRecord,
@@ -17,6 +18,29 @@ import type {
 import type { SessionRecord, WorktreeRecord } from "../src/db/types.ts";
 import { selectLogs } from "../src/log-query.ts";
 import { repositoryAdmissionOpen } from "../src/control-plane-repository-admission-state.ts";
+
+const gzipArchiveWriterForStorage = new WeakMap<object, ArchiveWriter>();
+
+/** Shared in-memory gzip object store for cross-plane authoritative-read tests. */
+export function createInMemoryGzipArchiveWriter(): ArchiveWriter {
+  const objects = new Map<string, Buffer>();
+  return {
+    putArchive: async () => undefined,
+    putGzipObject: async (key, body) => {
+      objects.set(key, body);
+    },
+    getGzipObject: async (key) => objects.get(key),
+    listKeys: async (prefix) => [...objects.keys()].filter((key) => key.startsWith(prefix)),
+  };
+}
+
+export function gzipArchiveWriterFor(storage: object): ArchiveWriter {
+  const existing = gzipArchiveWriterForStorage.get(storage);
+  if (existing) return existing;
+  const writer = createInMemoryGzipArchiveWriter();
+  gzipArchiveWriterForStorage.set(storage, writer);
+  return writer;
+}
 
 function copy<T extends object>(records: Map<string, T>, id: string): T | null {
   const record = records.get(id);

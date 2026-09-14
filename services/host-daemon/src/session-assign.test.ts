@@ -26,6 +26,13 @@ describe("sessionAssignFromWire", () => {
         commandId: "cmd-1",
         providerAccountId: "acct-1",
         priorContext: { sourceSessionId: "old" },
+        logSettings: {
+          uploadMode: "always",
+          batchMaxKb: 64,
+          batchMaxLines: 10,
+          batchMaxWaitMs: 1000,
+          controlPlanePollMs: 5000,
+        },
         assignedAt: "now",
       }),
     ).toMatchObject({
@@ -40,6 +47,7 @@ describe("sessionAssignFromWire", () => {
       commandId: "cmd-1",
       providerAccountId: "acct-1",
       priorContext: { sourceSessionId: "old" },
+      logSettings: { uploadMode: "always" },
     });
   });
 

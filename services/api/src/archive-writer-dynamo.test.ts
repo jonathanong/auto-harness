@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { archiveSessionLogs, retrySessionArchiveIfNeeded } from "./control-plane-lifecycle.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
+import { gzipLogRecords, putSessionLogPart } from "./session-log-objects.ts";
 import { createDynamoTestCtx } from "../test-helpers/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("ArcWr");
@@ -11,18 +12,26 @@ describe("archive writer with real DynamoDB Local", () => {
   it("reads authoritative durable logs and stores only bounded metadata", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
     const order: string[] = [];
-    await ctx.storage.putLog({
-      sessionId: "session-success",
-      timestampSeq: "2026-01-01T00:00:00.000Z#000000000001",
-      timestamp: "2026-01-01T00:00:00.000Z",
-      stream: "stdout",
-      content: "durable-only",
-      seq: 1,
-    });
     const state = createControlPlaneState({
       storage: ctx.storage,
       archiveWriter: { putArchive: async () => void order.push("object") },
     });
+    await putSessionLogPart(
+      state,
+      "session-success",
+      1,
+      1,
+      gzipLogRecords([
+        {
+          sessionId: "session-success",
+          timestampSeq: "2026-01-01T00:00:00.000Z#000000000001",
+          timestamp: "2026-01-01T00:00:00.000Z",
+          stream: "stdout",
+          content: "durable-only",
+          seq: 1,
+        },
+      ]),
+    );
     state.logs.set("session-success", []);
     const archived = await archiveSessionLogs(state, "session-success");
     const metadata = await ctx.storage.getArchive(archived.key);
@@ -69,20 +78,28 @@ describe("archive writer with real DynamoDB Local", () => {
 
   it("keeps metadata bounded for archives above the DynamoDB item limit", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
-    for (let seq = 1; seq <= 5; seq += 1) {
-      await ctx.storage.putLog({
-        sessionId: "session-large",
-        timestampSeq: `2026-01-01T00:00:00.000Z#${String(seq).padStart(12, "0")}`,
-        timestamp: "2026-01-01T00:00:00.000Z",
-        stream: "stdout",
-        content: "x".repeat(90_000),
-        seq,
-      });
-    }
     const state = createControlPlaneState({
       storage: ctx.storage,
       archiveWriter: { putArchive: async () => undefined },
     });
+    for (let seq = 1; seq <= 5; seq += 1) {
+      await putSessionLogPart(
+        state,
+        "session-large",
+        seq,
+        seq,
+        gzipLogRecords([
+          {
+            sessionId: "session-large",
+            timestampSeq: `2026-01-01T00:00:00.000Z#${String(seq).padStart(12, "0")}`,
+            timestamp: "2026-01-01T00:00:00.000Z",
+            stream: "stdout",
+            content: "x".repeat(90_000),
+            seq,
+          },
+        ]),
+      );
+    }
     const archived = await archiveSessionLogs(state, "session-large");
     expect(Buffer.byteLength(archived.body)).toBeGreaterThan(400_000);
     const metadata = await ctx.storage.getArchive(archived.key);

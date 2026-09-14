@@ -13,7 +13,7 @@ import {
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { SESSION_LOGS_TTL_ATTRIBUTE, tableNames, type DynamoTableNames } from "./dynamo.ts";
+import { tableNames, type DynamoTableNames } from "./dynamo.ts";
 import { integrationsTableDefinition } from "./ensure-integrations-table.ts";
 import { notificationDeliveriesTableDefinition } from "./ensure-notification-deliveries-table.ts";
 import {
@@ -297,20 +297,6 @@ export async function ensureControlPlaneTables(opts: {
     ],
     KeySchema: [{ AttributeName: "concurrencyId", KeyType: KeyType.HASH }],
   });
-
-  await createIfMissing(ddb, {
-    TableName: names.sessionLogs,
-    BillingMode: BillingMode.PAY_PER_REQUEST,
-    AttributeDefinitions: [
-      { AttributeName: "sessionId", AttributeType: ScalarAttributeType.S },
-      { AttributeName: "timestampSeq", AttributeType: ScalarAttributeType.S },
-    ],
-    KeySchema: [
-      { AttributeName: "sessionId", KeyType: KeyType.HASH },
-      { AttributeName: "timestampSeq", KeyType: KeyType.RANGE },
-    ],
-  });
-  await enableTableTtl(ddb, names.sessionLogs, SESSION_LOGS_TTL_ATTRIBUTE);
 
   await createIfMissing(ddb, {
     TableName: names.schedules,

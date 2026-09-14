@@ -56,6 +56,13 @@ export function grantRuntimeLambdaAccess(input: {
       resources: [input.foundation.archiveBucket.arnForObjects("sessions/*")],
     }),
   );
+  input.rest.addToRolePolicy(
+    new iam.PolicyStatement({
+      actions: ["s3:ListBucket"],
+      resources: [input.foundation.archiveBucket.bucketArn],
+      conditions: { StringLike: { "s3:prefix": ["sessions/*"] } },
+    }),
+  );
 
   const keyArn = input.foundation.integrationKey.keyArn;
   input.rest.addToRolePolicy(

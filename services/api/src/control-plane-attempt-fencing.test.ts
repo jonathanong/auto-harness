@@ -196,11 +196,9 @@ describe("ControlPlane assignment-attempt fencing", () => {
       attemptId: first.session.attemptId,
     });
     const persisted = { ...second.session };
-    const stored: string[] = [];
     plane.state.storage = {
       getSession: async () => persisted,
       getHostLock: async () => "connection",
-      putLogFenced: async (record: { content: string }) => (stored.push(record.content), true),
     } as never;
 
     expect(
@@ -231,7 +229,6 @@ describe("ControlPlane assignment-attempt fencing", () => {
         "connection",
       ),
     ).toEqual({ ok: true });
-    expect(stored).toEqual(["current-durable"]);
     expect(plane.getLogs("sess-1").map((record) => record.content)).toEqual(["current-durable"]);
     expect(plane.getSession("sess-1")?.attemptId).toBe(second.session.attemptId);
   });
@@ -397,15 +394,10 @@ describe("ControlPlane assignment-attempt fencing", () => {
 
   it("fills omitted durable log attemptId from the current session row", async () => {
     const { now, plane } = assignedPlane();
-    const first = plane.assignQueued()[0]!;
-    const fences: Array<{ attempts?: Array<{ sessionId: string; attemptId: string }> }> = [];
+    plane.assignQueued();
     plane.state.storage = {
       getSession: async () => plane.state.sessions.get("sess-1"),
       getHostLock: async () => "connection",
-      putLogFenced: async (
-        _record: unknown,
-        fence: { attempts?: Array<{ sessionId: string; attemptId: string }> },
-      ) => (fences.push(fence), true),
     } as never;
     expect(
       await plane.handleHostMessageDurable(
@@ -420,13 +412,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
         "connection",
       ),
     ).toEqual({ ok: true });
-    expect(fences).toEqual([
-      {
-        hostId: "host-1",
-        connectionId: "connection",
-        attempts: [{ sessionId: "sess-1", attemptId: first.session.attemptId }],
-      },
-    ]);
+    expect(plane.getLogs("sess-1").map((record) => record.content)).toEqual(["legacy"]);
   });
 
   it("ignores delayed logs from a previous host without treating them as a stale connection", async () => {
@@ -690,13 +676,8 @@ describe("ControlPlane assignment-attempt fencing", () => {
     const session = plane.getSession("sess-1")!;
     const { attemptId: _attemptId, ...withoutAttempt } = session;
     plane.state.sessions.set("sess-1", withoutAttempt);
-    const fences: Array<{ attempts?: unknown }> = [];
     plane.state.storage = {
       getHostLock: async () => "connection",
-      putLogFenced: async (_record: unknown, fence: { attempts?: unknown }) => (
-        fences.push(fence),
-        true
-      ),
     } as never;
     expect(
       await plane.handleHostMessageDurable(
@@ -711,7 +692,6 @@ describe("ControlPlane assignment-attempt fencing", () => {
         "connection",
       ),
     ).toEqual({ ok: true });
-    expect(fences).toEqual([{ hostId: "host-1", connectionId: "connection" }]);
     expect(plane.getLogs("sess-1").map((record) => record.content)).toEqual(["no-attempt"]);
   });
 });

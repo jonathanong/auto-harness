@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from "vitest";
 import { SESSION_LOGS_TTL_SECONDS } from "./dynamo.ts";
 import {
   getHostInventory,
+  deleteLog,
   deleteSchedule,
   disableLegacyFallbackScheduleAndAudit,
   listLogs,
@@ -1827,5 +1828,13 @@ describe("session log read consistency", () => {
 
     await listLogs(ctx, "session-1", true);
     expect((send.mock.calls[1]![0] as QueryCommand).input.ConsistentRead).toBe(true);
+  });
+
+  it("skips deleteLog when SessionLogs is not provisioned", async () => {
+    const send = vi.fn(async () => ({}));
+    await deleteLog({ doc: { send }, tables: {} } as never, "session", "ts");
+    expect(send).not.toHaveBeenCalled();
+    await deleteLog(logCtx(send), "session", "ts");
+    expect(send).toHaveBeenCalledOnce();
   });
 });

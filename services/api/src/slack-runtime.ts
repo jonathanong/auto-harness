@@ -16,6 +16,7 @@ import type { SlackIntegrationRecord } from "./slack-integration-types.ts";
 import { resolveSlackBotToken } from "./slack-secrets.ts";
 import { slackSessionSnapshot, type SlackLifecycleConfig } from "./slack-session-runtime.ts";
 import { SlackLifecycleWorker, type SlackLifecycleWorkerOptions } from "./slack-worker.ts";
+import { getLogsDurable } from "./control-plane-durable-read-runtime.ts";
 
 const OUTBOX_METHODS = ["enqueue", "claimDue", "get", "complete", "reschedule"] as const;
 /** Queue TTL is 8 days; keep a day of slack so a long-queued session still gets a terminal post. */
@@ -162,17 +163,9 @@ async function hydrateSlackSnapshotInputs(
     if (repository) plane.state.repositories.set(repository.id, repository);
   }
   const failed = session.status === "failed" || session.status === "timed_out";
-  if (
-    failed &&
-    !plane.state.logs.has(session.id) &&
-    storage &&
-    typeof storage.listLogs === "function"
-  ) {
-    // consistentRead: true — see the identical fetch (and its full rationale) in
-    // ensureFailedSessionLogsLoaded, slack-session-runtime.ts. This result feeds the same
-    // immutable outbox rows, so it needs the same guarantee against a racing eventually
-    // consistent read missing the host's last session:log write.
-    plane.state.logs.set(session.id, await storage.listLogs(session.id, true));
+  if (failed && !plane.state.logs.has(session.id)) {
+    const logs = await getLogsDurable(plane.state, session.id);
+    if (logs.length > 0) plane.state.logs.set(session.id, logs);
   }
 }
 

@@ -1,8 +1,4 @@
-import {
-  DescribeTableCommand,
-  DescribeTimeToLiveCommand,
-  ListTablesCommand,
-} from "@aws-sdk/client-dynamodb";
+import { DescribeTableCommand, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 import { DeleteCommand, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -115,15 +111,6 @@ describe("DynamoDB Local clients", () => {
       new DescribeTableCommand({ TableName: a.webhookDeliveries }),
     );
     expect(webhooks.Table?.GlobalSecondaryIndexes?.[0]?.IndexName).toBe("state-dueAt");
-    const sessionLogsTtl = await client.send(
-      new DescribeTimeToLiveCommand({ TableName: a.sessionLogs }),
-    );
-    expect(sessionLogsTtl.TimeToLiveDescription).toMatchObject({
-      AttributeName: SESSION_LOGS_TTL_ATTRIBUTE,
-    });
-    expect(["ENABLED", "ENABLING"]).toContain(
-      sessionLogsTtl.TimeToLiveDescription?.TimeToLiveStatus,
-    );
   });
 
   it("is safe when independent processes provision the same fresh table prefix", async () => {

@@ -1,17 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, SESSION_QUEUED_WAIT_COPY, SessionTerminalViewer } from "@auto-harness/ui";
+import { useEffect, useMemo, useState } from "react";
+import { SESSION_QUEUED_WAIT_COPY, SessionTerminalViewer } from "@auto-harness/ui";
 
 import {
-  lastLiveCursor,
   liveLogsStateLabel,
   mergeInitialLiveLogs,
-  mergeLiveLogs,
   resolveViewerSessionStatus,
-  validLiveLog,
-  viewerWebSocketUrl,
   viewerTicket,
+  viewerWebSocketUrl,
   type LiveLogEntry,
   type LiveLogsConnectionState,
 } from "../lib/live-session-logs.ts";
@@ -29,105 +26,133 @@ export function SessionLiveLogs({
   const [items, setItems] = useState(initialLogs);
   const [connectionState, setConnectionState] = useState<LiveLogsConnectionState>("connecting");
   const [sessionStatus, setSessionStatus] = useState(initialStatus);
+  useEffect(() => {
+    setSessionStatus(initialStatus);
+  }, [initialStatus]);
   const [error, setError] = useState<string | null>(null);
-  const [reconnectKey, setReconnectKey] = useState(0);
-  const cursorRef = useRef<string | undefined>(lastLiveCursor(initialLogs));
+  const [pollMs, setPollMs] = useState(60_000);
 
   useEffect(() => {
-    let socket: WebSocket | undefined;
+    void fetch("/api/v1/session-log-settings", { credentials: "same-origin", cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const body = (await response.json()) as { controlPlanePollMs?: number };
+        if (typeof body.controlPlanePollMs === "number" && body.controlPlanePollMs >= 5_000) {
+          setPollMs(body.controlPlanePollMs);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
-    let terminalError = false;
-    let attempts = 0;
+    const ac = new AbortController();
 
-    const reconnect = (): void => {
-      if (stopped || terminalError) return;
-      const delay = Math.min(500 * 2 ** attempts, 30_000);
-      attempts += 1;
-      setConnectionState("reconnecting");
-      retryTimer = setTimeout(connect, delay);
-    };
-    const connect = (): void => {
+    const poll = (): void => {
       if (stopped) return;
-      void viewerTicket()
-        .then((ticket) => {
-          if (stopped || terminalError) return;
-          socket = new WebSocket(viewerWebSocketUrl(ticket));
-          socket.addEventListener("open", () => {
-            attempts = 0;
-            socket?.send(
-              JSON.stringify({
-                type: "session:subscribe",
-                sessionId,
-                ...(cursorRef.current ? { after: cursorRef.current } : {}),
-              }),
-            );
-          });
-          socket.addEventListener("message", (event) => {
-            let message: unknown;
-            try {
-              message = JSON.parse(String(event.data));
-            } catch {
-              return;
-            }
-            if (!message || typeof message !== "object" || Array.isArray(message)) return;
-            const wire = message as { type?: unknown; code?: unknown; status?: unknown } & Record<
-              string,
-              unknown
-            >;
-            if (wire.type === "session:subscribed") {
-              setConnectionState("live");
-              setError(null);
-              if (typeof wire.status === "string") {
-                const incoming = wire.status;
-                setSessionStatus((current) => resolveViewerSessionStatus(current, incoming));
-              }
-              return;
-            }
-            if (wire.type === "session:log" && validLiveLog(wire)) {
-              setItems((current) => {
-                const next = mergeLiveLogs(current, wire);
-                cursorRef.current = lastLiveCursor(next);
-                return next;
-              });
-              return;
-            }
-            if (wire.type === "session:status" && typeof wire.status === "string") {
-              const incoming = wire.status;
-              setSessionStatus((current) => resolveViewerSessionStatus(current, incoming));
-              return;
-            }
-            if (wire.type === "session:error") {
-              terminalError = wire.code === "NOT_FOUND" || wire.code === "SUBSCRIPTION_LIMIT";
-              setConnectionState("error");
-              setError(
-                terminalError
-                  ? "Live logs are unavailable for this session."
-                  : "Live logs paused; reconnecting…",
-              );
-              socket?.close(terminalError ? 1000 : 1011, "viewer error");
-            }
-          });
-          socket.addEventListener("close", (event) => {
-            socket = undefined;
-            if (!stopped && !terminalError) {
-              setError(`Live connection closed (${event.code}); retrying…`);
-            }
-            reconnect();
-          });
+      void fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}/logs?limit=1000`, {
+        credentials: "same-origin",
+        cache: "no-store",
+        signal: ac.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok) throw new Error("log poll failed");
+          const body = (await response.json()) as { items?: LiveLogEntry[] };
+          const incoming = Array.isArray(body.items) ? body.items : [];
+          setItems(mergeInitialLiveLogs(incoming));
+          setConnectionState("live");
+          setError(null);
         })
-        .catch(reconnect);
+        .catch(() => {
+          if (!stopped) {
+            setConnectionState("error");
+            setError("Session logs unavailable; retrying…");
+          }
+        })
+        .finally(() => {
+          if (!stopped) retryTimer = setTimeout(poll, pollMs);
+        });
     };
-    connect();
+    poll();
+    return () => {
+      stopped = true;
+      ac.abort();
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+    };
+  }, [sessionId, pollMs]);
+
+  useEffect(() => {
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false;
+    const pollStatus = (): void => {
+      if (stopped) return;
+      void fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, {
+        credentials: "same-origin",
+        cache: "no-store",
+      })
+        .then(async (response) => {
+          if (stopped || !response.ok) return;
+          const session = (await response.json()) as { status?: string };
+          if (typeof session.status === "string") {
+            setSessionStatus((current) => resolveViewerSessionStatus(current, session.status!));
+          }
+        })
+        .finally(() => {
+          if (!stopped) retryTimer = setTimeout(pollStatus, 2_000);
+        });
+    };
+    pollStatus();
     return () => {
       stopped = true;
       if (retryTimer !== undefined) clearTimeout(retryTimer);
-      if (socket?.readyState === WebSocket.OPEN) {
+    };
+  }, [sessionId]);
+
+  useEffect(() => {
+    let stopped = false;
+    let socket: WebSocket | undefined;
+    const ac = new AbortController();
+    void viewerTicket()
+      .then((ticket) => {
+        if (stopped) return;
+        socket = new WebSocket(viewerWebSocketUrl(ticket));
+        socket.addEventListener("open", () => {
+          socket?.send(JSON.stringify({ type: "session:subscribe", sessionId }));
+        });
+        socket.addEventListener("message", (event) => {
+          try {
+            const message = JSON.parse(String(event.data)) as { type?: string };
+            if (message.type === "session:log-part") {
+              void fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}/logs?limit=1000`, {
+                credentials: "same-origin",
+                cache: "no-store",
+                signal: ac.signal,
+              })
+                .then(async (response) => {
+                  if (!response.ok) return;
+                  const body = (await response.json()) as { items?: LiveLogEntry[] };
+                  setItems(mergeInitialLiveLogs(Array.isArray(body.items) ? body.items : []));
+                  setConnectionState("live");
+                  setError(null);
+                })
+                .catch(() => undefined);
+            }
+          } catch {
+            // Ignore malformed viewer frames.
+          }
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      stopped = true;
+      ac.abort();
+      if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: "session:unsubscribe", sessionId }));
       }
-      socket?.close(1000, "session log viewer unmounted");
+      socket?.close();
     };
-  }, [reconnectKey, sessionId]);
+  }, [sessionId]);
 
   return (
     <div className="space-y-2" data-pw="session-logs-live-tail">
@@ -138,6 +163,9 @@ export function SessionLiveLogs({
       >
         {liveLogsStateLabel(connectionState, sessionStatus)}
       </p>
+      <p className="text-sm text-muted-foreground" data-pw="session-logs-s3-note">
+        Near-real-time via S3. For a live PTY stream, open the host pane on that machine.
+      </p>
       {sessionStatus === "queued" ? (
         <p className="text-sm text-muted-foreground">{SESSION_QUEUED_WAIT_COPY}</p>
       ) : null}
@@ -145,24 +173,6 @@ export function SessionLiveLogs({
         <p className="text-sm text-destructive" data-pw="session-logs-live-error" role="alert">
           {error}
         </p>
-      ) : null}
-      {connectionState === "reconnecting" ? (
-        <Alert
-          variant="warning"
-          className="flex items-center justify-between gap-3"
-          data-pw="session-logs-reconnect-banner"
-          role="status"
-        >
-          <span>Real-time updates paused — reconnecting…</span>
-          <button
-            type="button"
-            className="font-medium underline underline-offset-4"
-            data-pw="session-logs-reconnect-now"
-            onClick={() => setReconnectKey((current) => current + 1)}
-          >
-            Reconnect now
-          </button>
-        </Alert>
       ) : null}
       <SessionTerminalViewer sessionId={sessionId} items={items} />
     </div>

@@ -127,6 +127,12 @@ const NAV: NavGroup[] = [
         pw: "nav-github-ingress",
         tip: "Admin-only GitHub App comment-trigger configuration",
       },
+      {
+        href: "/settings/session-logs",
+        label: "Session logs",
+        pw: "nav-session-log-settings",
+        tip: "Upload mode, batch size, and control-plane poll for session transcripts",
+      },
     ],
   },
 ];

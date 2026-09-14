@@ -73,6 +73,9 @@ describe("ControlShell", () => {
     expect(field<HTMLAnchorElement>(document, "nav-slack").getAttribute("href")).toBe(
       "/settings/slack",
     );
+    expect(
+      field<HTMLAnchorElement>(document, "nav-session-log-settings").getAttribute("href"),
+    ).toBe("/settings/session-logs");
     view.unmount();
   });
 

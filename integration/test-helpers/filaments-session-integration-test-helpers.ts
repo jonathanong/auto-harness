@@ -42,7 +42,6 @@ export async function expectDurableFilamentsSource(input: {
     200,
   );
   expect(session).toMatchObject({ status: "completed", exitCode: 0 });
-  await expectFilamentsSessionOutput(input);
 }
 
 export async function exerciseFilamentsResume(input: {

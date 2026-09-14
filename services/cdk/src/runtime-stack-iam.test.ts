@@ -62,6 +62,7 @@ describe("runtime Lambda IAM split", () => {
     expect(rest).toContain("kms:Decrypt");
     expect(rest).toContain("s3:GetObject");
     expect(rest).toContain("s3:GetObjectVersion");
+    expect(rest).toContain("s3:ListBucket");
     expect(cron).toContain("kms:Decrypt");
     expect(cron).not.toContain("kms:Encrypt");
     expect(cron).not.toContain("s3:GetObject");

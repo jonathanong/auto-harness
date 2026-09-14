@@ -46,6 +46,42 @@ function adminsBlob(): string {
 }
 
 describe("auth account cache staleness", () => {
+  it("skips incomplete auth records while hydrating a hashed service account", async () => {
+    const storage = new SharedAccountStore();
+    storage.records.set("user-plain", {
+      id: "user-plain",
+      kind: "user",
+      username: "plain",
+      role: "operator",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    storage.records.set("sa-plain", {
+      id: "sa-plain",
+      kind: "service-account",
+      username: "sa-plain",
+      role: "operator",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    storage.records.set("sa-hashed", {
+      id: "sa-hashed",
+      kind: "service-account",
+      username: "sa-hashed",
+      role: "operator",
+      apiKeyHash: "hash",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    const auth = new AuthService({
+      mode: "required",
+      secret: "a".repeat(32),
+      admins: adminsBlob(),
+    });
+    await auth.hydrate(storage);
+    expect(auth.authenticateApiKey).toBeTypeOf("function");
+  });
+
   it("accepts a key created on another worker without waiting for the TTL", async () => {
     const time = clock();
     const { storage, writer, reader } = await workers(30_000, time.now);

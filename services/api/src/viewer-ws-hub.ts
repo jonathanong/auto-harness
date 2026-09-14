@@ -5,7 +5,7 @@ import type { Duplex } from "node:stream";
 
 import { mayAccessRepository } from "./auth-policy.ts";
 import type { AuthService, Principal } from "./auth.ts";
-import type { ControlPlane, LogRecord } from "./control-plane.ts";
+import type { ControlPlane } from "./control-plane.ts";
 import { settleStorage } from "./control-plane-state.ts";
 import { deleteViewerConnection, putViewerConnection } from "./control-plane-user-sessions.ts";
 import { viewerConnectionPrincipal } from "./viewer-principal.ts";
@@ -20,16 +20,13 @@ import { WebSocketServer, type WebSocket } from "ws";
 const MAX_WS_FRAME_BYTES = 16 * 1024;
 const MAX_SUBSCRIPTIONS = 8;
 const MAX_BUFFERED_BYTES = 512 * 1024;
-const TAIL_PAGE_SIZE = 250;
-const MAX_DRAIN_PAGES = 4;
 
 type Subscription = {
   sessionId: string;
   repositoryId: string | null;
   after?: string;
   status: string;
-  replaying: boolean;
-  pending: LogRecord[];
+  hostId?: string;
 };
 
 export type ViewerWsHub = {
@@ -59,45 +56,35 @@ export function attachViewerWsHub(
     socket.send(JSON.stringify(message));
     return true;
   };
-  const sendRecord = (socket: WebSocket, subscription: Subscription, record: LogRecord): void => {
-    if (subscription.after && record.timestampSeq <= subscription.after) return;
-    if (send(socket, { type: "session:log", ...record })) subscription.after = record.timestampSeq;
+  const viewerCountFor = (sessionId: string): number => {
+    let count = 0;
+    for (const requested of subscriptions.values()) {
+      if (requested.has(sessionId)) count += 1;
+    }
+    return count;
   };
-  const publish = (record: LogRecord): void => {
+  const notifyWatch = (sessionId: string, hostId: string | undefined, watching: boolean): void => {
+    if (!hostId) return;
+    plane.state.onHostMessage?.(hostId, {
+      type: watching ? "session:log-watch" : "session:log-unwatch",
+      sessionId,
+    });
+  };
+  const publishPart = (event: {
+    sessionId: string;
+    key: string;
+    seqStart: number;
+    seqEnd: number;
+  }): void => {
     for (const [socket, requested] of subscriptions) {
-      const subscription = requested.get(record.sessionId);
-      if (!subscription) continue;
-      if (subscription.replaying) subscription.pending.push(record);
-      else sendRecord(socket, subscription, record);
+      if (!requested.has(event.sessionId)) continue;
+      send(socket, { type: "session:log-part", ...event });
     }
   };
-  const previousOnLogCommitted = plane.state.onLogCommitted;
-  const onLogCommitted = (record: LogRecord): void => {
-    previousOnLogCommitted?.(record);
-    publish(record);
-  };
-  plane.state.onLogCommitted = onLogCommitted;
-
-  const drain = async (socket: WebSocket, subscription: Subscription): Promise<void> => {
-    subscription.replaying = true;
-    try {
-      for (let page = 0; page < MAX_DRAIN_PAGES; page += 1) {
-        const records = await loadTail(plane, subscription.sessionId, subscription.after);
-        for (const record of records.toSorted((a, b) =>
-          a.timestampSeq.localeCompare(b.timestampSeq),
-        )) {
-          sendRecord(socket, subscription, record);
-        }
-        if (records.length < TAIL_PAGE_SIZE) break;
-      }
-    } finally {
-      for (const record of subscription.pending
-        .splice(0)
-        .toSorted((a, b) => a.timestampSeq.localeCompare(b.timestampSeq))) {
-        sendRecord(socket, subscription, record);
-      }
-      subscription.replaying = false;
-    }
+  const previousOnLogPartCommitted = plane.state.onLogPartCommitted;
+  plane.state.onLogPartCommitted = (event) => {
+    previousOnLogPartCommitted?.(event);
+    publishPart(event);
   };
 
   const persistBySocket = new Map<WebSocket, () => void>();
@@ -123,7 +110,6 @@ export function attachViewerWsHub(
                 status: session.status,
               });
             }
-            if (subscription.after) await drain(socket, subscription);
           } catch {
             send(socket, {
               type: "session:error",
@@ -176,8 +162,12 @@ export function attachViewerWsHub(
         return;
       }
       if (message.type === "session:unsubscribe") {
+        const existing = requested.get(message.sessionId);
         requested.delete(message.sessionId);
         persist();
+        if (existing && viewerCountFor(message.sessionId) === 0) {
+          notifyWatch(message.sessionId, existing.hostId, false);
+        }
         return;
       }
       messageTail = messageTail
@@ -199,12 +189,12 @@ export function attachViewerWsHub(
             });
             return;
           }
+          const firstViewer = viewerCountFor(message.sessionId) === 0;
           const subscription: Subscription = {
             sessionId: message.sessionId,
             repositoryId: session.repositoryId,
             status: session.status,
-            replaying: false,
-            pending: [],
+            ...(session.hostId ? { hostId: session.hostId } : {}),
             ...(message.after ? { after: message.after } : {}),
           };
           requested.set(message.sessionId, subscription);
@@ -215,13 +205,20 @@ export function attachViewerWsHub(
             cursor: subscription.after ?? null,
             status: subscription.status,
           });
+          if (firstViewer) notifyWatch(message.sessionId, session.hostId, true);
         })
         .catch(() => socket.close(1011, "viewer subscription failed"));
     });
     socket.on("close", () => {
       persistBySocket.delete(socket);
+      const remaining = [...requested.values()];
       subscriptions.delete(socket);
       deleteViewerConnection(plane.state, connectionId);
+      for (const subscription of remaining) {
+        if (viewerCountFor(subscription.sessionId) === 0) {
+          notifyWatch(subscription.sessionId, subscription.hostId, false);
+        }
+      }
     });
   };
 
@@ -248,9 +245,7 @@ export function attachViewerWsHub(
     viewerCount: () => subscriptions.size,
     close: () => {
       server.off("upgrade", onUpgrade);
-      if (plane.state.onLogCommitted === onLogCommitted) {
-        plane.state.onLogCommitted = previousOnLogCommitted;
-      }
+      plane.state.onLogPartCommitted = previousOnLogPartCommitted;
       clearInterval(pollTimer);
       persistBySocket.clear();
       for (const socket of subscriptions.keys()) socket.close();
@@ -264,25 +259,14 @@ export function attachViewerWsHub(
 async function loadSession(
   plane: ControlPlane,
   sessionId: string,
-): Promise<{ repositoryId: string | null; status: string } | null> {
-  if (plane.state.storage) return await plane.state.storage.getSession(sessionId);
-  return plane.getSession(sessionId);
-}
-
-async function loadTail(
-  plane: ControlPlane,
-  sessionId: string,
-  after: string | undefined,
-): Promise<LogRecord[]> {
-  if (plane.state.storage) {
-    return await plane.state.storage.queryLogs(
-      sessionId,
-      after === undefined ? { limit: TAIL_PAGE_SIZE } : { after, limit: TAIL_PAGE_SIZE },
-    );
-  }
-  return plane
-    .getLogs(sessionId)
-    .filter((record) => !after || record.timestampSeq > after)
-    .toSorted((a, b) => a.timestampSeq.localeCompare(b.timestampSeq))
-    .slice(0, TAIL_PAGE_SIZE);
+): Promise<{ repositoryId: string | null; status: string; hostId?: string } | null> {
+  const session = plane.state.storage
+    ? await plane.state.storage.getSession(sessionId)
+    : (plane.state.sessions.get(sessionId) ?? null);
+  if (!session) return null;
+  return {
+    repositoryId: session.repositoryId,
+    status: session.status,
+    ...(session.hostId ? { hostId: session.hostId } : {}),
+  };
 }

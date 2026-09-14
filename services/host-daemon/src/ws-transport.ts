@@ -378,6 +378,9 @@ export function createWsTransport(options: Options): DaemonTransport & {
               boundedWireText(message.handoffId) &&
               boundedWireText(message.sessionId)) ||
             message.type === "session:assign" ||
+            ((message.type === "session:log-watch" || message.type === "session:log-unwatch") &&
+              "sessionId" in message &&
+              boundedWireText(message.sessionId)) ||
             message.type === "host:draining" ||
             message.type === "host:drain" ||
             message.type === "host:keepalive-ack")

@@ -53,7 +53,6 @@ describe("durable archive expiry reads", () => {
 
   it("writes durable expiry before returning expired from a storage-backed read", async () => {
     const expireArchive = vi.fn(async () => true);
-    const queryLogs = vi.fn(async () => []);
     const plane = new ControlPlane({
       now: () => "2026-01-08T00:00:00.000Z",
       storage: {
@@ -67,7 +66,6 @@ describe("durable archive expiry reads", () => {
           retryOrder: "order",
           updatedAt: "2026-01-01T00:00:00.000Z",
         }),
-        queryLogs,
         expireArchive,
       } as never,
     });
@@ -75,7 +73,6 @@ describe("durable archive expiry reads", () => {
     await expect(plane.getArchiveDownloadDurable("session")).resolves.toEqual({
       state: "expired",
     });
-    expect(queryLogs).toHaveBeenCalledOnce();
     expect(expireArchive).toHaveBeenCalledWith(
       "sessions/session/logs.jsonl.gz",
       "2026-01-08T00:00:00.000Z",
@@ -84,7 +81,6 @@ describe("durable archive expiry reads", () => {
 
   it("does not expire an in-flight processing claim that already captured logs", async () => {
     const expireArchive = vi.fn(async () => true);
-    const queryLogs = vi.fn(async () => []);
     const plane = new ControlPlane({
       now: () => "2026-01-08T00:00:00.000Z",
       storage: {
@@ -99,7 +95,6 @@ describe("durable archive expiry reads", () => {
           capturedRetryOrder: "claim",
           updatedAt: "2026-01-01T00:00:00.000Z",
         }),
-        queryLogs,
         expireArchive,
       } as never,
     });
@@ -107,7 +102,6 @@ describe("durable archive expiry reads", () => {
     await expect(plane.getArchiveDownloadDurable("session")).resolves.toEqual({
       state: "dynamodb",
     });
-    expect(queryLogs).toHaveBeenCalledOnce();
     expect(expireArchive).not.toHaveBeenCalled();
   });
 
