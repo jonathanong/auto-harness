@@ -587,6 +587,9 @@ configured. It also retains the archive metadata row in DynamoDB. Uploads use SS
 keys outside `sessions/{sessionId}/logs.jsonl`. Local tests inject an in-memory writer and never
 contact AWS. The DynamoDB row is bounded pointer/state metadata, never a duplicate log body. A
 pending row survives an interrupted S3 PUT so the same idempotent object key can be retried.
+A protocol-v6 deferred terminal-hook handoff withholds that archive write until the handoff
+settles or its 24-hour expiry elapses — including on the storage-less local path for an
+exhausted `checkout_fetch_failed` finish.
 
 ---
 
