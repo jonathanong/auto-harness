@@ -250,7 +250,7 @@ Why not migrate, all five reasons:
 leading source of production incidents, or global viewer latency becomes a real product
 requirement, re-open this with a spike — not a big-bang port.
 
-One distinction worth keeping precise: [architecture.md](architecture.md#architecture-principles)
+One distinction worth keeping precise: [architecture/principles.md](architecture/principles.md)
 already says AWS service choices "are constraints or implementation decisions; they may change
 without changing these rules." The _specific_ prohibitions above (don't Scan `Connections`; never
 `await` a host push inside a browser request) are API-Gateway-shaped and would dissolve on Durable
@@ -272,7 +272,7 @@ Secondary reasons, each independently sufficient:
 
 - It would put a third party between Auto Harness and the CLI's real `$HOME`, and subscription
   CLIs need an unsandboxed shell with a real `$HOME`.
-- It contradicts [plan.md](plan.md)'s D9 and [architecture.md](architecture.md)'s "No Docker
+- It contradicts [plan.md](plan.md)'s D9 and [architecture/decisions.md](architecture/decisions.md)'s "No Docker
   wrapping the agent" design decision.
 - It would move subscription credentials onto a third party's filesystem, breaking the "your VPS
   holds the tools and logins" boundary in [why.md](why.md) and [security.md](security.md).

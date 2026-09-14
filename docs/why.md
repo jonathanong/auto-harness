@@ -34,4 +34,4 @@ Auto Harness exists so teams can **spend subscription plan capacity** on automat
 
 Business impact and use cases (human-facing): root [README](../README.md).  
 Money: [costs.md](costs.md).  
-How it runs: [architecture.md](architecture.md).
+How it runs: [architecture/](architecture/README.md).

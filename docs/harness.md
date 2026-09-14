@@ -7,7 +7,7 @@ Examples use a typical monorepo shape (`codex-*` workflow names, `docs/prompts/â
 API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost model: [why.md](why.md), [costs.md](costs.md).
 
 Slack session-lifecycle threads shown in the diagrams below are available when a Slack integration
-is configured and the outbound worker is available ([architecture.md](architecture.md),
+is configured and the outbound worker is available ([architecture/](architecture/README.md),
 [integrations.md](integrations.md)). No permanent production deployment is implied: the API and
 web UI remain durable status surfaces when Slack is unconfigured or unavailable.
 

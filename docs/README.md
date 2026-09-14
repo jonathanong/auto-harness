@@ -36,18 +36,18 @@ Short entry points. Prefer the focused pages over mega-guides.
 
 ## Design
 
-| Doc                                | Contents                                              |
-| ---------------------------------- | ----------------------------------------------------- |
-| [why.md](why.md)                   | Why this product; subscriptions + non-interactive CLI |
-| [architecture.md](architecture.md) | Two-plane overview + flows                            |
-| [aws.md](aws.md)                   | Control plane internals                               |
-| [host-daemon.md](host-daemon.md)   | VPS agent internals                                   |
-| [auth.md](auth.md)                 | Credentials, login, agent binding                     |
-| [roles.md](roles.md)               | Named roles, capabilities, and the grant matrix       |
-| [security.md](security.md)         | Principles, transport, hardening, threat boundaries   |
-| [web.md](web.md)                   | Web UI behavior                                       |
-| [terminology.md](terminology.md)   | Canonical UI vocabulary (nav labels, copy, `data-pw`) |
-| [integrations.md](integrations.md) | Slack (+ future)                                      |
-| [plan.md](plan.md)                 | Phases + data model                                   |
-| [costs.md](costs.md)               | Cost notes                                            |
-| [comparison.md](comparison.md)     | vs. background-agents: sandboxes, Cloudflare, cost    |
+| Doc                                     | Contents                                                      |
+| --------------------------------------- | ------------------------------------------------------------- |
+| [why.md](why.md)                        | Why this product; subscriptions + non-interactive CLI         |
+| [architecture/](architecture/README.md) | Two-plane overview, flows, [gotchas](architecture/gotchas.md) |
+| [aws.md](aws.md)                        | Control plane internals                                       |
+| [host-daemon.md](host-daemon.md)        | VPS agent internals                                           |
+| [auth.md](auth.md)                      | Credentials, login, agent binding                             |
+| [roles.md](roles.md)                    | Named roles, capabilities, and the grant matrix               |
+| [security.md](security.md)              | Principles, transport, hardening, threat boundaries           |
+| [web.md](web.md)                        | Web UI behavior                                               |
+| [terminology.md](terminology.md)        | Canonical UI vocabulary (nav labels, copy, `data-pw`)         |
+| [integrations.md](integrations.md)      | Slack (+ future)                                              |
+| [plan.md](plan.md)                      | Phases + data model                                           |
+| [costs.md](costs.md)                    | Cost notes                                                    |
+| [comparison.md](comparison.md)          | vs. background-agents: sandboxes, Cloudflare, cost            |

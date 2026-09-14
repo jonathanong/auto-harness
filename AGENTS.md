@@ -17,9 +17,10 @@ Conventions for humans and coding agents working in this repository.
 - **No service may import another service.** Share code via modules.
 
 Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
-Cross-plane implementation must also follow the durable ownership, acknowledgement, bounded-work,
+Cross-plane overview: [docs/architecture/](docs/architecture/README.md).
+Implementation must also follow the durable ownership, acknowledgement, bounded-work,
 observability, and retention principles in
-[docs/architecture.md](docs/architecture.md#architecture-principles).
+[docs/architecture/principles.md](docs/architecture/principles.md).
 
 ## Tooling
 
