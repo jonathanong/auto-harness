@@ -342,11 +342,12 @@ on the closing loser.
 
 ## Related
 
-| Doc                                          | Role                                    |
-| -------------------------------------------- | --------------------------------------- |
-| [api.md](api.md)                             | REST                                    |
-| [host-daemon.md](host-daemon.md)             | How the agent handles assign/log/status |
-| [aws.md](aws.md)                             | Scheduler, fan-out, connections table   |
-| [web.md](web.md)                             | UI live terminal                        |
-| [setup.md](setup.md)                         | Deploy / URLs and tokens                |
-| [local-development.md](local-development.md) | Local API + `/ws` e2e                   |
+| Doc                                                            | Role                                    |
+| -------------------------------------------------------------- | --------------------------------------- |
+| [api.md](api.md)                                               | REST                                    |
+| [host-daemon.md](host-daemon.md)                               | How the agent handles assign/log/status |
+| [aws.md](aws.md)                                               | Scheduler, fan-out, connections table   |
+| [architecture/communication.md](architecture/communication.md) | When Lambda runs vs outbound push       |
+| [web.md](web.md)                                               | UI live terminal                        |
+| [setup.md](setup.md)                                           | Deploy / URLs and tokens                |
+| [local-development.md](local-development.md)                   | Local API + `/ws` e2e                   |

@@ -64,4 +64,4 @@ Local-hub register reconcile (storage-less) is a layer detail: [aws.md — Agent
 
 ## Related
 
-[assignment.md](assignment.md) · [request-lifetime.md](request-lifetime.md) · [gotchas.md](gotchas.md)
+[communication.md](communication.md) · [assignment.md](assignment.md) · [request-lifetime.md](request-lifetime.md) · [gotchas.md](gotchas.md)

@@ -46,6 +46,11 @@ That is a **product constraint**, not an implementation preference: it is how yo
 
 Auto Harness AWS infrastructure is designed to be nearly free to operate. Costs scale with usage but stay negligible next to **subscription seats**, **plan quotas**, and **VPS** capacity. The control plane should not be the line item you worry about.
 
+**Modelled AWS coordination floor at the reference workload: ~$155/month** (premature;
+list-price arithmetic, not an invoice). Table under
+[Modelled monthly AWS subtotal](#modelled-monthly-aws-subtotal).
+Seats and the VPS are extra and dominate.
+
 ## AWS cost model (measured implementation + modelled workload)
 
 The AWS runtime has been deployed and account-tested — see the Maturity table in
@@ -93,21 +98,52 @@ pages for the deployment region before approving a budget.
 | Archive bytes / session | 256 KiB         | JSONL model; 3 objects were purged in `qa` without size metrics                             |
 | SessionLogs TTL         | 7 days          | `ttl` on new writes                                                                         |
 
-At that workload the model reports ~27M DynamoDB log item writes/month and ~27M
-transactional write items/month, ~81M WebSocket messages/month (including keepalive
-acks and each viewer copy), ~27.4M Lambda invocations/month (viewer fanout and keepalive
-acks are outbound and do not invoke Lambda; the 43,200 scheduler sweeps do), 43,200
-scheduler invocations and 432,000 schedule evaluations/month, and ~750 MiB archive PUT
-volume/month. Queue throughput is 100 assigns/day plus the one-minute repair sweep.
-Re-run `estimateMonthlyCapacity` when the session mix changes; do not scale by session
-count alone.
+At that workload `estimateMonthlyCapacity(REFERENCE_WORKLOAD)` reports:
+
+| Volume                       | Count      |
+| ---------------------------- | ---------- |
+| DynamoDB log item writes     | 27,000,000 |
+| WebSocket messages           | 81,530,400 |
+| Lambda invocations           | 27,344,400 |
+| EventBridge cron invocations | 43,200     |
+| Schedule evaluations         | 432,000    |
+| Connection-minutes (2+2)     | 172,800    |
+| Archive PUT volume           | 750 MiB    |
+
+Queue throughput is 100 assigns/day plus the one-minute repair sweep. Re-run
+`estimateMonthlyCapacity` when the session mix changes; do not scale by session count alone.
+
+### Modelled monthly AWS subtotal
+
+Premature: no invoice exists. Deployed logs go through one `TransactWriteItems` Put per chunk
+(`putLogsFenced`), which bills **2 WRU per 1 KB item**. Chunks larger than 1 KB cost more. Lambda
+**duration** is omitted (needs measured GB-seconds).
+
+| Line                                     | Arithmetic                  | Modelled $/month |
+| ---------------------------------------- | --------------------------- | ---------------- |
+| Lambda invocations                       | 27.3444M × $0.20 / 1M       | $5.47            |
+| API Gateway REST                         | 30K × $3.50 / 1M            | $0.11            |
+| API Gateway WebSocket messages           | 81.5304M × $1.00 / 1M       | $81.53           |
+| API Gateway WebSocket connection-minutes | 172,800 × $0.25 / 1M        | $0.04            |
+| DynamoDB log writes (2 WRU/item)         | 27M × 2 × $1.25 / 1M        | $67.50           |
+| S3 archive storage (first-month bytes)   | 750 MiB × $0.023 / GB       | $0.02            |
+| S3 archive PUTs                          | 3,000 objects × $0.005 / 1K | $0.02            |
+| **Coordination floor**                   | sum of priced rows          | **~$155**        |
+
+Add Lambda duration on top (example only: 256 MB × 100 ms × 27.3444M invokes ≈ **+$12** → **~$167**).
+WebSocket **messages** dominate the AWS line. Vendor seats and the VPS are **not** in this subtotal
+and are the real bill — see [The real cost](#the-real-cost-subscriptions--hosts-not-api-tokens).
+
+Unit prices are illustrative; verify current regional AWS pricing before budgeting.
 
 ## Cost by Component
 
 ### Lambda
 
 In the target runtime, each API request or inbound WebSocket message triggers an invocation.
-Viewer fanout is an outbound WebSocket delivery and does not invoke the Lambda. Duration and
+Viewer fanout is an outbound WebSocket delivery and does not invoke the Lambda. Hosts do not poll
+for work; the 1-minute EventBridge rule is a repair sweep — see
+[architecture/communication.md](architecture/communication.md). Duration and
 memory must be measured after deployment.
 
 - **Invocation cost**: $0.20 per 1M requests
@@ -145,15 +181,15 @@ Per session, approximate DynamoDB operations:
 
 - Create session: 1 write
 - Status updates (queued → running → completed): 3 writes
-- Log entries: one item write and one transactional item per received chunk. Up to 25 adjacent
-  local WebSocket chunks can share a connection-fence batch, which reduces local coordination but
-  does not reduce deployed transactional item capacity; chunk count must be measured from the
-  chosen CLI and workload.
+- Log entries: one transactional `SessionLogs` Put per received chunk (`putLogsFenced`). Up to 25
+  adjacent local WebSocket chunks can share a connection-fence batch, which reduces local
+  coordination but does not reduce deployed transactional item capacity; chunk count must be
+  measured from the chosen CLI and workload.
 - Scheduler queries: ~5 reads
 - UI/API reads: ~10 reads
 
-Do not aggregate these into a monthly DynamoDB figure until chunk counts and real read behavior
-are measured.
+Log-write volume is in the subtotal above. Catalog/session reads and item sizes above 1 KB are
+still unmodelled.
 
 #### SessionLogs Cost Control
 

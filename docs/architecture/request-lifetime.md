@@ -41,4 +41,4 @@ serve — observability cannot interfere with execution — does not. See [compa
 
 ## Related
 
-[principles.md](principles.md) · [logs.md](logs.md) · [connection.md](connection.md) · [gotchas.md](gotchas.md) · [aws.md](../aws.md)
+[principles.md](principles.md) · [communication.md](communication.md) · [logs.md](logs.md) · [connection.md](connection.md) · [gotchas.md](gotchas.md) · [aws.md](../aws.md)
