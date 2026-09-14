@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import { concatGzipMembers, gunzipToUtf8, gzipJsonlLines } from "./session-log-gzip.ts";
 
 describe("session log gzip", () => {
+  it("gzips an empty transcript", () => {
+    expect(gunzipToUtf8(gzipJsonlLines([]))).toBe("");
+  });
+
   it("round-trips JSONL lines", () => {
     const gz = gzipJsonlLines(['{"seq":1}', '{"seq":2}']);
     expect(gunzipToUtf8(gz)).toBe('{"seq":1}\n{"seq":2}\n');

@@ -10,6 +10,50 @@ import {
 import { createControlPlaneState, settleStorage, trackLogPersist } from "./control-plane-state.ts";
 
 describe("archive retry state", () => {
+  it("stores gzip contentType and compressed bodyBytes from the writer", async () => {
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => ({
+          versionId: "gz-v1",
+          contentType: "application/gzip",
+          bodyBytes: 42,
+        }),
+      },
+    });
+    await archiveSessionLogs(state, "gzip-meta");
+    expect(state.archives.get("sessions/gzip-meta/logs.jsonl.gz")).toMatchObject({
+      contentType: "application/gzip",
+      bodyBytes: 42,
+      versionId: "gz-v1",
+      status: "complete",
+    });
+  });
+
+  it("ignores an empty writer contentType", async () => {
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => ({ versionId: "empty-type", contentType: "", bodyBytes: 7 }),
+      },
+    });
+    await archiveSessionLogs(state, "empty-type");
+    expect(state.archives.get("sessions/empty-type/logs.jsonl.gz")).toMatchObject({
+      contentType: "application/x-ndjson",
+      bodyBytes: 7,
+      versionId: "empty-type",
+    });
+  });
+
+  it("keeps JSONL metadata when the writer only returns a version id", async () => {
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => ({ versionId: "plain-v1" }) },
+    });
+    await archiveSessionLogs(state, "plain-meta");
+    expect(state.archives.get("sessions/plain-meta/logs.jsonl.gz")).toMatchObject({
+      contentType: "application/x-ndjson",
+      versionId: "plain-v1",
+    });
+  });
+
   it("stays disabled without a writer and skips a completed cached object", async () => {
     const disabled = createControlPlaneState();
     await expect(retrySessionArchiveIfNeeded(disabled, "disabled")).resolves.toBeUndefined();
