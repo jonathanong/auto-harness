@@ -2580,6 +2580,13 @@ function applySessionStatus(
       }
       if (finish.errorCode !== undefined) session.errorCode = finish.errorCode;
       if (finish.errorMessage !== undefined) session.errorMessage = finish.errorMessage;
+      // Mint before clearing worktreeId so the handoff keeps the failed checkout.
+      const deferredHandoff =
+        msg.deferTerminalHookResult === true &&
+        protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
+          ? deferredTerminalHookHandoff(state, session, msg, reportingHostId)
+          : undefined;
+      if (deferredHandoff) session.terminalHookHandoff = deferredHandoff;
       session.worktreeId = null;
       session.workspaceSlotId = null;
       // A continuation reference is single-use: a resumed command must report
@@ -2587,7 +2594,14 @@ function applySessionStatus(
       if (finish.clearResumeRef) {
         delete session.cliResumeRef;
       }
-      queueSessionArchive(state, session.id);
+      if (!deferredHandoff) queueSessionArchive(state, session.id);
+      persistSession(state, session);
+      return {
+        ok: true,
+        ...(firstCheckoutFetchFailure || deferredHandoff ? { retryAccepted: false } : {}),
+        ...(deferredHandoff ? { terminalHookHandoffId: deferredHandoff.handoffId } : {}),
+        ...(deferredHandoff ? { terminalHookHandoffExpiresAt: deferredHandoff.expiresAt } : {}),
+      };
     }
   }
   persistSession(state, session);
