@@ -107,7 +107,9 @@ count alone.
 ### Lambda
 
 In the target runtime, each API request or inbound WebSocket message triggers an invocation.
-Viewer fanout is an outbound WebSocket delivery and does not invoke the Lambda. Duration and
+Viewer fanout is an outbound WebSocket delivery and does not invoke the Lambda. Hosts do not poll
+for work; the 1-minute EventBridge rule is a repair sweep — see
+[architecture/communication.md](architecture/communication.md). Duration and
 memory must be measured after deployment.
 
 - **Invocation cost**: $0.20 per 1M requests

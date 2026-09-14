@@ -9,6 +9,7 @@ Cross-plane overview. Layer internals: [aws.md](../aws.md) (control), [host-daem
 | [session-lifecycle.md](session-lifecycle.md) | Create → run → terminal; prompt / scheduled / workspace |
 | [assignment.md](assignment.md)               | Match, round-robin, ack, resume, bounded retry          |
 | [connection.md](connection.md)               | Register, keepalive, disconnect, drain                  |
+| [communication.md](communication.md)         | WebSocket vs the 1-minute cron; what invokes Lambda     |
 | [logs.md](logs.md)                           | Live tail, REST history, S3 archive                     |
 | [request-lifetime.md](request-lifetime.md)   | Browser and host never share a request                  |
 | [gotchas.md](gotchas.md)                     | Traps, maturity, “do not improve this”                  |
