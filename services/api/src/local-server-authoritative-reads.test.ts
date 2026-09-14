@@ -8,8 +8,19 @@ import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 describe("durable session routes", () => {
   it("reads ordered log history written by a different control plane", async () => {
     const storage = createAuthoritativeReadStorage();
+    const objects = new Map<string, Buffer>();
+    const archiveWriter = {
+      putArchive: async () => undefined,
+      putGzipObject: async (key: string, body: Buffer) => {
+        objects.set(key, body);
+      },
+      getGzipObject: async (key: string) => objects.get(key),
+      listKeys: async (prefix: string) =>
+        [...objects.keys()].filter((key) => key.startsWith(prefix)),
+    };
     const writer = new ControlPlane({
       storage,
+      archiveWriter,
       commandIdFactory: () => "command",
       idFactory: () => "session",
       now: () => "2026-01-01T00:00:00.000Z",
@@ -40,7 +51,7 @@ describe("durable session routes", () => {
       });
     }
 
-    const { handler } = createLocalApp({ plane: new ControlPlane({ storage }) });
+    const { handler } = createLocalApp({ plane: new ControlPlane({ storage, archiveWriter }) });
     const response = await invokeHandler(handler, "GET", "/api/v1/sessions/session/logs");
     expect(response.status).toBe(200);
     expect(
@@ -161,11 +172,16 @@ describe("durable session routes", () => {
         const session = plane.state.sessions.get(id);
         return session ? { ...session } : null;
       },
-      queryLogs: async () => {
-        throw new Error("storage unavailable");
-      },
     } as never;
-    plane = new ControlPlane({ storage });
+    plane = new ControlPlane({
+      storage,
+      archiveWriter: {
+        putArchive: async () => undefined,
+        listKeys: async () => {
+          throw new Error("object store unavailable");
+        },
+      },
+    });
     plane.state.sessions.set("session", {
       id: "session",
       repositoryId: "repository",

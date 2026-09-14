@@ -174,7 +174,6 @@ describe("final host-message gate branches", () => {
     const storage = {
       getSession: async (id: string) => (id === "session" ? state.sessions.get("session") : null),
       acknowledgeSession: vi.fn(async () => true),
-      putLog: vi.fn(async () => undefined),
     };
     setDurableReadStorage(state, storage);
     await expect(
@@ -224,7 +223,7 @@ describe("final host-message gate branches", () => {
       seq: 2,
     });
     expect(getLogs(state, "session")).toHaveLength(2);
-    expect(storage.putLog).toHaveBeenCalled();
+    expect(state.logObjects.size).toBeGreaterThan(0);
   });
 });
 

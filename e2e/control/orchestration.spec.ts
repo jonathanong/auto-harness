@@ -42,6 +42,15 @@ test.describe("real orchestration", () => {
       await git(repo, ["commit", "-m", "init"]);
       await git(repo, ["branch", "-M", "main"]);
 
+      await request.put(`${API}/api/v1/session-log-settings`, {
+        data: {
+          version: 0,
+          uploadMode: "always",
+          batchMaxKb: 1,
+          batchMaxLines: 1,
+          batchMaxWaitMs: 1000,
+        },
+      });
       const repository = await request.post(`${API}/api/v1/repositories`, {
         data: { name: repoId, url: `https://example.test/${repoId}.git`, defaultBranch: "main" },
       });
