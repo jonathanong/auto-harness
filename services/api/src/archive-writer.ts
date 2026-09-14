@@ -100,12 +100,29 @@ export class S3ArchiveWriter implements ArchiveWriter {
   }
 
   async listKeys(prefix: string): Promise<string[]> {
-    const result = (await this.client.send(
-      new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix }),
-    )) as { Contents?: Array<{ Key?: string }> };
-    return (result.Contents ?? [])
-      .map((entry) => entry.Key)
-      .filter((key): key is string => typeof key === "string");
+    const keys: string[] = [];
+    let continuationToken: string | undefined;
+    do {
+      const result = (await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: prefix,
+          ...(continuationToken ? { ContinuationToken: continuationToken } : {}),
+        }),
+      )) as {
+        Contents?: Array<{ Key?: string }>;
+        IsTruncated?: boolean;
+        NextContinuationToken?: string;
+      };
+      for (const entry of result.Contents ?? []) {
+        if (typeof entry.Key === "string") keys.push(entry.Key);
+      }
+      continuationToken =
+        result.IsTruncated === true && typeof result.NextContinuationToken === "string"
+          ? result.NextContinuationToken
+          : undefined;
+    } while (continuationToken);
+    return keys;
   }
 }
 

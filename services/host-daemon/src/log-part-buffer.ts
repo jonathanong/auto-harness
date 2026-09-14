@@ -71,11 +71,20 @@ export class LogPartBuffer {
         }),
       ),
     );
-    this.uploaded.push(gzipped);
-    await this.put(
-      `/api/v1/sessions/${encodeURIComponent(this.sessionId)}/log-parts?seqStart=${Math.min(...seqs)}&seqEnd=${Math.max(...seqs)}`,
-      gzipped,
-    );
+    try {
+      await this.put(
+        `/api/v1/sessions/${encodeURIComponent(this.sessionId)}/log-parts?seqStart=${Math.min(...seqs)}&seqEnd=${Math.max(...seqs)}`,
+        gzipped,
+      );
+      this.uploaded.push(gzipped);
+    } catch (error) {
+      this.pending = [...batch, ...this.pending];
+      this.pendingBytes += batch.reduce(
+        (total, chunk) => total + Buffer.byteLength(chunk.content, "utf8"),
+        0,
+      );
+      throw error;
+    }
   }
 
   async flushFinal(): Promise<void> {

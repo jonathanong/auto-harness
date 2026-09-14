@@ -22,7 +22,10 @@ export function SessionLiveLogs({
   const initialLogs = useMemo(() => mergeInitialLiveLogs(initialItems), [initialItems]);
   const [items, setItems] = useState(initialLogs);
   const [connectionState, setConnectionState] = useState<LiveLogsConnectionState>("connecting");
-  const [sessionStatus] = useState(initialStatus);
+  const [sessionStatus, setSessionStatus] = useState(initialStatus);
+  useEffect(() => {
+    setSessionStatus(initialStatus);
+  }, [initialStatus]);
   const [error, setError] = useState<string | null>(null);
   const [pollMs, setPollMs] = useState(60_000);
 
@@ -49,6 +52,7 @@ export function SessionLiveLogs({
         cache: "no-store",
       })
         .then(async (response) => {
+          if (stopped) return;
           if (!response.ok) throw new Error("log poll failed");
           const body = (await response.json()) as { items?: LiveLogEntry[] };
           const incoming = Array.isArray(body.items) ? body.items : [];

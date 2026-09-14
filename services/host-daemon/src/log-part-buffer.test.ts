@@ -75,7 +75,7 @@ describe("LogPartBuffer", () => {
       {
         uploadMode: "always",
         batchMaxKb: 1,
-        batchMaxLines: 1,
+        batchMaxLines: 10,
         batchMaxWaitMs: 60_000,
         controlPlanePollMs: 60_000,
       },
@@ -139,5 +139,37 @@ describe("LogPartBuffer", () => {
     });
     await buffer.flush();
     expect(urls).toHaveLength(1);
+  });
+
+  it("restores the batch when the part upload fails", async () => {
+    let attempts = 0;
+    const buffer = new LogPartBuffer(
+      "sess",
+      {
+        uploadMode: "always",
+        batchMaxKb: 1,
+        batchMaxLines: 10,
+        batchMaxWaitMs: 60_000,
+        controlPlanePollMs: 60_000,
+      },
+      {
+        apiUrl: "http://127.0.0.1:7420",
+        fetchFn: (async () => {
+          attempts += 1;
+          return new Response(null, { status: attempts === 1 ? 503 : 200 });
+        }) as typeof fetch,
+      },
+    );
+    buffer.push({
+      sessionId: "sess",
+      attemptId: "a",
+      stream: "stdout",
+      content: "retry-me",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      seq: 1,
+    });
+    await expect(buffer.flush()).rejects.toThrow("log part upload failed: 503");
+    await buffer.flush();
+    expect(attempts).toBe(2);
   });
 });

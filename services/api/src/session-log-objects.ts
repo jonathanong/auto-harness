@@ -64,8 +64,9 @@ export async function putSessionLogPart(
   seqEnd: number,
   gzipped: Buffer,
 ): Promise<string> {
+  assertGzipJsonlPart(sessionId, seqStart, seqEnd, gzipped);
   const key = sessionLogPartKey(sessionId, seqStart, seqEnd);
-  state.logObjects.set(key, gzipped);
+  if (!state.archiveWriter?.putGzipObject) state.logObjects.set(key, gzipped);
   await state.archiveWriter?.putGzipObject?.(key, gzipped);
   state.onLogPartCommitted?.({ sessionId, key, seqStart, seqEnd });
   return key;
@@ -76,10 +77,24 @@ export async function putSessionLogArchive(
   sessionId: string,
   gzipped: Buffer,
 ): Promise<string> {
+  parseGzipJsonlLogs(sessionId, gzipped);
   const key = sessionLogArchiveKey(sessionId);
-  state.logObjects.set(key, gzipped);
+  if (!state.archiveWriter?.putGzipObject) state.logObjects.set(key, gzipped);
   await state.archiveWriter?.putGzipObject?.(key, gzipped);
   return key;
+}
+
+export function assertGzipJsonlPart(
+  sessionId: string,
+  seqStart: number,
+  seqEnd: number,
+  gzipped: Buffer,
+): void {
+  const records = parseGzipJsonlLogs(sessionId, gzipped);
+  if (records.length === 0) throw new Error("empty log part");
+  for (const record of records) {
+    if (record.seq < seqStart || record.seq > seqEnd) throw new Error("seq outside declared range");
+  }
 }
 
 export async function readSessionLogObjects(

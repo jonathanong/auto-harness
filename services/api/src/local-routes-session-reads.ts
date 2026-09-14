@@ -165,8 +165,22 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
         send(res, 400, { error: { code: "VALIDATION_ERROR", message: "empty log part" } });
         return true;
       }
-      const key = await putSessionLogPart(plane.state, sessionId, seqStart, seqEnd, body);
-      send(res, 200, { key });
+      try {
+        const key = await putSessionLogPart(plane.state, sessionId, seqStart, seqEnd, body);
+        send(res, 200, { key });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "invalid log part";
+        if (
+          message === "empty log part" ||
+          message === "seq outside declared range" ||
+          message.includes("incorrect header check") ||
+          message.includes("unexpected end of file")
+        ) {
+          send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid gzip log part" } });
+          return true;
+        }
+        throw error;
+      }
     } catch {
       sendInternalError(res);
     }
