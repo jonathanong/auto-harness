@@ -96,6 +96,44 @@ describe("S3ArchiveWriter", () => {
     expect(tokens).toEqual([undefined, "page-2"]);
   });
 
+  it("puts and gets gzip session log objects", async () => {
+    const stored = new Map<string, Buffer>();
+    const writer = new S3ArchiveWriter(
+      {
+        send: async (command) => {
+          const input = (command as { input?: { Key?: string; Body?: Buffer } }).input;
+          if (input?.Body && input.Key) {
+            stored.set(input.Key, Buffer.from(input.Body));
+            return { VersionId: "part-v1" };
+          }
+          const key = input?.Key ?? "";
+          const body = stored.get(key);
+          return {
+            Body: body ? { transformToByteArray: async () => new Uint8Array(body) } : undefined,
+          };
+        },
+      },
+      "private-archives",
+    );
+    const gzipped = Buffer.from("gzip-bytes");
+    await expect(writer.putGzipObject("sessions/s/parts/1-1.jsonl.gz", gzipped)).resolves.toEqual({
+      versionId: "part-v1",
+      contentType: "application/gzip",
+      bodyBytes: gzipped.length,
+    });
+    await expect(writer.getGzipObject("sessions/s/parts/1-1.jsonl.gz")).resolves.toEqual(gzipped);
+    await expect(
+      writer.getGzipObject("sessions/s/parts/missing.jsonl.gz"),
+    ).resolves.toBeUndefined();
+    await expect(writer.putGzipObject("other/key.jsonl.gz", gzipped)).rejects.toThrow(
+      "unexpected archive key",
+    );
+    const noVersion = new S3ArchiveWriter({ send: async () => ({}) }, "private-archives");
+    await expect(noVersion.putGzipObject("sessions/s/parts/1-1.jsonl.gz", gzipped)).rejects.toThrow(
+      "did not return a version id",
+    );
+  });
+
   it("rejects a custom prefix when an object writer is configured", () => {
     expect(() =>
       createControlPlaneState({

@@ -127,4 +127,54 @@ describe("SessionLiveLogs", () => {
     view.unmount();
     expect(socket!.sent.some((frame) => frame.includes("unsubscribe"))).toBe(true);
   });
+
+  it("ignores a failed settings fetch and a failed log-part refetch", async () => {
+    const sockets: Array<{
+      onMessage?: (event: Event) => void;
+      emit(type: string, event: Event): void;
+    }> = [];
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 1;
+      onMessage: ((event: Event) => void) | undefined;
+      constructor(public url: string) {
+        sockets.push(this);
+      }
+      addEventListener(type: string, handler: (event: Event) => void) {
+        if (type === "message") this.onMessage = handler;
+      }
+      emit(_type: string, event: Event) {
+        this.onMessage?.(event);
+      }
+      send() {}
+      close() {
+        this.readyState = 3;
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("session-log-settings")) throw new Error("offline");
+        if (path.includes("viewer-ticket")) return Response.json({ ticket: "ticket" });
+        if (path.includes("/logs")) throw new Error("refetch failed");
+        return Response.json({ status: "running" });
+      }),
+    );
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    await settle();
+    await act(async () => {
+      sockets[0]?.emit(
+        "message",
+        new MessageEvent("message", { data: JSON.stringify({ type: "session:log-part" }) }),
+      );
+      sockets[0]?.emit("message", new MessageEvent("message", { data: "{" }));
+    });
+    await settle();
+    view.unmount();
+  });
 });
