@@ -66,6 +66,17 @@ function canAccess(ctx: RouteCtx, repositoryId: string | null | undefined): bool
   return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
 }
 
+function canAccessAssignedSession(
+  ctx: RouteCtx,
+  session: { repositoryId: string | null; hostId?: string | null } | null,
+): session is { repositoryId: string | null; hostId?: string | null } {
+  return (
+    session !== null &&
+    canAccess(ctx, session.repositoryId) &&
+    mayAccessHost(ctx.principal, session.hostId)
+  );
+}
+
 function sessionScope(ctx: RouteCtx) {
   return ctx.principal
     ? {
@@ -124,11 +135,7 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
     }
     try {
       const session = await plane.getSessionDurable(logsMatch[1]!);
-      if (
-        !session ||
-        !canAccess(ctx, session.repositoryId) ||
-        !mayAccessHost(ctx.principal, session.hostId)
-      ) {
+      if (!canAccessAssignedSession(ctx, session)) {
         send(res, 404, { error: { code: "NOT_FOUND", message: "session not found" } });
       } else {
         send(res, 200, { items: await plane.getLogsDurable(logsMatch[1]!, query.query) });
@@ -150,13 +157,7 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
     }
     try {
       const session = await plane.getSessionDurable(sessionId);
-      const hostId = ctx.principal?.boundHostId;
-      const sessionScoped = ctx.sessionParentId === sessionId;
-      if (
-        !session ||
-        (!sessionScoped && hostId !== session.hostId) ||
-        !mayAccessHost(ctx.principal, session.hostId)
-      ) {
+      if (!canAccessAssignedSession(ctx, session)) {
         send(res, 404, { error: { code: "NOT_FOUND", message: "session not found" } });
         return true;
       }
@@ -192,13 +193,7 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
     const sessionId = logArchiveMatch[1]!;
     try {
       const session = await plane.getSessionDurable(sessionId);
-      const hostId = ctx.principal?.boundHostId;
-      const sessionScoped = ctx.sessionParentId === sessionId;
-      if (
-        !session ||
-        (!sessionScoped && hostId !== session.hostId) ||
-        !mayAccessHost(ctx.principal, session.hostId)
-      ) {
+      if (!canAccessAssignedSession(ctx, session)) {
         send(res, 404, { error: { code: "NOT_FOUND", message: "session not found" } });
         return true;
       }

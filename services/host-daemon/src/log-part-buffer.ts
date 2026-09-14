@@ -22,6 +22,7 @@ export class LogPartBuffer {
   private pending: SessionLogChunk[] = [];
   private pendingBytes = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private flushing: Promise<void> = Promise.resolve();
   private readonly uploaded: Buffer[] = [];
   watching = false;
 
@@ -56,6 +57,18 @@ export class LogPartBuffer {
   }
 
   async flush(): Promise<void> {
+    const run = this.flushing.then(
+      () => this.flushOnce(),
+      () => this.flushOnce(),
+    );
+    this.flushing = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    await run;
+  }
+
+  private async flushOnce(): Promise<void> {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = undefined;

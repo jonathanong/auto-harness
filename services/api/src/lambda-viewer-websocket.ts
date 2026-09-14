@@ -23,7 +23,7 @@ type ViewerStorage = {
   getConnection(connectionId: string): Promise<ConnectionRecord | null>;
   getSession(
     sessionId: string,
-  ): Promise<{ repositoryId: string; status: string; hostId?: string } | null>;
+  ): Promise<{ repositoryId: string; status: string; hostId?: string | null } | null>;
   listConnections(): Promise<ConnectionRecord[]>;
   putConnection(connection: ConnectionRecord): Promise<void>;
   queryLogs?(sessionId: string, query: { after?: string; limit: number }): Promise<LogRecord[]>;
