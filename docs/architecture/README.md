@@ -103,6 +103,9 @@ Trust-boundary detail: [security.md](../security.md).
 | Secrets                | No repo/AI secrets                                                                                         | `.env`, SSH, vendor keys                                                                 |
 | UI                     | Hosted clients → REST/WS — [web.md](../web.md)                                                             | Host pane is debug-only                                                                  |
 
+Compatibility stub for the old blob URL and `#architecture-principles`:
+[../architecture.md](../architecture.md).
+
 ## Related
 
 | Doc                      | Role                     |
