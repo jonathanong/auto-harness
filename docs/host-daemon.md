@@ -1,6 +1,6 @@
-# Agent Layer (VPS Execution Plane)
+# Agent Layer (Host Plane)
 
-Internals of the VPS daemon: process model, worktrees, executor, recovery.
+Internals of the host-plane daemon (`auto-harness-agent` on a VPS, laptop, or other machine): process model, worktrees, executor, recovery. Former docs called this the execution plane.
 
 ## Session usage and cost attribution
 

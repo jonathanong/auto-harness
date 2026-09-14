@@ -1,27 +1,52 @@
 # Auto Harness
 
-**Your software factory, on autopilot.**
+Auto Harness is a two-plane system for running autonomous CLI agents: a serverless **control plane** (web UI + queue + API) and a **host plane** (a daemon on a VPS, laptop, or any machine you control).
 
-Auto Harness turns the AI coding tools you already use—Codex, Claude Code, and the rest—into a reliable part of how your team ships software. Trigger work from CI, chat, or a simple prompt; watch it run; get a pull request instead of a ticket queue.
+You keep control of secrets and machines. Auto Harness queues the work, assigns it, and records what ran.
 
-You keep control of secrets and machines. Auto Harness coordinates the work.
+---
+
+## What it is
+
+| Plane             | What it is                                                        | Owns                                                     | Idle cost                   |
+| ----------------- | ----------------------------------------------------------------- | -------------------------------------------------------- | --------------------------- |
+| **Control plane** | Web UI, REST/webhooks, session queue, assignment, logs, schedules | Auth, catalog, queue, observation                        | Serverless — scales to zero |
+| **Host plane**    | `auto-harness-agent` on a machine you provision                   | Worktrees/slots, CLI processes, git + vendor credentials | The machine itself          |
+
+The control plane is AWS (API Gateway, Lambda, DynamoDB, S3). It has no standing app server. Hosts are capacity you bring: a VPS, a spare workstation, whatever can run the daemon and the CLIs. Work can sit in the queue with zero hosts online.
+
+The debug-only **host pane** (`:7422`) is a local UI on one machine. It is not the host plane. Operators run the fleet from the control plane.
+
+Topology and ownership: [docs/architecture/](docs/architecture/README.md). Vocabulary: [docs/terminology.md](docs/terminology.md).
+
+---
+
+## What it does and does not
+
+| Does                                                                          | Does not                                                                                                                                                            |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Queue non-interactive CLI sessions (priority, labels, concurrency, resume)    | Interactive / human-in-the-loop driving — no pairing TTY, no in-browser IDE, no multiplayer session                                                                 |
+| Trigger work from the API, GitHub Actions, GitHub App mentions, and schedules | Hold or mint provider tokens, git credentials, or SSH keys — those stay on the host. Do not put secrets in prompts; prompts are stored and visible operationally    |
+| Run on a serverless control plane that scales to zero                         | Care which agent harness you use — every session is a catalog Command (fixed argv). Register Codex, Claude Code, Grok, or any other CLI                             |
+| Observe live logs, history, and (optional) Slack lifecycle                    | Own the target repo’s GitHub policy, prompt templates, or review workflow — that is the repo harness plus [pr-shepherd](https://github.com/jonathanong/pr-shepherd) |
+
+Sessions target a **named catalog Command**, not a free-form shell string. Operators can register any CLI; callers cannot send arbitrary argv through the API.
+
+Longer contract and non-goals: [docs/why.md](docs/why.md). Trust boundaries: [docs/security.md](docs/security.md).
 
 ---
 
 ## Why
 
-Engineering orgs drown in the same loops: red builds, nitpick reviews, dependency churn, “someone should fix that.” Humans should set direction—not babysit every failed check or routine update.
+**Use subscription plans, not APIs.** Most teams already pay for Codex, Claude Code, and the rest. Auto Harness drives those same vendor CLIs natively — non-interactive, no intermediary SDK — so automation burns **seat and plan quota** you already bought instead of opening a pay-per-token bill. Cloud coordination is cheap; the scarce inputs are plan seats and host capacity. Cost model: [docs/costs.md](docs/costs.md).
 
-Most teams already pay for **coding-agent subscriptions**. Auto Harness drives those same tools **natively**—the vendor's own CLI, non-interactive, no intermediary SDK or universal harness—queued, logged, and concurrent, on machines you control. That is what Auto Harness is for: **subscription capacity → unattended software work**, not a new pay-per-token API bill.
+**It is built for autonomous systems.** A session has no human at the keyboard. Auto Harness will not invent the agent-side loop that unattended work needs:
 
-Auto Harness is for teams that want:
+- **[agent-blackboard](https://github.com/jonathanong/agent-blackboard)** — session-scoped notes the next tick can read, because thinking and progress are not sitting in a TTY
+- **[pr-shepherd](https://github.com/jonathanong/pr-shepherd)** — deterministic gather-and-act on CI and review comments, because nobody is watching the PR
+- **[no-mistakes](https://github.com/jonathanong/no-mistakes)** — a local AST graph and test selector, so the agent does not grep or guess
 
-- **Faster recovery when things break** — CI fails → a fix session starts without waiting for a free engineer
-- **Less toil, same standards** — repetitive maintenance and prompt-driven changes run the same way every time
-- **Visibility without babysitting** — live sessions, history, and notifications so you know what the agents did
-- **Scale that matches headcount** — more concurrent work when you need it, queued and prioritized when you don’t
-
-The win is **time and throughput**. Cloud coordination is cheap; the scarce inputs are **plan seats/quota** and **host capacity**. More on rationale and cost: [docs/why.md](docs/why.md), [docs/costs.md](docs/costs.md).
+Those tools install on the host or in the target repo. Auto Harness queues and runs the CLI; it does not embed them.
 
 ---
 
@@ -31,7 +56,7 @@ The win is **time and throughput**. Cloud coordination is cheap; the scarce inpu
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **CI goes red**                     | Kick off an agent against the failing repo, aimed at a fix and a PR—not a Slack pile-on                                                                                      |
 | **You have a clear change in mind** | Describe the outcome; run it as a tracked session with logs you can audit                                                                                                    |
-| **Work was interrupted mid-flight** | Resume the same CLI context on its agent while re-establishing the ref in an eligible worktree                                                                               |
+| **Work was interrupted mid-flight** | Resume the same CLI context on its host while re-establishing the ref in an eligible worktree                                                                                |
 | **PRs stall in review**             | Shepherd changes forward—address comments, re-run checks, keep momentum                                                                                                      |
 | **The repo needs steady care**      | Schedules for updates, lint, security patches—maintenance without calendar babysitting                                                                                       |
 | **CI / bots fire and forget**       | GitHub Actions (or anything) calls the API and exits; humans watch the web UI and/or **GitHub** (PRs, comments)—not the trigger job                                          |
@@ -52,38 +77,19 @@ Operators use the web UI. Pipelines and bots use the API. Your agents run on mac
 
 ---
 
-## What you get out of it
-
-- **Shorter time-to-green** after failures
-- **Fewer context switches** for “quick fixes” that aren’t
-- **A single place** to see automated coding work—not a scatter of laptop terminals
-- **Room to grow** from one repo and one engineer to many agents and many repos
-
----
-
-## Trust boundaries (in plain terms)
-
-- Auto Harness **does not** hold your git credentials or AI API keys—those stay on **your** runners
-- **Don’t put secrets in prompts**—prompts are stored and visible operationally
-- You decide which tools run and how hard they work
-
-Details live in the docs, not here.
-
----
-
 ## Learn more
 
-Everything operational and technical is under **[docs/](docs/README.md)**—setup, API, security, architecture, and the rest. Repo harness hookup examples: **[docs/harness.md](docs/harness.md)**.
+Everything operational and technical is under **[docs/](docs/README.md)**—setup, API, security, architecture, and the rest. Repo harness hookup examples: **[docs/harness.md](docs/harness.md)**. Why this shape: **[docs/why.md](docs/why.md)**.
 
 **Contributors / agents:** monorepo conventions live in **[AGENTS.md](AGENTS.md)** (`pnpm check` runs the full gate).
 
 Start there when you’re ready to deploy or dig in.
 
-## Harness Ecosystem
+## Harness ecosystem
 
-This is part of the following harness ecosystem:
+Auto Harness is the queue and the hosts. Unattended CLIs still need a place to write what they learned, a way to drive a PR without a human, and a deterministic view of the repo:
 
-- [auto-harness](https://github.com/jonathanong/auto-harness) - non-interactive agent CLI orchestration across sandboxes
-- [agent-blackboard](https://github.com/jonathanong/agent-blackboard) - session-scoped telemetry for autonomous agents
-- [pr-shepherd](https://github.com/jonathanong/pr-shepherd) - autonomous pull request shepherd
-- [no-mistakes](https://github.com/jonathanong/no-mistakes) - deterministic AST-based codebase intelligence, test selection, and linting for agents
+- [auto-harness](https://github.com/jonathanong/auto-harness) — non-interactive agent CLI queue on hosts you control
+- [agent-blackboard](https://github.com/jonathanong/agent-blackboard) — session-scoped telemetry for autonomous agents
+- [pr-shepherd](https://github.com/jonathanong/pr-shepherd) — autonomous pull request shepherd
+- [no-mistakes](https://github.com/jonathanong/no-mistakes) — deterministic AST-based codebase intelligence, test selection, and linting for agents

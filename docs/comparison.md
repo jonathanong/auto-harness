@@ -18,10 +18,11 @@ a cloud provider, cloned repo, a setup/start script, then an agent harness insid
 from filesystem snapshots, prebuilt images, and proactive warming rather than from the sandbox
 staying alive between sessions.
 
-**Auto Harness** runs on hosts you own. A daemon holds pre-provisioned git worktrees that are
-reused and never deleted between sessions. The control plane resolves a Provider/Provider
-Account/Command into a complete `resolvedArgv` and pushes `session:assign` over WebSocket; the
-daemon claims a worktree, hard-resets it, and spawns the CLI in a PTY.
+**Auto Harness** is a serverless control plane (web + queue + API) plus a **host plane**: a
+daemon on a VPS, laptop, or other machine you own. The daemon holds pre-provisioned git
+worktrees that are reused and never deleted between sessions. The control plane resolves a
+Provider/Provider Account/Command into a complete `resolvedArgv` and pushes `session:assign`
+over WebSocket; the daemon claims a worktree, hard-resets it, and spawns the CLI in a PTY.
 
 ## Structural axes
 
@@ -274,7 +275,7 @@ Secondary reasons, each independently sufficient:
   CLIs need an unsandboxed shell with a real `$HOME`.
 - It contradicts [plan.md](plan.md)'s D9 and [architecture/decisions.md](architecture/decisions.md)'s "No Docker
   wrapping the agent" design decision.
-- It would move subscription credentials onto a third party's filesystem, breaking the "your VPS
+- It would move subscription credentials onto a third party's filesystem, breaking the "your host
   holds the tools and logins" boundary in [why.md](why.md) and [security.md](security.md).
 
 Honest counterweight, stated in [Cost comparison](#cost-comparison) above and repeated here because
@@ -284,7 +285,7 @@ only favor owned hosts.
 
 ## Deliberate non-goals
 
-Not missing — excluded, and stated as non-goals in [why.md](why.md) and [plan.md](plan.md):
+Not missing — excluded, and stated as non-goals in [why.md](why.md#what-we-are-not-optimizing-for) and [plan.md](plan.md):
 
 - **Multiplayer sessions, presence.** An autonomous harness's unit of human interaction is the PR
   and the notification, not a shared cursor with someone else typing in the same session.
