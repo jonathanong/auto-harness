@@ -261,6 +261,40 @@ describe("LogPartBuffer", () => {
     expect(urls).toHaveLength(1);
   });
 
+  it("includes dropped counts and no-ops a final flush with nothing uploaded", async () => {
+    const bodies: Buffer[] = [];
+    const buffer = new LogPartBuffer(
+      "sess",
+      {
+        uploadMode: "always",
+        batchMaxKb: 1,
+        batchMaxLines: 10,
+        batchMaxWaitMs: 60_000,
+        controlPlanePollMs: 60_000,
+      },
+      {
+        apiUrl: "http://127.0.0.1:7420",
+        fetchFn: (async (_url, init) => {
+          bodies.push(Buffer.from(init?.body as Uint8Array));
+          return new Response(JSON.stringify({ key: "ok" }), { status: 200 });
+        }) as typeof fetch,
+      },
+    );
+    buffer.push({
+      sessionId: "sess",
+      attemptId: "a",
+      stream: "stdout",
+      content: "gap",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      seq: 4,
+      dropped: 3,
+    });
+    await buffer.flush();
+    expect(gunzipToUtf8(bodies[0]!)).toContain('"dropped":3');
+    const empty = new LogPartBuffer("sess", { uploadMode: "always" } as never, undefined);
+    await empty.flushFinal();
+  });
+
   it("emits local chunks even when upload is off", () => {
     const seen: string[] = [];
     const buffer = new LogPartBuffer(

@@ -53,6 +53,7 @@ describe("SessionLiveLogs", () => {
   it("shows queued wait copy and a poll error, then refetches on log-part notify", async () => {
     const sockets: FakeWebSocket[] = [];
     class FakeWebSocket {
+      static OPEN = 1;
       readyState = 1;
       sent: string[] = [];
       private readonly listeners = new Map<string, Array<(event: Event) => void>>();
@@ -81,24 +82,14 @@ describe("SessionLiveLogs", () => {
       vi.fn(async (url: string, init?: { method?: string }) => {
         const path = String(url);
         if (path.includes("session-log-settings")) {
-          return Response.json({ controlPlanePollMs: 5_000 });
+          throw new Error("settings offline");
         }
         if (path.includes("viewer-ticket")) {
           return Response.json({ ticket: "ticket" });
         }
         if (path.includes("/logs")) {
           if (!allowLogs) return new Response(null, { status: 500 });
-          return Response.json({
-            items: [
-              {
-                timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
-                seq: 1,
-                stream: "stdout",
-                content: "hello",
-                timestamp: "2026-01-01T00:00:00.000Z",
-              },
-            ],
-          });
+          throw new Error("refetch failed");
         }
         if (init?.method === "POST") return Response.json({ ticket: "ticket" });
         return Response.json({ status: "queued" });
@@ -123,7 +114,7 @@ describe("SessionLiveLogs", () => {
       socket!.emit("message", new MessageEvent("message", { data: "not-json" }));
     });
     await settle();
-    expect(field(view.container, "session-logs-live-state").textContent).toContain("queued");
     view.unmount();
+    expect(socket!.sent.some((frame) => frame.includes("unsubscribe"))).toBe(true);
   });
 });

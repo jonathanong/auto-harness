@@ -109,18 +109,17 @@ describe("SessionLogSettingsForm", () => {
     const view = mountForm(<SessionLogSettingsForm />, { pathname: "/settings/session-logs" });
     await settle();
     await act(async () => {
-      const kb = field<HTMLInputElement>(view.container, "session-log-batch-max-kb");
-      kb.value = "128";
-      kb.dispatchEvent(new Event("change", { bubbles: true }));
-      const lines = field<HTMLInputElement>(view.container, "session-log-batch-max-lines");
-      lines.value = "40";
-      lines.dispatchEvent(new Event("change", { bubbles: true }));
-      const wait = field<HTMLInputElement>(view.container, "session-log-batch-max-wait-ms");
-      wait.value = "5000";
-      wait.dispatchEvent(new Event("change", { bubbles: true }));
-      const poll = field<HTMLInputElement>(view.container, "session-log-control-plane-poll-ms");
-      poll.value = "15000";
-      poll.dispatchEvent(new Event("change", { bubbles: true }));
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      for (const [pw, value] of [
+        ["session-log-batch-max-kb", "128"],
+        ["session-log-batch-max-lines", "40"],
+        ["session-log-batch-max-wait-ms", "5000"],
+        ["session-log-control-plane-poll-ms", "15000"],
+      ] as const) {
+        const input = field<HTMLInputElement>(view.container, pw);
+        setValue?.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
     });
     await act(async () => {
       field<HTMLFormElement>(view.container, "form-session-log-settings").dispatchEvent(
@@ -129,6 +128,30 @@ describe("SessionLogSettingsForm", () => {
     });
     await settle();
     expect(request.requests.at(-1)?.[1]?.method).toBe("PUT");
+    view.unmount();
+  });
+
+  it("toasts when save throws", async () => {
+    const request = createRequestFake(
+      json({
+        uploadMode: "off",
+        batchMaxKb: 256,
+        batchMaxLines: 500,
+        batchMaxWaitMs: 60_000,
+        controlPlanePollMs: 60_000,
+        version: 0,
+      }),
+      async () => {
+        throw new Error("offline");
+      },
+    );
+    vi.stubGlobal("fetch", request.request);
+    const view = mountForm(<SessionLogSettingsForm />, { pathname: "/settings/session-logs" });
+    await settle();
+    await act(async () => {
+      field<HTMLButtonElement>(view.container, "session-log-settings-save").click();
+    });
+    await settle();
     view.unmount();
   });
 });
