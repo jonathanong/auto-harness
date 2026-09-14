@@ -71,6 +71,13 @@ describe.skipIf(process.platform === "win32")(
         publicBaseUrl: "http://ui",
       });
       closeServer = server.close;
+      await server.plane.putSessionLogSettings({
+        version: 0,
+        uploadMode: "always",
+        batchMaxKb: 1,
+        batchMaxLines: 1,
+        batchMaxWaitMs: 1000,
+      });
       server.plane.seedWorktree({
         id: "wt-1",
         name: "wt-1",
@@ -102,6 +109,7 @@ describe.skipIf(process.platform === "win32")(
         config,
         childEnvSource: {
           ...process.env,
+          HARNESS_DAEMON_LIVE_LOG_PORT: "off",
           PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ""}`,
         },
         log: () => undefined,

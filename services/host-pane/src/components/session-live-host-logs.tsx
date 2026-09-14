@@ -48,17 +48,19 @@ export function SessionLiveHostLogs({
           content?: string;
           seq?: number;
         };
-        if (typeof chunk.seq !== "number" || typeof chunk.content !== "string") return;
+        const seq = chunk.seq;
+        const content = chunk.content;
+        if (typeof seq !== "number" || typeof content !== "string") return;
         const timestamp =
           typeof chunk.timestamp === "string" ? chunk.timestamp : new Date().toISOString();
-        const padded = String(chunk.seq).padStart(16, "0");
+        const padded = String(seq).padStart(16, "0");
         setItems((current) =>
           merge(current, {
             timestampSeq: `${timestamp}#${padded}`,
-            seq: chunk.seq,
+            seq,
             stream:
               chunk.stream === "stderr" || chunk.stream === "system" ? chunk.stream : "stdout",
-            content: chunk.content,
+            content,
             timestamp,
           }),
         );

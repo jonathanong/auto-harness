@@ -84,6 +84,13 @@ describe("packaged host daemon lifecycle", () => {
       scheduler: { intervalMs: 25 },
     });
     const base = `http://127.0.0.1:${port}`;
+    await server.plane.putSessionLogSettings({
+      version: 0,
+      uploadMode: "always",
+      batchMaxKb: 1,
+      batchMaxLines: 1,
+      batchMaxWaitMs: 1000,
+    });
     const hostId = "packaged-systemd-host";
 
     const repository = await jsonRequest<{ id: string }>(base, "/api/v1/repositories", 201, {
