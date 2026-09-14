@@ -151,9 +151,9 @@ knobs (default 60s / 256 KB / 500 lines) when upload is on.
 A write is split on UTF-8 character and newline boundaries; later pieces never rejoin a
 batch that already rejected an earlier piece. A stream change parks one overflow batch
 instead of dropping the other stream. Coalesced frames still carry `{sessionId, attemptId}`
-and keep insertion order via `timestampSeq` (`timestamp#seq`); the daemon never renumbers
-after emit. When a session exceeds that rate and both the current frame and the overflow
-batch are at bound, the daemon drops further stdout/stderr and later emits a system frame:
+and keep insertion order via per-session `seq`; the daemon never renumbers after emit. When a
+session exceeds that rate and both the current frame and the overflow batch are at bound, the
+daemon drops further stdout/stderr and later emits a system frame on the **host-pane** stream:
 
 ```json
 {
@@ -170,8 +170,8 @@ batch are at bound, the daemon drops further stdout/stderr and later emits a sys
 
 `dropped` is bounded machine-readable telemetry (`0…1_000_000`). If more chunks were
 dropped than that, the daemon sends further notices with the remainder. Control-plane
-alarming on it is follow-up work; ingest already persists the field. System/lifecycle
-lines are not dropped (including after session-wide stdout/stderr caps) and flush any
+alarming on it is follow-up work; gzip JSONL ingest persists the field when upload is on.
+System/lifecycle lines are not dropped (including after session-wide stdout/stderr caps) and flush any
 coalesced stdout/stderr ahead of themselves so a terminal `session:status` cannot
 overtake logs.
 

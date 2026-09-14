@@ -146,10 +146,10 @@ function logRecord(opts: {
  * Bound the in-memory replay cache for one session and return the retained list.
  *
  * Eviction is **only** a cache bound. Evicted chunks are deliberately not reported to the
- * caller: DynamoDB holds the durable transcript that `archiveSessionLogs` reads, and
- * deleting evicted rows there — which this used to do — silently destroyed the beginning
- * of any session that outgrew the window. Durable retention belongs to the SessionLogs
- * TTL (docs/plan.md Phase 2), not to a cache eviction.
+ * caller: S3 gzip parts/archives hold the durable transcript that `archiveSessionLogs`
+ * reads, and deleting evicted rows from durable storage — which this used to do —
+ * silently destroyed the beginning of any session that outgrew the window. Durable
+ * retention belongs to S3 objects (docs/architecture/logs.md), not to a cache eviction.
  */
 function retainLogs(state: ControlPlaneState, rec: LogRecord): LogRecord[] {
   const retained = state.logs.get(rec.sessionId) ?? [];

@@ -49,8 +49,11 @@ Do **not** use S3 multipart upload for these parts: minimum part size is **5 MB*
 part. Staging is ordinary `PutObject` of gzip members; the host concatenates (gzip members may be
 concatenated, or recompressed as one member) into the final key.
 
-The host PUTs with **per-part presigned URLs** (long sessions outlive a single assign-time URL).
-WebSocket Lambda still has **no** S3 grant. REST/Cron keep `sessions/*` Put/Get. DynamoDB
+The host PUTs parts and the terminal archive over REST (`PUT /sessions/:id/log-parts` and
+`PUT /sessions/:id/log-archive`) with the attempt-scoped session API key. That avoids a
+presigned URL that expires mid-session and keeps S3 off the WebSocket Lambda. REST has
+`sessions/*` Put/Get/List plus version-pinned Get. Cron has Put plus Get/List of **current**
+objects so it can concatenate leftover parts; it does not get `GetObjectVersion`. DynamoDB
 `Archives` rows remain pointer/`versionId`/retry metadata only.
 
 ## Control plane vs host pane

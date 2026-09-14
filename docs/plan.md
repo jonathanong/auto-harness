@@ -204,12 +204,9 @@ erDiagram
         string createdAt
     }
 
-    SessionLog {
-        string sessionId PK
-        string timestampSeq "SK, format: <ISO-timestamp> + <zero-padded-seq> — see Invariant 5"
-        string stream "stdout | stderr | system"
-        string content
-        number ttl "Unix-epoch seconds, 7 days from write; DynamoDB TTL auto-delete after expiry"
+    SessionLogObject {
+        string key "S3 sessions/{id}/parts/{seqStart}-{seqEnd}.jsonl.gz then sessions/{id}/logs.jsonl.gz"
+        string body "gzip JSONL {timestamp, stream, content, seq} — Invariant 5"
     }
 
     Connection {
@@ -292,15 +289,16 @@ erDiagram
     Repository ||--o{ Schedule : has
     Schedule ||--o{ Session : creates
     Worktree ||--o| Session : runs
-    Session ||--o{ SessionLog : produces
+    Session ||--o{ SessionLogObject : produces
     Session ||--o{ NotificationDelivery : queues
 ```
 
 **Changed from earlier drafts of this document:** free-form `command` first became a named
 `commandProfile`, then the current catalog-backed `target` plus ordered `fallbacks` model (D4);
 `pinnedWorktreeId` removed, `pinExpiresAt` added (D5); `ref`, `concurrencyKey`/`concurrencyId`, `onConflict`,
-`queueShard`, `metadata`, `queueExpiresAt`, `target`, and `fallbacks` added; `SessionLog` sort key changed from
-bare `timestamp` to `timestampSeq`; `Worktree.online` and `Repository.terminalHookScript` added.
+`queueShard`, `metadata`, `queueExpiresAt`, `target`, and `fallbacks` added; log **bodies** left DynamoDB
+`SessionLogs` for S3 gzip parts (`sessions/{id}/parts/…jsonl.gz`) and a terminal `logs.jsonl.gz`
+([architecture/logs.md](architecture/logs.md)); `Worktree.online` and `Repository.terminalHookScript` added.
 
 ### Access patterns
 
@@ -311,8 +309,8 @@ bare `timestamp` to `timestampSeq`; `Worktree.online` and `Repository.terminalHo
 | List sessions by repo               | Sessions               | GSI `repositoryId-createdAt`                                                        |                                                                                                                                                                                                                                                           |
 | Reconcile active host claims        | Sessions               | Sparse, keys-only GSI `activeHostId-activeHostOrder`                                | Only rows holding a host assignment lease carry these keys; bounded point reads load the claims, so reconnect and keepalive work is independent of retained session history and prompt size.                                                              |
 | Full-text prompt search             | —                      | **not implemented in v1**                                                           | DynamoDB cannot do this without a scan or an external index (OpenSearch). Phase 4 ships filter-only; revisit only if a real need appears, with an explicit external index, not a scan.                                                                    |
-| Append session log chunk            | SessionLogs            | PK `sessionId`, SK `timestampSeq`                                                   | `seq` is a per-session monotonic counter assigned by the **agent**. Local WS ingress batches at most 25 adjacent chunks without changing this order.                                                                                                      |
-| Range-read logs for REST/history    | SessionLogs            | PK `sessionId`, SK range                                                            | Sort order is correct because `timestampSeq` is lexicographically ordered by construction (fixed-width zero-padded seq).                                                                                                                                  |
+| Append session log chunk            | S3 gzip part           | `sessions/{id}/parts/{seqStart}-{seqEnd}.jsonl.gz`                                  | Host `PUT /log-parts` when upload is on (`off` / `subscribed` / `always`). `seq` is a per-session monotonic counter assigned by the **agent** (Invariant 5). Do not write bodies to DynamoDB.                                                             |
+| Range-read logs for REST/history    | S3 list + GET          | prefix `sessions/{id}/`                                                             | Prefer `logs.jsonl.gz` when present and readable; else listed parts in key order. REST returns a bounded page; viewer WS does not carry log text.                                                                                                         |
 | Idle matching worktrees             | Worktrees              | GSI `repositoryId-status` (or scan for small fleets)                                | Claim uses a conditional write — see Invariant 1.                                                                                                                                                                                                         |
 | Find agent connection for assign    | Connections            | GSI `hostId`                                                                        | Conditional put on register — see Invariant 3.                                                                                                                                                                                                            |
 | Due schedules                       | Schedules              | GSI `repositoryId-nextRunAt`, or scan across all repos for the cron sweep           | Claim is the conditional advance of `nextRunAt` — see Invariant 4.                                                                                                                                                                                        |
@@ -349,9 +347,9 @@ reference these by number; a phase is not done until its invariants have a passi
 4. **A schedule fires at most once per `nextRunAt`.** The cron evaluator's claim _is_ the
    conditional advance of `nextRunAt` (`ConditionExpression: nextRunAt = :expected`). A retried or
    overlapping EventBridge invocation must not create two sessions for the same fire.
-5. **Log ordering is total per session.** Under the `(timestamp, seq)` sort key, replay and
-   reconnect must never renumber or reorder previously-assigned `seq` values, including across an
-   agent reconnect mid-session.
+5. **Log ordering is total per session.** Each chunk carries a per-session monotonic `seq`.
+   Replay and reconnect must never renumber or reorder previously-assigned `seq` values, including
+   across an agent reconnect mid-session. S3 part keys encode `seqStart-seqEnd`.
 6. **`usage_limit` pauses the assigned account and routes immediately.** No other terminal status
    (`failed` without that code, `timed_out`, `cancelled`) triggers account cooldown or fallback routing;
    queued sessions wait only until their fixed `queueExpiresAt` deadline.
@@ -396,10 +394,11 @@ reference these by number; a phase is not done until its invariants have a passi
     filesystem/git inside a browser request. Do not Scan all connections to talk to one host or one
     session's viewers.
 13. **List and history APIs page or stream at storage, not after a full load.** `limit`/`nextCursor`
-    (or a log cursor / WS tail) must bound the DynamoDB read. Scanning a table and slicing in memory
-    is not pagination. UIs show one page and Load more; they must not collect every cursor page
-    except for small catalogs that are explicitly documented as complete (and even those need a
-    cap). Live logs: REST history is a bounded newest page; viewer WS is tail-only.
+    (or a log cursor / viewer notify) must bound the storage read (DynamoDB query or S3 list/get).
+    Scanning a table and slicing in memory is not pagination. UIs show one page and Load more; they
+    must not collect every cursor page except for small catalogs that are explicitly documented as
+    complete (and even those need a cap). Live logs: REST history is a bounded newest S3 page;
+    viewer WS is notify-only (`session:log-part`) and never carries log text.
 
 ---
 
@@ -492,11 +491,12 @@ compatibility for non-interactive CLI modes; it does not add an interactive user
 **Deliverables**
 
 - `services/cdk`:
-  - DynamoDB tables per §4, including the **sharded `status-createdAt` GSI** for the queue and
-    the **`timestampSeq`** sort key for SessionLogs.
-  - SessionLogs TTL (7 days).
-  - S3 archive bucket, API Gateway (REST + WS), Lambda functions + IAM roles.
+  - DynamoDB tables per §4, including the **sharded `status-createdAt` GSI** for the queue.
+    Log **bodies** are S3 gzip objects, not a Dynamo table (**supersedes** the earlier SessionLogs
+    `timestampSeq` + 7-day TTL design — [architecture/logs.md](architecture/logs.md)).
+  - S3 session-log / archive bucket, API Gateway (REST + WS), Lambda functions + IAM roles.
   - CloudWatch Events rule (1-minute) for cron evaluation (provisioned by the CDK runtime stack).
+    That rule is a **repair sweep**, not log polling.
 - `services/api` REST handlers:
   - Auth: login/logout, user CRUD, service account CRUD.
   - Sessions: create (**`ref`, `target`, `fallbacks`, `concurrencyId`, `metadata`
@@ -509,13 +509,14 @@ compatibility for non-interactive CLI modes; it does not add an interactive user
   - `$connect`/`$disconnect` — validate token, manage Connections table with the **conditional put
     on `hostId`** (Invariant 3).
   - `$default` — route by `type`.
-  - Task dispatch: `session:assign` to agent, including `ref` when set.
-  - Status/log forwarding: agent → DynamoDB, agent → subscribed clients.
-  - Live log replay: buffer recent chunks per session, replay on `session:subscribe`. The
-    implemented window is **10,000 chunks / 10 MiB per session** (`control-plane-messages.ts`)
-    rather than the 100 lines first sketched here. It is a memory bound only — chunks that
-    leave the window stay in `SessionLogs`, which is what `GET /sessions/:id/logs` and
-    `archiveSessionLogs` read. Durable retention is the SessionLogs TTL below, not eviction.
+  - Task dispatch: `session:assign` to agent, including `ref` when set and a snapshot of
+    `logSettings`.
+  - Status forwarding: agent → DynamoDB session row, agent → subscribed clients. Log **text**
+    does not travel on `/ws`. Hosts `PUT` gzip parts when upload is on; viewers may get
+    `session:log-part` notifies only.
+  - In-memory log cache (10,000 chunks / 10 MiB) is a local/test bound only. Durable transcript
+    is S3 (`GET /sessions/:id/logs`, `archiveSessionLogs`). **Supersedes** Dynamo SessionLogs
+    writes and viewer-WS log replay.
 - Cron handler:
   - Due schedules via **conditional `nextRunAt` advance as the claim** (Invariant 4).
   - Creates sessions `type: scheduled`, `source: schedule`.
@@ -537,27 +538,26 @@ compatibility for non-interactive CLI modes; it does not add an interactive user
 - A cron sweep re-invoked concurrently (simulating an EventBridge retry) creates at most one
   session per due schedule (Invariant 4).
 - `GET /sessions/:id/logs` replays events in insertion order even when two log-writes land in the
-  same millisecond (Invariant 5).
+  same millisecond (`seq` in the JSONL line; Invariant 5).
 - `POST /sessions` response includes a `url` that resolves to the session in the local Web UI.
 
 **Status (code-complete; AWS lifecycle proven, hosted session E2E partial):** `ControlPlane`
 implements exclusive claim (Inv 1), agent register uniqueness (Inv 3), cron `nextRunAt` claim
-(Inv 4), `timestampSeq` logs (Inv 5), session create with `ref`/`target`/`fallbacks`/
+(Inv 4), ordered gzip JSONL logs (Inv 5), session create with `ref`/`target`/`fallbacks`/
 `concurrencyId`/`metadata`/`url`. CDK table definitions plus deployable HTTP/WebSocket Lambda
 runtime resources live in `services/cdk`, including an EventBridge rule and cron Lambda for
 durable scheduling sweeps. Account-backed evidence is recorded in
 [deploy-aws.md](deploy-aws.md#maturity): deploy → update → REST/web health → teardown in
 `us-west-2` on 2026-08-17, and `purge` on 2026-08-18 against a disposable `qa` environment
 that created, dispatched, and completed a programmatic session (3 short test sessions left 3
-archived object versions). That is not a long-running CLI fleet E2E. New SessionLogs writes set
-`ttl` to Unix-epoch seconds 7 days from the write; CDK and local table creation enable DynamoDB
-TTL on that attribute. Rows written before this change omit `ttl` and are not backfilled, so
-they do not expire through TTL. Terminal archival retains bounded pointer/status metadata in the
-DynamoDB Archives table and writes JSONL objects to S3 when `ARCHIVE_BUCKET` configures the
-archive writer. Authorized session readers can resolve archive availability through a durable
-point lookup; the REST runtime verifies the S3 object and returns a five-minute presigned download
-without proxying transcript bytes. Cold Glacier objects remain unavailable until restored outside
-Auto Harness. The local store is DynamoDB Local via `pnpm local:dynamodb` (official image).
+archived object versions). That is not a long-running CLI fleet E2E. Log bodies are gzip JSONL
+in S3 (`sessions/{id}/parts/` then `logs.jsonl.gz`); DynamoDB does not store transcript chunks.
+Terminal archival retains bounded pointer/status metadata in the DynamoDB Archives table and
+writes gzip objects to S3 when `ARCHIVE_BUCKET` configures the archive writer. Authorized
+session readers can resolve archive availability through a durable point lookup; the REST
+runtime verifies the S3 object and returns a five-minute presigned download without proxying
+transcript bytes. Cold Glacier objects remain unavailable until restored outside Auto Harness.
+The local store is DynamoDB Local via `pnpm local:dynamodb` (official image).
 
 **Migration marker:** none — cloud plumbing only, no live agent assignment loop yet.
 
@@ -574,11 +574,10 @@ Auto Harness. The local store is DynamoDB Local via `pnpm local:dynamodb` (offic
 - **Ack-deadline enforcement**: `session:assign` without `session:ack` inside the deadline
   requeues the session and frees the worktree (Invariant 2) — implemented in the scheduler
   service, triggered by a short-lived timer or a re-check on next scheduling pass.
-- Live log streaming over WS. The local WebSocket ingress coalesces at most 25 adjacent log
-  frames and commits them with one connection-fenced DynamoDB transaction; a plain
-  `BatchWriteItem` cannot preserve the host-connection fence. A fenced write retries a bounded
-  number of times when DynamoDB reports a transient `TransactionConflict`; failed host or session
-  conditions remain terminal fence losses and are never retried.
+- Session logs: host-pane loopback SSE for a live PTY stream; optional host `PUT` of gzip S3
+  parts when upload is on; control-plane UI polls `GET /sessions/:id/logs`. **Supersedes** live
+  log streaming of bodies over the control-plane WebSocket and connection-fenced Dynamo
+  SessionLogs transacts.
 - Session status lifecycle: `queued → running → completed | failed | cancelled | timed_out`.
 - Session timeout enforcement (agent-side kill + report).
 - **Bounded infrastructure retry** (D10): retry one exact checkout-fetch failure or one host loss
@@ -630,8 +629,8 @@ Auto Harness. The local store is DynamoDB Local via `pnpm local:dynamodb` (offic
 sessions):** `DaemonLoop` + **WebSocket** (`/ws` on local API, `auto-harness-agent start`,
 `pnpm local:ws-e2e`) and loopback (`pnpm local:cloud-e2e`). Ack deadline requeue (Inv 2),
 usage_limit retry (Inv 6), agent-only resume pin (Inv 7), durable concurrency dedupe (Inv 9),
-heartbeat stale reclaim. Local WS log ingress commits up to 25 adjacent chunks in one
-connection-fenced transaction; a plain `BatchWriteItem` would not preserve that fence. AWS
+heartbeat stale reclaim. Durable logs are host gzip PUTs to S3 when upload is on; the
+control-plane viewer socket does not carry log text. AWS
 API Gateway + Lambda dispatch is synthesized and was exercised for a short programmatic
 session during the 2026-08-18 `qa` purge in `us-west-2` (see [deploy-aws.md](deploy-aws.md#maturity)).
 A long-running subscription-CLI fleet E2E on a production VPS against that hosted control
@@ -672,10 +671,11 @@ above are live in a real deployment.** No workflow that needs `ref`, resume, or
 **Status (local):** the `services/web` Next.js app provides the supported control-plane management
 surfaces. Its API-backed create-session UI includes target/fallback routing, ref, concurrency
 identity, priority, and label constraints populated from online worktrees; it also provides
-authenticated live-log tailing and Slack configuration. `services/host-pane` on `:7422` is a
-local, per-host debugging tool and is never required for normal management workflows (Invariant
-10). The log viewer defaults to a wrapping readable document (pretty JSONL, type labels, line
-links) with an optional xterm.js 120×40 raw replay for ANSI/cursor-addressed PTY output. Git
+polled S3 session logs (and Slack configuration). `services/host-pane` on `:7422` is a
+local, per-host debugging tool with the live PTY stream and is never required for normal
+management workflows (Invariant 10). The log viewer defaults to a wrapping readable document
+(pretty JSONL, type labels, line links) with an optional xterm.js 120×40 raw replay for
+ANSI/cursor-addressed PTY output. Git
 operations, setup scripts, and terminal hooks remain pipe-based. Slack configuration is
 encrypted at rest; lifecycle delivery runs through the leased outbox when a secret encryptor or
 injected transport is attached (cron in AWS, local worker otherwise). If the token cannot be
@@ -694,7 +694,8 @@ callers don't need it. Useful before wider multi-repo rollout.
 repo-harness concerns per [harness.md](harness.md)) or are already covered earlier in this
 rewrite (account cooldown/fallback routing is now Phase 3, not Phase 5):
 
-- Session archival — DynamoDB → S3 for completed session logs.
+- Session archival — host concatenates gzip parts into `sessions/{id}/logs.jsonl.gz`; Dynamo
+  Archives rows stay pointer/`versionId` metadata only.
 - Optional outbound webhooks — **opt-in, not required by any documented pattern** (D2); a caller
   that wants a machine-readable callback instead of Slack/GitHub can configure one, but no phase
   before this one depends on it existing.
@@ -770,11 +771,11 @@ with this table.
 | `host-daemon.md`          | New section                                    | Terminal hook (D3): config shape, invocation contract, env vars, failure handling.                                                                                                                                                                          |
 | `aws.md`                  | Scheduler                                      | Add conditional worktree claim (Invariant 1), ack-deadline requeue (Invariant 2), and atomic durable `concurrencyId` lock resolution (Invariant 9).                                                                                                         |
 | `aws.md`                  | Cron Evaluator                                 | Conditional `nextRunAt` claim (Invariant 4); heartbeat-based stale sweep (Phase 3) replacing the coarse `timeout + grace` version.                                                                                                                          |
-| `aws.md`                  | DynamoDB tables                                | Sharded queue GSI; `SessionLogs` SK becomes `timestampSeq`.                                                                                                                                                                                                 |
+| `aws.md`                  | DynamoDB tables                                | Sharded queue GSI. Log bodies are S3 gzip parts, not a SessionLogs table.                                                                                                                                                                                   |
 | `websocket.md` / `aws.md` | Keepalive                                      | Remove "server pings every ~30s" (no server process holds this timer under Lambda); document agent-initiated keepalive instead.                                                                                                                             |
 | `security.md`             | New section                                    | Threat model: prompt is untrusted/attacker-influenced input; the agent-held credential is scoped per D7; state plainly what this does and does not protect against, replacing the argument the dropped validator/publisher split used to make structurally. |
 | `auth.md`                 | Service accounts / roles                       | Note that `operator` maps to "run any configured catalog Provider/Command target" post-D4, not arbitrary command execution.                                                                                                                                 |
-| `costs.md`                | SessionLogs cost estimate                      | Recompute against a realistic long-running CLI session's message volume, not the prior ~50-chunk assumption; note the API Gateway 128 KB frame limit and DynamoDB 400 KB item limit as constraints on prompt/log-chunk size.                                |
+| `costs.md`                | Log-path cost estimate                         | Model S3 gzip parts with upload default **off** (~$1 floor when on). Do not budget the retired SessionLogs transact path. API Gateway 128 KB frame and S3 object size remain chunk constraints.                                                             |
 
 ---
 

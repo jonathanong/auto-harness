@@ -34,9 +34,9 @@ session's viewers. See [docs/plan.md](docs/plan.md#5-invariants) invariant 12.
 
 ## Invariant: list and history APIs page or stream at storage
 
-`limit` / `nextCursor` (or a log cursor / viewer tail) must bound the DynamoDB read. Scanning a
-table and slicing in memory is not pagination. UIs show one page and Load more. Do not collect
-every cursor page except for small catalogs that are explicitly documented as complete, and even
-those need a cap. Live logs: REST history is a bounded newest page; the viewer WebSocket is
-tail-only and never replays REST history. See [docs/plan.md](docs/plan.md#5-invariants)
-invariant 13.
+`limit` / `nextCursor` (or a log cursor / viewer notify) must bound the storage read
+(DynamoDB query or S3 list/get). Scanning a table and slicing in memory is not pagination. UIs
+show one page and Load more. Do not collect every cursor page except for small catalogs that
+are explicitly documented as complete, and even those need a cap. Live logs: REST history is a
+bounded newest S3 page; the viewer WebSocket is notify-only (`session:log-part`) and never
+carries log text. See [docs/plan.md](docs/plan.md#5-invariants) invariant 13.
