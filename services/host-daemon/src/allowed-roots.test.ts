@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- realpath, workspace-slot, and Windows spelling cases share one root fixture. */
 import { mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
@@ -7,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   assertClaimedPathsAllowed,
   assertDaemonPathsAllowed,
+  assertExistingDirectoryWithinAllowedRoots,
   assertPathWithinAllowedRoots,
   isForeignWindowsAbsolutePath,
   isWithinRoot,
@@ -35,6 +37,15 @@ describe("allowed roots realpath checks", () => {
     expect(await assertPathWithinAllowedRoots(nested, [root])).toBe(
       await resolvePathForRootCheck(nested),
     );
+  });
+
+  it("fails closed when a workspace slot disappears between realpath and stat", async () => {
+    const root = await tempDir("slot-root");
+    await expect(
+      assertExistingDirectoryWithinAllowedRoots(root, [root], realpath, async () => {
+        throw new Error("enoent");
+      }),
+    ).rejects.toThrow("workspace slot path must exist");
   });
 
   it("rejects lexical and symlink escapes", async () => {

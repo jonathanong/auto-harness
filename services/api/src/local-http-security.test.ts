@@ -48,6 +48,20 @@ describe("local HTTP limits", () => {
       secondHandlers.data?.(Buffer.alloc(1024 * 1024 + 1));
       secondHandlers.error?.(new Error("socket reset"));
       await expect(second).rejects.toThrow("exceeds 1 MiB");
+
+      const thirdHandlers: Record<string, (chunk?: Buffer | Error) => void> = {};
+      const thirdReq = {
+        on(event: string, callback: (chunk?: Buffer | Error) => void) {
+          thirdHandlers[event] = callback;
+          return thirdReq;
+        },
+        resume() {},
+      };
+      const third = readJson(thirdReq as never);
+      thirdHandlers.data?.(Buffer.alloc(1024 * 1024 + 1));
+      thirdHandlers.end?.();
+      thirdHandlers.error?.(new Error("late error"));
+      await expect(third).rejects.toThrow("exceeds 1 MiB");
     } finally {
       vi.useRealTimers();
     }

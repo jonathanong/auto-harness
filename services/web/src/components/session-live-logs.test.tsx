@@ -387,4 +387,102 @@ describe("SessionLiveLogs", () => {
     await settle();
     view.unmount();
   });
+
+  it("does not apply a log poll that finishes after unmount", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let logsCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("/logs")) {
+          logsCalls += 1;
+          await gate;
+          return Response.json({
+            items: [
+              {
+                timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+                seq: 1,
+                stream: "stdout",
+                content: "late",
+                timestamp: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          });
+        }
+        if (path.includes("viewer-ticket")) return Response.json({ ticket: "ticket" });
+        return Response.json({ status: "running" });
+      }),
+    );
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 1;
+      addEventListener() {}
+      send() {}
+      close() {
+        this.readyState = 3;
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await expect.poll(() => logsCalls).toBeGreaterThan(0);
+    view.unmount();
+    release();
+    await settle();
+    await settle();
+  });
+
+  it("ignores a non-ok log-part refetch while still mounted", async () => {
+    const sockets: Array<{ emit(type: string, event: Event): void }> = [];
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 1;
+      private readonly listeners = new Map<string, Array<(event: Event) => void>>();
+      constructor(public url: string) {
+        sockets.push(this);
+      }
+      addEventListener(type: string, handler: (event: Event) => void) {
+        const list = this.listeners.get(type) ?? [];
+        list.push(handler);
+        this.listeners.set(type, list);
+      }
+      emit(type: string, event: Event) {
+        for (const handler of this.listeners.get(type) ?? []) handler(event);
+      }
+      send() {}
+      close() {
+        this.readyState = 3;
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("viewer-ticket")) return Response.json({ ticket: "ticket" });
+        if (path.includes("session-log-settings")) return Response.json({});
+        if (path.includes("/logs")) return new Response(null, { status: 503 });
+        return Response.json({ status: "running" });
+      }),
+    );
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    await settle();
+    expect(sockets[0]).toBeTruthy();
+    await act(async () => {
+      sockets[0]!.emit(
+        "message",
+        new MessageEvent("message", { data: JSON.stringify({ type: "session:log-part" }) }),
+      );
+    });
+    await settle();
+    view.unmount();
+  });
 });
