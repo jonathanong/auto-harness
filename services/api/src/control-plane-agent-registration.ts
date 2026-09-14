@@ -203,6 +203,9 @@ export function buildRegisteredInventory(
     ...(previous?.setupCacheInputs !== undefined
       ? { setupCacheInputs: [...previous.setupCacheInputs] }
       : {}),
+    ...(previous?.setupCacheHostInputs !== undefined
+      ? { setupCacheHostInputs: [...previous.setupCacheHostInputs] }
+      : {}),
     ...(previous?.allowedRoots !== undefined ? { allowedRoots: [...previous.allowedRoots] } : {}),
     ...(previous?.requiredEnvironment !== undefined
       ? { requiredEnvironment: [...previous.requiredEnvironment] }

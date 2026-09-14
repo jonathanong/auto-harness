@@ -175,13 +175,85 @@ describe("setupCacheInputs exec-config", () => {
         setupCacheInputs: ["../package.json"],
       }),
     ).toThrow("relative");
+    expect(() =>
+      parseHostInventory({
+        repositories: [],
+        setupCacheInputs: ["/opt/auto-harness/setup/host-environment"],
+      }),
+    ).toThrow("relative");
+  });
+
+  it("parses, applies, and preserves host-absolute cache inputs", () => {
+    expect(
+      parseHostExecConfig({
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
+      }),
+    ).toEqual({
+      setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
+    });
+    const existing = emptyHostInventory();
+    const applied = applyHostExecConfig(existing, {
+      setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
+    });
+    expect(applied.setupCacheHostInputs).toEqual(["/opt/auto-harness/setup/host-environment"]);
+    expect(
+      preserveHostExecConfig({ repositories: [], providerAccounts: [] }, applied)
+        .setupCacheHostInputs,
+    ).toEqual(["/opt/auto-harness/setup/host-environment"]);
+    expect(listExecConfigEdits(existing, applied)).toEqual(["setupCacheHostInputs"]);
+    expect(
+      inventoryHasExecConfig({
+        ...emptyHostInventory(),
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
+      }),
+    ).toBe(true);
+    expect(() =>
+      parseHostInventory({
+        repositories: [],
+        setupCacheHostInputs: ["pnpm-lock.yaml"],
+      }),
+    ).toThrow("absolute host paths");
+    const written = reconcileInventoryWrite({
+      existing: emptyHostInventory(),
+      incoming: {
+        ...emptyHostInventory(),
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
+      },
+      allowExecConfig: true,
+    });
+    expect(written.ok).toBe(true);
+    if (!written.ok) return;
+    expect(written.inventory.setupCacheHostInputs).toEqual([
+      "/opt/auto-harness/setup/host-environment",
+    ]);
+    expect(applyHostExecConfig(applied, { setupScript: "echo" }).setupCacheHostInputs).toEqual([
+      "/opt/auto-harness/setup/host-environment",
+    ]);
+    const cleared = applyHostExecConfig(applied, { setupCacheHostInputs: [] });
+    expect(cleared).not.toHaveProperty("setupCacheHostInputs");
+    expect(
+      preserveHostExecConfig(
+        { repositories: [], providerAccounts: [], setupCacheHostInputs: [] },
+        applied,
+      ),
+    ).not.toHaveProperty("setupCacheHostInputs");
+    expect(
+      parseHostInventory({
+        repositories: [],
+        setupCacheHostInputs: undefined,
+      }),
+    ).toMatchObject({ setupCacheHostInputs: [] });
   });
 });
 
 describe("setupCacheInputs inventory helpers", () => {
   it("upserts and updates declared extra paths without wiping siblings", () => {
     let inv = upsertHostRepository(
-      { ...emptyHostInventory(), setupCacheInputs: ["host.lock"] },
+      {
+        ...emptyHostInventory(),
+        setupCacheInputs: ["host.lock"],
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
+      },
       {
         id: "demo",
         path: "/repo",
@@ -190,6 +262,7 @@ describe("setupCacheInputs inventory helpers", () => {
       },
     );
     expect(inv.setupCacheInputs).toEqual(["host.lock"]);
+    expect(inv.setupCacheHostInputs).toEqual(["/opt/auto-harness/setup/host-environment"]);
     inv = addHostWorktree(inv, "demo", {
       id: "wt",
       name: "wt",

@@ -60,6 +60,9 @@ export function applyHostExecConfig(
     ...(existing.setupCacheInputs !== undefined
       ? { setupCacheInputs: [...existing.setupCacheInputs] }
       : {}),
+    ...(existing.setupCacheHostInputs !== undefined
+      ? { setupCacheHostInputs: [...existing.setupCacheHostInputs] }
+      : {}),
     ...(existing.updateConfig !== undefined ? { updateConfig: { ...existing.updateConfig } } : {}),
     ...(existing.requiredEnvironment !== undefined
       ? { requiredEnvironment: [...existing.requiredEnvironment] }
@@ -85,6 +88,9 @@ export function applyHostExecConfig(
   if (patch.setupScript !== undefined) assignOptionalString(next, "setupScript", patch.setupScript);
   if (patch.setupCacheInputs !== undefined) {
     assignOptionalStringArray(next, "setupCacheInputs", patch.setupCacheInputs);
+  }
+  if (patch.setupCacheHostInputs !== undefined) {
+    assignOptionalStringArray(next, "setupCacheHostInputs", patch.setupCacheHostInputs);
   }
   if (patch.allowedRoots !== undefined) {
     if (patch.allowedRoots.length) next.allowedRoots = [...patch.allowedRoots];
@@ -277,6 +283,7 @@ export function inventoryHasExecConfig(inventory: HostInventory | null | undefin
   if ((inventory.setupScript ?? "") !== "" || (inventory.allowedRoots ?? []).length > 0)
     return true;
   if ((inventory.setupCacheInputs ?? []).length > 0) return true;
+  if ((inventory.setupCacheHostInputs ?? []).length > 0) return true;
   if ((inventory.workspacePools ?? []).length > 0) return true;
   return inventory.repositories.some(
     (repository) =>
@@ -299,6 +306,9 @@ export function listExecConfigEdits(
   addOptionalStringEdit(edits, "setupScript", existing?.setupScript, incoming.setupScript);
   if (!sameRoots(existing?.setupCacheInputs, incoming.setupCacheInputs)) {
     edits.push("setupCacheInputs");
+  }
+  if (!sameRoots(existing?.setupCacheHostInputs, incoming.setupCacheHostInputs)) {
+    edits.push("setupCacheHostInputs");
   }
   if (!sameRoots(existing?.allowedRoots, incoming.allowedRoots)) edits.push("allowedRoots");
   if (!sameUpdateConfig(existing?.updateConfig, incoming.updateConfig)) edits.push("updateConfig");
@@ -451,6 +461,17 @@ export function preserveHostExecConfig(
   else if (next.setupScript === "") delete next.setupScript;
   if (!Object.hasOwn(next, "setupCacheInputs")) restoreCacheInputs(next, existing ?? undefined);
   else assignIncomingCacheInputs(next);
+  if (!Object.hasOwn(next, "setupCacheHostInputs")) {
+    if (existing?.setupCacheHostInputs !== undefined) {
+      next.setupCacheHostInputs = [...existing.setupCacheHostInputs];
+    } else {
+      delete next.setupCacheHostInputs;
+    }
+  } else if (!next.setupCacheHostInputs?.length) {
+    delete next.setupCacheHostInputs;
+  } else {
+    next.setupCacheHostInputs = [...next.setupCacheHostInputs];
+  }
   if (next.allowedRoots === undefined) {
     if (existing?.allowedRoots !== undefined) next.allowedRoots = [...existing.allowedRoots];
     else delete next.allowedRoots;

@@ -117,6 +117,12 @@ describe("fetchHostInventory", () => {
     expect(inventoryFingerprint({ ...empty, setupCacheInputs: ["pnpm-lock.yaml"] })).not.toBe(
       inventoryFingerprint({ ...empty, setupCacheInputs: ["Cargo.lock"] }),
     );
+    expect(
+      inventoryFingerprint({
+        ...empty,
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
+      }),
+    ).not.toBe(inventoryFingerprint(empty));
   });
 
   it("handles empty error bodies", async () => {

@@ -55,6 +55,8 @@ export type HostInventory = {
   /** Optional host-wide setup run before the repository/worktree setup. */
   setupScript?: string | undefined;
   setupCacheInputs?: string[] | undefined;
+  /** Absolute host-owned files hashed into the setup-script cache fingerprint. */
+  setupCacheHostInputs?: string[] | undefined;
   /**
    * Host-local directories that inventory filesystem paths and terminal hook
    * paths must resolve under. Empty/absent = unrestricted. Catalog argv is not
@@ -88,6 +90,9 @@ function cloneInventory(existing: HostInventory | null | undefined): HostInvento
     ...(existing?.setupScript !== undefined ? { setupScript: existing.setupScript } : {}),
     ...(existing?.setupCacheInputs !== undefined
       ? { setupCacheInputs: [...existing.setupCacheInputs] }
+      : {}),
+    ...(existing?.setupCacheHostInputs !== undefined
+      ? { setupCacheHostInputs: [...existing.setupCacheHostInputs] }
       : {}),
     ...(existing?.allowedRoots !== undefined ? { allowedRoots: [...existing.allowedRoots] } : {}),
     ...(existing?.requiredEnvironment !== undefined

@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isSetupCacheHostInputPath,
   isSetupCacheInputPath,
   MAX_SETUP_CACHE_INPUTS,
+  MAX_SETUP_CACHE_INPUT_LENGTH,
+  parseSetupCacheHostInputs,
+  parseSetupCacheHostInputsField,
   parseSetupCacheInputs,
   parseSetupCacheInputsField,
+  presentSetupCacheHostInputs,
   presentSetupCacheInputs,
   splitSetupCacheInputLines,
 } from "./setup-cache-inputs.ts";
@@ -64,5 +69,88 @@ describe("parseSetupCacheInputs", () => {
     expect(presentSetupCacheInputs([], "setupCacheInputs")).toBeUndefined();
     expect(presentSetupCacheInputs(undefined, "setupCacheInputs")).toBeUndefined();
     expect(parseSetupCacheInputsField("", "setupCacheInputs")).toEqual([]);
+  });
+});
+
+describe("parseSetupCacheHostInputs", () => {
+  it("accepts absolute host paths and dedupes them", () => {
+    expect(parseSetupCacheHostInputs(undefined, "setupCacheHostInputs")).toBeUndefined();
+    expect(parseSetupCacheHostInputs([], "setupCacheHostInputs")).toEqual([]);
+    expect(
+      parseSetupCacheHostInputs(
+        [
+          "/opt/auto-harness/setup/host-environment",
+          "/opt/auto-harness/setup/host-environment",
+          "C:\\auto-harness\\setup\\host-environment",
+        ],
+        "setupCacheHostInputs",
+      ),
+    ).toEqual([
+      "/opt/auto-harness/setup/host-environment",
+      "C:\\auto-harness\\setup\\host-environment",
+    ]);
+    expect(isSetupCacheHostInputPath("/opt/auto-harness/setup/host-environment")).toBe(true);
+    expect(isSetupCacheHostInputPath("\\\\host\\share\\file")).toBe(true);
+    expect(isSetupCacheHostInputPath("//host/share/file")).toBe(true);
+    expect(isSetupCacheHostInputPath("d:/harness/env")).toBe(true);
+    expect(isSetupCacheHostInputPath("")).toBe(false);
+    expect(isSetupCacheHostInputPath("/")).toBe(false);
+    expect(isSetupCacheHostInputPath("C:\\")).toBe(false);
+    expect(isSetupCacheHostInputPath("pnpm-lock.yaml")).toBe(false);
+    expect(isSetupCacheHostInputPath("/opt//env")).toBe(false);
+    expect(isSetupCacheHostInputPath(`/opt/${"x".repeat(MAX_SETUP_CACHE_INPUT_LENGTH)}`)).toBe(
+      false,
+    );
+    expect(isSetupCacheHostInputPath("/opt/\u007fenv")).toBe(false);
+  });
+
+  it("rejects relative checkout extras and unsafe host paths", () => {
+    expect(() => parseSetupCacheHostInputs(" /opt/env", "setupCacheHostInputs")).toThrow(
+      "string array",
+    );
+    expect(() => parseSetupCacheHostInputs([1], "setupCacheHostInputs")).toThrow("string array");
+    expect(() => parseSetupCacheHostInputs([""], "setupCacheHostInputs")).toThrow("non-empty");
+    expect(() => parseSetupCacheHostInputs(["pnpm-lock.yaml"], "setupCacheHostInputs")).toThrow(
+      "absolute host paths",
+    );
+    expect(() =>
+      parseSetupCacheHostInputs(["../host-environment"], "setupCacheHostInputs"),
+    ).toThrow("absolute host paths");
+    expect(() => parseSetupCacheHostInputs(["/opt/../etc/passwd"], "setupCacheHostInputs")).toThrow(
+      "absolute host paths",
+    );
+    expect(() => parseSetupCacheHostInputs(["/opt/./env"], "setupCacheHostInputs")).toThrow(
+      "absolute host paths",
+    );
+    expect(() => parseSetupCacheHostInputs(["/opt/\u0000env"], "setupCacheHostInputs")).toThrow(
+      "absolute host paths",
+    );
+    expect(() =>
+      parseSetupCacheHostInputs([`/${"x".repeat(4096)}`], "setupCacheHostInputs"),
+    ).toThrow("at most 4096");
+    expect(() =>
+      parseSetupCacheHostInputs(
+        Array.from({ length: MAX_SETUP_CACHE_INPUTS + 1 }, (_, i) => `/${String(i)}`),
+        "setupCacheHostInputs",
+      ),
+    ).toThrow(`at most ${String(MAX_SETUP_CACHE_INPUTS)}`);
+  });
+
+  it("splits textarea lines without inventing undeclared files", () => {
+    expect(
+      parseSetupCacheHostInputsField(
+        "/opt/auto-harness/setup/host-environment\n/opt/auto-harness/setup/repo-abc",
+        "setupCacheHostInputs",
+      ),
+    ).toEqual(["/opt/auto-harness/setup/host-environment", "/opt/auto-harness/setup/repo-abc"]);
+    expect(
+      presentSetupCacheHostInputs(
+        ["/opt/auto-harness/setup/host-environment"],
+        "setupCacheHostInputs",
+      ),
+    ).toEqual(["/opt/auto-harness/setup/host-environment"]);
+    expect(presentSetupCacheHostInputs([], "setupCacheHostInputs")).toBeUndefined();
+    expect(presentSetupCacheHostInputs(undefined, "setupCacheHostInputs")).toBeUndefined();
+    expect(parseSetupCacheHostInputsField("", "setupCacheHostInputs")).toEqual([]);
   });
 });

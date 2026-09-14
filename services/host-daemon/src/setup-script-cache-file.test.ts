@@ -24,6 +24,17 @@ describe("declared setup cache extra files", () => {
       { path: "empty.lock", contents: Buffer.from("") },
     ]);
     expect(await readDeclaredSetupFiles(cwd, ["../secret"])).toBeUndefined();
+    expect(
+      await resolveSetupCacheState({
+        cacheDir: cwd,
+        checkoutSha: "abc",
+        cwd,
+        worktreeId: "wt-1",
+        scripts: ["true"],
+        extraPaths: [],
+        hostPaths: ["pnpm-lock.yaml"],
+      }),
+    ).toEqual({ skip: false });
     const cache = await resolveSetupCacheState({
       cacheDir: cwd,
       checkoutSha: "abc",

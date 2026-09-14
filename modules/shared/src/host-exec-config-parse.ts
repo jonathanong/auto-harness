@@ -1,5 +1,5 @@
 import { parseHostUpdateConfig, type HostUpdateConfig } from "./host-update-config.ts";
-import { parseSetupCacheInputs } from "./setup-cache-inputs.ts";
+import { parseSetupCacheHostInputs, parseSetupCacheInputs } from "./setup-cache-inputs.ts";
 
 export const EXEC_CONFIG_REQUIRED_MESSAGE =
   "fleet:exec-config is required to change setup scripts or executable paths";
@@ -10,6 +10,7 @@ export const MAX_EXEC_PATH_LENGTH = 4096;
 export type HostExecConfigPatch = {
   setupScript?: string | undefined;
   setupCacheInputs?: string[] | undefined;
+  setupCacheHostInputs?: string[] | undefined;
   allowedRoots?: string[] | undefined;
   updateConfig?: HostUpdateConfig | undefined;
   repositories?: HostExecRepositoryPatch[] | undefined;
@@ -104,6 +105,11 @@ function optionalPatchStringArray(
   return parseSetupCacheInputs(obj[key], `${ctx}.${key}`) ?? [];
 }
 
+function optionalPatchHostInputs(obj: Record<string, unknown>, ctx: string): string[] | undefined {
+  if (!Object.hasOwn(obj, "setupCacheHostInputs")) return undefined;
+  return parseSetupCacheHostInputs(obj.setupCacheHostInputs, `${ctx}.setupCacheHostInputs`) ?? [];
+}
+
 function parseExecWorktree(
   raw: unknown,
   index: number,
@@ -162,6 +168,7 @@ export function parseHostExecConfig(value: unknown): HostExecConfigPatch {
   if (!isRecord(value)) throw new TypeError("body must be an object");
   const setupScript = optionalPatchString(value, "setupScript", "exec-config");
   const setupCacheInputs = optionalPatchStringArray(value, "setupCacheInputs", "exec-config");
+  const setupCacheHostInputs = optionalPatchHostInputs(value, "exec-config");
   const allowedRoots = Object.hasOwn(value, "allowedRoots")
     ? (parseAllowedRoots(value.allowedRoots) ?? [])
     : undefined;
@@ -178,6 +185,7 @@ export function parseHostExecConfig(value: unknown): HostExecConfigPatch {
   return {
     ...(setupScript !== undefined ? { setupScript } : {}),
     ...(setupCacheInputs !== undefined ? { setupCacheInputs } : {}),
+    ...(setupCacheHostInputs !== undefined ? { setupCacheHostInputs } : {}),
     ...(allowedRoots !== undefined ? { allowedRoots } : {}),
     ...(updateConfig !== undefined ? { updateConfig } : {}),
     ...(repositories !== undefined ? { repositories } : {}),

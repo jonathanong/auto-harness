@@ -52,6 +52,7 @@ export async function runSetupIfNeeded(
     claimed.hostSetupCacheInputs,
     claimed.worktree.setupCacheInputs ?? claimed.repository.setupCacheInputs,
   );
+  const hostPaths = claimed.hostSetupCacheHostInputs ?? [];
   const cache = await resolveSetupCacheState({
     cacheDir: setupCacheDir,
     checkoutSha: baseline,
@@ -59,6 +60,7 @@ export async function runSetupIfNeeded(
     worktreeId: claimed.worktree.id,
     scripts: setupScripts,
     extraPaths,
+    hostPaths,
     ...(signal ? { signal } : {}),
   });
   if (cache.skip) {
@@ -157,6 +159,7 @@ export async function runSetupIfNeeded(
         cwd: claimed.cwd,
         scripts: setupScripts,
         extraPaths,
+        hostPaths,
         expectedFingerprint: cache.fingerprintToStore,
         ...(signal ? { signal } : {}),
       });

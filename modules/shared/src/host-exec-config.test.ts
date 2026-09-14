@@ -85,6 +85,9 @@ describe("parseHostExecConfig", () => {
     ).toMatchObject({ updateConfig: { enabled: true, publicKey: "key" } });
     expect(parseHostExecConfig({ allowedRoots: undefined })).toEqual({ allowedRoots: [] });
     expect(parseHostExecConfig({ setupCacheInputs: undefined })).toEqual({ setupCacheInputs: [] });
+    expect(parseHostExecConfig({ setupCacheHostInputs: undefined })).toEqual({
+      setupCacheHostInputs: [],
+    });
     expect(
       parseHostExecConfig({ repositories: [{ id: "repo", worktrees: [{ id: "wt" }] }] }),
     ).toEqual({

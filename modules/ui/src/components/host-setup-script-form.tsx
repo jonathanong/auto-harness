@@ -8,6 +8,7 @@ import {
   mutateExecConfig,
   mutateInventory,
   parseAllowedRoots,
+  parseSetupCacheHostInputs,
   parseSetupCacheInputs,
   splitSetupCacheInputLines,
   thrownMessage,
@@ -20,12 +21,13 @@ import { Label } from "./label.tsx";
 import { Textarea } from "./textarea.tsx";
 import { showToast } from "./toast.tsx";
 import { WithTooltip } from "./tooltip.tsx";
-import { SetupCacheInputsField } from "./setup-cache-inputs-field.tsx";
+import { SETUP_CACHE_HOST_INPUTS_TIP, SetupCacheInputsField } from "./setup-cache-inputs-field.tsx";
 
 export function HostSetupScriptForm({
   hostId,
   setupScript,
   setupCacheInputs,
+  setupCacheHostInputs,
   allowedRoots,
   requiredEnvironment,
   mutateExec = mutateExecConfig,
@@ -36,6 +38,7 @@ export function HostSetupScriptForm({
   hostId: string;
   setupScript?: string | undefined;
   setupCacheInputs?: string[] | undefined;
+  setupCacheHostInputs?: string[] | undefined;
   allowedRoots?: string[] | undefined;
   requiredEnvironment?: string[] | undefined;
   mutateExec?: typeof mutateExecConfig;
@@ -50,16 +53,20 @@ export function HostSetupScriptForm({
   const [environmentSaved, setEnvironmentSaved] = useState(false);
   const [script, setScript] = useState(setupScript ?? "");
   const [cacheInputs, setCacheInputs] = useState((setupCacheInputs ?? []).join("\n"));
+  const [hostCacheInputs, setHostCacheInputs] = useState((setupCacheHostInputs ?? []).join("\n"));
   const [roots, setRoots] = useState((allowedRoots ?? []).join("\n"));
   const [environment, setEnvironment] = useState((requiredEnvironment ?? []).join("\n"));
   const [scriptDirty, setScriptDirty] = useState(false);
   const [cacheInputsDirty, setCacheInputsDirty] = useState(false);
+  const [hostCacheInputsDirty, setHostCacheInputsDirty] = useState(false);
   const [rootsDirty, setRootsDirty] = useState(false);
   const scriptDirtyRef = useRef(false);
   const cacheInputsDirtyRef = useRef(false);
+  const hostCacheInputsDirtyRef = useRef(false);
   const rootsDirtyRef = useRef(false);
   const scriptValueRef = useRef(script);
   const cacheInputsValueRef = useRef(cacheInputs);
+  const hostCacheInputsValueRef = useRef(hostCacheInputs);
   const rootsValueRef = useRef(roots);
   const environmentDirtyRef = useRef(false);
   const environmentValueRef = useRef(environment);
@@ -69,8 +76,14 @@ export function HostSetupScriptForm({
   useEffect(() => {
     const nextScript = setupScript ?? "";
     const nextCacheInputs = (setupCacheInputs ?? []).join("\n");
+    const nextHostCacheInputs = (setupCacheHostInputs ?? []).join("\n");
     const nextRoots = (allowedRoots ?? []).join("\n");
-    const refreshKey = JSON.stringify([nextScript, nextCacheInputs, nextRoots]);
+    const refreshKey = JSON.stringify([
+      nextScript,
+      nextCacheInputs,
+      nextHostCacheInputs,
+      nextRoots,
+    ]);
     const preserveSavedFeedback = savedRefreshExecRef.current === refreshKey;
     savedRefreshExecRef.current = null;
     if (!scriptDirtyRef.current) {
@@ -81,12 +94,16 @@ export function HostSetupScriptForm({
       setCacheInputs(nextCacheInputs);
       setCacheInputsDirty(false);
     }
+    if (!hostCacheInputsDirtyRef.current) {
+      setHostCacheInputs(nextHostCacheInputs);
+      setHostCacheInputsDirty(false);
+    }
     if (!rootsDirtyRef.current) {
       setRoots(nextRoots);
       setRootsDirty(false);
     }
     if (!preserveSavedFeedback) setExecSaved(false);
-  }, [allowedRoots, setupCacheInputs, setupScript]);
+  }, [allowedRoots, setupCacheHostInputs, setupCacheInputs, setupScript]);
 
   useEffect(() => {
     const nextEnvironment = (requiredEnvironment ?? []).join("\n");
@@ -112,6 +129,7 @@ export function HostSetupScriptForm({
             setExecSaved(false);
             const submittedScript = script;
             const submittedCacheInputs = cacheInputs;
+            const submittedHostCacheInputs = hostCacheInputs;
             const submittedRoots = roots;
             startExec(async () => {
               try {
@@ -123,6 +141,20 @@ export function HostSetupScriptForm({
                     patch.setupCacheInputs = parseSetupCacheInputs(
                       splitSetupCacheInputLines(cacheInputs),
                       "setupCacheInputs",
+                    )!;
+                  } catch (error) {
+                    showToast(thrownMessage(error), {
+                      variant: "destructive",
+                      pw: "host-setup-script-error",
+                    });
+                    return;
+                  }
+                }
+                if (hostCacheInputsDirty) {
+                  try {
+                    patch.setupCacheHostInputs = parseSetupCacheHostInputs(
+                      splitSetupCacheInputLines(hostCacheInputs),
+                      "setupCacheHostInputs",
                     )!;
                   } catch (error) {
                     showToast(thrownMessage(error), {
@@ -162,6 +194,7 @@ export function HostSetupScriptForm({
                 savedRefreshExecRef.current = JSON.stringify([
                   submittedScript,
                   submittedCacheInputs,
+                  submittedHostCacheInputs,
                   submittedRoots,
                 ]);
                 if (scriptValueRef.current === submittedScript) {
@@ -171,6 +204,10 @@ export function HostSetupScriptForm({
                 if (cacheInputsValueRef.current === submittedCacheInputs) {
                   cacheInputsDirtyRef.current = false;
                   setCacheInputsDirty(false);
+                }
+                if (hostCacheInputsValueRef.current === submittedHostCacheInputs) {
+                  hostCacheInputsDirtyRef.current = false;
+                  setHostCacheInputsDirty(false);
                 }
                 if (rootsValueRef.current === submittedRoots) {
                   rootsDirtyRef.current = false;
@@ -223,6 +260,20 @@ export function HostSetupScriptForm({
               cacheInputsValueRef.current = event.target.value;
               cacheInputsDirtyRef.current = true;
               setCacheInputsDirty(true);
+            }}
+          />
+          <SetupCacheInputsField
+            id="hostSetupCacheHostInputs"
+            name="setupCacheHostInputs"
+            dataPw="host-setup-cache-host-inputs"
+            label="Setup Cache Host Inputs"
+            tip={SETUP_CACHE_HOST_INPUTS_TIP}
+            value={hostCacheInputs}
+            onChange={(event) => {
+              setHostCacheInputs(event.target.value);
+              hostCacheInputsValueRef.current = event.target.value;
+              hostCacheInputsDirtyRef.current = true;
+              setHostCacheInputsDirty(true);
             }}
           />
           <div className="space-y-1">

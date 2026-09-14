@@ -13,6 +13,7 @@ export async function claimSetupCache(extras?: {
   worktreeCacheInputs?: string[];
   repositoryCacheInputs?: string[];
   hostCacheInputs?: string[];
+  hostAbsoluteCacheInputs?: string[];
   files?: Record<string, string>;
 }): Promise<{ cwd: string; claimed: ClaimedWorktree }> {
   const cwd = await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-run-"));
@@ -42,6 +43,9 @@ export async function claimSetupCache(extras?: {
       },
       cwd,
       ...(extras?.hostCacheInputs ? { hostSetupCacheInputs: extras.hostCacheInputs } : {}),
+      ...(extras?.hostAbsoluteCacheInputs
+        ? { hostSetupCacheHostInputs: extras.hostAbsoluteCacheInputs }
+        : {}),
       currentHookTarget: async () => null,
     },
   };
@@ -66,6 +70,7 @@ export async function runCachedSetup(
   runner: ProcessRunner,
   cacheDir: string,
   baseline = "abc123",
+  signal?: AbortSignal,
 ) {
   const logs: SessionLogChunk[] = [];
   const streamer = new LogStreamer(
@@ -80,7 +85,7 @@ export async function runCachedSetup(
     logs,
     assign,
     claimed,
-    undefined,
+    signal,
     () => false,
     () => 30_000,
     process.env,

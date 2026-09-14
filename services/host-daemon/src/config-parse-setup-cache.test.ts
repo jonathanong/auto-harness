@@ -31,4 +31,18 @@ describe("parseDaemonConfig setup cache inputs", () => {
       }),
     ).not.toHaveProperty("setupCacheInputs");
   });
+
+  it("parses operator-declared host-absolute setup cache inputs", () => {
+    const config = parseDaemonConfig({
+      ...valid,
+      setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
+    });
+    expect(config.setupCacheHostInputs).toEqual(["/opt/auto-harness/setup/host-environment"]);
+    expect(
+      parseDaemonConfig({
+        ...valid,
+        setupCacheHostInputs: [],
+      }),
+    ).not.toHaveProperty("setupCacheHostInputs");
+  });
 });

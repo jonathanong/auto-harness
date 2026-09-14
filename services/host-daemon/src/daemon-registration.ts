@@ -93,6 +93,7 @@ export async function applyDaemonInventory(
 ): Promise<void> {
   const previousSetupScript = config.setupScript;
   const previousSetupCacheInputs = config.setupCacheInputs;
+  const previousSetupCacheHostInputs = config.setupCacheHostInputs;
   const previousAllowedRoots = config.allowedRoots;
   const previousRepositories = config.repositories;
   const previousWorkspacePools = config.workspacePools;
@@ -110,6 +111,8 @@ export async function applyDaemonInventory(
     else config.setupScript = next.setupScript;
     if (next.setupCacheInputs === undefined) delete config.setupCacheInputs;
     else config.setupCacheInputs = next.setupCacheInputs;
+    if (next.setupCacheHostInputs === undefined) delete config.setupCacheHostInputs;
+    else config.setupCacheHostInputs = next.setupCacheHostInputs;
     if (next.allowedRoots === undefined) delete config.allowedRoots;
     else config.allowedRoots = next.allowedRoots;
     config.repositories = next.repositories;
@@ -126,6 +129,8 @@ export async function applyDaemonInventory(
     else config.setupScript = previousSetupScript;
     if (previousSetupCacheInputs === undefined) delete config.setupCacheInputs;
     else config.setupCacheInputs = previousSetupCacheInputs;
+    if (previousSetupCacheHostInputs === undefined) delete config.setupCacheHostInputs;
+    else config.setupCacheHostInputs = previousSetupCacheHostInputs;
     if (previousAllowedRoots === undefined) delete config.allowedRoots;
     else config.allowedRoots = previousAllowedRoots;
     config.repositories = previousRepositories;

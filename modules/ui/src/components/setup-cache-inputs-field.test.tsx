@@ -21,6 +21,24 @@ describe("SetupCacheInputsField", () => {
     view.unmount();
   });
 
+  it("renders an operator-declared host-absolute label", () => {
+    const view = mount(
+      <SetupCacheInputsField
+        id="host-abs"
+        name="setupCacheHostInputs"
+        dataPw="host-setup-cache-host-inputs"
+        label="Setup Cache Host Inputs"
+        tip="Absolute host-owned file paths."
+        defaultValue="/opt/auto-harness/setup/host-environment"
+      />,
+    );
+    expect(field<HTMLTextAreaElement>(view.container, "host-setup-cache-host-inputs").value).toBe(
+      "/opt/auto-harness/setup/host-environment",
+    );
+    expect(view.container.textContent).toContain("Setup Cache Host Inputs");
+    view.unmount();
+  });
+
   it("renders an empty uncontrolled field and a controlled value", () => {
     const empty = mount(<SetupCacheInputsField id="empty" dataPw="empty-cache" />);
     expect(field<HTMLTextAreaElement>(empty.container, "empty-cache").value).toBe("");

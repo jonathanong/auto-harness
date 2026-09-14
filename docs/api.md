@@ -1679,13 +1679,13 @@ hydrated in-process callers may include `available: true | false` as a best-effo
 #### Host inventory: setup and Provider Accounts
 
 `GET /api/v1/hosts/:hostId/inventory` still returns the full host document, including setup
-scripts, `setupCacheInputs`, terminal hook paths, and `allowedRoots`. Ordinary inventory writes do not.
+scripts, `setupCacheInputs`, `setupCacheHostInputs`, terminal hook paths, and `allowedRoots`. Ordinary inventory writes do not.
 
 `PUT /api/v1/hosts/:hostId/inventory` (see [cli.md](cli.md), `fleet:inventory`) attaches
 repositories and worktrees, labels, required environment, and provider-account attachments.
 Omitted exec-config fields are **always** preserved from the stored document, including for
 admin / unauthenticated local callers. A body that would change `setupScript`,
-`setupCacheInputs`, `terminalHookScript`, or `allowedRoots` returns `403 FORBIDDEN` unless the caller also has
+`setupCacheInputs`, `setupCacheHostInputs`, `terminalHookScript`, or `allowedRoots` returns `403 FORBIDDEN` unless the caller also has
 `fleet:exec-config`. Callers with that capability may include those fields in a full-document
 PUT (the raw JSON editor) to change them; omitted keys still stay stored. Those writes also
 append `host-exec-config:update`. Removing a repository or worktree that contains one of those
@@ -1696,9 +1696,10 @@ exec-config audit is persisted before a full-document inventory replacement can 
 
 `PUT /api/v1/hosts/:hostId/exec-config` (`fleet:exec-config`, admin only) is the structured write
 path for host-, repository-, and worktree-scoped setup scripts, optional `setupCacheInputs`
-relative checkout paths that invalidate cached setup, repository `terminalHookScript`
+relative checkout paths that invalidate cached setup, optional host-level `setupCacheHostInputs`
+absolute host-owned files that invalidate cached setup, repository `terminalHookScript`
 paths, and host-local `allowedRoots`. Omitted keys are left unchanged. Empty strings / empty
-`allowedRoots` and empty `setupCacheInputs` clear the stored value. A host with no inventory yet is created empty, then the
+`allowedRoots`, empty `setupCacheInputs`, and empty `setupCacheHostInputs` clear the stored value. A host with no inventory yet is created empty, then the
 patch is applied. Unknown repository or worktree ids return `400 VALIDATION_ERROR`. Non-empty
 new or changed `terminalHookScript` values must be absolute paths on both this route and
 `PUT /inventory`. A relative hook persisted by an earlier release may be carried through an

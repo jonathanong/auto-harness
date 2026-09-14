@@ -143,6 +143,7 @@ describe("HostSetupScriptForm", () => {
         hostId="host/one"
         setupScript="old"
         setupCacheInputs={["old.lock"]}
+        setupCacheHostInputs={["/opt/auto-harness/setup/old-environment"]}
         allowedRoots={["/opt/harness"]}
         mutateExec={mutateExec}
         mutateInv={mutateInv}
@@ -156,17 +157,25 @@ describe("HostSetupScriptForm", () => {
     expect(field<HTMLTextAreaElement>(view.container, "host-setup-cache-inputs").value).toBe(
       "old.lock",
     );
+    expect(field<HTMLTextAreaElement>(view.container, "host-setup-cache-host-inputs").value).toBe(
+      "/opt/auto-harness/setup/old-environment",
+    );
     expect(field<HTMLTextAreaElement>(view.container, "host-allowed-roots").value).toBe(
       "/opt/harness",
     );
     setValue(field(view.container, "host-setup-script"), "source ~/.zshrc");
     setValue(field(view.container, "host-setup-cache-inputs"), "pnpm-lock.yaml\nCargo.lock");
+    setValue(
+      field(view.container, "host-setup-cache-host-inputs"),
+      "/opt/auto-harness/setup/host-environment",
+    );
     setValue(field(view.container, "host-allowed-roots"), "/opt/harness,with,commas\n/usr/local");
     setValue(field(view.container, "host-required-environment"), " REGION\nTOKEN ");
     await submit(field(view.container, "form-host-setup-script"));
     expect(execPatch).toEqual({
       setupScript: "source ~/.zshrc",
       setupCacheInputs: ["pnpm-lock.yaml", "Cargo.lock"],
+      setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
       allowedRoots: ["/opt/harness,with,commas", "/usr/local"],
     });
     expect(written).toBeUndefined();
@@ -259,6 +268,21 @@ describe("HostSetupScriptForm", () => {
     await submit(field(invalidCache.container, "form-host-setup-script"));
     expect(field(document.body, "host-setup-script-error").textContent).toContain("relative");
     invalidCache.unmount();
+
+    const invalidHostCache = mount(
+      <HostSetupScriptForm
+        hostId="host"
+        mutateExec={successfulExec}
+        mutateInv={successfulInv}
+        canWriteExecConfig
+      />,
+    );
+    setValue(field(invalidHostCache.container, "host-setup-cache-host-inputs"), "pnpm-lock.yaml");
+    await submit(field(invalidHostCache.container, "form-host-setup-script"));
+    expect(field(document.body, "host-setup-script-error").textContent).toContain(
+      "absolute host paths",
+    );
+    invalidHostCache.unmount();
 
     const envFail = mount(
       <HostSetupScriptForm
@@ -354,6 +378,10 @@ describe("HostSetupScriptForm", () => {
     const view = mount(<UnrelatedRefreshHarness />);
     setValue(field(view.container, "host-setup-script"), "new script");
     setValue(field(view.container, "host-setup-cache-inputs"), "new.lock");
+    setValue(
+      field(view.container, "host-setup-cache-host-inputs"),
+      "/opt/auto-harness/setup/host-environment",
+    );
     setValue(field(view.container, "host-allowed-roots"), "/new-root");
     setValue(field(view.container, "host-required-environment"), "LOCAL_TOKEN");
 
@@ -364,6 +392,9 @@ describe("HostSetupScriptForm", () => {
     );
     expect(field<HTMLTextAreaElement>(view.container, "host-setup-cache-inputs").value).toBe(
       "new.lock",
+    );
+    expect(field<HTMLTextAreaElement>(view.container, "host-setup-cache-host-inputs").value).toBe(
+      "/opt/auto-harness/setup/host-environment",
     );
     expect(field<HTMLTextAreaElement>(view.container, "host-allowed-roots").value).toBe(
       "/new-root",
@@ -541,6 +572,32 @@ describe("HostSetupScriptForm", () => {
     await act(async () => resolveSave?.({ ok: true }));
     expect(field<HTMLTextAreaElement>(view.container, "host-setup-cache-inputs").value).toBe(
       "typed.lock",
+    );
+    view.unmount();
+  });
+
+  it("keeps host-absolute cache inputs dirty when they change during an in-flight save", async () => {
+    let resolveSave: ((result: { ok: true }) => void) | undefined;
+    const mutateExec: typeof mutateExecConfig = async () =>
+      await new Promise((resolve) => {
+        resolveSave = resolve;
+      });
+    const view = mount(
+      <HostSetupScriptForm
+        hostId="host"
+        setupCacheHostInputs={["/opt/old"]}
+        mutateExec={mutateExec}
+        canWriteExecConfig
+        canWriteInventory={false}
+      />,
+    );
+    setValue(field(view.container, "host-setup-cache-host-inputs"), "/opt/submitted");
+    await submit(field(view.container, "form-host-setup-script"));
+    expect(resolveSave).toBeDefined();
+    setValue(field(view.container, "host-setup-cache-host-inputs"), "/opt/typed");
+    await act(async () => resolveSave?.({ ok: true }));
+    expect(field<HTMLTextAreaElement>(view.container, "host-setup-cache-host-inputs").value).toBe(
+      "/opt/typed",
     );
     view.unmount();
   });

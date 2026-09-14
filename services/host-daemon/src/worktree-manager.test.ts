@@ -84,6 +84,20 @@ describe("WorktreeManager", () => {
     mgr.release("wt-1");
   });
 
+  it("copies host-absolute setup cache inputs onto a claimed worktree", async () => {
+    const git = fakeGit();
+    const mgr = new WorktreeManager(
+      parseDaemonConfig({
+        ...config,
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
+      }),
+      git,
+    );
+    const claimed = await mgr.claim("repo-1", "wt-1");
+    expect(claimed.hostSetupCacheHostInputs).toEqual(["/opt/auto-harness/setup/host-environment"]);
+    mgr.release("wt-1");
+  });
+
   it("checks out explicit ref or default branch", async () => {
     const git = fakeGit();
     const mgr = new WorktreeManager(config, git);
@@ -660,6 +674,12 @@ describe("WorktreeManager", () => {
       },
     },
     {
+      name: "host-absolute",
+      apply: (cfg: typeof config) => {
+        cfg.setupCacheHostInputs = ["/opt/auto-harness/setup/host-environment"];
+      },
+    },
+    {
       name: "repository",
       apply: (cfg: typeof config) => {
         cfg.repositories[0]!.setupCacheInputs = ["pnpm-lock.yaml"];
@@ -722,6 +742,7 @@ describe("WorktreeManager", () => {
     const cfg = parseDaemonConfig({
       ...config,
       setupCacheInputs: ["host.lock"],
+      setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
       repositories: [
         {
           ...config.repositories[0],

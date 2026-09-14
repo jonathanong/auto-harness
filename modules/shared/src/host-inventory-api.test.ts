@@ -39,6 +39,7 @@ describe("getInventory / putInventory", () => {
         JSON.stringify({
           setupScript: "source ~/.zshrc",
           setupCacheInputs: ["pnpm-lock.yaml"],
+          setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
           allowedRoots: ["/opt/harness"],
           requiredEnvironment: ["TOKEN"],
           updateConfig: {
@@ -62,6 +63,7 @@ describe("getInventory / putInventory", () => {
       expect(inv.repositories).toHaveLength(1);
       expect(inv.setupScript).toBe("source ~/.zshrc");
       expect(inv.setupCacheInputs).toEqual(["pnpm-lock.yaml"]);
+      expect(inv.setupCacheHostInputs).toEqual(["/opt/auto-harness/setup/host-environment"]);
       expect(inv.allowedRoots).toEqual(["/opt/harness"]);
       expect(inv.requiredEnvironment).toEqual(["TOKEN"]);
       expect(inv.updateConfig).toMatchObject({ enabled: true });
@@ -69,6 +71,28 @@ describe("getInventory / putInventory", () => {
         { workspacePoolId: "pool-1", slots: [{ id: "slot-1", name: "one", path: "/srv/one" }] },
       ]);
       expect(inv.capabilities).toEqual(["scheduled-main-checkout"]);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("getInventory treats present-but-undefined cache extras as empty lists", async () => {
+    process.env.HARNESS_API_HTTP = "http://example.test:9101b";
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        setupCacheInputs: undefined,
+        setupCacheHostInputs: undefined,
+        repositories: [],
+        providerAccounts: [],
+      }),
+    })) as typeof fetch;
+    try {
+      const inv = await getInventory("host-1");
+      expect(inv.setupCacheInputs).toEqual([]);
+      expect(inv.setupCacheHostInputs).toEqual([]);
     } finally {
       globalThis.fetch = original;
     }
@@ -102,6 +126,7 @@ describe("getInventory / putInventory", () => {
       const ok = await putInventory("host-1", {
         setupScript: "source ~/.zshrc",
         setupCacheInputs: [],
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
         updateConfig: {
@@ -123,6 +148,7 @@ describe("getInventory / putInventory", () => {
       expect(sentBody).toEqual({
         setupScript: "source ~/.zshrc",
         setupCacheInputs: [],
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
         updateConfig: {
@@ -179,6 +205,7 @@ describe("getInventory / putInventory", () => {
           {
             setupScript: "echo",
             setupCacheInputs: ["pnpm-lock.yaml"],
+            setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
             allowedRoots: ["/opt/harness"],
             updateConfig,
             repositories: [{ id: "repo", terminalHookScript: "/opt/harness/hook.sh" }],
@@ -190,6 +217,7 @@ describe("getInventory / putInventory", () => {
       expect(sent.body).toEqual({
         setupScript: "echo",
         setupCacheInputs: ["pnpm-lock.yaml"],
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
         allowedRoots: ["/opt/harness"],
         updateConfig,
         repositories: [{ id: "repo", terminalHookScript: "/opt/harness/hook.sh" }],

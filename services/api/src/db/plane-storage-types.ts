@@ -340,6 +340,7 @@ export type HostInventoryRecord = {
   hostId: string;
   setupScript?: string | undefined;
   setupCacheInputs?: string[] | undefined;
+  setupCacheHostInputs?: string[] | undefined;
   allowedRoots?: string[] | undefined;
   requiredEnvironment?: string[] | undefined;
   updateConfig?: HostUpdateConfig | undefined;

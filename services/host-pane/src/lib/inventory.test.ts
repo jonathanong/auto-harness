@@ -15,6 +15,7 @@ describe("loadHostInventoryWithVersion", () => {
       Response.json({
         setupScript: "source ~/.zshrc",
         setupCacheInputs: ["pnpm-lock.yaml"],
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
         repositories: [],
@@ -27,6 +28,7 @@ describe("loadHostInventoryWithVersion", () => {
       inventory: {
         setupScript: "source ~/.zshrc",
         setupCacheInputs: ["pnpm-lock.yaml"],
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
         repositories: [],
@@ -40,6 +42,21 @@ describe("loadHostInventoryWithVersion", () => {
     setApiTransportForTests(async () =>
       Response.json({
         setupCacheInputs: [1],
+        setupCacheHostInputs: [1],
+        repositories: [],
+        providerAccounts: [],
+      }),
+    );
+    await expect(loadHostInventoryWithVersion("host-a")).resolves.toEqual({
+      inventory: { repositories: [], providerAccounts: [] },
+      version: 0,
+    });
+  });
+
+  it("omits host-absolute cache inputs that are not an array", async () => {
+    setApiTransportForTests(async () =>
+      Response.json({
+        setupCacheHostInputs: "/opt/auto-harness/setup/host-environment",
         repositories: [],
         providerAccounts: [],
       }),
