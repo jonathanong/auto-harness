@@ -18,8 +18,10 @@ sequenceDiagram
     Agent->>API: Connect Authorization Bearer hns_…
     API->>DDB: Validate key, store Connection
     Agent->>API: host:register worktrees + running sessions
-    API->>DDB: Upsert inventory, assign pending if any
+    API->>DDB: Upsert inventory
     API-->>Agent: host:registered
+    Note over API,Agent: Publish the winning socket first
+    API->>Agent: session:assign if queued work matches
 
     loop ~20s
         Agent->>API: host:keepalive

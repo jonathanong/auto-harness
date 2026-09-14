@@ -6,13 +6,13 @@ Wire payload: [websocket.md](../websocket.md).
 A successful `postToConnection` is **not** assigned, running, finished, or archived — those are
 separate durable facts ([principles.md](principles.md) #2).
 
-| Fact                | Evidence                                                   |
-| ------------------- | ---------------------------------------------------------- |
-| Accepted            | Session row exists                                         |
-| Assigned            | Conditional worktree/slot claim + `session:assign`         |
-| Running             | Agent `session:ack` persisted                              |
-| Finished            | Accepted terminal `session:status`                         |
-| Transcript archived | Verified S3 object + archive metadata — [logs.md](logs.md) |
+| Fact                | Evidence                                                                                                                                 |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Accepted            | Session row exists                                                                                                                       |
+| Assigned            | Conditional worktree/slot claim, or `HostLocks.mainCheckoutLeases[repositoryId]` for scheduled `worktreeId: null`, plus `session:assign` |
+| Running             | Agent `session:ack` persisted                                                                                                            |
+| Finished            | Accepted terminal `session:status`                                                                                                       |
+| Transcript archived | Verified S3 object + archive metadata — [logs.md](logs.md)                                                                               |
 
 ## Placement
 
@@ -83,16 +83,20 @@ default). Providerless and non-structured commands are ungated. Ordinary failure
 flowchart TD
     Fail[Infrastructure-shaped failure] --> Kind{What failed?}
     Kind -->|CLI / setup / timeout / cancel / usage_limit| Term[Terminal]
-    Kind -->|Checkout-stage fetch failed| First{Already used the one retry?}
+    Kind -->|Checkout-stage fetch failed| Hook{Report deferred the terminal hook?}
     Kind -->|Host lost| When{Before v4 command-start ack?}
+    Hook -->|No — v5 or earlier, or hook already ran| Term
+    Hook -->|Yes — deferTerminalHookResult| First{Already used the one retry?}
     When -->|No, ambiguous, or post-launch| Term
     When -->|Yes, proven pre-launch| First
     First -->|Yes| Term
     First -->|No| Retry["Fresh attemptId — same session, lock, inputs, queue deadline"]
 ```
 
-The terminal hook is deferred until the control plane durably decides the attempt’s disposition, so
-a lost status cannot replay an already-run escalation hook.
+Checkout-fetch retry is replay-safe only when that reporting attempt proves the terminal hook was
+deferred (`deferTerminalHookResult`). Mixed-version v5-or-earlier reports without that proof
+terminalize. Before command authorization, a deferred hook waits for the control plane’s durable
+disposition so a lost status cannot replay an already-run escalation hook.
 
 ## Related
 
