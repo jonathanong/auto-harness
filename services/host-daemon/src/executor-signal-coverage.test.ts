@@ -68,6 +68,62 @@ describe("SpawnProcessRunner signal fallback", () => {
     await expect(run).resolves.toMatchObject({ cancelled: true, timedOut: false });
   });
 
+  it("SIGKILLs immediately after SIGTERM when termination grace is 0", async () => {
+    vi.useFakeTimers();
+    const signals: NodeJS.Signals[] = [];
+    vi.spyOn(process, "kill").mockImplementation((_pid, signal) => {
+      signals.push(signal as NodeJS.Signals);
+      return true;
+    });
+    const child = new FakeChild();
+    child.closeOnKill = false;
+    child.throwOnKill = false;
+    spawned.child = child;
+    const run = new SpawnProcessRunner({ platform: "linux" }).run({
+      argv: ["fake-command"],
+      cwd: "/tmp",
+      timeoutMs: 3_000,
+      terminationGraceMs: 0,
+      onChunk: () => undefined,
+    });
+    await vi.advanceTimersByTimeAsync(2_999);
+    expect(signals).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
+    child.emit("close", null, "SIGKILL");
+    await expect(run).resolves.toMatchObject({ timedOut: true, signal: "SIGKILL" });
+  });
+
+  it("does not schedule a second Windows taskkill when termination grace is 0", async () => {
+    vi.useFakeTimers();
+    const child = new FakeChild();
+    child.closeOnKill = false;
+    child.throwOnKill = false;
+    spawned.child = child;
+    const calls: number[] = [];
+    const run = new SpawnProcessRunner({
+      platform: "win32",
+      killWindowsProcessTree: (pid) => {
+        calls.push(pid);
+        return true;
+      },
+    }).run({
+      argv: ["fake-command"],
+      cwd: "/tmp",
+      timeoutMs: 3_000,
+      terminationGraceMs: 0,
+      onChunk: () => undefined,
+    });
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(calls).toEqual([12_345]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(calls).toEqual([12_345]);
+    child.emit("close", 1, null);
+    await expect(run).resolves.toMatchObject({ timedOut: true });
+  });
+
   it("clears pending escalation and an abort listener on child error", async () => {
     vi.useFakeTimers();
     vi.spyOn(process, "kill").mockReturnValue(true);
