@@ -33,6 +33,18 @@ describe("session log objects", () => {
         timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
       },
     ]);
+    const withDropped = gzipLogRecords([
+      {
+        sessionId: "sess",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        stream: "stdout",
+        content: "hello",
+        seq: 1,
+        timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+        dropped: 2,
+      },
+    ]);
+    expect(parseGzipJsonlLogs("sess", withDropped)[0]?.dropped).toBe(2);
   });
 
   it("stores and reads parts from memory", async () => {
@@ -246,5 +258,42 @@ describe("session log objects", () => {
       },
     ]);
     await expect(getLogsDurable(state, "sess")).resolves.toMatchObject([{ content: "memory" }]);
+  });
+
+  it("reads a memory archive when the writer cannot fetch gzip objects", async () => {
+    const gzipped = gzipLogRecords([
+      {
+        sessionId: "sess",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        stream: "stdout",
+        content: "archive",
+        seq: 1,
+        timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+      },
+    ]);
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => undefined,
+        listKeys: async () => ["sessions/sess/logs.jsonl.gz"],
+      },
+    });
+    state.logObjects.set("sessions/sess/logs.jsonl.gz", gzipped);
+    expect((await readSessionLogObjects(state, "sess"))?.map((record) => record.content)).toEqual([
+      "archive",
+    ]);
+    const missing = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => undefined,
+        listKeys: async () => ["sessions/missing/logs.jsonl.gz"],
+      },
+    });
+    expect(await readSessionLogObjects(missing, "missing")).toBeUndefined();
+    const noList = createControlPlaneState({
+      archiveWriter: { putArchive: async () => undefined },
+    });
+    noList.logObjects.set("sessions/sess/parts/1-1.jsonl.gz", gzipped);
+    expect((await readSessionLogObjects(noList, "sess"))?.map((record) => record.content)).toEqual([
+      "archive",
+    ]);
   });
 });

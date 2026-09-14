@@ -74,6 +74,7 @@ export class LogPartBuffer {
     this.pending = [];
     this.pendingBytes = 0;
     if (batch.length === 0 || !this.upload) return;
+    const upload = this.upload;
     const seqs = batch.map((chunk) => chunk.seq);
     const gzipped = gzipJsonlLines(
       batch.map((chunk) =>
@@ -88,6 +89,7 @@ export class LogPartBuffer {
     );
     try {
       await this.put(
+        upload,
         `/api/v1/sessions/${encodeURIComponent(this.sessionId)}/log-parts?seqStart=${Math.min(...seqs)}&seqEnd=${Math.max(...seqs)}`,
         gzipped,
       );
@@ -106,17 +108,17 @@ export class LogPartBuffer {
     await this.flush();
     if (this.uploaded.length === 0) return;
     await this.put(
+      this.upload!,
       `/api/v1/sessions/${encodeURIComponent(this.sessionId)}/log-archive`,
       concatGzipMembers(this.uploaded),
     );
   }
 
-  private async put(path: string, gzipped: Buffer): Promise<void> {
-    if (!this.upload) return;
-    const base = httpBaseFromApiUrl(this.upload.apiUrl);
+  private async put(upload: LogPartUpload, path: string, gzipped: Buffer): Promise<void> {
+    const base = httpBaseFromApiUrl(upload.apiUrl);
     const headers: Record<string, string> = { "content-type": "application/gzip" };
-    if (this.upload.apiKey) headers.authorization = `Bearer ${this.upload.apiKey}`;
-    const response = await (this.upload.fetchFn ?? fetch)(`${base}${path}`, {
+    if (upload.apiKey) headers.authorization = `Bearer ${upload.apiKey}`;
+    const response = await (upload.fetchFn ?? fetch)(`${base}${path}`, {
       method: "PUT",
       headers,
       body: new Uint8Array(gzipped),

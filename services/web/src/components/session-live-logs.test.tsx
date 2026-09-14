@@ -258,4 +258,59 @@ describe("SessionLiveLogs", () => {
     await settle();
     view.unmount();
   });
+
+  it("ignores a rejected viewer ticket and skips unsubscribe when the socket is not open", async () => {
+    const sockets: Array<{ readyState: number; sent: string[]; close(): void }> = [];
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 0;
+      sent: string[] = [];
+      constructor(public url: string) {
+        sockets.push(this);
+      }
+      addEventListener() {}
+      send(data: string) {
+        this.sent.push(data);
+      }
+      close() {
+        this.readyState = 3;
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("viewer-ticket")) throw new Error("ticket down");
+        if (path.includes("session-log-settings")) return Response.json({});
+        if (path.includes("/logs")) return Response.json({ items: [] });
+        return Response.json({ status: "running" });
+      }),
+    );
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    await settle();
+    expect(sockets).toHaveLength(0);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("viewer-ticket")) return Response.json({ ticket: "ticket" });
+        if (path.includes("session-log-settings")) return Response.json({});
+        if (path.includes("/logs")) return Response.json({ items: [] });
+        return Response.json({ status: "running" });
+      }),
+    );
+    const openLater = mountForm(
+      <SessionLiveLogs sessionId="session-2" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    await settle();
+    expect(sockets.at(-1)?.readyState).toBe(0);
+    openLater.unmount();
+    expect(sockets.at(-1)?.sent).toEqual([]);
+    view.unmount();
+  });
 });

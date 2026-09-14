@@ -640,7 +640,12 @@ describe("browser session log websocket", () => {
       ws.on("close", () => resolve());
       ws.close();
     });
-    plane.state.onLogCommitted?.(log(9));
+    plane.state.onLogPartCommitted?.({
+      sessionId: "session-a",
+      key: "sessions/session-a/parts/9-9.jsonl.gz",
+      seqStart: 9,
+      seqEnd: 9,
+    });
     hub.close();
     await close(server);
   });
@@ -780,7 +785,53 @@ describe("browser session log websocket", () => {
     });
     ws.close();
     await new Promise<void>((resolve) => ws.once("close", () => resolve()));
-    plane.state.onLogCommitted?.(log(9));
+    plane.state.onLogPartCommitted?.({
+      sessionId: "session-a",
+      key: "sessions/session-a/parts/9-9.jsonl.gz",
+      seqStart: 9,
+      seqEnd: 9,
+    });
+    hub.close();
+    await close(server);
+  });
+
+  it("watches and unwatches a host when the last viewer subscribes and leaves", async () => {
+    const auth = authService();
+    const principal = await auth.createUser({
+      username: "watch-viewer",
+      password: "viewer-password",
+      role: "read-only",
+    });
+    const plane = planeWithSessions();
+    plane.state.sessions.get("session-a")!.hostId = "host-1";
+    const hostMessages: Array<[string, { type: string; sessionId?: string }]> = [];
+    plane.state.onHostMessage = (hostId, message) => {
+      hostMessages.push([hostId, message as { type: string; sessionId?: string }]);
+    };
+    const server = createServer();
+    const hub = attachViewerWsHub(server, plane, auth);
+    await listen(server);
+    const ticket = await auth.issueViewerTicket(principal);
+    const ws = await new Promise<WebSocket>((resolve, reject) => {
+      const socket = new WebSocket(ticketUrl(wsUrl(server), ticket), { headers: viewerOrigin() });
+      socket.on("open", () => resolve(socket));
+      socket.on("error", reject);
+    });
+    await new Promise<void>((resolve) => {
+      ws.on("message", (raw) => {
+        if ((JSON.parse(String(raw)) as { type: string }).type === "session:subscribed") resolve();
+      });
+      ws.send(JSON.stringify({ type: "session:subscribe", sessionId: "session-a" }));
+    });
+    expect(hostMessages).toContainEqual([
+      "host-1",
+      { type: "session:log-watch", sessionId: "session-a" },
+    ]);
+    ws.send(JSON.stringify({ type: "session:unsubscribe", sessionId: "session-a" }));
+    await expect
+      .poll(() => hostMessages.some((entry) => entry[1].type === "session:log-unwatch"))
+      .toBe(true);
+    ws.close();
     hub.close();
     await close(server);
   });
@@ -863,9 +914,49 @@ describe("browser session log protocol", () => {
     const server = createServer();
     const hub = attachViewerWsHub(server, plane, auth);
     await listen(server);
-    await expectUnauthorizedUpgrade(wsUrl(server) + "?ticket=x");
+    await expectUnauthorizedUpgrade(wsUrl(server) + "?ticket=x", viewerOrigin());
     hub.close();
     await close(server);
+  });
+
+  it("closes a subscribed viewer when the outbound buffer is over the cap", async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(WebSocket.prototype, "bufferedAmount");
+    Object.defineProperty(WebSocket.prototype, "bufferedAmount", {
+      configurable: true,
+      get() {
+        return 512 * 1024 + 1;
+      },
+    });
+    const auth = authService();
+    const principal = await auth.createUser({
+      username: "backpressure-viewer",
+      password: "viewer-password",
+      role: "read-only",
+    });
+    const plane = planeWithSessions();
+    const server = createServer();
+    const hub = attachViewerWsHub(server, plane, auth);
+    await listen(server);
+    const ticket = await auth.issueViewerTicket(principal);
+    try {
+      const code = await new Promise<number>((resolve, reject) => {
+        const ws = new WebSocket(ticketUrl(wsUrl(server), ticket), { headers: viewerOrigin() });
+        const timer = setTimeout(() => reject(new Error("backpressure close timeout")), 3_000);
+        ws.on("open", () =>
+          ws.send(JSON.stringify({ type: "session:subscribe", sessionId: "session-a" })),
+        );
+        ws.on("close", (closeCode) => {
+          clearTimeout(timer);
+          resolve(closeCode);
+        });
+        ws.on("error", () => undefined);
+      });
+      expect(code).toBe(1013);
+    } finally {
+      if (descriptor) Object.defineProperty(WebSocket.prototype, "bufferedAmount", descriptor);
+      hub.close();
+      await close(server);
+    }
   });
 });
 

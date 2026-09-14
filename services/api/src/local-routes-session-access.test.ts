@@ -9,4 +9,18 @@ describe("session access helpers", () => {
     expect(canCancelSession(ctx, { hostId: null })).toBe(true);
     expect(canAuthorSessions(ctx)).toBe(true);
   });
+
+  it("denies cancel when a host-bound principal cannot access the session host", () => {
+    const ctx = {
+      principal: {
+        id: "sa:host-a",
+        username: "host-a",
+        role: "operator",
+        kind: "service-account",
+        boundHostId: "host-a",
+      },
+    } as RouteCtx;
+    expect(canCancelSession(ctx, { hostId: "host-b" })).toBe(false);
+    expect(canAuthorSessions(ctx)).toBe(false);
+  });
 });

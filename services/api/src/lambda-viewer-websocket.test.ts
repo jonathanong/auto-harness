@@ -1,8 +1,10 @@
 /* eslint-disable max-lines -- viewer socket outcomes share one adapter fixture. */
+import { GoneException } from "@aws-sdk/client-apigatewaymanagementapi";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Principal } from "./auth.ts";
 import type { ConnectionRecord, LogRecord } from "./db/plane-storage-types.ts";
+import { VIEWER_FANOUT_PREFIX } from "./lambda-viewer-fanout.ts";
 import { createLambdaViewerSockets } from "./lambda-viewer-websocket.ts";
 
 const principal: Principal = {
@@ -420,5 +422,139 @@ describe("Lambda viewer WebSocket adapter", () => {
       content: "line",
       timestamp: "2026-08-17T00:00:01.000Z",
     });
+  });
+
+  it("keeps host watch while another viewer remains and skips non-client fan-out", async () => {
+    const watches: Array<[string, string, boolean]> = [];
+    const ctx = fixture();
+    const sockets = createLambdaViewerSockets({
+      auth: ctx.auth as never,
+      management: ctx.management as never,
+      storage: ctx.storage,
+      publicBaseUrl: origin,
+      onSessionWatch: (hostId, sessionId, watching) => {
+        watches.push([hostId, sessionId, watching]);
+      },
+    });
+    await sockets.connect("viewer-1", "ticket", origin);
+    await sockets.connect("viewer-2", "ticket", origin);
+    ctx.sessions.set("session-1", {
+      repositoryId: "repo-1",
+      status: "running",
+      hostId: "host-1",
+    });
+    await sockets.message(
+      "viewer-1",
+      JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+    );
+    await sockets.message(
+      "viewer-2",
+      JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+    );
+    expect(watches).toEqual([["host-1", "session-1", true]]);
+    await sockets.message(
+      "viewer-1",
+      JSON.stringify({ type: "session:unsubscribe", sessionId: "session-1" }),
+    );
+    expect(watches).toEqual([["host-1", "session-1", true]]);
+    const fanoutKey = `${VIEWER_FANOUT_PREFIX}session-1`;
+    const fanout = ctx.connections.get(fanoutKey)!;
+    ctx.connections.set(fanoutKey, {
+      ...fanout,
+      viewerFanoutIds: [...(fanout.viewerFanoutIds ?? []), "host-conn"],
+    });
+    ctx.connections.set("host-conn", {
+      connectionId: "host-conn",
+      type: "host",
+      hostId: "host-1",
+      connectedAt: "now",
+      lastHeartbeatAt: "now",
+    });
+    const before = ctx.sent.length;
+    await sockets.publishLogPart({
+      sessionId: "session-1",
+      key: "sessions/session-1/parts/9-9.jsonl.gz",
+      seqStart: 9,
+      seqEnd: 9,
+    });
+    expect(ctx.sent.length).toBeGreaterThan(before);
+    ctx.management.send.mockRejectedValueOnce(
+      new GoneException({ message: "gone", $metadata: {} }),
+    );
+    await sockets.publishLogPart({
+      sessionId: "session-1",
+      key: "sessions/session-1/parts/10-10.jsonl.gz",
+      seqStart: 10,
+      seqEnd: 10,
+    });
+    expect(watches.at(-1)).toEqual(["host-1", "session-1", true]);
+  });
+
+  it("does not unwatch a session that has no host on last unsubscribe or disconnect", async () => {
+    const watches: Array<[string, string, boolean]> = [];
+    const ctx = fixture();
+    const sockets = createLambdaViewerSockets({
+      auth: ctx.auth as never,
+      management: ctx.management as never,
+      storage: ctx.storage,
+      publicBaseUrl: origin,
+      onSessionWatch: (hostId, sessionId, watching) => {
+        watches.push([hostId, sessionId, watching]);
+      },
+    });
+    await sockets.connect("viewer-1", "ticket", origin);
+    ctx.sessions.set("session-1", { repositoryId: "repo-1", status: "running" });
+    await sockets.message(
+      "viewer-1",
+      JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+    );
+    expect(watches).toEqual([]);
+    await sockets.message(
+      "viewer-1",
+      JSON.stringify({ type: "session:unsubscribe", sessionId: "session-1" }),
+    );
+    expect(watches).toEqual([]);
+    await sockets.message(
+      "viewer-1",
+      JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+    );
+    await expect(sockets.disconnect("viewer-1")).resolves.toBe(true);
+    expect(watches).toEqual([]);
+    await sockets.connect("viewer-2", "ticket", origin);
+    await sockets.message(
+      "viewer-2",
+      JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+    );
+    ctx.management.send.mockRejectedValueOnce(
+      new GoneException({ message: "gone", $metadata: {} }),
+    );
+    await sockets.publishLogPart({
+      sessionId: "session-1",
+      key: "sessions/session-1/parts/11-11.jsonl.gz",
+      seqStart: 11,
+      seqEnd: 11,
+    });
+    expect(watches).toEqual([]);
+    const sparse = fixture();
+    await sparse.sockets.connect("viewer-sparse", "ticket", origin);
+    delete sparse.connections.get("viewer-sparse")!.viewerSubscriptions;
+    await expect(sparse.sockets.disconnect("viewer-sparse")).resolves.toBe(true);
+    await sockets.connect("viewer-4", "ticket", origin);
+    ctx.sessions.set("session-2", {
+      repositoryId: "repo-1",
+      status: "running",
+      hostId: "host-2",
+    });
+    await sockets.message(
+      "viewer-4",
+      JSON.stringify({ type: "session:subscribe", sessionId: "session-2" }),
+    );
+    await sockets.connect("viewer-5", "ticket", origin);
+    await sockets.message(
+      "viewer-5",
+      JSON.stringify({ type: "session:subscribe", sessionId: "session-2" }),
+    );
+    await expect(sockets.disconnect("viewer-4")).resolves.toBe(true);
+    expect(ctx.connections.has("viewer-5")).toBe(true);
   });
 });

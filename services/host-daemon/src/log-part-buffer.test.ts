@@ -8,6 +8,7 @@ import { LogPartBuffer } from "./log-part-buffer.ts";
 describe("LogPartBuffer", () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("does not upload when mode is off", async () => {
@@ -259,6 +260,32 @@ describe("LogPartBuffer", () => {
     await vi.runOnlyPendingTimersAsync();
     await Promise.resolve();
     expect(urls).toHaveLength(1);
+  });
+
+  it("uses global fetch when the upload has no fetchFn", async () => {
+    const fetchFn = vi.fn(async () => new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchFn);
+    const buffer = new LogPartBuffer(
+      "sess",
+      {
+        uploadMode: "always",
+        batchMaxKb: 1,
+        batchMaxLines: 10,
+        batchMaxWaitMs: 60_000,
+        controlPlanePollMs: 60_000,
+      },
+      { apiUrl: "http://127.0.0.1:7420" },
+    );
+    buffer.push({
+      sessionId: "sess",
+      attemptId: "a",
+      stream: "stdout",
+      content: "global",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      seq: 1,
+    });
+    await buffer.flush();
+    expect(fetchFn).toHaveBeenCalledOnce();
   });
 
   it("includes dropped counts and no-ops a final flush with nothing uploaded", async () => {
