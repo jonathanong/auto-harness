@@ -2157,7 +2157,15 @@ export class DaemonLoop {
         ...(resolveDeferredDisposition ? { resolveDeferredDisposition } : {}),
       });
     }
-    await this.logParts.get(msg.sessionId)?.flushFinal();
+    await Promise.race([
+      this.logParts
+        .get(msg.sessionId)
+        ?.flushFinal()
+        .catch((error: unknown) => {
+          this.onLog?.(`log upload failed for ${msg.sessionId}: ${thrownMessage(error)}`);
+        }) ?? Promise.resolve(),
+      new Promise<void>((resolve) => this.timers.setTimeout(resolve, 5_000)),
+    ]);
     this.logParts.delete(msg.sessionId);
     await this.outbound.flush();
     await this.outbound
@@ -2205,13 +2213,12 @@ export class DaemonLoop {
   ): LogPartBuffer {
     let buffer = this.logParts.get(sessionId);
     if (!buffer) {
+      const apiUrl = this.config.apiUrl;
+      const apiKey = this.config.apiKey;
       buffer = new LogPartBuffer(
         sessionId,
         settings,
-        {
-          apiUrl: this.config.apiUrl,
-          ...(this.config.apiKey ? { apiKey: this.config.apiKey } : {}),
-        },
+        apiUrl ? { apiUrl, ...(apiKey ? { apiKey } : {}) } : undefined,
         (chunk) => {
           const listeners = this.liveLogListeners.get(chunk.sessionId);
           if (!listeners) return;

@@ -6,6 +6,8 @@ import { SESSION_QUEUED_WAIT_COPY, SessionTerminalViewer } from "@auto-harness/u
 import {
   liveLogsStateLabel,
   mergeInitialLiveLogs,
+  viewerTicket,
+  viewerWebSocketUrl,
   type LiveLogEntry,
   type LiveLogsConnectionState,
 } from "../lib/live-session-logs.ts";
@@ -76,6 +78,46 @@ export function SessionLiveLogs({
       if (retryTimer !== undefined) clearTimeout(retryTimer);
     };
   }, [sessionId, pollMs]);
+
+  useEffect(() => {
+    let stopped = false;
+    let socket: WebSocket | undefined;
+    void viewerTicket()
+      .then((ticket) => {
+        if (stopped) return;
+        socket = new WebSocket(viewerWebSocketUrl(ticket));
+        socket.addEventListener("open", () => {
+          socket?.send(JSON.stringify({ type: "session:subscribe", sessionId }));
+        });
+        socket.addEventListener("message", (event) => {
+          try {
+            const message = JSON.parse(String(event.data)) as { type?: string };
+            if (message.type === "session:log-part") {
+              void fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}/logs?limit=1000`, {
+                credentials: "same-origin",
+                cache: "no-store",
+              })
+                .then(async (response) => {
+                  if (stopped || !response.ok) return;
+                  const body = (await response.json()) as { items?: LiveLogEntry[] };
+                  setItems(mergeInitialLiveLogs(Array.isArray(body.items) ? body.items : []));
+                })
+                .catch(() => undefined);
+            }
+          } catch {
+            // Ignore malformed viewer frames.
+          }
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      stopped = true;
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "session:unsubscribe", sessionId }));
+      }
+      socket?.close();
+    };
+  }, [sessionId]);
 
   return (
     <div className="space-y-2" data-pw="session-logs-live-tail">
