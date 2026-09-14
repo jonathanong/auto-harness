@@ -44,7 +44,12 @@ import { resolvedRouteMetadata, sessionAssignFromWire } from "./session-assign.t
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { defaultSetupCacheDir } from "./setup-script-cache.ts";
-import { expireOrphanedSetupCache } from "./setup-script-cache-expire.ts";
+import {
+  expireOrphanedSetupCache,
+  MAX_SETUP_CACHE_SWEEP_ENTRIES,
+  MAX_SETUP_CACHE_SWEEP_UNLINKS,
+  SETUP_CACHE_SWEEP_RETRY_MS,
+} from "./setup-script-cache-expire.ts";
 import { WorktreeManager, type ClaimedWorktree } from "./worktree-manager.ts";
 import { WorkspaceManager } from "./workspace-manager.ts";
 import { probeGitReadiness } from "./git-readiness.ts";
@@ -74,6 +79,12 @@ export type DaemonLoopOptions = {
   githubApp?: GitHubAppConfig;
   /** Host-owned directory for last-successful setup fingerprints. */
   setupCacheDir?: string;
+  /** Override the per-tick unlink-attempt cap for setup-cache expiry. */
+  setupCacheSweepMaxUnlinks?: number;
+  /** Override the per-tick opendir entry cap for setup-cache expiry. */
+  setupCacheSweepMaxEntries?: number;
+  /** Delay before another bounded setup-cache sweep after hitting a cap. */
+  setupCacheSweepDelayMs?: number;
   isDraining?: () => boolean;
   onLog?: (line: string) => void;
   now?: () => string;
@@ -273,6 +284,13 @@ export class DaemonLoop {
   private readonly worktrees: WorktreeManager;
   private readonly workspaces: WorkspaceManager;
   private readonly setupCacheDir: string | undefined;
+  private readonly setupCacheSweepMaxUnlinks: number;
+  private readonly setupCacheSweepMaxEntries: number;
+  private readonly setupCacheSweepDelayMs: number;
+  private setupCacheSweepTimer: ReturnType<typeof setTimeout> | undefined;
+  private setupCacheSweeping = false;
+  private setupCacheSweepQueued = false;
+  private setupCacheSweepStopped = false;
   private readonly inflight = new Map<string, InflightSession>();
   /**
    * Assignment completion fences by physical execution target. A checkout
@@ -392,6 +410,11 @@ export class DaemonLoop {
     this.worktrees = new WorktreeManager(options.config, git);
     this.workspaces = new WorkspaceManager(options.config);
     this.setupCacheDir = options.setupCacheDir;
+    this.setupCacheSweepMaxUnlinks =
+      options.setupCacheSweepMaxUnlinks ?? MAX_SETUP_CACHE_SWEEP_UNLINKS;
+    this.setupCacheSweepMaxEntries =
+      options.setupCacheSweepMaxEntries ?? MAX_SETUP_CACHE_SWEEP_ENTRIES;
+    this.setupCacheSweepDelayMs = options.setupCacheSweepDelayMs ?? SETUP_CACHE_SWEEP_RETRY_MS;
     this.runner = new SessionRunner({
       worktrees: this.worktrees,
       workspaces: this.workspaces,
@@ -412,11 +435,36 @@ export class DaemonLoop {
       now: this.now,
       authorizeCommandStart: (assign, signal) => this.authorizeCommandStart(assign, signal),
       setupCacheDir: options.setupCacheDir ?? defaultSetupCacheDir(),
+      onSetupCacheClaimReleased: () => this.scheduleSetupCacheSweep(),
     });
   }
+  private scheduleSetupCacheSweep(): void {
+    if (this.setupCacheDir === undefined || this.setupCacheSweepStopped) return;
+    if (this.setupCacheSweepTimer !== undefined) return;
+    this.setupCacheSweepTimer = this.timers.setTimeout(() => {
+      this.setupCacheSweepTimer = undefined;
+      void this.expireSetupCache();
+    }, this.setupCacheSweepDelayMs);
+    this.setupCacheSweepTimer.unref?.();
+  }
   private async expireSetupCache(): Promise<void> {
-    if (this.setupCacheDir === undefined) return;
-    await expireOrphanedSetupCache(this.setupCacheDir, this.config);
+    if (this.setupCacheDir === undefined || this.setupCacheSweepStopped) return;
+    if (this.setupCacheSweeping) {
+      this.setupCacheSweepQueued = true;
+      return;
+    }
+    this.setupCacheSweeping = true;
+    this.setupCacheSweepQueued = false;
+    try {
+      const { more } = await expireOrphanedSetupCache(this.setupCacheDir, this.config, {
+        maxUnlinks: this.setupCacheSweepMaxUnlinks,
+        maxEntries: this.setupCacheSweepMaxEntries,
+      });
+      if (more) this.setupCacheSweepQueued = true;
+    } finally {
+      this.setupCacheSweeping = false;
+    }
+    if (this.setupCacheSweepQueued) this.scheduleSetupCacheSweep();
   }
   async start(): Promise<void> {
     this.runtime ??= await probeGitReadiness(this.processRunner);
@@ -708,6 +756,9 @@ export class DaemonLoop {
 
   stop(): void {
     this.prepareForShutdown();
+    this.setupCacheSweepStopped = true;
+    if (this.setupCacheSweepTimer) this.timers.clearTimeout(this.setupCacheSweepTimer);
+    this.setupCacheSweepTimer = undefined;
     if (this.drainRetry) this.timers.clearTimeout(this.drainRetry);
     if (this.drainDeadline) this.timers.clearTimeout(this.drainDeadline);
     this.drainDeadline = undefined;

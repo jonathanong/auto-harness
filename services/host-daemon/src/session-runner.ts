@@ -52,6 +52,8 @@ export type SessionRunnerDeps = {
   authorizeCommandStart?: (assign: SessionAssign, signal?: AbortSignal) => Promise<boolean>;
   /** Host-owned directory for last-successful setup fingerprints. */
   setupCacheDir?: string;
+  /** Sweep leftover/orphaned sidecars after an in-flight setup claim is released. */
+  onSetupCacheClaimReleased?: () => void;
 };
 
 type SessionRunOptions = {
@@ -179,6 +181,7 @@ export class SessionRunner {
             () => {
               if (mainClaimed) this.deps.worktrees.releaseMain(assign.repositoryId!);
               else this.deps.worktrees.release(assign.worktreeId!);
+              this.deps.onSetupCacheClaimReleased?.();
             },
           );
         };
@@ -318,8 +321,10 @@ export class SessionRunner {
         clearTimeout(timeoutTimer);
         if (!retainedClaim && mainClaimed) {
           this.deps.worktrees.releaseMain(assign.repositoryId);
+          this.deps.onSetupCacheClaimReleased?.();
         } else if (!retainedClaim && assign.worktreeId) {
           this.deps.worktrees.release(assign.worktreeId);
+          this.deps.onSetupCacheClaimReleased?.();
         }
       }
     } finally {
@@ -465,7 +470,10 @@ export class SessionRunner {
       clearTimeout(timer);
       // destroyWorkspaceAfter releases the slot. A failure before it was called
       // (for example an unexpected runner throw) must not strand the slot.
-      if (claimed) this.deps.workspaces.release(claimed);
+      if (claimed) {
+        this.deps.workspaces.release(claimed);
+        this.deps.onSetupCacheClaimReleased?.();
+      }
       streamer.flush();
     }
   }

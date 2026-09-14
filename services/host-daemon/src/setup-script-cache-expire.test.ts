@@ -4,7 +4,11 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { DaemonConfig } from "./config-types.ts";
-import { expireOrphanedSetupCache, liveSetupCacheFileNames } from "./setup-script-cache-expire.ts";
+import {
+  expireOrphanedSetupCache,
+  isLiveSetupCacheFile,
+  liveSetupCacheFileNames,
+} from "./setup-script-cache-expire.ts";
 import { setupCacheFileName, writeStoredSetupCache } from "./setup-script-cache.ts";
 
 function inventory(worktrees: Array<{ id: string; path: string }>): DaemonConfig {
@@ -47,6 +51,10 @@ describe("setup-script cache expiry", () => {
     expect(names.has(setupCacheFileName("wt-1", resolve("/tmp/wt/../wt")))).toBe(true);
     expect(names.has(setupCacheFileName("main:repo-1", "/tmp/repo/../repo"))).toBe(true);
     expect(names.has(setupCacheFileName("slot", "/ws/slot"))).toBe(true);
+    expect(
+      isLiveSetupCacheFile(inventory([{ id: "wt-1", path: "/tmp/wt" }]), "wt-1", "/tmp/wt"),
+    ).toBe(true);
+    expect(isLiveSetupCacheFile(inventory([]), "wt-1", "/tmp/wt")).toBe(false);
   });
 
   it("deletes a removed worktree sidecar and keeps a live one", async () => {
@@ -112,9 +120,13 @@ describe("setup-script cache expiry", () => {
     for (const id of ["a", "b", "c"]) {
       await writeStoredSetupCache(cacheDir, id, join(cacheDir, id), "fp", {});
     }
-    await expireOrphanedSetupCache(cacheDir, inventory([]), { maxUnlinks: 2 });
+    expect(await expireOrphanedSetupCache(cacheDir, inventory([]), { maxUnlinks: 2 })).toEqual({
+      more: true,
+    });
     expect((await readdir(cacheDir)).length).toBe(1);
-    await expireOrphanedSetupCache(cacheDir, inventory([]), { maxUnlinks: 2 });
+    expect(await expireOrphanedSetupCache(cacheDir, inventory([]), { maxUnlinks: 2 })).toEqual({
+      more: false,
+    });
     expect(await readdir(cacheDir)).toEqual([]);
   });
 });

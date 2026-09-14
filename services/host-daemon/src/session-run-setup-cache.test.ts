@@ -19,6 +19,7 @@ describe("runSetupIfNeeded setup cache", () => {
       worktreeCacheInputs: ["pnpm-lock.yaml"],
       files: { "pnpm-lock.yaml": "lock-1", "package.json": "pkg-1" },
     });
+    claimed.currentExecutionTarget = async () => undefined;
     const first = countingSetupRunner();
     const firstRun = await runCachedSetup(baseAssign(), claimed, first.runner, cacheDir);
     expect(firstRun.failure).toBeNull();

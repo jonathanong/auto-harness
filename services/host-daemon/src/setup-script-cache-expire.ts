@@ -1,11 +1,15 @@
-import { readdir, realpath, unlink } from "node:fs/promises";
+import { opendir, realpath, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type { DaemonConfig } from "./config-types.ts";
 import { setupCacheFileName } from "./setup-script-cache.ts";
 
-/** Cap unlinks so a pathological cache directory cannot stall startup or inventory apply. */
-const MAX_SETUP_CACHE_SWEEP_UNLINKS = 1024;
+/** Cap unlink attempts (success or failure) so a pathological cache cannot stall a tick. */
+export const MAX_SETUP_CACHE_SWEEP_UNLINKS = 1024;
+/** Cap opendir entries so a huge cache is not fully materialized in one tick. */
+export const MAX_SETUP_CACHE_SWEEP_ENTRIES = 1024;
+/** Delay before another bounded sweep after hitting a cap. */
+export const SETUP_CACHE_SWEEP_RETRY_MS = 1_000;
 
 const SETUP_CACHE_FILE_NAME = /^[0-9a-f]{64}$/;
 
@@ -13,6 +17,12 @@ function addLiveSetupCacheFileName(names: Set<string>, id: string, path: string)
   names.add(setupCacheFileName(id, path));
   const absolute = resolve(path);
   if (absolute !== path) names.add(setupCacheFileName(id, absolute));
+}
+
+/** True when a sidecar key still matches configured inventory (resolved and unresolved paths). */
+export function isLiveSetupCacheFile(config: DaemonConfig, id: string, path: string): boolean {
+  const live = liveSetupCacheFileNames(config);
+  return live.has(setupCacheFileName(id, path));
 }
 
 /** Filenames that still match configured inventory, including scheduled main checkouts. */
@@ -52,6 +62,11 @@ async function addResolvedSetupCacheFileNames(
   }
 }
 
+type SetupCacheSweepResult = {
+  /** True when a cap stopped the walk before end-of-directory. */
+  more: boolean;
+};
+
 /**
  * Delete setup-cache sidecars that no longer match inventory. Missing files and I/O
  * errors are ignored so expiry cannot fail a session or daemon start.
@@ -59,26 +74,40 @@ async function addResolvedSetupCacheFileNames(
 export async function expireOrphanedSetupCache(
   cacheDir: string,
   config: DaemonConfig,
-  options?: { maxUnlinks?: number },
-): Promise<void> {
+  options?: { maxUnlinks?: number; maxEntries?: number },
+): Promise<SetupCacheSweepResult> {
   const maxUnlinks = options?.maxUnlinks ?? MAX_SETUP_CACHE_SWEEP_UNLINKS;
+  const maxEntries = options?.maxEntries ?? MAX_SETUP_CACHE_SWEEP_ENTRIES;
   try {
     const live = liveSetupCacheFileNames(config);
     await addResolvedSetupCacheFileNames(live, config);
-    const entries = await readdir(cacheDir, { withFileTypes: true });
-    let removed = 0;
-    for (const entry of entries) {
-      if (removed >= maxUnlinks) break;
-      if (entry.isDirectory() || !SETUP_CACHE_FILE_NAME.test(entry.name)) continue;
-      if (live.has(entry.name)) continue;
+    const dir = await opendir(cacheDir);
+    try {
+      let examined = 0;
+      let attempts = 0;
+      while (examined < maxEntries && attempts < maxUnlinks) {
+        const entry = await dir.read();
+        if (!entry) return { more: false };
+        examined += 1;
+        if (entry.isDirectory() || !SETUP_CACHE_FILE_NAME.test(entry.name)) continue;
+        if (live.has(entry.name)) continue;
+        attempts += 1;
+        try {
+          await unlink(join(cacheDir, entry.name));
+        } catch {
+          // A busy or unreadable sidecar stays a future miss.
+        }
+      }
+      return { more: (await dir.read()) !== null };
+    } finally {
       try {
-        await unlink(join(cacheDir, entry.name));
-        removed += 1;
+        await dir.close();
       } catch {
-        // A busy or unreadable sidecar stays a future miss.
+        // already closed or unreadable
       }
     }
   } catch {
     // Absent or unreadable cache directories are empty.
+    return { more: false };
   }
 }
