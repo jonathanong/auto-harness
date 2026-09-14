@@ -76,6 +76,28 @@ describe("getInventory / putInventory", () => {
     }
   });
 
+  it("getInventory treats present-but-undefined cache extras as empty lists", async () => {
+    process.env.HARNESS_API_HTTP = "http://example.test:9101b";
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        setupCacheInputs: undefined,
+        setupCacheHostInputs: undefined,
+        repositories: [],
+        providerAccounts: [],
+      }),
+    })) as typeof fetch;
+    try {
+      const inv = await getInventory("host-1");
+      expect(inv.setupCacheInputs).toEqual([]);
+      expect(inv.setupCacheHostInputs).toEqual([]);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
   it("getInventory falls back to defaults for malformed fields", async () => {
     process.env.HARNESS_API_HTTP = "http://example.test:9102";
     const original = globalThis.fetch;

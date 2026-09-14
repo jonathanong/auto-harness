@@ -70,6 +70,7 @@ export async function runCachedSetup(
   runner: ProcessRunner,
   cacheDir: string,
   baseline = "abc123",
+  signal?: AbortSignal,
 ) {
   const logs: SessionLogChunk[] = [];
   const streamer = new LogStreamer(
@@ -84,7 +85,7 @@ export async function runCachedSetup(
     logs,
     assign,
     claimed,
-    undefined,
+    signal,
     () => false,
     () => 30_000,
     process.env,

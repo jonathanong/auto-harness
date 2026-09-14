@@ -226,6 +226,9 @@ describe("setupCacheInputs exec-config", () => {
     expect(written.inventory.setupCacheHostInputs).toEqual([
       "/opt/auto-harness/setup/host-environment",
     ]);
+    expect(applyHostExecConfig(applied, { setupScript: "echo" }).setupCacheHostInputs).toEqual([
+      "/opt/auto-harness/setup/host-environment",
+    ]);
     const cleared = applyHostExecConfig(applied, { setupCacheHostInputs: [] });
     expect(cleared).not.toHaveProperty("setupCacheHostInputs");
     expect(

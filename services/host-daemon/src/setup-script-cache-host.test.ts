@@ -117,4 +117,52 @@ describe("setup script host-file fingerprint", () => {
       }),
     ).toBeUndefined();
   });
+
+  it("misses when a declared host-owned file is unreadable and honors rehash signals", async () => {
+    const { cwd, cacheDir, hostFile } = await fixture();
+    const missing = join(hostFile, "..", "missing-environment");
+    expect(
+      await resolveSetupCacheState({
+        cacheDir,
+        checkoutSha: "abc",
+        cwd,
+        worktreeId: "wt-1",
+        scripts: ["true"],
+        extraPaths: [],
+        hostPaths: [missing],
+      }),
+    ).toEqual({ skip: false });
+    const first = await resolveSetupCacheState({
+      cacheDir,
+      checkoutSha: "abc",
+      cwd,
+      worktreeId: "wt-1",
+      scripts: ["true"],
+      extraPaths: [],
+      hostPaths: [hostFile],
+    });
+    if (first.skip || !first.fingerprintToStore) throw new Error("expected a fingerprint");
+    expect(
+      await matchingSetupFingerprintAfterSetup({
+        checkoutSha: "abc",
+        cwd,
+        scripts: ["true"],
+        extraPaths: [],
+        hostPaths: [hostFile],
+        expectedFingerprint: first.fingerprintToStore,
+        signal: AbortSignal.abort(),
+      }),
+    ).toBeUndefined();
+    expect(
+      await matchingSetupFingerprintAfterSetup({
+        checkoutSha: "abc",
+        cwd,
+        scripts: ["true"],
+        extraPaths: [],
+        hostPaths: [hostFile],
+        expectedFingerprint: first.fingerprintToStore,
+        signal: new AbortController().signal,
+      }),
+    ).toBe(first.fingerprintToStore);
+  });
 });

@@ -4,6 +4,7 @@ import {
   isSetupCacheHostInputPath,
   isSetupCacheInputPath,
   MAX_SETUP_CACHE_INPUTS,
+  MAX_SETUP_CACHE_INPUT_LENGTH,
   parseSetupCacheHostInputs,
   parseSetupCacheHostInputsField,
   parseSetupCacheInputs,
@@ -90,10 +91,17 @@ describe("parseSetupCacheHostInputs", () => {
     ]);
     expect(isSetupCacheHostInputPath("/opt/auto-harness/setup/host-environment")).toBe(true);
     expect(isSetupCacheHostInputPath("\\\\host\\share\\file")).toBe(true);
+    expect(isSetupCacheHostInputPath("//host/share/file")).toBe(true);
     expect(isSetupCacheHostInputPath("d:/harness/env")).toBe(true);
     expect(isSetupCacheHostInputPath("")).toBe(false);
     expect(isSetupCacheHostInputPath("/")).toBe(false);
+    expect(isSetupCacheHostInputPath("C:\\")).toBe(false);
     expect(isSetupCacheHostInputPath("pnpm-lock.yaml")).toBe(false);
+    expect(isSetupCacheHostInputPath("/opt//env")).toBe(false);
+    expect(isSetupCacheHostInputPath(`/opt/${"x".repeat(MAX_SETUP_CACHE_INPUT_LENGTH)}`)).toBe(
+      false,
+    );
+    expect(isSetupCacheHostInputPath("/opt/\u007fenv")).toBe(false);
   });
 
   it("rejects relative checkout extras and unsafe host paths", () => {

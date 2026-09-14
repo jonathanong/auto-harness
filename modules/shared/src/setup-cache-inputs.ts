@@ -14,9 +14,8 @@ function hasControlChars(value: string): boolean {
 }
 
 function hostPathNames(path: string): string[] {
-  const segments = path.split(/[\\/]/);
-  const start = segments[0] === "" || /^[A-Za-z]:$/.test(segments[0] ?? "") ? 1 : 0;
-  return segments[start] === "" ? segments.slice(start + 1) : segments.slice(start);
+  const rest = path.split(/[\\/]/).slice(1);
+  return rest[0] === "" ? rest.slice(1) : rest;
 }
 
 /** Relative checkout path the daemon may hash; never an operator-discovered manifest. */

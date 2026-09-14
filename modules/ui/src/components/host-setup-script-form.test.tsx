@@ -575,4 +575,30 @@ describe("HostSetupScriptForm", () => {
     );
     view.unmount();
   });
+
+  it("keeps host-absolute cache inputs dirty when they change during an in-flight save", async () => {
+    let resolveSave: ((result: { ok: true }) => void) | undefined;
+    const mutateExec: typeof mutateExecConfig = async () =>
+      await new Promise((resolve) => {
+        resolveSave = resolve;
+      });
+    const view = mount(
+      <HostSetupScriptForm
+        hostId="host"
+        setupCacheHostInputs={["/opt/old"]}
+        mutateExec={mutateExec}
+        canWriteExecConfig
+        canWriteInventory={false}
+      />,
+    );
+    setValue(field(view.container, "host-setup-cache-host-inputs"), "/opt/submitted");
+    await submit(field(view.container, "form-host-setup-script"));
+    expect(resolveSave).toBeDefined();
+    setValue(field(view.container, "host-setup-cache-host-inputs"), "/opt/typed");
+    await act(async () => resolveSave?.({ ok: true }));
+    expect(field<HTMLTextAreaElement>(view.container, "host-setup-cache-host-inputs").value).toBe(
+      "/opt/typed",
+    );
+    view.unmount();
+  });
 });

@@ -53,6 +53,20 @@ describe("loadHostInventoryWithVersion", () => {
     });
   });
 
+  it("omits host-absolute cache inputs that are not an array", async () => {
+    setApiTransportForTests(async () =>
+      Response.json({
+        setupCacheHostInputs: "/opt/auto-harness/setup/host-environment",
+        repositories: [],
+        providerAccounts: [],
+      }),
+    );
+    await expect(loadHostInventoryWithVersion("host-a")).resolves.toEqual({
+      inventory: { repositories: [], providerAccounts: [] },
+      version: 0,
+    });
+  });
+
   it("reads a pre-versioning record's missing version as 0", async () => {
     setApiTransportForTests(async () => Response.json({ repositories: [], providerAccounts: [] }));
 
