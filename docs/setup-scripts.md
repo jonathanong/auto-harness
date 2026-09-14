@@ -41,7 +41,9 @@ Cache skip fingerprints operator-declared host-absolute files (`setupCacheHostIn
 `/opt/auto-harness/setup/host-environment`; omit that list to keep the SHA/script/relative-extra
 fingerprint. The filtered child environment from `createChildEnv()` is also part of the fingerprint,
 so a rotated allowlisted token, changed `PATH`, or removed variable after a daemon restart is a
-cache miss. The host never auto-detects sourced files. It also does not reconstruct or revalidate
+cache miss. Ephemeral per-session isolation values such as `GH_CONFIG_DIR` are omitted from that
+fingerprint and restored from the live child environment, so GitHub App sessions can still skip
+setup. The host never auto-detects sourced files. It also does not reconstruct or revalidate
 ignored outputs such as `node_modules` from a prior session; leave cache unused or bump a declared
 input or script if those outputs must be rebuilt. Cache sidecars
 are mode-0600 files in the daemon cache directory (`~/.auto-harness/setup-cache` by default).

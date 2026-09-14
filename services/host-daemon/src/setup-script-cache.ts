@@ -7,6 +7,7 @@ import { forEachDeclaredSetupFile } from "./setup-script-cache-file.ts";
 import {
   appendChildEnv,
   appendExtraFile,
+  applyLiveEphemeralChildEnv,
   startSetupFingerprint,
 } from "./setup-script-cache-hash.ts";
 
@@ -151,7 +152,10 @@ export async function resolveSetupCacheState(input: {
   if (!stored || stored.fingerprint !== fingerprint) {
     return { skip: false, fingerprintToStore: fingerprint };
   }
-  return { skip: true, environment: stored.environment };
+  return {
+    skip: true,
+    environment: applyLiveEphemeralChildEnv(stored.environment, input.childEnv),
+  };
 }
 
 /** Rehash declared extras after setup. Changed bytes must not be stored as a hit. */

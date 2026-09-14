@@ -749,7 +749,8 @@ A later fresh session skips those scripts when the fingerprint of the checked-ou
 setup script texts that would run (host then scoped), the contents of every
 operator-declared `setupCacheInputs` path, every operator-declared `setupCacheHostInputs`
 host-absolute file, and the filtered child environment from `createChildEnv()` matches the last
-successful setup for that worktree.
+successful setup for that worktree. Ephemeral per-session isolation values such as `GH_CONFIG_DIR`
+are omitted from that fingerprint; a cache hit keeps the live directory.
 After setup succeeds, the daemon rehashes those declared extras. If they changed, it does not store
 a cache entry, so the next fresh checkout (which restores the original bytes) re-runs setup.
 Unchanged extras may still be stored. The fingerprint schema version is part of the digest, so
