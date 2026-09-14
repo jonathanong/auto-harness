@@ -181,4 +181,42 @@ describe("session log objects", () => {
       "part",
     ]);
   });
+
+  it("writes concat archives through putGzipObject and returns undefined when only an empty archive key exists", async () => {
+    const stored = new Map<string, Buffer>();
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => undefined,
+        putGzipObject: async (key, body) => {
+          stored.set(key, body);
+        },
+        getGzipObject: async (key) => stored.get(key),
+        listKeys: async (prefix) => [...stored.keys()].filter((key) => key.startsWith(prefix)),
+      },
+    });
+    const gzipped = gzipLogRecords([
+      {
+        sessionId: "sess",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        stream: "stdout",
+        content: "archive",
+        seq: 1,
+        timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+      },
+    ]);
+    await putSessionLogArchive(state, "sess", gzipped);
+    expect(
+      (await readSessionLogObjects(state, "sess", { stream: "stdout", limit: 1 }))?.map(
+        (record) => record.content,
+      ),
+    ).toEqual(["archive"]);
+    const empty = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => undefined,
+        listKeys: async () => ["sessions/empty/logs.jsonl.gz"],
+        getGzipObject: async () => undefined,
+      },
+    });
+    expect(await readSessionLogObjects(empty, "empty")).toBeUndefined();
+  });
 });
