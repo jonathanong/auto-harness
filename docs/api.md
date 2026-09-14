@@ -1142,9 +1142,9 @@ place secrets could leak through.
 
 **Errors:**
 
-| Status | Code        | When                                                                                                                                                                                                        |
-| ------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 404    | `NOT_FOUND` | Unknown `:id`; caller lacks repository/host access; `:id` was not created via resume; or the source's logs have expired (`SessionLogs` carries a 7-day TTL) — treated the same as "no transcript available" |
+| Status | Code        | When                                                                                                                                                                                         |
+| ------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 404    | `NOT_FOUND` | Unknown `:id`; caller lacks repository/host access; `:id` was not created via resume; or the source's S3 transcript is missing or unreadable — treated the same as "no transcript available" |
 
 #### `POST /sessions/:id/cancel`
 
@@ -1176,12 +1176,11 @@ with `PUT /sessions/:id/log-archive`.
 | `limit`  | integer | Optional result cap: default `1000`, minimum `1`, safe maximum `10000`                                  |
 | `order`  | string  | Optional `asc` (default, oldest first) or `desc` (newest `limit` rows, still returned oldest-to-newest) |
 
-Results are always ascending by the durable `timestampSeq` key (timestamp then
-agent sequence). Filters apply before `limit`. Invalid query parameters return
-`400 VALIDATION_ERROR`; a missing or inaccessible session returns `404 NOT_FOUND`.
-Storage failures return `500 INTERNAL_ERROR`. When session log upload is `off`, `items` is empty
-until a terminal archive exists. Use the archive endpoint below for the durable terminal
-transcript.
+Results are always ascending by timestamp then agent `seq`. Filters apply before `limit`. Invalid
+query parameters return `400 VALIDATION_ERROR`; a missing or inaccessible session returns
+`404 NOT_FOUND`. Storage failures return `500 INTERNAL_ERROR`. When session log upload is `off`,
+`items` is empty until a terminal archive exists. Use the archive endpoint below for the durable
+terminal transcript.
 
 **Response:** `200 OK`
 

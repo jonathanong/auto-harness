@@ -131,10 +131,10 @@ function boundedQuery(): LogQuery {
 
 /**
  * Load and render the transcript of `sourceSessionId` for a fallback resume
- * continuation. Never throws: a missing session, a missing/expired
- * transcript (`SessionLogs` carries a 7-day TTL), or any storage error all
- * return `null` — the caller must treat that as "no context available," not
- * as a reason to fail the resume or the assignment.
+ * continuation. Never throws: a missing session, a missing/unreadable S3
+ * transcript, or any storage error all return `null` — the caller must treat
+ * that as "no context available," not as a reason to fail the resume or the
+ * assignment.
  */
 export async function loadPriorSessionContextDurable(
   state: ControlPlaneState,

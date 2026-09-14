@@ -36,7 +36,7 @@ cross-walk, not a substitute for [plan.md §5](../plan.md#5-invariants).
 | 3 Commit intent before effects    | 4 schedule fires at most once per `nextRunAt`; durable notification outbox                      |
 | 4 Duplicate delivery              | 2 ack deadline; [plan.md](../plan.md) D10 bounded retry                                         |
 | 5 Work scales with active work    | 13 list/history page at storage; sparse active-host index                                       |
-| 6 Match storage to purpose        | SessionLogs vs S3 archives — [logs.md](logs.md)                                                 |
+| 6 Match storage to purpose        | S3 gzip log bodies vs Dynamo archive pointers — [logs.md](logs.md)                              |
 | 7 Observability must not block    | 12 browser and host never share a request lifetime — [request-lifetime.md](request-lifetime.md) |
 | 8 Retention is a product contract | Archived = verified bytes; truncated / unavailable / expired stay distinct                      |
 

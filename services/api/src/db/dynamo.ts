@@ -6,7 +6,7 @@ export const DEFAULT_DYNAMODB_ENDPOINT = "http://127.0.0.1:7423";
 
 export const SESSION_LOGS_TTL_ATTRIBUTE = "ttl";
 
-/** Seconds from a SessionLogs write until DynamoDB TTL expiry. */
+/** Seconds until DynamoDB TTL expiry on the optional legacy SessionLogs adapter. */
 export const SESSION_LOGS_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 export function sessionLogsTtlEpochSeconds(nowMs = Date.now()): number {

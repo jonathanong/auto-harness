@@ -511,8 +511,8 @@ Message types and live-tail behavior: **[websocket.md](websocket.md)**.
 Server responsibilities only:
 
 - `$connect` / `$disconnect` — Connections table; mark worktrees offline
-- `$default` — dispatch by `type`; persist logs; fan-out to UI subscribers
-- Replay last ~100 lines on `session:subscribe`
+- `$default` — dispatch by `type`; persist session **status**; do **not** persist log bodies
+- Viewer subscribe is status + optional `session:log-part` notify (no log-text replay)
 - `postToConnection` for `session:assign` / `session:cancel` / `host:registered` / `host:keepalive-ack`
 
 ## Agent draining
@@ -523,7 +523,7 @@ When the agent reports draining (e.g. `host:status` with `draining: true`, or re
 
 1. Keep the Connection row and treat the agent as **connected**
 2. **Exclude all of its worktrees from the idle candidate set** for new `session:assign` (match + round-robin must not pick them)
-3. Continue accepting `session:log` / `session:status` for sessions already running on that agent
+3. Continue accepting `session:status` (and REST gzip log PUTs) for sessions already running on that agent
 4. Do **not** mark running sessions failed solely because the agent is draining
 5. On disconnect after a completed drain, normal offline handling applies; on reconnect + register with `draining: false`, worktrees become schedulable again
 
@@ -609,17 +609,17 @@ See [integrations.md](integrations.md).
 
 ## IAM (least privilege)
 
-| Role        | Permissions                                                                                                                                                                                                             |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| REST Lambda | DynamoDB item/query/transact on app tables; Scan only on list/hydrate tables (not SessionLogs); archive `s3:PutObject`, `s3:GetObject`, and `s3:GetObjectVersion`; integration KMS encrypt/decrypt; `ManageConnections` |
-| WS Lambda   | Same DynamoDB item/query/Scan split; `execute-api:ManageConnections`. No archive policy, no integration KMS                                                                                                             |
-| Cron Lambda | Same DynamoDB split; archive `s3:PutObject`; integration KMS decrypt; `ManageConnections`                                                                                                                               |
-| EventBridge | `lambda:InvokeFunction` on Cron only                                                                                                                                                                                    |
+| Role        | Permissions                                                                                                                                                                                                                            |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REST Lambda | DynamoDB item/query/transact on app tables; Scan only on list/hydrate tables; archive `s3:PutObject`, `s3:GetObject`, `s3:GetObjectVersion`, and `s3:ListBucket` on `sessions/*`; integration KMS encrypt/decrypt; `ManageConnections` |
+| WS Lambda   | Same DynamoDB item/query/Scan split; `execute-api:ManageConnections`. No archive policy, no integration KMS                                                                                                                            |
+| Cron Lambda | Same DynamoDB split; archive `s3:PutObject`; integration KMS decrypt; `ManageConnections`                                                                                                                                              |
+| EventBridge | `lambda:InvokeFunction` on Cron only                                                                                                                                                                                                   |
 
 Shared DynamoDB grants include `TransactWriteItems` / `TransactGetItems`. Scan is omitted from
-SessionLogs, AuditLogs, RateLimits, ViewerTickets, HostLocks, ConcurrencyLocks, Integrations,
-NotificationDeliveries, and SessionUsageKinds. No Lambda role gets S3/DynamoDB access outside
-Auto-Harness resources.
+AuditLogs, RateLimits, ViewerTickets, HostLocks, ConcurrencyLocks, Integrations,
+NotificationDeliveries, and SessionUsageKinds. There is no SessionLogs table: transcript bodies
+are S3 gzip objects. No Lambda role gets S3/DynamoDB access outside Auto-Harness resources.
 
 ---
 
@@ -642,7 +642,7 @@ one-time, account-level API Gateway CloudWatch Logs role that `deploy`/`update` 
 | ACK timeouts            | Cron EMF `AckTimeouts`                                                                                                                                                                                                    |
 | Stale hosts             | Cron EMF `StaleHosts`                                                                                                                                                                                                     |
 | Cooldowns               | EMF `Cooldowns` when a `usage_limit` pauses a Provider Account                                                                                                                                                            |
-| Log drops               | EMF `LogDrops` from persisted `session:log.dropped` telemetry (an explicit source-side drop the agent already knows about)                                                                                                |
+| Log drops               | EMF `LogDrops` from host `dropped` telemetry on gzip parts / the host-pane stream (an explicit source-side drop the agent already knows about)                                                                            |
 | Log seq gaps (alarmed)  | EMF `LogSeqGaps`: lines missing from a session's stored transcript, detected from a discontinuity in the agent-assigned `seq` — silent loss the ingest pipeline itself caused, not one the agent reported                 |
 | Stale-attempt log drops | EMF `StaleAttemptLogDrops`: a log message discarded because it belonged to an attempt the session already moved past, while its batch-mates still committed — the one silent-discard site whose batch-mates commit anyway |
 | WS messages discarded   | EMF `WsMessagesDiscarded`: a host WebSocket message dropped because the connection was being closed (rate limit, invalid frame, stale/unauthorized connection) — logged with its specific reason                          |

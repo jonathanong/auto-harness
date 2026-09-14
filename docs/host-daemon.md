@@ -174,8 +174,10 @@ On validation failure (missing repo path, bad JSON, missing key), the process ex
   send-based re-arm so a daemon-first deploy does not reconnect-loop.
 - Handles `post` failures only as disconnect (server detects stale connections separately)
 
-Outbound message types: `host:register`, `session:ack`, `session:command-start`, `session:log`,
-`session:status`, `worktree:status`, `host:keepalive`.
+Outbound message types: `host:register`, `session:ack`, `session:command-start`,
+`session:status`, `worktree:status`, `host:keepalive`. Log **bodies** are not sent on the
+control-plane `/ws`; the daemon PUTs gzip parts over REST when upload is on and streams live
+output to the host pane on loopback.
 
 Each daemon process reports one opaque UUID and process start time on every registration. The UUID
 remains unchanged across socket reconnects and inventory refreshes. A control plane with a prior
@@ -295,7 +297,7 @@ sequenceDiagram
     Agent->>Agent: Claim eligible worktree and check out ref
     Agent->>CLI: Resume / continue (tool-specific)
     CLI-->>Agent: output
-    Agent->>API: session:log / session:status
+    Agent->>API: session:status (gzip parts over REST when upload is on)
 ```
 
 #### Placement (control plane)
@@ -336,7 +338,7 @@ A fresh route has no CLI conversation state to resume into — the new run start
 3. Sets `HARNESS_PRIOR_CONTEXT_FILE` to the file's absolute path in the child process environment.
 4. Removes the file after the CLI process exits, before terminal hooks run or terminal status is reported.
 
-The resumed session's prompt already carries a fixed pointer sentence naming `.auto-harness/prior-session.md`, appended by the control plane — the model finds the file by reading its own prompt, not by an env var (a Command configured with `appendPrompt: false` never receives the prompt at all, so `HARNESS_PRIOR_CONTEXT_FILE` is that case's only channel). Every step here is best-effort: a fetch failure, a 404 (the source session's logs may have expired under the 7-day `SessionLogs` TTL), or a byte cap being hit all degrade to "no file written," logged as a `system` line — never a failed session. Advertise `prior-session-context` only from a daemon build that implements this; an older daemon simply ignores the unknown `priorContext` field and starts with no file, so the pointer sentence is a hedge ("may be available"), not a promise.
+The resumed session's prompt already carries a fixed pointer sentence naming `.auto-harness/prior-session.md`, appended by the control plane — the model finds the file by reading its own prompt, not by an env var (a Command configured with `appendPrompt: false` never receives the prompt at all, so `HARNESS_PRIOR_CONTEXT_FILE` is that case's only channel). Every step here is best-effort: a fetch failure, a 404 (the source session's S3 transcript is missing or unreadable), or a byte cap being hit all degrade to "no file written," logged as a `system` line — never a failed session. Advertise `prior-session-context` only from a daemon build that implements this; an older daemon simply ignores the unknown `priorContext` field and starts with no file, so the pointer sentence is a hedge ("may be available"), not a promise.
 
 ### Executor
 
@@ -493,27 +495,29 @@ Account cooldown is not a general retry policy: ordinary command failures, timeo
 
 - Attach to PTY data / stdout / stderr
 - Tag `stream`: `stdout` | `stderr` | `system`
-- Add ISO timestamps
-- **Rate limit:** default max ~10 WebSocket messages/sec/session
-- **Batch:** coalesce consecutive stdout/stderr lines up to `logBatchMaxLines` (100) or
-  `logBatchMaxWaitMs` (100ms), and up to the per-frame byte budget. A single write is
-  split on UTF-8 and newline bounds so each frame stays within those caps. A stream
-  change parks the other stream behind the current batch (it is not dropped). A
-  system/lifecycle line flushes queued batches first. Coalesced `session:log` frames
-  still carry `{sessionId, attemptId}` and keep insertion order (`timestampSeq`)
-- Emit `session:log` via Connection Manager. Per-session output is capped (32 KiB per chunk, 256 KiB retained for output classification, and at most 10,000 streamed chunks / 10 MiB retained logs), and sequence numbers continue after a reassignment/retry.
-- Serialize outbound messages FIFO. The daemon flushes queued logs before it sends a terminal `session:status`; a failed send is reported but does not permanently block later messages.
+- Add ISO timestamps and a per-session monotonic `seq` (Invariant 5)
+- **Host-pane live stream:** coalesce consecutive stdout/stderr to about **10 messages/sec/session**
+  (`logBatchMaxWaitMs` 100, `logBatchMaxLines` 100, plus the per-frame byte budget) and emit on
+  the loopback SSE (`GET /sessions/:id/logs/stream`, bind `127.0.0.1` only). Those frames are
+  **not** sent on the control-plane `/ws`.
+- **S3 gzip parts:** when `logSettings.uploadMode` is `always`, or `subscribed` and a control-plane
+  viewer is watching, flush uncompressed JSONL at the operator knobs (default 256 KB / 500 lines /
+  60s) via `PUT /sessions/:id/log-parts`. On terminal, concatenate uploaded members to
+  `PUT /sessions/:id/log-archive` (`logs.jsonl.gz`). Default upload is **off**.
+- Per-session output is capped (32 KiB per chunk, 256 KiB retained for output classification, and
+  at most 10,000 streamed chunks / 10 MiB retained logs), and sequence numbers continue after a
+  reassignment/retry.
 - On backpressure: prefer coalescing. A stream change or next frame that cannot join
   the current batch parks one overflow batch instead of dropping. Stdout/stderr is
   dropped only when the current frame cannot flush **and** the overflow batch cannot
   accept the write; the daemon then emits a system warning `N log chunk(s) dropped`
-  with machine-readable `dropped: N` telemetry the control plane can later alarm on.
-  Session-wide chunk/byte caps remain silent (no `dropped` counter); they bound
-  retained stdout/stderr, not the live rate. System and lifecycle lines still stream
-  after those caps so failure/completion messages are not lost. Each `dropped` notice
-  is capped at 1_000_000; remainder is sent on later notices.
+  with machine-readable `dropped: N`. Session-wide chunk/byte caps remain silent (no
+  `dropped` counter); they bound retained stdout/stderr, not the live rate. System and
+  lifecycle lines still stream after those caps so failure/completion messages are not
+  lost. Each `dropped` notice is capped at 1_000_000; remainder is sent on later notices.
 
-Control plane persists logs and fans out to UI subscribers ([aws.md](aws.md)).
+The control plane **polls** S3 via REST ([architecture/logs.md](architecture/logs.md)). Viewer
+WebSocket may notify `session:log-part`; it does not carry log text.
 
 ### Main Checkout Locks
 
@@ -972,7 +976,7 @@ sequenceDiagram
 
     loop Until active sessions = 0
         CLI-->>Agent: logs / eventual exit
-        Agent->>AWS: session:log / session:status
+        Agent->>AWS: session:status (gzip parts over REST when upload is on)
     end
 
     Agent->>AWS: disconnect (optional clean close)

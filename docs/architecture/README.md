@@ -37,7 +37,7 @@ graph TB
         APIGW["API Gateway<br/>REST + WebSocket"]
         Lambda["Lambda<br/>Handlers + Scheduler"]
         DDB["DynamoDB"]
-        S3["S3 archives"]
+        S3["S3 gzip logs"]
     end
 
     subgraph "Clients"
@@ -67,14 +67,15 @@ graph TB
     Agent --> WT3
 ```
 
-Today those control-plane behaviors also run in the local API. Transcript bytes live in S3 when
-`ARCHIVE_BUCKET` is set; DynamoDB keeps bounded archive metadata — see [logs.md](logs.md).
+Today those control-plane behaviors also run in the local API. Transcript bytes live in S3 gzip
+parts and `logs.jsonl.gz` when upload is on; DynamoDB keeps bounded archive metadata — see
+[logs.md](logs.md).
 
 ## Who owns what
 
 | Plane   | Owns                                                                                         | Does not own                         |
 | ------- | -------------------------------------------------------------------------------------------- | ------------------------------------ |
-| Control | Auth, session records, queue, assignment, log fan-out, archive metadata, cron, notifications | Git credentials, SSH, AI vendor keys |
+| Control | Auth, session records, queue, assignment, S3 log poll, archive metadata, cron, notifications | Git credentials, SSH, AI vendor keys |
 | Host    | Worktrees/slots on disk, process spawn, output streaming, git + AI secrets                   | Admission, desired work, leases      |
 
 ```mermaid
