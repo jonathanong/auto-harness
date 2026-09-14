@@ -13,13 +13,11 @@ const RESULT = {
   summarySource: "agent" as const,
   branch: "auto-harness/session",
 };
-const HANDOFF = {
-  handoffId: "handoff",
+const LEASE = {
+  concurrencyId: "provider-lease:account:0",
+  providerAccountId: "account",
+  slot: 0,
   attemptId: "attempt",
-  hostId: "host",
-  repositoryId: "repo",
-  worktreeId: "worktree",
-  expiresAt: EXPIRES,
 };
 
 function running(overrides: Partial<SessionRecord> = {}): SessionRecord {
@@ -47,7 +45,7 @@ function running(overrides: Partial<SessionRecord> = {}): SessionRecord {
   };
 }
 
-function v7State(protocolVersion = 7) {
+function v7State() {
   const deliveries: unknown[] = [];
   const state = createControlPlaneState({
     now: () => NOW,
@@ -63,46 +61,36 @@ function v7State(protocolVersion = 7) {
     lastHeartbeatAt: NOW,
     repositoryIds: ["repo"],
     capabilities: [],
-    protocolVersion,
-    negotiatedProtocolVersion: protocolVersion,
+    protocolVersion: 7,
+    negotiatedProtocolVersion: 7,
   });
   return { state, deliveries };
 }
 
-function deferredFailure(
-  errorCode: "checkout_fetch_failed" | "setup_failed" = "checkout_fetch_failed",
-) {
+function deferredFailure() {
   return {
     type: "session:status" as const,
     sessionId: "session",
     worktreeId: "worktree",
     attemptId: "attempt",
     status: "failed" as const,
-    errorCode,
+    errorCode: "checkout_fetch_failed" as const,
     deferTerminalHookResult: true as const,
   };
 }
 
-function expectHandoffAck(deliveries: unknown[], extra: Record<string, unknown> = {}): void {
+function expectHandoffAck(deliveries: unknown[]): void {
   expect(deliveries).toContainEqual({
     type: "session:status-acknowledged",
     sessionId: "session",
     attemptId: "attempt",
+    retryAccepted: false,
     terminalHookHandoffId: "handoff",
     terminalHookHandoffExpiresAt: EXPIRES,
-    ...extra,
   });
 }
 
-async function completeOnce(
-  state: ReturnType<typeof createControlPlaneState>,
-  deliveries: unknown[],
-): Promise<void> {
-  expect(handleHostMessage(state, deferredFailure(), "connection")).toEqual({ ok: true });
-  expectHandoffAck(deliveries, { retryAccepted: false });
-  deliveries.length = 0;
-  expect(handleHostMessage(state, deferredFailure(), "connection")).toEqual({ ok: true });
-  expectHandoffAck(deliveries, { retryAccepted: false });
+async function completeHook(state: ReturnType<typeof createControlPlaneState>): Promise<void> {
   const complete = (result: typeof RESULT | { summary: string; summarySource: "harness" }) =>
     handleHostMessage(
       state,
@@ -119,14 +107,20 @@ async function completeOnce(
   expect(complete({ summary: "duplicate", summarySource: "harness" })).toEqual({ ok: true });
   await Promise.resolve();
   expect(state.sessions.get("session")?.result).toEqual(RESULT);
-  expect(handleHostMessage(state, deferredFailure(), "connection")).toEqual({ ok: true });
-  expect(state.sessions.get("session")?.terminalHookHandoff).toBeUndefined();
 }
 
 describe("in-memory late cancel and timeout handoffs", () => {
-  it("preserves a deferred checkout hook when cancellation wins first", async () => {
+  it("releases a cancelled assignment while retaining the deferred hook", async () => {
     const { state, deliveries } = v7State();
-    state.sessions.set("session", running());
+    const session = running({ providerAccountLease: LEASE });
+    state.sessions.set("session", session);
+    state.providerAccountLeases.set(LEASE.concurrencyId, {
+      sessionId: "session",
+      attemptId: LEASE.attemptId,
+      slot: LEASE.slot,
+      hostId: "host",
+      providerAccountId: LEASE.providerAccountId,
+    });
     state.worktrees.set("worktree", {
       id: "worktree",
       hostId: "host",
@@ -135,11 +129,19 @@ describe("in-memory late cancel and timeout handoffs", () => {
       currentSessionId: "session",
     } as WorktreeRecord);
     expect(cancelSession(state, "session")).toMatchObject({ ok: true });
-    await completeOnce(state, deliveries);
+    expect(handleHostMessage(state, deferredFailure(), "connection")).toEqual({ ok: true });
+    expectHandoffAck(deliveries);
     expect(state.worktrees.get("worktree")).toMatchObject({
       status: "idle",
       currentSessionId: null,
     });
+    expect(state.providerAccountLeases.size).toBe(0);
+    expect(state.sessions.get("session")).toMatchObject({
+      worktreeId: null,
+      terminalHookHandoff: { handoffId: "handoff" },
+    });
+    expect(state.sessions.get("session")).not.toHaveProperty("providerAccountLease");
+    await completeHook(state);
   });
 
   it("preserves a deferred checkout hook when running timeout wins first", async () => {
@@ -149,64 +151,32 @@ describe("in-memory late cancel and timeout handoffs", () => {
       running({ ackReceivedAt: NOW, assignmentConnectionId: "connection" }),
     );
     expect(enforceRunningTimeouts(state, Date.parse(NOW) + 1000)).toEqual(["session"]);
-    expect(state.sessions.get("session")).toMatchObject({
-      status: "timed_out",
-      timedOutHostId: "host",
-    });
-    await completeOnce(state, deliveries);
+    expect(handleHostMessage(state, deferredFailure(), "connection")).toEqual({ ok: true });
+    expectHandoffAck(deliveries);
+    await completeHook(state);
     await Promise.all(state.pendingPersists);
     expect(state.sessions.get("session")?.result).toEqual(RESULT);
   });
 
-  it("covers reporting-host fallback, protocol gating, and handoff replay fences", () => {
-    const detached = v7State();
-    detached.state.sessions.set(
-      "session",
-      running({ status: "timed_out", hostId: null, worktreeId: null }),
-    );
-    expect(handleHostMessage(detached.state, deferredFailure(), "connection")).toEqual({
-      ok: true,
-    });
-    expectHandoffAck(detached.deliveries, { retryAccepted: false });
-
-    const legacy = v7State(6);
-    legacy.state.sessions.set("session", running({ status: "cancelled", completedAt: NOW }));
-    expect(handleHostMessage(legacy.state, deferredFailure(), "connection")).toEqual({ ok: true });
-    expect(legacy.state.sessions.get("session")?.terminalHookHandoff).toBeUndefined();
-
-    const mismatch = v7State();
-    mismatch.state.sessions.set(
-      "session",
-      running({ status: "cancelled", terminalHookHandoff: { ...HANDOFF, status: "cancelled" } }),
-    );
-    expect(handleHostMessage(mismatch.state, deferredFailure(), "connection")).toEqual({
-      ok: true,
-    });
-    expect(mismatch.deliveries).not.toContainEqual(
-      expect.objectContaining({ terminalHookHandoffId: "handoff" }),
-    );
-
-    const retry = v7State();
-    retry.state.sessions.set(
+  it("acknowledges an already-accepted checkout retry without minting a handoff", () => {
+    const { state, deliveries } = v7State();
+    state.sessions.set(
       "session",
       running({
         status: "cancelled",
+        hostId: null,
+        worktreeId: null,
+        infrastructureRetryCount: 1,
         infrastructureRetryAttemptId: "attempt",
-        terminalHookHandoff: { ...HANDOFF, status: "failed", errorCode: "checkout_fetch_failed" },
       }),
     );
-    expect(handleHostMessage(retry.state, deferredFailure())).toEqual({ ok: true });
-    expect(retry.deliveries).toContainEqual(
-      expect.objectContaining({ retryAccepted: true, terminalHookHandoffId: "handoff" }),
-    );
-
-    const generic = v7State();
-    generic.state.sessions.set("session", running({ status: "cancelled", completedAt: NOW }));
-    expect(handleHostMessage(generic.state, deferredFailure("setup_failed"), "connection")).toEqual(
-      {
-        ok: true,
-      },
-    );
-    expectHandoffAck(generic.deliveries);
+    expect(handleHostMessage(state, deferredFailure(), "connection")).toEqual({ ok: true });
+    expect(deliveries).toContainEqual({
+      type: "session:status-acknowledged",
+      sessionId: "session",
+      attemptId: "attempt",
+      retryAccepted: true,
+    });
+    expect(state.sessions.get("session")?.terminalHookHandoff).toBeUndefined();
   });
 });

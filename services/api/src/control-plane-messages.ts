@@ -352,6 +352,38 @@ function hostMessageProtocolVersion(
   return connectionProtocolVersion(connectionId ? state.connections.get(connectionId) : undefined);
 }
 
+function releaseLocalLateTerminalAssignment(
+  state: ControlPlaneState,
+  session: SessionRecord,
+  workspaceSlotError?: string,
+): void {
+  const releaseLease = Boolean(session.mainCheckoutLease);
+  const releaseWorkspace = Boolean(session.workspaceSlotId);
+  const releaseWorktreeTarget = Boolean(session.worktreeId);
+  if (releaseLease || releaseWorkspace || releaseWorktreeTarget) {
+    releaseProviderAccountLease(state, session);
+  }
+  if (releaseLease) {
+    releaseScheduledLeaseLocal(state, session);
+    delete session.mainCheckoutLease;
+    delete session.assignmentConnectionId;
+    delete session.assignmentSentAt;
+    delete session.ackReceivedAt;
+    delete session.reconnectDeadlineAt;
+    session.worktreeId = null;
+  }
+  if (releaseWorktreeTarget && session.worktreeId) {
+    const wt = state.worktrees.get(session.worktreeId);
+    if (wt?.currentSessionId === session.id) {
+      releaseWorktree(state, session.worktreeId);
+    }
+    session.worktreeId = null;
+  }
+  if (releaseWorkspace) {
+    releaseWorkspaceSlotLocal(state, session, workspaceSlotError);
+  }
+}
+
 function localDeferredHandoffAck(
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
   session: SessionRecord,
@@ -375,11 +407,7 @@ function localDeferredHandoffAck(
     handoff.status === msg.status && (!reportingHostId || handoff.hostId === reportingHostId);
   const retryAccepted = settledCheckoutFetchRetryDisposition(msg, session);
   return {
-    ...(retryAccepted !== undefined
-      ? { retryAccepted }
-      : isFirstCheckoutFetchFailure(msg, session)
-        ? { retryAccepted: false }
-        : {}),
+    ...(retryAccepted !== undefined ? { retryAccepted } : {}),
     ...(owned ? { terminalHookHandoffId: handoff.handoffId } : {}),
     ...(owned && protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
       ? { terminalHookHandoffExpiresAt: handoff.expiresAt }
@@ -2331,32 +2359,39 @@ function applySessionStatus(
   // can complete the hook result exactly once.
   if (
     msg.deferTerminalHookResult === true &&
-    protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
     (session.status === "cancelled" || session.status === "timed_out") &&
     isTerminalSessionStatus(msg.status) &&
-    !session.terminalHookHandoff &&
-    !session.terminalHookHandoffSettled &&
-    !session.terminalHookHandoffExpiredAt &&
     session.attemptId === msg.attemptId
   ) {
-    const handoff = deferredTerminalHookHandoff(state, session, msg, reportingHostId);
-    if (handoff) {
-      session.terminalHookHandoff = handoff;
-      if (session.status === "timed_out") {
-        releaseProviderAccountLease(state, session);
-        delete session.timedOutHostId;
-        delete session.timedOutAssignmentConnectionId;
-        delete session.hostAssignmentLease;
-        delete session.activeHostId;
-        delete session.activeHostOrder;
+    if (settledCheckoutFetchRetryDisposition(msg, session) === true) {
+      return { ok: true, retryAccepted: true };
+    }
+    if (
+      protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
+      !session.terminalHookHandoffSettled &&
+      !session.terminalHookHandoffExpiredAt
+    ) {
+      const handoff = deferredTerminalHookHandoff(state, session, msg, reportingHostId);
+      if (handoff) {
+        session.terminalHookHandoff = handoff;
+        if (session.status === "timed_out") {
+          releaseProviderAccountLease(state, session);
+          delete session.timedOutHostId;
+          delete session.timedOutAssignmentConnectionId;
+          delete session.hostAssignmentLease;
+          delete session.activeHostId;
+          delete session.activeHostOrder;
+        } else {
+          releaseLocalLateTerminalAssignment(state, session, msg.workspaceSlotError);
+        }
+        persistSession(state, session);
+        return {
+          ok: true,
+          ...(firstCheckoutFetchFailure ? { retryAccepted: false } : {}),
+          terminalHookHandoffId: handoff.handoffId,
+          terminalHookHandoffExpiresAt: handoff.expiresAt,
+        };
       }
-      persistSession(state, session);
-      return {
-        ok: true,
-        ...(firstCheckoutFetchFailure ? { retryAccepted: false } : {}),
-        terminalHookHandoffId: handoff.handoffId,
-        terminalHookHandoffExpiresAt: handoff.expiresAt,
-      };
     }
   }
   if (
