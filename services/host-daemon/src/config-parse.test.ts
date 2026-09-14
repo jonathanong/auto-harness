@@ -180,6 +180,8 @@ describe("parseDaemonConfig", () => {
       "C:\\hooks\\done.cmd",
       "\\\\server\\share\\done.cmd",
       "//server/share/done.cmd",
+      "/\\host/share/env",
+      "\\/host/share/env",
     ]) {
       expect(() =>
         parseDaemonConfig({
@@ -188,5 +190,13 @@ describe("parseDaemonConfig", () => {
         }),
       ).toThrow(/terminalHookScript is not valid/);
     }
+    expect(
+      parseDaemonConfig({
+        hostId: "x",
+        repositories: [
+          { id: "r", path: "/r", terminalHookScript: "///opt/hooks/done.sh", worktrees: [] },
+        ],
+      }).repositories[0]?.terminalHookScript,
+    ).toBe("///opt/hooks/done.sh");
   });
 });

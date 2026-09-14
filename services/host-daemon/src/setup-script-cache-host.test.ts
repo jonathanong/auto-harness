@@ -169,8 +169,10 @@ describe("setup script host-file fingerprint", () => {
   it("does not treat foreign Windows host paths as cwd-relative files", async () => {
     if (process.platform === "win32") return;
     const { cwd, cacheDir, hostFile } = await fixture();
-    for (const foreign of ["C:\\auto-harness\\setup\\env", "\\\\host\\share\\env"]) {
-      await writeFile(join(cwd, foreign), "not-the-host-file");
+    const relativeForeign = ["C:\\auto-harness\\setup\\env", "\\\\host\\share\\env"];
+    for (const path of relativeForeign) await writeFile(join(cwd, path), "not-the-host-file");
+    // Slash-form `//tmp/...` and mixed `/\host/...` would otherwise open as local paths.
+    for (const path of [...relativeForeign, `/${hostFile}`, "/\\host/share/env"]) {
       expect(
         await resolveSetupCacheState({
           cacheDir,
@@ -179,21 +181,9 @@ describe("setup script host-file fingerprint", () => {
           worktreeId: "wt-1",
           scripts: ["true"],
           extraPaths: [],
-          hostPaths: [foreign],
+          hostPaths: [path],
         }),
       ).toEqual({ skip: false });
     }
-    // `//tmp/...` is slash-form UNC; POSIX open() would otherwise hash `/tmp/...`.
-    expect(
-      await resolveSetupCacheState({
-        cacheDir,
-        checkoutSha: "abc",
-        cwd,
-        worktreeId: "wt-1",
-        scripts: ["true"],
-        extraPaths: [],
-        hostPaths: [`/${hostFile}`],
-      }),
-    ).toEqual({ skip: false });
   });
 });
