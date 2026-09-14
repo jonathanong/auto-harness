@@ -10,6 +10,22 @@ import {
 import { createControlPlaneState, settleStorage, trackLogPersist } from "./control-plane-state.ts";
 
 describe("archive retry state", () => {
+  it("treats a throwing listLogs as an empty archive body", async () => {
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => ({ versionId: "empty-v1" }) },
+      storage: {
+        putArchive: async () => undefined,
+        listLogs: async () => {
+          throw new Error("dynamo down");
+        },
+      } as never,
+    });
+    await archiveSessionLogs(state, "list-logs-down");
+    expect(state.archives.get("sessions/list-logs-down/logs.jsonl.gz")).toMatchObject({
+      versionId: "empty-v1",
+    });
+  });
+
   it("stores gzip contentType and compressed bodyBytes from the writer", async () => {
     const state = createControlPlaneState({
       archiveWriter: {

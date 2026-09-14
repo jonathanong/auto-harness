@@ -276,4 +276,30 @@ describe("Slack session lifecycle reconciliation", () => {
     await enqueueSlackSessionLifecycle(plane, session("failed"));
     expect(plane.logs.get("session-1")?.some((record) => record.content === "boom")).toBe(true);
   });
+
+  it("swallows gzip log load failures for failed sessions", async () => {
+    const store = new InsertStore();
+    const plane = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => undefined,
+        listKeys: async () => {
+          throw new Error("s3 down");
+        },
+      },
+      storage: {
+        enqueue: store.enqueue.bind(store),
+        getSlackIntegration: async () => ({
+          id: "slack",
+          type: "slack",
+          defaultChannel: "#ops",
+          enabled: true,
+          notifications: DEFAULT_SLACK_NOTIFICATIONS,
+          botToken: "xoxb-test",
+          createdAt: now,
+          updatedAt: now,
+        }),
+      } as never,
+    });
+    await expect(enqueueSlackSessionLifecycle(plane, session("failed"))).resolves.toBeUndefined();
+  });
 });

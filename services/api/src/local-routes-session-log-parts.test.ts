@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- gzip PUT success, authz, and validation cases share one local server. */
 import { createServer } from "node:http";
 
 import { gzipJsonlLines } from "@auto-harness/shared";
@@ -129,5 +130,80 @@ describe("PUT /api/v1/sessions/:id/log-parts", () => {
       },
     );
     expect(put.status).toBe(404);
+  });
+
+  it("rejects invalid seq ranges, empty parts, and malformed gzip", async () => {
+    const plane = new ControlPlane();
+    const sessionId = seedSession(plane);
+    const { handler } = createLocalApp({
+      plane,
+      authMode: "disabled",
+      rateLimitConfig: { enabled: false },
+    });
+    const server = await listen(handler);
+    close = server.close;
+    const invalidRange = await fetch(
+      `${server.base}/api/v1/sessions/${sessionId}/log-parts?seqStart=2&seqEnd=1`,
+      { method: "PUT", body: new Uint8Array(gzipPart("x", 1)) },
+    );
+    expect(invalidRange.status).toBe(400);
+    const empty = await fetch(
+      `${server.base}/api/v1/sessions/${sessionId}/log-parts?seqStart=1&seqEnd=1`,
+      { method: "PUT", body: new Uint8Array() },
+    );
+    expect(empty.status).toBe(400);
+    const malformed = await fetch(
+      `${server.base}/api/v1/sessions/${sessionId}/log-parts?seqStart=1&seqEnd=1`,
+      { method: "PUT", body: new Uint8Array([1, 2, 3, 4]) },
+    );
+    expect(malformed.status).toBe(400);
+    const outside = await fetch(
+      `${server.base}/api/v1/sessions/${sessionId}/log-parts?seqStart=1&seqEnd=1`,
+      { method: "PUT", body: new Uint8Array(gzipPart("x", 9)) },
+    );
+    expect(outside.status).toBe(400);
+    plane.getSessionDurable = async () => {
+      throw new Error("store down");
+    };
+    const failed = await fetch(
+      `${server.base}/api/v1/sessions/${sessionId}/log-parts?seqStart=1&seqEnd=1`,
+      { method: "PUT", body: new Uint8Array(gzipPart("x", 1)) },
+    );
+    expect(failed.status).toBe(500);
+  });
+
+  it("accepts a concat archive and rejects empty or unauthorized archives", async () => {
+    const plane = new ControlPlane();
+    const sessionId = seedSession(plane);
+    const { handler } = createLocalApp({
+      plane,
+      authMode: "disabled",
+      rateLimitConfig: { enabled: false },
+    });
+    const server = await listen(handler);
+    close = server.close;
+    const put = await fetch(`${server.base}/api/v1/sessions/${sessionId}/log-archive`, {
+      method: "PUT",
+      body: new Uint8Array(gzipPart("archived", 1)),
+    });
+    expect(put.status).toBe(200);
+    const empty = await fetch(`${server.base}/api/v1/sessions/${sessionId}/log-archive`, {
+      method: "PUT",
+      body: new Uint8Array(),
+    });
+    expect(empty.status).toBe(400);
+    const missing = await fetch(`${server.base}/api/v1/sessions/missing/log-archive`, {
+      method: "PUT",
+      body: new Uint8Array(gzipPart("archived", 1)),
+    });
+    expect(missing.status).toBe(404);
+    plane.getSessionDurable = async () => {
+      throw new Error("store down");
+    };
+    const failed = await fetch(`${server.base}/api/v1/sessions/${sessionId}/log-archive`, {
+      method: "PUT",
+      body: new Uint8Array(gzipPart("archived", 1)),
+    });
+    expect(failed.status).toBe(500);
   });
 });

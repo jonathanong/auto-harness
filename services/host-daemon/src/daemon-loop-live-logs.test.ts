@@ -48,4 +48,19 @@ describe("DaemonLoop live log subscribers", () => {
       seq: 1,
     } as never);
   });
+
+  it("toggles watching from session log-watch messages", async () => {
+    const loop = new DaemonLoop({
+      config: minimalConfig({ apiUrl: "https://example.test", apiKey: "secret" }),
+      transport: createLoopbackTransport({ sendToServer: () => undefined }),
+    });
+    const handle = loop as unknown as {
+      handleServerMessage(msg: { type: string; sessionId: string }): Promise<void>;
+      ensureLogBuffer(sessionId: string): { watching: boolean };
+    };
+    await handle.handleServerMessage({ type: "session:log-watch", sessionId: "sess" });
+    expect(handle.ensureLogBuffer("sess").watching).toBe(true);
+    await handle.handleServerMessage({ type: "session:log-unwatch", sessionId: "sess" });
+    expect(handle.ensureLogBuffer("sess").watching).toBe(false);
+  });
 });
