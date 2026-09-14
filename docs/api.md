@@ -1151,7 +1151,10 @@ Cancel a queued or running session. **Operator (own sessions) or admin.**
 
 #### `GET /sessions/:id/logs`
 
-Get bounded **historical** session logs. For live streaming, use the authenticated read-only browser [WebSocket API](websocket.md#live-session-viewing); it resumes with its `timestampSeq` cursor and never replaces this history query.
+Get a bounded page of session logs from **S3** (gzip parts while running, or the final
+`logs.jsonl.gz` after terminal). The control-plane UI **polls** this endpoint. Live PTY streaming
+is the host pane, not this API. Viewer WebSocket does not replace this query and does not carry
+log text.
 
 **Query parameters:**
 
@@ -1165,9 +1168,9 @@ Get bounded **historical** session logs. For live streaming, use the authenticat
 Results are always ascending by the durable `timestampSeq` key (timestamp then
 agent sequence). Filters apply before `limit`. Invalid query parameters return
 `400 VALIDATION_ERROR`; a missing or inaccessible session returns `404 NOT_FOUND`.
-Storage failures return `500 INTERNAL_ERROR`. This endpoint is historical only:
-it neither opens a WebSocket live tail nor reads S3 archives. Use the archive endpoint below for
-the durable terminal transcript.
+Storage failures return `500 INTERNAL_ERROR`. When session log upload is `off`, `items` is empty
+until a terminal archive exists. Use the archive endpoint below for the durable terminal
+transcript.
 
 **Response:** `200 OK`
 

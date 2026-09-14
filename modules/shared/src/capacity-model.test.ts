@@ -7,20 +7,28 @@ import {
 } from "./capacity-model.ts";
 
 describe("capacity model", () => {
-  it("scales log volume from the measured daemon coalesce rate", () => {
+  it("does not put log bodies in DynamoDB", () => {
     const estimate = estimateMonthlyCapacity(REFERENCE_WORKLOAD);
     expect(estimate.logChunksPerSession).toBe(15 * 60 * CAPACITY_CONSTANTS.daemonLogMessagesPerSec);
     expect(estimate.logBytesPerSession).toBe(CAPACITY_CONSTANTS.sessionLogMaxBytes);
-    expect(estimate.dynamoLogWritesPerMonth).toBe(estimate.logChunksPerSession * 100 * 30);
-    expect(estimate.dynamoLogTransactionsPerMonth).toBe(estimate.dynamoLogWritesPerMonth);
+    expect(estimate.dynamoLogWritesPerMonth).toBe(0);
+    expect(estimate.dynamoLogTransactionsPerMonth).toBe(0);
+    expect(estimate.s3PartPutsPerMonth).toBe(0);
+    expect(estimate.s3FinalPutsPerMonth).toBe(0);
     expect(estimate.schedulerInvocationsPerMonth).toBe(30 * 24 * 60);
     expect(estimate.scheduleEvaluationsPerMonth).toBe(30 * 24 * 60 * 10);
     expect(estimate.archiveBytesPerMonth).toBe(100 * 30 * 256 * 1024);
     expect(estimate.queueAssignsPerDay).toBe(100);
-    expect(estimate.lambdaInvocationsPerMonth).toBeGreaterThan(estimate.dynamoLogWritesPerMonth);
   });
 
-  it("keeps a one-session day above zero", () => {
+  it("counts one-minute gzip parts when upload is on", () => {
+    const estimate = estimateMonthlyCapacity({ ...REFERENCE_WORKLOAD, sessionLogUpload: true });
+    expect(estimate.s3PartPutsPerMonth).toBe(100 * 30 * 15);
+    expect(estimate.s3FinalPutsPerMonth).toBe(100 * 30);
+    expect(estimate.dynamoLogWritesPerMonth).toBe(0);
+  });
+
+  it("keeps a one-session day above zero without Dynamo log writes", () => {
     const estimate = estimateMonthlyCapacity({
       sessionsPerDay: 1,
       sessionDurationSeconds: 1,
@@ -30,14 +38,23 @@ describe("capacity model", () => {
       archiveBytesPerSession: 1,
     });
     expect(estimate.logChunksPerSession).toBe(CAPACITY_CONSTANTS.daemonLogMessagesPerSec);
-    expect(estimate.dynamoLogWritesPerMonth).toBe(CAPACITY_CONSTANTS.daemonLogMessagesPerSec * 30);
+    expect(estimate.dynamoLogWritesPerMonth).toBe(0);
+    expect(estimate.s3PartPutsPerMonth).toBe(0);
   });
 
-  it("includes every subscribed viewer copy in websocket volume", () => {
-    const withoutViewers = estimateMonthlyCapacity({ ...REFERENCE_WORKLOAD, connectedViewers: 0 });
-    const withViewers = estimateMonthlyCapacity({ ...REFERENCE_WORKLOAD, connectedViewers: 3 });
+  it("notifies watching viewers per part, not per log line", () => {
+    const withoutViewers = estimateMonthlyCapacity({
+      ...REFERENCE_WORKLOAD,
+      sessionLogUpload: true,
+      connectedViewers: 0,
+    });
+    const withViewers = estimateMonthlyCapacity({
+      ...REFERENCE_WORKLOAD,
+      sessionLogUpload: true,
+      connectedViewers: 3,
+    });
     expect(withViewers.websocketMessagesPerMonth - withoutViewers.websocketMessagesPerMonth).toBe(
-      withoutViewers.dynamoLogWritesPerMonth * 3,
+      withoutViewers.s3PartPutsPerMonth * 3,
     );
     expect(withViewers.lambdaInvocationsPerMonth).toBe(withoutViewers.lambdaInvocationsPerMonth);
   });
@@ -49,8 +66,6 @@ describe("capacity model", () => {
     expect(withSchedules.scheduleEvaluationsPerMonth).toBe(
       withSchedules.schedulerInvocationsPerMonth * 37,
     );
-    // The EventBridge trigger remains one invocation per sweep; schedules add
-    // in-invocation query/evaluation load, not one Lambda invocation each.
     expect(withSchedules.lambdaInvocationsPerMonth).toBe(
       withoutSchedules.lambdaInvocationsPerMonth,
     );
@@ -63,9 +78,7 @@ describe("capacity model", () => {
     });
     expect(estimate.logChunksPerSession).toBe(CAPACITY_CONSTANTS.sessionLogMaxChunks);
     expect(estimate.logBytesPerSession).toBe(CAPACITY_CONSTANTS.sessionLogMaxBytes);
-    expect(estimate.dynamoLogWritesPerMonth).toBe(
-      CAPACITY_CONSTANTS.sessionLogMaxChunks * REFERENCE_WORKLOAD.sessionsPerDay * 30,
-    );
+    expect(estimate.dynamoLogWritesPerMonth).toBe(0);
   });
 
   it("counts each keepalive twice: inbound frame plus outbound ack", () => {
@@ -89,7 +102,6 @@ describe("capacity model", () => {
     });
     expect(oneHost.websocketMessagesPerMonth).toBe(keepalivesPerHost * 2);
     expect(twoHosts.websocketMessagesPerMonth).toBe(keepalivesPerHost * 4);
-    // The ack is outbound postToConnection; it does not invoke the WS Lambda.
     expect(oneHost.lambdaInvocationsPerMonth).toBe(
       keepalivesPerHost + oneHost.schedulerInvocationsPerMonth,
     );

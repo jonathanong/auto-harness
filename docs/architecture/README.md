@@ -10,7 +10,7 @@ Cross-plane overview. Layer internals: [aws.md](../aws.md) (control), [host-daem
 | [assignment.md](assignment.md)               | Match, round-robin, ack, resume, bounded retry          |
 | [connection.md](connection.md)               | Register, keepalive, disconnect, drain                  |
 | [communication.md](communication.md)         | WebSocket vs the 1-minute cron; what invokes Lambda     |
-| [logs.md](logs.md)                           | Live tail, REST history, S3 archive                     |
+| [logs.md](logs.md)                           | S3 gzip parts; CP poll; host-pane live stream           |
 | [request-lifetime.md](request-lifetime.md)   | Browser and host never share a request                  |
 | [gotchas.md](gotchas.md)                     | Traps, maturity, “do not improve this”                  |
 
@@ -99,7 +99,7 @@ Trust-boundary detail: [security.md](../security.md).
 | Session queue / assign | Scheduler + round-robin — [assignment.md](assignment.md)                                                   | Accepts `session:assign` only                                                            |
 | Worktrees              | DynamoDB inventory + online flags                                                                          | Create / claim / release on disk                                                         |
 | Workspace pools/slots  | Pool/profile records + host path-only attachments                                                          | Claim/release host-local non-git directories; realpath under `allowedRoots`              |
-| Logs                   | SessionLogs + UI fan-out + S3 JSONL; Archives stores pointers — [logs.md](logs.md)                         | Assigned-command PTY + pipe-based setup/hooks, each `session:log`                        |
+| Logs                   | S3 gzip parts + Archives pointers; CP polls REST — [logs.md](logs.md)                                      | PTY stream to host pane; optional host PUT of gzip parts                                 |
 | Schedules              | EventBridge cron → sessions                                                                                | Main-checkout lock + run command                                                         |
 | Secrets                | No repo/AI secrets                                                                                         | `.env`, SSH, vendor keys                                                                 |
 | UI                     | Hosted clients → REST/WS — [web.md](../web.md)                                                             | Host pane is debug-only                                                                  |

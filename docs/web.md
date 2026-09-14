@@ -284,8 +284,8 @@ archive metadata exists; archived retrieval is exposed only after the authoritat
 
 **Behavior:**
 
-1. **On page load** — fetches bounded historical logs via `GET /sessions/:id/logs` and renders them in the terminal.
-2. **Live tail** — obtains a short-lived viewer ticket through the authenticated web origin, then opens the read-only API `/ws/viewer` socket and subscribes with `session:subscribe`. It resumes from the last `timestampSeq` after reconnect, deduplicates replay, orders entries by cursor, and retains at most 1,000 live entries.
+1. **On page load** — fetches bounded logs via `GET /sessions/:id/logs` (S3 parts or final gzip) and renders them in the terminal.
+2. **Poll** — while the session is non-terminal, refetches that REST page at the configured control-plane poll interval (default 60s). Viewer WS may notify `session:log-part` when upload is on and someone is subscribed; it does not stream log text. Banner: near-real-time via S3; live PTY is the host pane.
 3. **Lifecycle and errors** — shows `Connecting`, `Live — <status>` while the session is still `queued` or `running`, the terminal status with no `Live —` prefix once it has ended, `Reconnecting`, or an explicit unavailable/paused error. A later `session:subscribed` `queued` or `running` does not replace a terminal status already loaded from REST. Queued sessions also note that assignment is attempted immediately and a one-minute repair sweep retries missed work. The connection retries with capped exponential backoff.
 4. **On leave** — sends `session:unsubscribe` before closing the browser socket.
 

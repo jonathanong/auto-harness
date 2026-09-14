@@ -46,19 +46,20 @@ That is a **product constraint**, not an implementation preference: it is how yo
 
 Auto Harness AWS infrastructure is designed to be nearly free to operate. Costs scale with usage but stay negligible next to **subscription seats**, **plan quotas**, and **VPS** capacity. The control plane should not be the line item you worry about.
 
-**Modelled AWS coordination floor at the reference workload: ~$155/month** (premature;
-list-price arithmetic, not an invoice). Table under
-[Modelled monthly AWS subtotal](#modelled-monthly-aws-subtotal).
+**Modelled AWS coordination floor at the reference workload: ~$1/month** with S3 gzip
+parts and **upload off by default** (~$0.60 keepalive-only). The legacy path that wrote every
+log chunk through WebSocket + DynamoDB was ~$155; do not use that table for budgeting. Details
+under [Modelled monthly AWS subtotal](#modelled-monthly-aws-subtotal).
 Seats and the VPS are extra and dominate.
 
 ## AWS cost model (measured implementation + modelled workload)
 
 The AWS runtime has been deployed and account-tested — see the Maturity table in
 [deploy-aws.md](deploy-aws.md#maturity). Implementation constants that drive
-volume are measured from the running code (daemon ~10 log messages/s after
-source-side coalesce, local 25-item connection-fence batches, 20s WebSocket
-keepalive, 1-minute EventBridge scheduler, 7-day SessionLogs TTL, 32 KiB API
-Gateway frame). Those constants live in `modules/shared/src/capacity-model.ts`.
+volume are measured from the running code (20s WebSocket keepalive, 1-minute
+EventBridge repair sweep, host gzip-part flush default 60s when upload is on).
+Log **bodies** go to S3, not DynamoDB. Constants live in
+`modules/shared/src/capacity-model.ts` and `session-log-settings.ts`.
 
 The 2026-08-18 `qa` purge in `us-west-2` completed 3 short programmatic sessions
 and later emptied 3 archived object versions. That run is acceptance evidence for
@@ -70,16 +71,16 @@ price.
 Unit prices are illustrative inputs, not pinned contract terms; verify the current AWS pricing
 pages for the deployment region before approving a budget.
 
-| Service                   | Base input                                   | Workload-sensitive input                               |
-| ------------------------- | -------------------------------------------- | ------------------------------------------------------ |
-| **Lambda**                | Memory and duration per handler              | REST requests + inbound host WebSocket/log messages    |
-| **API Gateway REST**      | API calls made by clients                    | Session/UI polling pattern                             |
-| **API Gateway WebSocket** | Connected-agent/viewer minutes and keepalive | Log chunks, status messages, reconnects, subscriptions |
-| **DynamoDB on-demand**    | Session/status/catalog operations            | One current write per log chunk + reads                |
-| **DynamoDB storage**      | Durable catalog/session rows                 | Log retention and archive-row size                     |
-| **S3 (target)**           | Archive PUT/GET count                        | Compressed archive bytes and lifecycle class           |
-| **EventBridge (target)**  | Cron evaluation frequency                    | Number of schedules                                    |
-| **CloudWatch (target)**   | Runtime log retention                        | Actual emitted runtime-log bytes                       |
+| Service                   | Base input                                   | Workload-sensitive input                                |
+| ------------------------- | -------------------------------------------- | ------------------------------------------------------- |
+| **Lambda**                | Memory and duration per handler              | REST + inbound host WS (no log bodies)                  |
+| **API Gateway REST**      | API calls made by clients                    | Session/UI polling pattern                              |
+| **API Gateway WebSocket** | Connected-agent/viewer minutes and keepalive | Assign/ack/status, optional `session:log-part` notifies |
+| **DynamoDB on-demand**    | Session/status/catalog operations            | No log bodies                                           |
+| **DynamoDB storage**      | Durable catalog/session rows                 | Archive pointer rows only                               |
+| **S3**                    | Gzip parts + final `logs.jsonl.gz`           | Host PUT when upload is on                              |
+| **EventBridge (target)**  | Cron evaluation frequency                    | Number of schedules                                     |
+| **CloudWatch (target)**   | Runtime log retention                        | Actual emitted runtime-log bytes                        |
 
 ## Reference workload (modelled from measured rates)
 
@@ -87,52 +88,51 @@ pages for the deployment region before approving a budget.
 | ----------------------- | --------------- | ------------------------------------------------------------------------------------------- |
 | Sessions / day          | 100             | planning default                                                                            |
 | Session duration        | 15 minutes      | long-running CLI, not a smoke `claude -p`                                                   |
-| Daemon log rate         | 10 messages/s   | `DEFAULT_LOG_MESSAGES_PER_SEC`                                                              |
-| Log chunks / session    | 9,000           | duration × log rate; capped at 10,000 retained chunks/session                               |
-| Retained log content    | at most 10 MiB  | session byte cap before ordinary CLI output is dropped                                      |
-| Local log fence batch   | 25 items        | reduces local fence checks, not deployed item writes                                        |
+| Daemon PTY coalesce     | 10 messages/s   | Host-pane live stream only; not sent on control-plane WS                                    |
+| S3 part flush           | 60 s            | `DEFAULT_SESSION_LOG_SETTINGS.batchMaxWaitMs` when upload is on                             |
+| Upload mode             | `off`           | Autonomous default; `subscribed` or `always` to write S3 parts                              |
 | Hosts + viewers         | 2 + 2           | keepalive + connection minutes                                                              |
 | Keepalive               | 20 s            | daemon `startDaemon`; each inbound frame is answered with one outbound `host:keepalive-ack` |
 | Scheduler               | 1 / minute      | EventBridge / local repair sweep                                                            |
 | Schedules               | 10              | every durable schedule is evaluated by each repair sweep                                    |
-| Archive bytes / session | 256 KiB         | JSONL model; 3 objects were purged in `qa` without size metrics                             |
-| SessionLogs TTL         | 7 days          | `ttl` on new writes                                                                         |
+| Archive bytes / session | 256 KiB gzip    | Final `logs.jsonl.gz` when upload is on                                                     |
 
-At that workload `estimateMonthlyCapacity(REFERENCE_WORKLOAD)` reports:
+`estimateMonthlyCapacity(REFERENCE_WORKLOAD)` (upload **off**): Dynamo log writes **0**, S3 log
+parts **0**. Keepalive + assign/ack/status + 43,200 cron invokes remain.
 
-| Volume                       | Count      |
-| ---------------------------- | ---------- |
-| DynamoDB log item writes     | 27,000,000 |
-| WebSocket messages           | 81,530,400 |
-| Lambda invocations           | 27,344,400 |
-| EventBridge cron invocations | 43,200     |
-| Schedule evaluations         | 432,000    |
-| Connection-minutes (2+2)     | 172,800    |
-| Archive PUT volume           | 750 MiB    |
-
-Queue throughput is 100 assigns/day plus the one-minute repair sweep. Re-run
-`estimateMonthlyCapacity` when the session mix changes; do not scale by session count alone.
+With `{ sessionLogUpload: true }` (1-minute parts): **45,000** part PUTs + **3,000** final PUTs
+per month. Queue throughput is 100 assigns/day plus the one-minute repair sweep.
 
 ### Modelled monthly AWS subtotal
 
-Premature: no invoice exists. Deployed logs go through one `TransactWriteItems` Put per chunk
-(`putLogsFenced`), which bills **2 WRU per 1 KB item**. Chunks larger than 1 KB cost more. Lambda
-**duration** is omitted (needs measured GB-seconds).
+Premature: no invoice. Log **bodies** are S3 gzip parts (host PUT), not DynamoDB and not API
+Gateway WS frames. Lambda **duration** omitted.
 
-| Line                                     | Arithmetic                  | Modelled $/month |
-| ---------------------------------------- | --------------------------- | ---------------- |
-| Lambda invocations                       | 27.3444M × $0.20 / 1M       | $5.47            |
-| API Gateway REST                         | 30K × $3.50 / 1M            | $0.11            |
-| API Gateway WebSocket messages           | 81.5304M × $1.00 / 1M       | $81.53           |
-| API Gateway WebSocket connection-minutes | 172,800 × $0.25 / 1M        | $0.04            |
-| DynamoDB log writes (2 WRU/item)         | 27M × 2 × $1.25 / 1M        | $67.50           |
-| S3 archive storage (first-month bytes)   | 750 MiB × $0.023 / GB       | $0.02            |
-| S3 archive PUTs                          | 3,000 objects × $0.005 / 1K | $0.02            |
-| **Coordination floor**                   | sum of priced rows          | **~$155**        |
+**Upload off (default)**
 
-Add Lambda duration on top (example only: 256 MB × 100 ms × 27.3444M invokes ≈ **+$12** → **~$167**).
-WebSocket **messages** dominate the AWS line. Vendor seats and the VPS are **not** in this subtotal
-and are the real bill — see [The real cost](#the-real-cost-subscriptions--hosts-not-api-tokens).
+| Line                                        | Arithmetic           | Modelled $/month |
+| ------------------------------------------- | -------------------- | ---------------- |
+| Lambda (keepalive + session control + cron) | ~0.3M × $0.20 / 1M   | $0.06            |
+| API Gateway REST                            | 30K × $3.50 / 1M     | $0.11            |
+| API Gateway WebSocket messages              | ~0.52M × $1.00 / 1M  | $0.52            |
+| API Gateway WebSocket connection-minutes    | 172,800 × $0.25 / 1M | $0.04            |
+| DynamoDB log writes                         | 0                    | $0               |
+| **Coordination floor**                      |                      | **~$0.70**       |
+
+**Upload on, 1-minute gzip parts**
+
+| Line                                             | Arithmetic                  | Modelled $/month |
+| ------------------------------------------------ | --------------------------- | ---------------- |
+| Rows above                                       | keepalive path unchanged    | ~$0.70           |
+| S3 PUT parts                                     | 45,000 × $0.005 / 1K        | $0.23            |
+| S3 PUT finals                                    | 3,000 × $0.005 / 1K         | $0.02            |
+| S3 storage                                       | ~150 MiB gzip × $0.023 / GB | $0.00            |
+| Optional `session:log-part` notifies (2 viewers) | 90,000 × $1.00 / 1M         | $0.09            |
+| **Floor with upload**                            |                             | **~$1**          |
+
+Both are **well under $10**. The retired SessionLogs path (~27M transact writes + ~81M WS
+messages ≈ **~$155**) is not the budget. Vendor seats and the VPS dominate — see
+[The real cost](#the-real-cost-subscriptions--hosts-not-api-tokens).
 
 Unit prices are illustrative; verify current regional AWS pricing before budgeting.
 
@@ -166,8 +166,8 @@ Two API types with separate pricing:
 - $0.25 per million connection minutes
 - $1.00 per million messages
 - Each agent maintains 1 persistent connection (~43,000 minutes/month)
-- Messages include keepalives, every current log chunk, status updates, subscriptions, and
-  reconnect traffic. Measure that total; the former 50-chunk/session assumption is invalid.
+- Messages include keepalives, assign/ack/status, optional `session:log-part` notifies, and
+  reconnect traffic. Log **bodies** are not WebSocket messages.
 
 ### DynamoDB
 
@@ -181,63 +181,36 @@ Per session, approximate DynamoDB operations:
 
 - Create session: 1 write
 - Status updates (queued → running → completed): 3 writes
-- Log entries: one transactional `SessionLogs` Put per received chunk (`putLogsFenced`). Up to 25
-  adjacent local WebSocket chunks can share a connection-fence batch, which reduces local
-  coordination but does not reduce deployed transactional item capacity; chunk count must be
-  measured from the chosen CLI and workload.
+- Log entries: **none** in DynamoDB. Gzip parts go to S3 when upload is on.
 - Scheduler queries: ~5 reads
 - UI/API reads: ~10 reads
 
-Log-write volume is in the subtotal above. Catalog/session reads and item sizes above 1 KB are
-still unmodelled.
+Catalog/session reads are unmodelled.
 
-#### SessionLogs Cost Control
+#### Session log cost control
 
-SessionLogs is the highest-volume table. A chatty AI agent can produce hundreds of stdout chunks per session. Without mitigation, this is the most expensive DynamoDB component.
+Log bodies are **not** DynamoDB items. Host PUT of gzip parts (default **off**) plus a final
+`logs.jsonl.gz` is the write path. Do not reintroduce per-chunk `SessionLogs` transact writes.
+`Archives` metadata stays as pointer/`versionId`/retry only.
 
-**Current implementation:** local WebSocket ingress coalesces up to 25 adjacent `session:log`
-chunks behind one connection fence, flushing before any later control/status frame and before
-disconnect. API Gateway still invokes the deployed handler for every received frame, and DynamoDB
-charges one transactional item write per log chunk. Viewer subscriptions add one WebSocket delivery
-per log chunk per connected viewer.
-New SessionLogs writes set `ttl` to now + 7 days (Unix epoch seconds). Local table creation and
-the synthesized AWS table both enable DynamoDB TTL on that attribute, so new rows expire without
-application deletes. Rows written before this change omit `ttl` and are not backfilled (see
-[aws.md#sessionlogs-retention-and-archival](aws.md#sessionlogs-retention-and-archival)). On
-terminal status, the API serializes one
-JSONL object, retains only bounded pointer/status metadata in DynamoDB, and uploads through the
-configured private S3 adapter. A pending metadata row makes interrupted uploads retryable without
-putting the body in DynamoDB. The archive path has been functionally exercised — a real purge run
-against a real account emptied 3 archived object versions from the session archive bucket after 3
-short test sessions completed — but no byte-size or cost measurements exist from that or any other
-run. Consequently, the totals above and the optimized comparison below must be recalculated before
-an AWS launch.
+**Mitigation (this architecture):**
 
-**Target mitigation strategies:**
+| Strategy                   | Impact                                                                   |
+| -------------------------- | ------------------------------------------------------------------------ |
+| Upload default `off`       | Autonomous runs generate no S3 log traffic                               |
+| 1-minute gzip parts        | Tens of thousands of PUTs/month, not tens of millions of WS/Dynamo items |
+| Fan-out only if subscribed | No per-line viewer copies                                                |
+| Host-pane live stream      | PTY quality without control-plane ingest                                 |
 
-| Strategy          | Impact                                                                                             |
-| ----------------- | -------------------------------------------------------------------------------------------------- |
-| **DynamoDB TTL**  | New writes carry `ttl` (7-day expiry); DynamoDB deletes expired items without application deletes. |
-| **S3 archival**   | Upload completed logs to S3 as one archive object, then leave DynamoDB entries to expire via TTL.  |
-| **Rate limiting** | Bound the agent's WebSocket log-message rate so a chatty CLI cannot flood the control plane.       |
-
-**Cost comparison:**
-
-| Approach                                       | Writes/session                         | Monthly cost (100 sessions/day) |
-| ---------------------------------------------- | -------------------------------------- | ------------------------------- |
-| Current fenced batching                        | workload-dependent transactional items | Not yet measured                |
-| Example (500 chunks, full 25-item batches)     | 500 transactional items                | Recalculate before launch       |
-| Target batching + TTL (no explicit log delete) | same item writes, 0 explicit deletes   | Recalculate before launch       |
-
-Do not use the former ~50-chunk or $0.23/month assumptions for capacity planning. Measure a real
-transcript, then account for actual item sizes, transactional pricing, retries, API Gateway
-frames, and retention.
+Do not use the retired SessionLogs ~$155 table or the former ~50-chunk assumptions for capacity
+planning. See the modelled subtotal above.
 
 ### S3
 
 This section models the S3 archive without account-backed measurements. The synthesized foundation
-creates an archive bucket and lifecycle policy; runtime code uploads terminal JSONL when
-`ARCHIVE_BUCKET` is configured and retains bounded metadata rows in the DynamoDB Archives table.
+creates an archive bucket and lifecycle policy; runtime code uploads gzip JSONL
+(`logs.jsonl.gz` plus optional parts) when `ARCHIVE_BUCKET` is configured and retains bounded
+metadata rows in the DynamoDB Archives table.
 
 - **Storage**: $0.023 per GB/month (Standard), $0.0125 (Infrequent Access), $0.004 (Glacier)
 - **Requests**: $0.005 per 1K PUT, $0.0004 per 1K GET
@@ -291,7 +264,7 @@ Under the intended model, the dominant costs are **outside** the Auto Harness AW
 | **Vendor subscriptions** | Seats / team plans for Codex, Claude Code, etc. | Shared with interactive human use. Automation **consumes plan quota**, it does not invent a separate API SKU.                                                               |
 | **Plan usage limits**    | Soft/hard caps, rate limits                     | Hit → `usage_limit`; pause that Provider Account globally for its configurable cooldown (5h default), then use account/fallback routing. Providerless commands are ungated. |
 | **VPS / runner hosts**   | Fixed monthly instance cost                     | Where CLIs run; see table above. More worktrees ⇒ more RAM/CPU, not more AWS API cost.                                                                                      |
-| **Auto Harness on AWS**  | Modelled from measured rates                    | Queue, API, and logs; log volume dominates. See the reference workload above.                                                                                               |
+| **Auto Harness on AWS**  | Modelled from measured rates                    | Queue, API, keepalive; log bodies are S3 parts when upload is on (~$1). See the reference workload above.                                                                   |
 
 ### Why we do _not_ lead with API unit economics
 
