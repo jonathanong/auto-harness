@@ -2,7 +2,7 @@
 
 This document describes the **AWS control plane** in depth: API Gateway, Lambda handlers, DynamoDB, S3, scheduling, WebSocket fan-out, and how those pieces talk to VPS agents.
 
-Execution plane: [host-daemon.md](host-daemon.md). Overview: [architecture.md](architecture.md).  
+Execution plane: [host-daemon.md](host-daemon.md). Overview: [architecture/](architecture/README.md).  
 REST: [api.md](api.md). WebSocket: [websocket.md](websocket.md). Install: [setup.md](setup.md). AWS deploy/update/teardown: [deploy-aws.md](deploy-aws.md). Ops index: [deploy.md](deploy.md). Local stack: [local-development.md](local-development.md).
 
 ---
@@ -696,7 +696,7 @@ Execution always happens on the agent. The control plane only **schedules and ob
 | [api.md](api.md)                             | REST                            |
 | [websocket.md](websocket.md)                 | Real-time protocol              |
 | [host-daemon.md](host-daemon.md)             | Execution plane                 |
-| [architecture.md](architecture.md)           | Flows                           |
+| [architecture/](architecture/README.md)      | Cross-plane flows               |
 | [auth.md](auth.md)                           | Authn / authz                   |
 | [security.md](security.md)                   | Trust boundaries / hardening    |
 | [costs.md](costs.md)                         | Cost model                      |

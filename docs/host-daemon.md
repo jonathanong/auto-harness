@@ -1277,6 +1277,6 @@ NODE
 | [cli.md](cli.md)                             | Agent CLI                     |
 | [websocket.md](websocket.md)                 | Message types                 |
 | [aws.md](aws.md)                             | Scheduler, disconnect         |
-| [architecture.md](architecture.md)           | Cross-plane flows             |
+| [architecture/](architecture/README.md)      | Cross-plane flows             |
 | [auth.md](auth.md)                           | Agent API key binding         |
 | [security.md](security.md)                   | Host hardening                |
