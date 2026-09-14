@@ -5,6 +5,7 @@ import { WebSocketServer } from "ws";
 
 import { makeRepo } from "../test-helpers/daemon-loop-test-helpers.ts";
 import { HostInventoryPolicyError } from "./bootstrap.ts";
+import * as githubApp from "./github-app.ts";
 import * as liveLogHttp from "./live-log-http.ts";
 import { startDaemon } from "./start-daemon.ts";
 
@@ -79,6 +80,31 @@ describe("startDaemon live log port", () => {
           runUntil: waitFor(() => errors.some((line) => line.includes("inventory poll failed"))),
         });
         expect(errors.some((line) => line.includes("inventory poll failed"))).toBe(true);
+      } finally {
+        cleanup();
+      }
+    });
+  });
+
+  it("passes a loaded GitHub App config into the daemon loop", async () => {
+    vi.stubEnv("HARNESS_DAEMON_LIVE_LOG_PORT", "off");
+    const load = vi.spyOn(githubApp, "loadGitHubAppConfig").mockReturnValue({
+      appId: "1",
+      privateKey: {} as never,
+      botLogin: "bot",
+      botUserId: 1,
+      repositories: new Map(),
+    });
+    await withAcceptingServer(async (wsUrl) => {
+      const { config, cleanup } = await makeRepo();
+      try {
+        await startDaemon({
+          config,
+          wsUrl,
+          inventoryPollMs: 0,
+          runUntil: Promise.resolve(),
+        });
+        expect(load).toHaveBeenCalled();
       } finally {
         cleanup();
       }

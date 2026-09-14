@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- default signer, glacier restore, and mismatch cases share one reader fixture. */
 import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { describe, expect, it, vi } from "vitest";
 
@@ -173,6 +174,24 @@ describe("S3ArchiveReader", () => {
         now,
       }),
     ).resolves.toMatchObject({ available: true });
+  });
+
+  it("invokes the default presigner when none is provided", async () => {
+    const send = vi.fn(async () => ({
+      ContentLength: 12,
+      ContentType: "application/x-ndjson",
+      VersionId: "archive-v1",
+    }));
+    const archive = new S3ArchiveReader({ send }, "archive-bucket");
+    await expect(
+      archive.createDownload({
+        key: "sessions/session-1/logs.jsonl.gz",
+        contentType: "application/x-ndjson",
+        bodyBytes: 12,
+        versionId: "archive-v1",
+        now,
+      }),
+    ).resolves.toEqual({ available: false });
   });
 
   it("contains missing, denied, and signer failures as unavailable", async () => {

@@ -38,6 +38,16 @@ describe("additional cancellation branch coverage", () => {
     });
   });
 
+  it("releases a queued session worktree on local cancel", () => {
+    const state = createControlPlaneState({ now: () => "2026-01-01T00:01:00.000Z" });
+    const row = session({ status: "queued", worktreeId: "worktree" });
+    state.sessions.set(row.id, row);
+    expect(cancelSession(state, row.id)).toMatchObject({
+      ok: true,
+      session: { status: "cancelled", worktreeId: null },
+    });
+  });
+
   it("cancels a main-checkout assignment with its exact durable lease fence", async () => {
     const state = createControlPlaneState({ now: () => "2026-01-01T00:01:00.000Z" });
     const row = session({

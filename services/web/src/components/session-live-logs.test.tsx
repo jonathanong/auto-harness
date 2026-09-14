@@ -313,4 +313,78 @@ describe("SessionLiveLogs", () => {
     expect(sockets.at(-1)?.sent).toEqual([]);
     view.unmount();
   });
+
+  it("drops in-flight log and status polls after unmount and a failed log-part refetch", async () => {
+    let releaseLogs!: () => void;
+    const logsGate = new Promise<void>((resolve) => {
+      releaseLogs = resolve;
+    });
+    const statusTimers: Array<() => void> = [];
+    const realSetTimeout = setTimeout;
+    vi.stubGlobal("setTimeout", ((fn: () => void, ms?: number) => {
+      if (ms === 2_000) {
+        statusTimers.push(fn);
+        return 0 as unknown as ReturnType<typeof setTimeout>;
+      }
+      return realSetTimeout(fn, ms);
+    }) as typeof setTimeout);
+    const sockets: Array<{ emit(type: string, event: Event): void }> = [];
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 1;
+      private readonly listeners = new Map<string, Array<(event: Event) => void>>();
+      constructor(public url: string) {
+        sockets.push(this);
+      }
+      addEventListener(type: string, handler: (event: Event) => void) {
+        const list = this.listeners.get(type) ?? [];
+        list.push(handler);
+        this.listeners.set(type, list);
+      }
+      emit(type: string, event: Event) {
+        for (const handler of this.listeners.get(type) ?? []) handler(event);
+      }
+      send() {}
+      close() {
+        this.readyState = 3;
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("viewer-ticket")) return Response.json({ ticket: "ticket" });
+        if (path.includes("session-log-settings")) return Response.json({});
+        if (path.includes("/logs")) {
+          await logsGate;
+          return new Response(null, { status: 500 });
+        }
+        return Response.json({ status: "running" });
+      }),
+    );
+    const first = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    first.unmount();
+    releaseLogs();
+    for (const timer of statusTimers) timer();
+    await settle();
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-2" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    await settle();
+    await act(async () => {
+      sockets
+        .at(-1)
+        ?.emit(
+          "message",
+          new MessageEvent("message", { data: JSON.stringify({ type: "session:log-part" }) }),
+        );
+    });
+    await settle();
+    view.unmount();
+  });
 });
