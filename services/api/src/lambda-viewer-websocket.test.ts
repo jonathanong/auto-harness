@@ -376,4 +376,46 @@ describe("Lambda viewer WebSocket adapter", () => {
     });
     expect(watches.at(-1)).toEqual(["host-1", "session-1", false]);
   });
+
+  it("disconnects the last watcher and rethrows non-gone post failures", async () => {
+    const watches: Array<[string, string, boolean]> = [];
+    const ctx = fixture();
+    const sockets = createLambdaViewerSockets({
+      auth: ctx.auth as never,
+      management: ctx.management as never,
+      storage: ctx.storage,
+      publicBaseUrl: origin,
+      onSessionWatch: (hostId, sessionId, watching) => {
+        watches.push([hostId, sessionId, watching]);
+      },
+    });
+    await sockets.connect("viewer-1", "ticket", origin);
+    ctx.sessions.set("session-1", {
+      repositoryId: "repo-1",
+      status: "running",
+      hostId: "host-1",
+    });
+    await sockets.message(
+      "viewer-1",
+      JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+    );
+    await expect(sockets.disconnect("viewer-1")).resolves.toBe(true);
+    expect(watches[0]).toEqual(["host-1", "session-1", true]);
+    await sockets.connect("viewer-2", "ticket", origin);
+    ctx.management.send.mockRejectedValueOnce(new Error("apigw down"));
+    await expect(
+      sockets.message(
+        "viewer-2",
+        JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+      ),
+    ).rejects.toThrow("apigw down");
+    await sockets.publishLog({
+      sessionId: "session-1",
+      timestampSeq: "2026-08-17T00:00:01.000Z#0000000001",
+      seq: 1,
+      stream: "stdout",
+      content: "line",
+      timestamp: "2026-08-17T00:00:01.000Z",
+    });
+  });
 });
