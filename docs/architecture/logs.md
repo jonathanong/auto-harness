@@ -51,8 +51,10 @@ concatenated, or recompressed as one member) into the final key.
 
 The host PUTs parts and the terminal archive over REST (`PUT /sessions/:id/log-parts` and
 `PUT /sessions/:id/log-archive`) with the attempt-scoped session API key. That avoids a
-presigned URL that expires mid-session and keeps S3 off the WebSocket Lambda. REST/Cron keep
-`sessions/*` Put/Get. DynamoDB `Archives` rows remain pointer/`versionId`/retry metadata only.
+presigned URL that expires mid-session and keeps S3 off the WebSocket Lambda. REST has
+`sessions/*` Put/Get/List plus version-pinned Get. Cron has Put plus Get/List of **current**
+objects so it can concatenate leftover parts; it does not get `GetObjectVersion`. DynamoDB
+`Archives` rows remain pointer/`versionId`/retry metadata only.
 
 ## Control plane vs host pane
 

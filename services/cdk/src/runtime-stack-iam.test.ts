@@ -45,7 +45,7 @@ function policyActions(template: Template, handler: string): string[] {
 }
 
 describe("runtime Lambda IAM split", () => {
-  it("gives archive writes to REST and Cron, archive reads to REST only, and KMS encrypt to REST", () => {
+  it("gives archive writes to REST and Cron, version-pinned reads to REST, part reads to Cron, and KMS encrypt to REST", () => {
     const template = runtimeTemplate();
     const restRole = roleLogicalId(template, "index.rest");
     const cronRole = roleLogicalId(template, "index.cron");
@@ -65,7 +65,8 @@ describe("runtime Lambda IAM split", () => {
     expect(rest).toContain("s3:ListBucket");
     expect(cron).toContain("kms:Decrypt");
     expect(cron).not.toContain("kms:Encrypt");
-    expect(cron).not.toContain("s3:GetObject");
+    expect(cron).toContain("s3:GetObject");
+    expect(cron).toContain("s3:ListBucket");
     expect(cron).not.toContain("s3:GetObjectVersion");
     expect(websocket).not.toContain("kms:Encrypt");
     expect(websocket).not.toContain("s3:GetObject");

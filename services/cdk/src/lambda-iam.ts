@@ -48,21 +48,30 @@ export function grantRuntimeLambdaAccess(input: {
   }
   input.rest.role!.addManagedPolicy(archiveDataAccessPolicy);
   input.cron.role!.addManagedPolicy(archiveDataAccessPolicy);
-  // Archive uploads are a shared REST/Cron responsibility, but transcript reads are served only
-  // through the authorized REST route. Keep GetObject off Cron and WebSocket.
+  // REST serves authorized archive downloads (GetObject + GetObjectVersion). Cron concatenates
+  // leftover gzip parts into logs.jsonl.gz, so it lists and reads current objects under
+  // sessions/*. WebSocket still has no S3 grant; version-pinned downloads stay REST-only.
   input.rest.addToRolePolicy(
     new iam.PolicyStatement({
       actions: ["s3:GetObject", "s3:GetObjectVersion"],
       resources: [input.foundation.archiveBucket.arnForObjects("sessions/*")],
     }),
   );
-  input.rest.addToRolePolicy(
+  input.cron.addToRolePolicy(
     new iam.PolicyStatement({
-      actions: ["s3:ListBucket"],
-      resources: [input.foundation.archiveBucket.bucketArn],
-      conditions: { StringLike: { "s3:prefix": ["sessions/*"] } },
+      actions: ["s3:GetObject"],
+      resources: [input.foundation.archiveBucket.arnForObjects("sessions/*")],
     }),
   );
+  for (const fn of [input.rest, input.cron]) {
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["s3:ListBucket"],
+        resources: [input.foundation.archiveBucket.bucketArn],
+        conditions: { StringLike: { "s3:prefix": ["sessions/*"] } },
+      }),
+    );
+  }
 
   const keyArn = input.foundation.integrationKey.keyArn;
   input.rest.addToRolePolicy(

@@ -324,9 +324,10 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
    [architecture/logs.md](architecture/logs.md) and [costs.md](costs.md).
 2. The foundation provides the encrypted, versioned bucket and a narrowly scoped
    archive-write policy (`s3:PutObject` only below `sessions/*`). REST and Cron receive the bucket
-   name and that write policy; REST alone also receives `s3:GetObject` and `s3:GetObjectVersion`
-   below `sessions/*` for authorized, version-pinned archive retrieval. The WebSocket worker
-   receives neither archive access.
+   name and that write policy. REST also receives `s3:GetObject` and `s3:GetObjectVersion` below
+   `sessions/*` for authorized, version-pinned archive retrieval. Cron also receives current-object
+   `s3:GetObject` and `s3:ListBucket` on `sessions/*` so it can concatenate leftover gzip parts.
+   The WebSocket worker receives neither archive access.
    Terminal-session processing:
    - Concatenate gzip parts (host `PUT /log-archive`, or Cron concat if parts exist)
    - Write the `sessions/{sessionId}/logs.jsonl.gz` object and track pending/completed/expired state.
@@ -355,8 +356,9 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
    - Leave DynamoDB rows intact after upload; this archive path never deletes them
      REST and Cron write the object from those workers; there is no separate archival Lambda.
      WebSocket terminal transitions persist pending archive metadata without S3 access; Cron
-     retries the same idempotent key. Cron's archive policy does not grant `s3:GetObject`,
-     `s3:GetObjectVersion`, `s3:DeleteObject`, `s3:GetBucketLocation`, or bucket deletion.
+     retries the same idempotent key, listing/reading current gzip parts when the host did not
+     concatenate. Cron's archive policy does not grant `s3:GetObjectVersion`,
+     `s3:DeleteObject`, `s3:GetBucketLocation`, or bucket deletion.
 3. REST `GET /sessions/:id/logs` serves gzip JSONL parts and the concatenated archive under
    `sessions/{id}/` with bounded query parameters.
    REST `GET /sessions/:id/archive` retrieves an authorized archived transcript through its
@@ -613,7 +615,7 @@ See [integrations.md](integrations.md).
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | REST Lambda | DynamoDB item/query/transact on app tables; Scan only on list/hydrate tables; archive `s3:PutObject`, `s3:GetObject`, `s3:GetObjectVersion`, and `s3:ListBucket` on `sessions/*`; integration KMS encrypt/decrypt; `ManageConnections` |
 | WS Lambda   | Same DynamoDB item/query/Scan split; `execute-api:ManageConnections`. No archive policy, no integration KMS                                                                                                                            |
-| Cron Lambda | Same DynamoDB split; archive `s3:PutObject`; integration KMS decrypt; `ManageConnections`                                                                                                                                              |
+| Cron Lambda | Same DynamoDB split; archive `s3:PutObject`, `s3:GetObject`, and `s3:ListBucket` on `sessions/*` (not `GetObjectVersion`); integration KMS decrypt; `ManageConnections`                                                                |
 | EventBridge | `lambda:InvokeFunction` on Cron only                                                                                                                                                                                                   |
 
 Shared DynamoDB grants include `TransactWriteItems` / `TransactGetItems`. Scan is omitted from
