@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- packaged daemon spawn, drain, and log capture stay one lifecycle. */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

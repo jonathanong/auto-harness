@@ -6,6 +6,8 @@ import {
   type SessionLogSettings,
 } from "@auto-harness/shared";
 
+import { httpBaseFromApiUrl } from "./bootstrap.ts";
+
 export type LogPartUpload = {
   apiUrl: string;
   apiKey?: string;
@@ -44,10 +46,13 @@ export class LogPartBuffer {
       this.pendingBytes >= this.settings.batchMaxKb * 1024 ||
       this.pending.length >= this.settings.batchMaxLines
     ) {
-      void this.flush();
+      void this.flush().catch(() => undefined);
       return;
     }
-    this.timer ??= setTimeout(() => void this.flush(), this.settings.batchMaxWaitMs);
+    this.timer ??= setTimeout(
+      () => void this.flush().catch(() => undefined),
+      this.settings.batchMaxWaitMs,
+    );
   }
 
   async flush(): Promise<void> {
@@ -98,7 +103,7 @@ export class LogPartBuffer {
 
   private async put(path: string, gzipped: Buffer): Promise<void> {
     if (!this.upload) return;
-    const base = this.upload.apiUrl.replace(/\/$/, "").replace(/\/ws$/i, "");
+    const base = httpBaseFromApiUrl(this.upload.apiUrl);
     const headers: Record<string, string> = { "content-type": "application/gzip" };
     if (this.upload.apiKey) headers.authorization = `Bearer ${this.upload.apiKey}`;
     const response = await (this.upload.fetchFn ?? fetch)(`${base}${path}`, {

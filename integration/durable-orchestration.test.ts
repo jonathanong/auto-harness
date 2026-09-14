@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- durable create, resume, and restart share one orchestration. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, join } from "node:path";
