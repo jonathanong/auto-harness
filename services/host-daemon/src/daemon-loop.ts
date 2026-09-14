@@ -44,6 +44,7 @@ import { resolvedRouteMetadata, sessionAssignFromWire } from "./session-assign.t
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { defaultSetupCacheDir } from "./setup-script-cache.ts";
+import { expireOrphanedSetupCache } from "./setup-script-cache-expire.ts";
 import { WorktreeManager, type ClaimedWorktree } from "./worktree-manager.ts";
 import { WorkspaceManager } from "./workspace-manager.ts";
 import { probeGitReadiness } from "./git-readiness.ts";
@@ -71,6 +72,8 @@ export type DaemonLoopOptions = {
   /** Daemon-local execution profiles keyed by provider account. */
   executionProfiles?: ExecutionProfiles;
   githubApp?: GitHubAppConfig;
+  /** Host-owned directory for last-successful setup fingerprints. */
+  setupCacheDir?: string;
   isDraining?: () => boolean;
   onLog?: (line: string) => void;
   now?: () => string;
@@ -269,6 +272,7 @@ export class DaemonLoop {
   private readonly runner: SessionRunner;
   private readonly worktrees: WorktreeManager;
   private readonly workspaces: WorkspaceManager;
+  private readonly setupCacheDir: string | undefined;
   private readonly inflight = new Map<string, InflightSession>();
   /**
    * Assignment completion fences by physical execution target. A checkout
@@ -387,6 +391,7 @@ export class DaemonLoop {
     );
     this.worktrees = new WorktreeManager(options.config, git);
     this.workspaces = new WorkspaceManager(options.config);
+    this.setupCacheDir = options.setupCacheDir;
     this.runner = new SessionRunner({
       worktrees: this.worktrees,
       workspaces: this.workspaces,
@@ -406,13 +411,18 @@ export class DaemonLoop {
       onLog: (chunk) => void this.emitLog(chunk),
       now: this.now,
       authorizeCommandStart: (assign, signal) => this.authorizeCommandStart(assign, signal),
-      setupCacheDir: defaultSetupCacheDir(),
+      setupCacheDir: options.setupCacheDir ?? defaultSetupCacheDir(),
     });
+  }
+  private async expireSetupCache(): Promise<void> {
+    if (this.setupCacheDir === undefined) return;
+    await expireOrphanedSetupCache(this.setupCacheDir, this.config);
   }
   async start(): Promise<void> {
     this.runtime ??= await probeGitReadiness(this.processRunner);
     if (this.runtime.gitReady) await this.worktrees.ensureAll();
     await this.workspaces.ensureAll();
+    await this.expireSetupCache();
     this.transport.onMessage((msg) => {
       void this.handleServerMessage(msg).catch((err: unknown) => {
         this.onLog?.(`server message failed: ${thrownMessage(err)}`);
@@ -463,6 +473,7 @@ export class DaemonLoop {
         },
         this.workspaces,
       );
+      await this.expireSetupCache();
     } catch (error) {
       this.worktrees.restoreAllowedRootsPolicy(previousRootsPolicy);
       this.inventoryPolicyBlocked = wasPolicyBlocked;

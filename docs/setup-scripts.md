@@ -42,6 +42,9 @@ change the setup script text (or a declared checkout input) when those files cha
 not reconstruct or revalidate ignored outputs such as `node_modules` from a prior session; leave
 cache unused or bump a declared input or script if those outputs must be rebuilt. Cache sidecars
 are mode-0600 files in the daemon cache directory (`~/.auto-harness/setup-cache` by default).
+On daemon start and after inventory apply, sidecars whose worktree id and checkout path are no
+longer in inventory (removed or relocated worktrees, including scheduled main checkouts) are
+deleted. A missing sidecar is a cache miss and re-runs setup; it never fails the session.
 
 ### Workspace profile boundary
 

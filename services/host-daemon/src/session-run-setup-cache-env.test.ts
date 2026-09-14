@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -54,6 +54,12 @@ describe("runSetupIfNeeded setup cache environment", () => {
     const missingEnv = countingSetupRunner();
     await runCachedSetup(baseAssign(), claimed, missingEnv.runner, cacheDir);
     expect(missingEnv.calls()).toBe(1);
+
+    await unlink(sidecar);
+    const missing = countingSetupRunner();
+    const missingRun = await runCachedSetup(baseAssign(), claimed, missing.runner, cacheDir);
+    expect(missing.calls()).toBe(1);
+    expect(missingRun.failure).toBeNull();
   });
 
   it("does not fail the session when the cache sidecar cannot be stored", async () => {

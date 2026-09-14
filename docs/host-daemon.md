@@ -760,8 +760,11 @@ changed declared file are cache misses and run setup again. Declared extra files
 bounded regular files; the daemon does not follow symlinks into devices and does not read FIFOs.
 The host never inspects undeclared manifests or lockfiles. Failed setup does not record a
 successful cache. If setup succeeds but the sidecar cannot be written, the session still succeeds
-and the next fresh session re-runs setup. Configure `setupCacheInputs` next to setup scripts
-(`fleet:exec-config`); paths must be relative checkout paths with no `..` segments.
+and the next fresh session re-runs setup. Sidecars whose worktree id and checkout path are no
+longer in inventory — a removed worktree, a relocated path, or a replaced main checkout — are
+deleted on daemon start and after inventory apply, bounded so a large cache directory cannot stall
+startup. A missing sidecar is a miss, never `setup_failed`. Configure `setupCacheInputs` next to
+setup scripts (`fleet:exec-config`); paths must be relative checkout paths with no `..` segments.
 
 ### Command resolution hardening
 

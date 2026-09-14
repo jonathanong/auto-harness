@@ -1,5 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { dirname } from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -18,6 +20,7 @@ type Host = {
 
 let server: RunningServer | undefined;
 let daemon: ChildProcessWithoutNullStreams | undefined;
+let home: string | undefined;
 
 afterEach(async () => {
   if (daemon?.exitCode === null && daemon.signalCode === null) {
@@ -26,8 +29,10 @@ afterEach(async () => {
     await closed;
   }
   await server?.close();
+  if (home) rmSync(home, { recursive: true, force: true });
   daemon = undefined;
   server = undefined;
+  home = undefined;
 });
 
 async function request<T>(base: string, path: string, init?: RequestInit): Promise<T> {
@@ -46,7 +51,7 @@ async function waitFor<T>(read: () => Promise<T>, ready: (value: T) => boolean):
   return value;
 }
 
-function launch(base: string, hostId: string) {
+function launch(base: string, hostId: string, isolatedHome: string) {
   const child = spawn(
     process.execPath,
     ["services/host-daemon/bin/auto-harness-host-daemon.mjs", "start"],
@@ -54,6 +59,8 @@ function launch(base: string, hostId: string) {
       cwd: projectRoot,
       env: {
         ...process.env,
+        HOME: isolatedHome,
+        USERPROFILE: isolatedHome,
         HARNESS_HOST_ID: hostId,
         HARNESS_API_URL: base,
         HARNESS_LOG_LEVEL: "info",
@@ -92,13 +99,15 @@ describe("daemon restart observability integration", () => {
     });
     const base = `http://127.0.0.1:${port}`;
     const hostId = "restart-observability-host";
+    const isolatedHome = mkdtempSync(join(tmpdir(), "ah-restart-home-"));
+    home = isolatedHome;
     await request(base, `/api/v1/hosts/${hostId}/inventory`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ repositories: [], providerAccounts: [], commandProfiles: {} }),
     });
 
-    const first = launch(base, hostId);
+    const first = launch(base, hostId, isolatedHome);
     daemon = first.child;
     expect(
       await waitFor(
@@ -118,7 +127,7 @@ describe("daemon restart observability integration", () => {
       (response) => response.items.some((host) => host.hostId === hostId && !host.online),
     );
 
-    const replacement = launch(base, hostId);
+    const replacement = launch(base, hostId, isolatedHome);
     daemon = replacement.child;
     expect(
       await waitFor(
