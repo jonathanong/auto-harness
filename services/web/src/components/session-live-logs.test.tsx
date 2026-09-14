@@ -41,6 +41,7 @@ describe("SessionLiveLogs", () => {
       <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
     );
     await settle();
+    await settle();
     expect(field(view.container, "session-logs-s3-note").textContent).toContain("host pane");
     expect(field(view.container, "session-logs-live-state").textContent).toBe("completed");
     expect(vi.mocked(fetch)).toHaveBeenCalled();

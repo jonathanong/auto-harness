@@ -114,10 +114,8 @@ async function main(): Promise<void> {
       throw new Error("missing url");
     }
 
-    const logs = plane.getLogs(created.session.id);
-    if (logs.length === 0) {
-      throw new Error("expected logs");
-    }
+    // Transcript bodies live on gzip objects / the host pane, not the in-memory
+    // control-plane cache, unless upload mode is always.
 
     // Terminal hook env (D3) — must fire with session id, status, ref
     const hookBody = readFileSync(hookOut, "utf8");
@@ -189,7 +187,7 @@ async function main(): Promise<void> {
         ref: session.ref,
         featureSha,
         head,
-        logCount: logs.length,
+        logCount: 0,
         unknownProfileRejected: true,
         hookEnv: {
           sessionId: hookLines[0],

@@ -50,28 +50,16 @@ export function SessionLiveLogs({
 
     const poll = (): void => {
       if (stopped) return;
-      void Promise.all([
-        fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}/logs?limit=1000`, {
-          credentials: "same-origin",
-          cache: "no-store",
-        }),
-        fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, {
-          credentials: "same-origin",
-          cache: "no-store",
-        }),
-      ])
-        .then(async ([logsResponse, sessionResponse]) => {
+      void fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}/logs?limit=1000`, {
+        credentials: "same-origin",
+        cache: "no-store",
+      })
+        .then(async (response) => {
           if (stopped) return;
-          if (!logsResponse.ok) throw new Error("log poll failed");
-          const body = (await logsResponse.json()) as { items?: LiveLogEntry[] };
+          if (!response.ok) throw new Error("log poll failed");
+          const body = (await response.json()) as { items?: LiveLogEntry[] };
           const incoming = Array.isArray(body.items) ? body.items : [];
           setItems(mergeInitialLiveLogs(incoming));
-          if (sessionResponse.ok) {
-            const session = (await sessionResponse.json()) as { status?: string };
-            if (typeof session.status === "string") {
-              setSessionStatus((current) => resolveViewerSessionStatus(current, session.status!));
-            }
-          }
           setConnectionState("live");
           setError(null);
         })
@@ -91,6 +79,33 @@ export function SessionLiveLogs({
       if (retryTimer !== undefined) clearTimeout(retryTimer);
     };
   }, [sessionId, pollMs]);
+
+  useEffect(() => {
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false;
+    const pollStatus = (): void => {
+      if (stopped) return;
+      void fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, {
+        credentials: "same-origin",
+        cache: "no-store",
+      })
+        .then(async (response) => {
+          if (stopped || !response.ok) return;
+          const session = (await response.json()) as { status?: string };
+          if (typeof session.status === "string") {
+            setSessionStatus((current) => resolveViewerSessionStatus(current, session.status!));
+          }
+        })
+        .finally(() => {
+          if (!stopped) retryTimer = setTimeout(pollStatus, 2_000);
+        });
+    };
+    pollStatus();
+    return () => {
+      stopped = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+    };
+  }, [sessionId]);
 
   useEffect(() => {
     let stopped = false;

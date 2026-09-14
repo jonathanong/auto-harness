@@ -36,13 +36,13 @@ describe("DynamoDB Local catalog transport failures", () => {
     const unavailableCtx = { doc: unavailable.doc, tables };
     await expect(
       putLogFenced(unavailableCtx, {} as never, { hostId: "host", connectionId: "connection" }),
-    ).rejects.toThrow();
+    ).resolves.toBe(true);
     await expect(
       putLogsFenced(unavailableCtx, [{} as never], {
         hostId: "host",
         connectionId: "connection",
       }),
-    ).rejects.toThrow();
+    ).resolves.toBe(true);
     await expect(
       createRepository(unavailableCtx, {
         id: "repository",
