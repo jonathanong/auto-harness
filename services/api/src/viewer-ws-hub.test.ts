@@ -823,6 +823,50 @@ describe("browser session log protocol", () => {
       ),
     ).toBeNull();
   });
+
+  it("closes the viewer socket when session load throws", async () => {
+    const auth = authService();
+    const principal = await auth.createUser({
+      username: "viewer-fail",
+      password: "viewer-password",
+      role: "read-only",
+    });
+    const plane = planeWithSessions();
+    plane.state.storage = {
+      getSession: async () => {
+        throw new Error("session store down");
+      },
+    } as never;
+    const server = createServer();
+    const hub = attachViewerWsHub(server, plane, auth);
+    await listen(server);
+    const ticket = await auth.issueViewerTicket(principal);
+    const code = await new Promise<number>((resolve, reject) => {
+      const ws = new WebSocket(ticketUrl(wsUrl(server), ticket), { headers: viewerOrigin() });
+      ws.on("open", () =>
+        ws.send(JSON.stringify({ type: "session:subscribe", sessionId: "session-a" })),
+      );
+      ws.on("close", (closeCode) => resolve(closeCode));
+      ws.on("error", reject);
+    });
+    expect(code).toBe(1011);
+    hub.close();
+    await close(server);
+  });
+
+  it("rejects an upgrade when viewer authentication throws", async () => {
+    const auth = authService();
+    auth.authenticateViewerTicket = async () => {
+      throw new Error("ticket down");
+    };
+    const plane = planeWithSessions();
+    const server = createServer();
+    const hub = attachViewerWsHub(server, plane, auth);
+    await listen(server);
+    await expectUnauthorizedUpgrade(wsUrl(server) + "?ticket=x");
+    hub.close();
+    await close(server);
+  });
 });
 
 function viewerOrigin(origin = "http://ui"): Record<string, string> {
