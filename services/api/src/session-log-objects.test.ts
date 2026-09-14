@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- gzip part, archive, and fallback cases share one object fixture. */
 import { describe, expect, it } from "vitest";
 
 import { gzipJsonlLines } from "@auto-harness/shared";
