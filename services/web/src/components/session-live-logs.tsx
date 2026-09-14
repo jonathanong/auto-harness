@@ -6,6 +6,7 @@ import { SESSION_QUEUED_WAIT_COPY, SessionTerminalViewer } from "@auto-harness/u
 import {
   liveLogsStateLabel,
   mergeInitialLiveLogs,
+  resolveViewerSessionStatus,
   viewerTicket,
   viewerWebSocketUrl,
   type LiveLogEntry,
@@ -49,16 +50,28 @@ export function SessionLiveLogs({
 
     const poll = (): void => {
       if (stopped) return;
-      void fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}/logs?limit=1000`, {
-        credentials: "same-origin",
-        cache: "no-store",
-      })
-        .then(async (response) => {
+      void Promise.all([
+        fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}/logs?limit=1000`, {
+          credentials: "same-origin",
+          cache: "no-store",
+        }),
+        fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, {
+          credentials: "same-origin",
+          cache: "no-store",
+        }),
+      ])
+        .then(async ([logsResponse, sessionResponse]) => {
           if (stopped) return;
-          if (!response.ok) throw new Error("log poll failed");
-          const body = (await response.json()) as { items?: LiveLogEntry[] };
+          if (!logsResponse.ok) throw new Error("log poll failed");
+          const body = (await logsResponse.json()) as { items?: LiveLogEntry[] };
           const incoming = Array.isArray(body.items) ? body.items : [];
           setItems(mergeInitialLiveLogs(incoming));
+          if (sessionResponse.ok) {
+            const session = (await sessionResponse.json()) as { status?: string };
+            if (typeof session.status === "string") {
+              setSessionStatus((current) => resolveViewerSessionStatus(current, session.status!));
+            }
+          }
           setConnectionState("live");
           setError(null);
         })

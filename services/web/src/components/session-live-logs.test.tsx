@@ -21,18 +21,20 @@ describe("SessionLiveLogs", () => {
   it("polls REST logs and notes the S3 delay", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          items: [
-            {
-              timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
-              seq: 1,
-              stream: "stdout",
-              content: "hello",
-              timestamp: "2026-01-01T00:00:00.000Z",
-            },
-          ],
-        }),
+      vi.fn(async (url: string) =>
+        String(url).includes("/logs")
+          ? Response.json({
+              items: [
+                {
+                  timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+                  seq: 1,
+                  stream: "stdout",
+                  content: "hello",
+                  timestamp: "2026-01-01T00:00:00.000Z",
+                },
+              ],
+            })
+          : Response.json({ status: "completed" }),
       ),
     );
     const view = mountForm(
@@ -40,6 +42,7 @@ describe("SessionLiveLogs", () => {
     );
     await settle();
     expect(field(view.container, "session-logs-s3-note").textContent).toContain("host pane");
+    expect(field(view.container, "session-logs-live-state").textContent).toBe("completed");
     expect(vi.mocked(fetch)).toHaveBeenCalled();
   });
 });

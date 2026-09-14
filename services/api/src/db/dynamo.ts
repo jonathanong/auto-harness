@@ -21,7 +21,7 @@ export type DynamoTableNames = {
   workspacePools: string;
   workspaceSlots: string;
   connections: string;
-  sessionLogs: string;
+  sessionLogs?: string;
   schedules: string;
   repositories: string;
   hostLocks: string;
@@ -54,7 +54,6 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
     workspacePools: `${p}-WorkspacePools`,
     workspaceSlots: `${p}-WorkspaceSlots`,
     connections: `${p}-Connections`,
-    sessionLogs: `${p}-SessionLogs`,
     schedules: `${p}-Schedules`,
     repositories: `${p}-Repositories`,
     hostLocks: `${p}-HostLocks`,

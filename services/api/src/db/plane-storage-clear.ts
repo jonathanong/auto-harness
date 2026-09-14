@@ -167,19 +167,21 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
       new DeleteCommand({ TableName: ctx.tables.webhookDeliveries, Key: { id: delivery.id } }),
     );
   }
+  const sessionLogs = ctx.tables.sessionLogs;
+  if (!sessionLogs) return;
   try {
     let startKey: Record<string, unknown> | undefined;
     do {
       const res = await ctx.doc.send(
         new ScanCommand({
-          TableName: ctx.tables.sessionLogs,
+          TableName: sessionLogs,
           ExclusiveStartKey: startKey,
         }),
       );
       for (const item of res.Items ?? []) {
         await ctx.doc.send(
           new DeleteCommand({
-            TableName: ctx.tables.sessionLogs,
+            TableName: sessionLogs,
             Key: {
               sessionId: item.sessionId,
               timestampSeq: item.timestampSeq,
