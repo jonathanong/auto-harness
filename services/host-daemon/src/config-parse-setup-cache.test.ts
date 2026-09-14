@@ -45,4 +45,28 @@ describe("parseDaemonConfig setup cache inputs", () => {
       }),
     ).not.toHaveProperty("setupCacheHostInputs");
   });
+
+  it("rejects foreign Windows host-input paths on non-Windows hosts", () => {
+    if (process.platform === "win32") {
+      expect(
+        parseDaemonConfig({
+          ...valid,
+          setupCacheHostInputs: ["C:\\auto-harness\\setup\\env", "\\\\host\\share\\env"],
+        }).setupCacheHostInputs,
+      ).toEqual(["C:\\auto-harness\\setup\\env", "\\\\host\\share\\env"]);
+      return;
+    }
+    for (const setupCacheHostInputs of [
+      ["C:\\auto-harness\\setup\\env"],
+      ["\\\\host\\share\\env"],
+      ["/opt/auto-harness/setup/host-environment", "C:\\auto-harness\\setup\\env"],
+    ]) {
+      expect(() =>
+        parseDaemonConfig({
+          ...valid,
+          setupCacheHostInputs,
+        }),
+      ).toThrow(/setupCacheHostInputs is not valid/);
+    }
+  });
 });

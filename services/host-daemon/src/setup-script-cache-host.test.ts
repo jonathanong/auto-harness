@@ -165,4 +165,23 @@ describe("setup script host-file fingerprint", () => {
       }),
     ).toBe(first.fingerprintToStore);
   });
+
+  it("does not treat foreign Windows host paths as cwd-relative files", async () => {
+    if (process.platform === "win32") return;
+    const { cwd, cacheDir } = await fixture();
+    for (const foreign of ["C:\\auto-harness\\setup\\env", "\\\\host\\share\\env"]) {
+      await writeFile(join(cwd, foreign), "not-the-host-file");
+      expect(
+        await resolveSetupCacheState({
+          cacheDir,
+          checkoutSha: "abc",
+          cwd,
+          worktreeId: "wt-1",
+          scripts: ["true"],
+          extraPaths: [],
+          hostPaths: [foreign],
+        }),
+      ).toEqual({ skip: false });
+    }
+  });
 });

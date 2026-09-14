@@ -1698,7 +1698,9 @@ exec-config audit is persisted before a full-document inventory replacement can 
 path for host-, repository-, and worktree-scoped setup scripts, optional `setupCacheInputs`
 relative checkout paths that invalidate cached setup, optional host-level `setupCacheHostInputs`
 absolute host-owned files that invalidate cached setup, repository `terminalHookScript`
-paths, and host-local `allowedRoots`. Omitted keys are left unchanged. Empty strings / empty
+paths, and host-local `allowedRoots`. Control-plane parsing of `setupCacheHostInputs` accepts
+POSIX, Windows-drive, and UNC absolute paths so mixed fleets can share inventory; a POSIX daemon
+rejects foreign-platform spellings when applying that list, matching terminal-hook path checks. Omitted keys are left unchanged. Empty strings / empty
 `allowedRoots`, empty `setupCacheInputs`, and empty `setupCacheHostInputs` clear the stored value. A host with no inventory yet is created empty, then the
 patch is applied. Unknown repository or worktree ids return `400 VALIDATION_ERROR`. Non-empty
 new or changed `terminalHookScript` values must be absolute paths on both this route and
