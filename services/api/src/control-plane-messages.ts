@@ -11,7 +11,12 @@ import {
 import type { LogRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { gzipLogRecords, putSessionLogPart } from "./session-log-objects.ts";
-import { noteSlackSessionLifecycle, persistSession, queueWrite } from "./control-plane-state.ts";
+import {
+  noteSlackSessionLifecycle,
+  persistSession,
+  queueWrite,
+  trackLogPersist,
+} from "./control-plane-state.ts";
 import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import {
   heartbeat,
@@ -506,8 +511,12 @@ export function appendLog(
 ): LogRecord {
   const rec = logRecord(opts);
   emitLogDrops(opts.dropped);
-  queueWrite(state, () =>
-    putSessionLogPart(state, rec.sessionId, rec.seq, rec.seq, gzipLogRecords([rec])),
+  trackLogPersist(
+    state,
+    rec.sessionId,
+    queueWrite(state, () =>
+      putSessionLogPart(state, rec.sessionId, rec.seq, rec.seq, gzipLogRecords([rec])),
+    ),
   );
   state.logs.set(opts.sessionId, commitLogRecord(state, rec));
   state.onLogCommitted?.(rec);

@@ -2157,15 +2157,20 @@ export class DaemonLoop {
         ...(resolveDeferredDisposition ? { resolveDeferredDisposition } : {}),
       });
     }
-    await Promise.race([
-      this.logParts
-        .get(msg.sessionId)
-        ?.flushFinal()
-        .catch((error: unknown) => {
-          this.onLog?.(`log upload failed for ${msg.sessionId}: ${thrownMessage(error)}`);
-        }) ?? Promise.resolve(),
-      new Promise<void>((resolve) => this.timers.setTimeout(resolve, 5_000)),
-    ]);
+    await new Promise<void>((resolve) => {
+      const timeout = this.timers.setTimeout(resolve, 5_000);
+      void (
+        this.logParts
+          .get(msg.sessionId)
+          ?.flushFinal()
+          .catch((error: unknown) => {
+            this.onLog?.(`log upload failed for ${msg.sessionId}: ${thrownMessage(error)}`);
+          }) ?? Promise.resolve()
+      ).finally(() => {
+        this.timers.clearTimeout(timeout);
+        resolve();
+      });
+    });
     this.logParts.delete(msg.sessionId);
     await this.outbound.flush();
     await this.outbound

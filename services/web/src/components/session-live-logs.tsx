@@ -129,6 +129,8 @@ export function SessionLiveLogs({
                   if (stopped || !response.ok) return;
                   const body = (await response.json()) as { items?: LiveLogEntry[] };
                   setItems(mergeInitialLiveLogs(Array.isArray(body.items) ? body.items : []));
+                  setConnectionState("live");
+                  setError(null);
                 })
                 .catch(() => undefined);
             }
