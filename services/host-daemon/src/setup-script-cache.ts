@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -85,6 +85,20 @@ export async function readStoredSetupCache(
     return { fingerprint, environment };
   } catch {
     return undefined;
+  }
+}
+
+/** Drop the sidecar after a command can mutate ignored worktree outputs. */
+export async function invalidateStoredSetupCache(
+  cacheDir: string | undefined,
+  worktreeId: string,
+  cwd: string,
+): Promise<void> {
+  if (!cacheDir) return;
+  try {
+    await unlink(join(cacheDir, setupCacheFileName(worktreeId, cwd)));
+  } catch {
+    // Missing or unreadable sidecars are already a miss.
   }
 }
 

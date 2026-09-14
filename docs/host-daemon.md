@@ -749,7 +749,10 @@ A later fresh session skips those scripts when the fingerprint of the checked-ou
 setup script texts that would run (host then scoped), the contents of every
 operator-declared `setupCacheInputs` path, every operator-declared `setupCacheHostInputs`
 host-absolute file, and the filtered child environment from `createChildEnv()` matches the last
-successful setup for that worktree. Ephemeral per-session isolation values such as `GH_CONFIG_DIR`
+successful setup for that worktree — and only until a later command can mutate the worktree.
+After the assigned command is authorized to spawn, the daemon deletes that sidecar so leftover
+ignored outputs such as `node_modules` cannot be reused on the next fresh checkout. Native resume
+still skips every setup script. Ephemeral per-session isolation values such as `GH_CONFIG_DIR`
 are omitted from that fingerprint; a cache hit keeps the live directory.
 After setup succeeds, the daemon rehashes those declared extras. If they changed, it does not store
 a cache entry, so the next fresh checkout (which restores the original bytes) re-runs setup.
@@ -762,7 +765,8 @@ script, a different ref, a changed declared file, or a changed filtered child en
 allowlisted token, `PATH`, or removed variable) are cache misses and run setup again. Captured
 environment values are not written to session logs. Declared extra files are opened as bounded
 regular files; the daemon does not follow symlinks into devices and does not read FIFOs.
-The host never inspects undeclared manifests or lockfiles. Failed setup does not record a
+The host never inspects undeclared manifests or lockfiles and does not scan ignored outputs.
+Failed setup does not record a
 successful cache. If setup succeeds but the sidecar cannot be written, the session still succeeds
 and the next fresh session re-runs setup. Sidecars whose worktree id and checkout path are no
 longer in inventory — a removed worktree, a relocated path, or a replaced main checkout — are

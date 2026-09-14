@@ -14,6 +14,7 @@ import {
 import type { LogStreamer } from "./log-streamer.ts";
 import { runSetupIfNeeded, type ClaimedWorktree } from "./session-run-setup.ts";
 import { finishClaimedSession, type SessionRunResult } from "./session-outcome.ts";
+import { invalidateStoredSetupCache } from "./setup-script-cache.ts";
 import { ResumeRefCaptureReader } from "./resume-ref-capture.ts";
 import { detectUsageLimit } from "./usage-limit.ts";
 import {
@@ -357,6 +358,7 @@ export async function runClaimedSession(
     isolatedGitHubConfigDir,
     installationToken,
     deferPreCommandFailureHook,
+    setupCacheDir,
   );
 }
 
@@ -381,6 +383,7 @@ async function runProcessAndFinish(
   isolatedGitHubConfigDir?: string,
   installationToken?: InstallationToken,
   deferPreCommandFailureHook = false,
+  setupCacheDir?: string,
 ): Promise<SessionRunResult> {
   const scrubbedTerminalEnvironment =
     assign.repositoryId && githubApp?.repositories.has(assign.repositoryId)
@@ -512,6 +515,7 @@ async function runProcessAndFinish(
         ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       });
     }
+    await invalidateStoredSetupCache(setupCacheDir, claimed.worktree.id, claimed.cwd);
     streamer.write(
       "system",
       `Spawning: ${argv[0]} (argument count: ${Math.max(0, argv.length - 1)})`,
