@@ -297,7 +297,8 @@ sequenceDiagram
     Agent->>Agent: Claim eligible worktree and check out ref
     Agent->>CLI: Resume / continue (tool-specific)
     CLI-->>Agent: output
-    Agent->>API: session:status (gzip parts over REST when upload is on)
+    Agent->>API: session:status
+    Agent->>API: PUT /log-parts and /log-archive when upload is on
 ```
 
 #### Placement (control plane)
@@ -976,7 +977,8 @@ sequenceDiagram
 
     loop Until active sessions = 0
         CLI-->>Agent: logs / eventual exit
-        Agent->>AWS: session:status (gzip parts over REST when upload is on)
+        Agent->>AWS: session:status
+        Agent->>AWS: PUT /log-parts and /log-archive when upload is on
     end
 
     Agent->>AWS: disconnect (optional clean close)
