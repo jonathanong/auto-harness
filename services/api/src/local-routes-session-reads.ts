@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- session log part PUT shares this reads file. */
 import { isSessionStatus, isTerminalSessionStatus } from "@auto-harness/shared";
 
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
