@@ -313,4 +313,67 @@ describe("Lambda viewer WebSocket adapter", () => {
       ["host-1", "session-1", false],
     ]);
   });
+
+  it("clears host watch on last unsubscribe and skips unsubscribed log-part fan-out", async () => {
+    const watches: Array<[string, string, boolean]> = [];
+    const ctx = fixture();
+    const sockets = createLambdaViewerSockets({
+      auth: ctx.auth as never,
+      management: ctx.management as never,
+      storage: ctx.storage,
+      publicBaseUrl: origin,
+      onSessionWatch: (hostId, sessionId, watching) => {
+        watches.push([hostId, sessionId, watching]);
+      },
+    });
+    await sockets.connect("viewer-1", "ticket", origin);
+    ctx.sessions.set("session-1", {
+      repositoryId: "repo-1",
+      status: "running",
+      hostId: "host-1",
+    });
+    await sockets.message(
+      "viewer-1",
+      JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+    );
+    expect(watches).toEqual([["host-1", "session-1", true]]);
+    await sockets.publishLogPart({
+      sessionId: "session-1",
+      key: "sessions/session-1/parts/1-1.jsonl.gz",
+      seqStart: 1,
+      seqEnd: 1,
+    });
+    expect(ctx.sent.some((item) => item.message.type === "session:log-part")).toBe(true);
+    ctx.connections.get("viewer-1")!.viewerSubscriptions = [];
+    await sockets.publishLogPart({
+      sessionId: "session-1",
+      key: "sessions/session-1/parts/2-2.jsonl.gz",
+      seqStart: 2,
+      seqEnd: 2,
+    });
+    ctx.connections.get("viewer-1")!.viewerSubscriptions = [
+      { sessionId: "session-1", repositoryId: "repo-1", status: "running" },
+    ];
+    await sockets.message(
+      "viewer-1",
+      JSON.stringify({ type: "session:unsubscribe", sessionId: "session-1" }),
+    );
+    expect(watches).toEqual([
+      ["host-1", "session-1", true],
+      ["host-1", "session-1", false],
+    ]);
+    ctx.connections.set("viewer-1", {
+      ...ctx.connections.get("viewer-1")!,
+      type: "client",
+      viewerSubscriptions: [{ sessionId: "session-1", repositoryId: "repo-1", status: "running" }],
+    });
+    ctx.management.send.mockRejectedValueOnce({ name: "GoneException" });
+    await sockets.publishLogPart({
+      sessionId: "session-1",
+      key: "sessions/session-1/parts/3-3.jsonl.gz",
+      seqStart: 3,
+      seqEnd: 3,
+    });
+    expect(watches.at(-1)).toEqual(["host-1", "session-1", false]);
+  });
 });
