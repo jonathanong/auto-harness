@@ -107,7 +107,10 @@ export async function readSessionLogObjects(
   const listed = await state.archiveWriter?.listKeys?.(prefix);
   for (const key of listed ?? []) keys.add(key);
   if (keys.size === 0) return undefined;
-  const ordered = [...keys].toSorted((left, right) => left.localeCompare(right));
+  const archiveKey = sessionLogArchiveKey(sessionId);
+  const ordered = keys.has(archiveKey)
+    ? [archiveKey]
+    : [...keys].toSorted((left, right) => left.localeCompare(right));
   const records: LogRecord[] = [];
   for (const key of ordered) {
     const stored = state.logObjects.get(key) ?? (await state.archiveWriter?.getGzipObject?.(key));

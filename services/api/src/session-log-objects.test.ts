@@ -120,4 +120,41 @@ describe("session log objects", () => {
     });
     expect(await readSessionLogObjects(missing, "sess")).toEqual([]);
   });
+
+  it("prefers the terminal archive over leftover part objects", async () => {
+    const part = gzipLogRecords([
+      {
+        sessionId: "sess",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        stream: "stdout",
+        content: "part",
+        seq: 1,
+        timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+      },
+    ]);
+    const archive = gzipLogRecords([
+      {
+        sessionId: "sess",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        stream: "stdout",
+        content: "archive",
+        seq: 1,
+        timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+      },
+    ]);
+    const objects = new Map<string, Buffer>([
+      ["sessions/sess/parts/1-1.jsonl.gz", part],
+      ["sessions/sess/logs.jsonl.gz", archive],
+    ]);
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => undefined,
+        listKeys: async (prefix) => [...objects.keys()].filter((key) => key.startsWith(prefix)),
+        getGzipObject: async (key) => objects.get(key),
+      },
+    });
+    expect((await readSessionLogObjects(state, "sess"))?.map((record) => record.content)).toEqual([
+      "archive",
+    ]);
+  });
 });
