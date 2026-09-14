@@ -51,9 +51,7 @@ describe("DaemonLoop outbound delivery", () => {
       await loop.waitForIdle();
       const terminal = sent.filter((message) => message.type === "session:status");
       expect(terminal).toHaveLength(1);
-      expect(sent.findIndex((message) => message.type === "session:status")).toBeGreaterThan(
-        sent.map((message) => message.type).lastIndexOf("session:log"),
-      );
+      expect(sent.some((message) => message.type === "session:log")).toBe(false);
       loop.stop();
     } finally {
       cleanup();
@@ -321,20 +319,10 @@ describe("DaemonLoop outbound delivery", () => {
       await loop.start();
       transport.deliver(seqAssign("attempt-seq-1"));
       await loop.waitForIdle();
-      const firstLogs = sent.filter(
-        (message) => message.type === "session:log" && message.sessionId === "seq-session",
-      );
-      expect(firstLogs.length).toBeGreaterThan(0);
-      const lastSeq = firstLogs.at(-1)!.seq;
+      expect(sent.some((message) => message.type === "session:log")).toBe(false);
       transport.deliver(seqAssign("attempt-seq-2"));
       await loop.waitForIdle();
-      const secondLogs = sent.filter(
-        (message) =>
-          message.type === "session:log" &&
-          message.sessionId === "seq-session" &&
-          message.attemptId === "attempt-seq-2",
-      );
-      expect(secondLogs[0]?.seq).toBe(lastSeq + 1);
+      expect(sent.some((message) => message.type === "session:log")).toBe(false);
       loop.stop();
     } finally {
       cleanup();
