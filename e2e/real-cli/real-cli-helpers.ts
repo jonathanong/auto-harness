@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
@@ -24,12 +24,16 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 /**
- * Full real-CLI orchestration flow, shared by claude-print.spec.ts and codex-exec.spec.ts:
+ * Full real-CLI orchestration flow, shared by claude/codex/grok specs:
  * real temp git repo, real in-process agent daemon (real WS, real subprocess), real
  * browser-driven session creation against a real Provider/Command/ProviderAccount, poll to
  * completion, assert the real CLI's stdout. Mirrors e2e/control/orchestration.spec.ts's
  * shape, but with a real AI CLI instead of `echo` and a case-insensitive substring match
  * (model output varies) instead of an exact line match.
+ *
+ * Provider-targeted sessions stay queued unless the daemon advertises that account ready
+ * via `HARNESS_EXECUTION_PROFILES`. Transcript bodies only appear on GET /logs when upload
+ * is on (default is off).
  */
 export async function runRealCliSession(opts: {
   page: Page;
@@ -37,9 +41,11 @@ export async function runRealCliSession(opts: {
   providerName: string;
   argv: string[];
   appendPrompt: boolean;
+  appendPromptSeparator?: boolean;
   expectStdout: RegExp;
 }): Promise<void> {
   const { page, request, providerName, argv, appendPrompt, expectStdout } = opts;
+  const appendPromptSeparator = opts.appendPromptSeparator ?? true;
   const hostId = `pw-real-${providerName}-${Date.now()}`;
   const repoId = `pw-real-repo-${providerName}-${Date.now()}`;
   const wtId = `wt-${Date.now()}`;
@@ -64,8 +70,29 @@ export async function runRealCliSession(opts: {
     expect(providerRes.ok(), `create provider failed: ${await providerRes.text()}`).toBeTruthy();
     const provider = await providerRes.json();
 
+    const settingsRes = await request.get(`${API}/api/v1/session-log-settings`);
+    const settings = (await settingsRes.json()) as { version?: number };
+    const upload = await request.put(`${API}/api/v1/session-log-settings`, {
+      data: {
+        version: settings.version ?? 0,
+        uploadMode: "always",
+        batchMaxKb: 1,
+        batchMaxLines: 1,
+        batchMaxWaitMs: 1000,
+      },
+    });
+    expect(upload.ok(), `session-log-settings upload always failed: ${await upload.text()}`).toBe(
+      true,
+    );
+
     const commandRes = await request.post(`${API}/api/v1/commands`, {
-      data: { name: `${providerName}-print`, argv, appendPrompt, providerId: provider.id },
+      data: {
+        name: `${providerName}-print`,
+        argv,
+        appendPrompt,
+        appendPromptSeparator,
+        providerId: provider.id,
+      },
     });
     expect(commandRes.ok(), `create command failed: ${await commandRes.text()}`).toBeTruthy();
     const command = await commandRes.json();
@@ -108,6 +135,8 @@ export async function runRealCliSession(opts: {
     expect(configRes.ok(), `attach account to host failed: ${await configRes.text()}`).toBeTruthy();
 
     // Real bootstrap fetch (GET /api/v1/hosts/:id/inventory), same as `pnpm local:daemon start`.
+    const profilePath = join(root, "execution-profiles.json");
+    writeFileSync(profilePath, JSON.stringify({ accounts: { [account.id]: { home: homedir() } } }));
     const config = await fetchHostInventory({
       hostId,
       apiUrl: WS_BASE,
@@ -116,6 +145,7 @@ export async function runRealCliSession(opts: {
       config,
       log: () => undefined,
       error: () => undefined,
+      childEnvSource: { ...process.env, HARNESS_EXECUTION_PROFILES: profilePath },
     });
     stopDaemon = daemon.stop;
     await new Promise((r) => setTimeout(r, 200));
