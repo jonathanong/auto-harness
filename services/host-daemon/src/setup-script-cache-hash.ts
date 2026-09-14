@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join, sep } from "node:path";
 
 type SetupFingerprintParts = {
   checkoutSha: string;
@@ -39,14 +41,28 @@ export function appendExtraFile(
   writeLengthPrefixed(hash, contents);
 }
 
-/** Per-session isolation dirs; hashed values would make every GitHub App session miss. */
+/** Overlay these live keys on a cache hit; stored snapshots may hold a prior session's path. */
 const EPHEMERAL_SETUP_CACHE_ENV_KEYS = new Set(["GH_CONFIG_DIR"]);
+
+/** Must match mkdtemp(join(tmpdir(), "auto-harness-gh-config-")) for mapped App sessions. */
+const APP_GENERATED_GH_CONFIG_DIR_PREFIX = "auto-harness-gh-config-";
+
+function isAppGeneratedGitHubConfigDir(value: string): boolean {
+  const prefix = join(tmpdir(), APP_GENERATED_GH_CONFIG_DIR_PREFIX);
+  return (
+    value.startsWith(prefix) && value.length > prefix.length && !value.includes(sep, prefix.length)
+  );
+}
+
+function isEphemeralSetupCacheEnvValue(key: string, value: string): boolean {
+  return key === "GH_CONFIG_DIR" && isAppGeneratedGitHubConfigDir(value);
+}
 
 function isFingerprintedChildEnvValue(key: string, value: unknown): value is string {
   return (
     typeof value === "string" &&
     !key.toUpperCase().startsWith("HARNESS_") &&
-    !EPHEMERAL_SETUP_CACHE_ENV_KEYS.has(key)
+    !isEphemeralSetupCacheEnvValue(key, value)
   );
 }
 
@@ -67,7 +83,7 @@ export function appendChildEnv(
   }
 }
 
-/** Keep live isolation dirs on a cache hit; stored snapshots may hold a prior session's path. */
+/** Keep live isolation dirs on a cache hit; drop stored keys that live child env no longer has. */
 export function applyLiveEphemeralChildEnv(
   stored: NodeJS.ProcessEnv,
   live: NodeJS.ProcessEnv = {},
@@ -76,6 +92,7 @@ export function applyLiveEphemeralChildEnv(
   for (const key of EPHEMERAL_SETUP_CACHE_ENV_KEYS) {
     const value = live[key];
     if (typeof value === "string") environment[key] = value;
+    else delete environment[key];
   }
   return environment;
 }

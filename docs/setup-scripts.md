@@ -41,13 +41,14 @@ Cache skip fingerprints operator-declared host-absolute files (`setupCacheHostIn
 `/opt/auto-harness/setup/host-environment`; omit that list to keep the SHA/script/relative-extra
 fingerprint. The filtered child environment from `createChildEnv()` is also part of the fingerprint,
 so a rotated allowlisted token, changed `PATH`, or removed variable after a daemon restart is a
-cache miss. Ephemeral per-session isolation values such as `GH_CONFIG_DIR` are omitted from that
+cache miss. App-generated per-session `GH_CONFIG_DIR` isolation directories are omitted from that
 fingerprint and restored from the live child environment, so GitHub App sessions can still skip
-setup. The host never auto-detects sourced files or undeclared manifests. After the assigned command
-is authorized to spawn, the daemon drops the sidecar rather than reconstructing ignored outputs
-such as `node_modules`; a later fresh session with matching inputs re-runs setup. Native resume
-still skips every setup script. Cache sidecars
-are mode-0600 files in the daemon cache directory (`~/.auto-harness/setup-cache` by default).
+setup. Operator-allowlisted `GH_CONFIG_DIR` values stay in the fingerprint. A cache hit drops a
+stored isolation directory that is absent from live child env. The host never auto-detects sourced
+files or undeclared manifests. After the assigned command is authorized to spawn, the daemon drops
+the sidecar rather than reconstructing ignored outputs such as `node_modules`; a later fresh
+session with matching inputs re-runs setup. Native resume still skips every setup script. Cache
+sidecars are mode-0600 files in the daemon cache directory (`~/.auto-harness/setup-cache` by default).
 Filenames and contents are MAC-bound to the worktree identity with a process-lifetime key that is
 never written to the checkout, DynamoDB, or the session child environment, so a session command
 cannot forge or retarget another worktree's sidecar into a cache hit. Replacing sidecar bytes is a
