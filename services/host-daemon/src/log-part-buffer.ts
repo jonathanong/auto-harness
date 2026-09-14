@@ -57,10 +57,7 @@ export class LogPartBuffer {
   }
 
   async flush(): Promise<void> {
-    const run = this.flushing.then(
-      () => this.flushOnce(),
-      () => this.flushOnce(),
-    );
+    const run = this.flushing.then(() => this.flushOnce());
     this.flushing = run.then(
       () => undefined,
       () => undefined,

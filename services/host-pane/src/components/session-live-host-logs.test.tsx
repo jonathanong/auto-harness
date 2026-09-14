@@ -74,6 +74,20 @@ describe("SessionLiveHostLogs", () => {
     expect(
       container.querySelector('[data-pw="session-logs-host-live-state"]')?.textContent,
     ).toContain("Live PTY");
+    await act(async () => {
+      source.emit("error", new Event("error"));
+      source.emit("message", new MessageEvent("message", { data: "not-json" }));
+      source.emit("message", new MessageEvent("message", { data: JSON.stringify({ seq: "bad" }) }));
+      source.emit(
+        "message",
+        new MessageEvent("message", {
+          data: JSON.stringify({ seq: 3, stream: "stderr", content: "err" }),
+        }),
+      );
+    });
+    expect(
+      container.querySelector('[data-pw="session-logs-host-live-state"]')?.textContent,
+    ).toContain("Connecting");
     act(() => root.unmount());
     container.remove();
   });

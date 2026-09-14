@@ -30,6 +30,7 @@ describe("session log settings", () => {
     expect(next.batchMaxLines).toBe(50_000);
     expect(next.batchMaxWaitMs).toBe(1_000);
     expect(next.controlPlanePollMs).toBe(5_000);
+    expect(normalizeSessionLogSettings({ batchMaxKb: Number.NaN }).batchMaxKb).toBe(1);
   });
 
   it("rejects unknown upload modes", () => {

@@ -11,6 +11,8 @@ describe("live log HTTP", () => {
     expect(liveLogPortFromEnv({ HARNESS_DAEMON_LIVE_LOG_PORT: "off" })).toBeUndefined();
     expect(liveLogPortFromEnv({ HARNESS_DAEMON_LIVE_LOG_PORT: "0" })).toBeUndefined();
     expect(liveLogPortFromEnv({ HARNESS_DAEMON_LIVE_LOG_PORT: "7501" })).toBe(7501);
+    expect(liveLogPortFromEnv({ HARNESS_DAEMON_LIVE_LOG_PORT: "nope" })).toBeUndefined();
+    expect(liveLogPortFromEnv({ HARNESS_DAEMON_LIVE_LOG_PORT: "70000" })).toBeUndefined();
   });
 
   it("streams JSON chunks over SSE", async () => {
@@ -55,6 +57,22 @@ describe("live log HTTP", () => {
     const response = await fetch(`http://127.0.0.1:${String(port)}/sessions/%/logs/stream`);
     expect(response.status).toBe(400);
     expect(subscribed).toBe(0);
+    await started.close();
+  });
+
+  it("rejects non-GET methods and unknown paths", async () => {
+    const started = startLiveLogHttp({
+      port: 0,
+      subscribe: () => () => undefined,
+    });
+    if (!started.server.listening) await once(started.server, "listening");
+    const port = (started.server.address() as AddressInfo).port;
+    const post = await fetch(`http://127.0.0.1:${String(port)}/sessions/s/logs/stream`, {
+      method: "POST",
+    });
+    expect(post.status).toBe(405);
+    const missing = await fetch(`http://127.0.0.1:${String(port)}/health`);
+    expect(missing.status).toBe(404);
     await started.close();
   });
 });

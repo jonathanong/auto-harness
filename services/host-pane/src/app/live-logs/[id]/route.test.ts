@@ -40,4 +40,15 @@ describe("host pane live log proxy", () => {
     });
     expect(response.status).toBe(502);
   });
+
+  it("returns 502 when the daemon responds without a stream body", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 204 })),
+    );
+    const response = await GET(new Request("http://127.0.0.1/live-logs/s"), {
+      params: Promise.resolve({ id: "s" }),
+    });
+    expect(response.status).toBe(502);
+  });
 });

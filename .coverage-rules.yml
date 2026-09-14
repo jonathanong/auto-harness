@@ -25,6 +25,7 @@ scope:
     - "**/types.ts"
     - "**/*-types.ts"
     - "modules/shared/src/session.ts"
+    - "modules/shared/src/session-archive.ts"
     - "modules/shared/src/providers.ts"
     - "**/db/plane-storage-auth.ts"
     - "**/db/plane-storage-clear.ts"

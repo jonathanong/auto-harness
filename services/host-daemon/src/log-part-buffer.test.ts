@@ -1,11 +1,15 @@
 /* eslint-disable max-lines -- flush serialization and upload-mode cases share one buffer fixture. */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { gunzipToUtf8 } from "@auto-harness/shared";
 
 import { LogPartBuffer } from "./log-part-buffer.ts";
 
 describe("LogPartBuffer", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("does not upload when mode is off", async () => {
     const calls: string[] = [];
     const buffer = new LogPartBuffer(
@@ -220,5 +224,65 @@ describe("LogPartBuffer", () => {
     await done;
     expect(urls.some((url) => url.includes("/log-parts"))).toBe(true);
     expect(urls.some((url) => url.includes("/log-archive"))).toBe(true);
+  });
+
+  it("flushes on the batch timer when the part is still under size", async () => {
+    vi.useFakeTimers();
+    const urls: string[] = [];
+    const buffer = new LogPartBuffer(
+      "sess",
+      {
+        uploadMode: "always",
+        batchMaxKb: 256,
+        batchMaxLines: 500,
+        batchMaxWaitMs: 25,
+        controlPlanePollMs: 60_000,
+      },
+      {
+        apiUrl: "http://127.0.0.1:7420",
+        fetchFn: (async (url) => {
+          urls.push(String(url));
+          return new Response(JSON.stringify({ key: "ok" }), { status: 200 });
+        }) as typeof fetch,
+      },
+    );
+    buffer.push({
+      sessionId: "sess",
+      attemptId: "a",
+      stream: "stdout",
+      content: "tick",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      seq: 1,
+    });
+    expect(urls).toEqual([]);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    await vi.runOnlyPendingTimersAsync();
+    await Promise.resolve();
+    expect(urls).toHaveLength(1);
+  });
+
+  it("emits local chunks even when upload is off", () => {
+    const seen: string[] = [];
+    const buffer = new LogPartBuffer(
+      "sess",
+      {
+        uploadMode: "off",
+        batchMaxKb: 1,
+        batchMaxLines: 10,
+        batchMaxWaitMs: 60_000,
+        controlPlanePollMs: 60_000,
+      },
+      undefined,
+      (chunk) => seen.push(chunk.content),
+    );
+    buffer.push({
+      sessionId: "sess",
+      attemptId: "a",
+      stream: "stdout",
+      content: "local",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      seq: 1,
+    });
+    expect(seen).toEqual(["local"]);
   });
 });
