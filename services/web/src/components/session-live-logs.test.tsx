@@ -82,14 +82,24 @@ describe("SessionLiveLogs", () => {
       vi.fn(async (url: string, init?: { method?: string }) => {
         const path = String(url);
         if (path.includes("session-log-settings")) {
-          throw new Error("settings offline");
+          return Response.json({ controlPlanePollMs: 5_000 });
         }
         if (path.includes("viewer-ticket")) {
           return Response.json({ ticket: "ticket" });
         }
         if (path.includes("/logs")) {
           if (!allowLogs) return new Response(null, { status: 500 });
-          throw new Error("refetch failed");
+          return Response.json({
+            items: [
+              {
+                timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+                seq: 1,
+                stream: "stdout",
+                content: "hello",
+                timestamp: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          });
         }
         if (init?.method === "POST") return Response.json({ ticket: "ticket" });
         return Response.json({ status: "queued" });

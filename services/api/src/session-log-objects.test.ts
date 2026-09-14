@@ -6,6 +6,7 @@ import { createControlPlaneState } from "./control-plane-state.ts";
 import {
   gzipLogRecords,
   parseGzipJsonlLogs,
+  putSessionLogArchive,
   putSessionLogPart,
   readSessionLogObjects,
 } from "./session-log-objects.ts";
@@ -92,5 +93,31 @@ describe("session log objects", () => {
     const records = await readSessionLogObjects(state, "sess", { stream: "stdout", limit: 10 });
     expect(records?.map((record) => record.content)).toEqual(["ok"]);
     expect(records?.[0]?.dropped).toBe(2);
+  });
+
+  it("stores a concat archive in memory and skips missing gzip objects", async () => {
+    const state = createControlPlaneState();
+    const gzipped = gzipLogRecords([
+      {
+        sessionId: "sess",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        stream: "stdout",
+        content: "archive",
+        seq: 1,
+        timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+      },
+    ]);
+    await putSessionLogArchive(state, "sess", gzipped);
+    expect((await readSessionLogObjects(state, "sess"))?.map((record) => record.content)).toEqual([
+      "archive",
+    ]);
+    const missing = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => undefined,
+        listKeys: async () => ["sessions/sess/parts/1-1.jsonl.gz"],
+        getGzipObject: async () => undefined,
+      },
+    });
+    expect(await readSessionLogObjects(missing, "sess")).toEqual([]);
   });
 });

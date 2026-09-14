@@ -45,4 +45,31 @@ describe("session log settings", () => {
       settings: { uploadMode: "subscribed", batchMaxLines: 12 },
     });
   });
+
+  it("reads and writes through durable storage and rejects a lost CAS", async () => {
+    let stored: { version: number; uploadMode: string; createdAt: string } | null = null;
+    let acceptWrite = true;
+    const plane = new ControlPlane({
+      now: () => "2026-01-01T00:00:00.000Z",
+      storage: {
+        getSessionLogSettings: async () => stored,
+        putSessionLogSettings: async (record: { version: number; uploadMode: string }) => {
+          if (!acceptWrite) return false;
+          stored = {
+            version: record.version,
+            uploadMode: record.uploadMode,
+            createdAt: "2026-01-01T00:00:00.000Z",
+          };
+          return true;
+        },
+      } as never,
+    });
+    expect((await plane.getSessionLogSettings()).version).toBe(0);
+    expect((await plane.putSessionLogSettings({ version: -1 })).ok).toBe(false);
+    expect((await plane.putSessionLogSettings({ version: 0, uploadMode: "always" })).ok).toBe(true);
+    acceptWrite = false;
+    await expect(
+      plane.putSessionLogSettings({ version: 1, uploadMode: "off" }),
+    ).resolves.toMatchObject({ ok: false, conflict: true });
+  });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
@@ -30,5 +31,38 @@ describe("session log settings routes", () => {
       extra: true,
     });
     expect(response.status).toBe(400);
+  });
+
+  it("rejects invalid bodies and surfaces GET/PUT failures", async () => {
+    const { handler } = createLocalApp({ authMode: "off" });
+    for (const body of [
+      [],
+      { version: -1 },
+      { version: 0, uploadMode: "sometimes" },
+      { version: 0, batchMaxKb: "big" },
+    ]) {
+      const response = await invokeHandler(handler, "PUT", "/api/v1/session-log-settings", body);
+      expect(response.status).toBe(400);
+    }
+    const getPlane = new ControlPlane();
+    getPlane.getSessionLogSettings = async () => {
+      throw new Error("down");
+    };
+    const failingGet = createLocalApp({ authMode: "off", plane: getPlane });
+    expect(
+      (await invokeHandler(failingGet.handler, "GET", "/api/v1/session-log-settings")).status,
+    ).toBe(500);
+    const putPlane = new ControlPlane();
+    putPlane.putSessionLogSettings = async () => {
+      throw new Error("down");
+    };
+    const failingPut = createLocalApp({ authMode: "off", plane: putPlane });
+    expect(
+      (
+        await invokeHandler(failingPut.handler, "PUT", "/api/v1/session-log-settings", {
+          version: 0,
+        })
+      ).status,
+    ).toBe(500);
   });
 });
