@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- viewer connect, subscribe, and log-part fan-out share one adapter. */
 import {
   GoneException,
   PostToConnectionCommand,
