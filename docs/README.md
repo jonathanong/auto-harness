@@ -2,6 +2,8 @@
 
 Short entry points. Prefer the focused pages over mega-guides.
 
+What Auto Harness is, what it does and does not, and why: root [README](../README.md) and [why.md](why.md).
+
 ## Get running
 
 | Doc                                                                  | Contents                                                    |
@@ -38,7 +40,7 @@ Short entry points. Prefer the focused pages over mega-guides.
 
 | Doc                                     | Contents                                                                                               |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| [why.md](why.md)                        | Why this product; subscriptions + non-interactive CLI                                                  |
+| [why.md](why.md)                        | Why this product; two planes; does/does-not; subscriptions                                             |
 | [architecture/](architecture/README.md) | Two-plane overview, [communication](architecture/communication.md), [gotchas](architecture/gotchas.md) |
 | [aws.md](aws.md)                        | Control plane internals                                                                                |
 | [host-daemon.md](host-daemon.md)        | VPS agent internals                                                                                    |

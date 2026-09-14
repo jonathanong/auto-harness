@@ -109,7 +109,13 @@ remains supported; all dispatch forms return after acceptance and never wait for
 | Layer            | Lives in                                             | Owns                                                                  |
 | ---------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
 | **Repo harness** | Product repo (`.github/workflows`, `docs/prompts/…`) | When to run, who may trigger, prompt text, dedup, triage, GitHub UX   |
-| **Auto Harness** | Shared control plane + VPS agents                    | Queue, worktrees, spawn CLI, logs, Slack session threads, resume pins |
+| **Auto Harness** | Control plane (web + queue + API) + host plane       | Queue, worktrees, spawn CLI, logs, Slack session threads, resume pins |
+
+Autonomous sessions still need agent-side companions that Auto Harness does not embed:
+[agent-blackboard](https://github.com/jonathanong/agent-blackboard) (session-scoped notes),
+[pr-shepherd](https://github.com/jonathanong/pr-shepherd) (CI and review gather-and-act — Pattern C
+below), and [no-mistakes](https://github.com/jonathanong/no-mistakes) (deterministic graph / tests).
+Install those on the host or in the product repo. Why: [why.md](why.md#why-autonomous-companions).
 
 The narrow exception is an App-mediated `issue_comment` or `pull_request_review_comment` mention.
 For that path, Auto Harness centrally owns author authorization, deduplication, and
@@ -277,7 +283,8 @@ repository workflow, and `<instructions>` is forwarded verbatim rather than rend
 
 ## Pattern C — PR `/pr-shepherd`
 
-**Typical workflow:** `codex-pr-shepherd` with long runner session + resume.  
+**Typical workflow:** `codex-pr-shepherd` with long runner session + resume. The CLI itself is
+[`pr-shepherd`](https://github.com/jonathanong/pr-shepherd); Auto Harness only queues the session.  
 **Hookup:** short gate job → `POST /sessions` with `concurrencyId: filaments:shepherd:<pr>` (first tick) or `POST /sessions/:id/resume` (continue on the same host) → exit. Repeated webhook/manual delivery receives the existing active session and does not queue a duplicate. Humans follow Slack + the PR on GitHub.
 
 ```mermaid

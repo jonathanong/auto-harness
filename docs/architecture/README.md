@@ -1,6 +1,6 @@
 # Architecture
 
-Cross-plane overview. Layer internals: [aws.md](../aws.md) (control), [host-daemon.md](../host-daemon.md) (execution). Locked decisions: [plan.md](../plan.md).
+Cross-plane overview. Layer internals: [aws.md](../aws.md) (control), [host-daemon.md](../host-daemon.md) (host). Locked decisions: [plan.md](../plan.md). Product shape: [why.md](../why.md).
 
 | Page                                         | What it explains                                        |
 | -------------------------------------------- | ------------------------------------------------------- |
@@ -21,10 +21,15 @@ Cross-plane overview. Layer internals: [aws.md](../aws.md) (control), [host-daem
 
 ## Two planes
 
-| Plane               | Where                                                        | Doc                                     |
-| ------------------- | ------------------------------------------------------------ | --------------------------------------- |
-| **Control plane**   | Target: AWS — API Gateway, Lambda, DynamoDB, S3, EventBridge | **[aws.md](../aws.md)**                 |
-| **Execution plane** | VPS — Node.js agent, git worktrees, AI CLIs                  | **[host-daemon.md](../host-daemon.md)** |
+The **control plane** is the serverless web + queue + API half (it can idle at zero). The
+**host plane** is the daemon on a VPS, laptop, or other machine you provision (formerly
+called the execution plane). Hosts do not autoscale to zero — that is the point of the
+queue. [terminology.md](../terminology.md) disambiguates **host plane** from **host pane**.
+
+| Plane             | Where                                                                          | Doc                                     |
+| ----------------- | ------------------------------------------------------------------------------ | --------------------------------------- |
+| **Control plane** | Target: AWS — API Gateway, Lambda, DynamoDB, S3, EventBridge                   | **[aws.md](../aws.md)**                 |
+| **Host plane**    | VPS / laptop / any machine — Node.js daemon, git worktrees, AI CLIs            | **[host-daemon.md](../host-daemon.md)** |
 
 ```mermaid
 graph TB
@@ -41,7 +46,7 @@ graph TB
         CLI["CLI / Scripts"]
     end
 
-    subgraph "Execution Plane (VPS)"
+    subgraph "Host Plane (VPS / machine)"
         Agent["Auto-Harness Agent"]
         subgraph "Worktrees"
             WT1["wt-1"]
@@ -67,10 +72,10 @@ Today those control-plane behaviors also run in the local API. Transcript bytes 
 
 ## Who owns what
 
-| Plane     | Owns                                                                                         | Does not own                         |
-| --------- | -------------------------------------------------------------------------------------------- | ------------------------------------ |
-| Control   | Auth, session records, queue, assignment, log fan-out, archive metadata, cron, notifications | Git credentials, SSH, AI vendor keys |
-| Execution | Worktrees/slots on disk, process spawn, output streaming, git + AI secrets                   | Admission, desired work, leases      |
+| Plane   | Owns                                                                                         | Does not own                         |
+| ------- | -------------------------------------------------------------------------------------------- | ------------------------------------ |
+| Control | Auth, session records, queue, assignment, log fan-out, archive metadata, cron, notifications | Git credentials, SSH, AI vendor keys |
+| Host    | Worktrees/slots on disk, process spawn, output streaming, git + AI secrets                   | Admission, desired work, leases      |
 
 ```mermaid
 flowchart LR
@@ -80,20 +85,20 @@ flowchart LR
         K["KMS-wrapped Slack config"]
     end
 
-    subgraph Exec["Execution plane (VPS)"]
+    subgraph Host["Host plane (VPS / machine)"]
         G["git / SSH credentials"]
         A["AI vendor keys"]
         D["worktrees, slots, CLI processes"]
     end
 
-    Control -->|"schedule + observe"| Exec
+    Control -->|"schedule + observe"| Host
 ```
 
 Trust-boundary detail: [security.md](../security.md).
 
 ## Layer map
 
-| Topic                  | Control plane                                                                                              | Execution plane                                                                          |
+| Topic                  | Control plane                                                                                              | Host plane                                                                               |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | Public API & auth      | [api.md](../api.md), [websocket.md](../websocket.md), [auth.md](../auth.md), [security.md](../security.md) | API key over WSS ([cli.md](../cli.md) / [local-development.md](../local-development.md)) |
 | Session queue / assign | Scheduler + round-robin — [assignment.md](assignment.md)                                                   | Accepts `session:assign` only                                                            |
@@ -111,7 +116,7 @@ Compatibility stub for the old blob URL and `#architecture-principles`:
 
 | Doc                      | Role                     |
 | ------------------------ | ------------------------ |
-| [why.md](../why.md)      | Product rationale        |
+| [why.md](../why.md)      | What / does-not / why    |
 | [costs.md](../costs.md)  | Subscription vs AWS cost |
 | [plan.md](../plan.md)    | Phases + data model      |
 | [gotchas.md](gotchas.md) | Traps and maturity       |

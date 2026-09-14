@@ -6,7 +6,7 @@ cross-plane summary.
 
 | Decision                                  | Why, in one line                                                                                 | See                                          |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------- |
-| Two-plane split                           | Cloud stays secret-light and elastic; heavy/untrusted execution stays on the VPS                 | [README](README.md)                          |
+| Two-plane split                           | Serverless control plane (web + queue); host plane holds tools, logins, and CLI processes        | [README](README.md), [why.md](../why.md)     |
 | WebSocket over polling                    | Low-latency assign + log streaming                                                               | [websocket.md](../websocket.md)              |
 | Worktree reuse                            | Fast start; checkout resets tracked state, setup scripts prepare the repo                        | [host-daemon.md](../host-daemon.md)          |
 | Labels on worktrees                       | Route Codex vs Claude (etc.) like Actions runners                                                | [assignment.md](assignment.md)               |
