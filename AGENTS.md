@@ -83,6 +83,9 @@ worktree gets stable, reusable ports across runs.
 - Update docs when behavior changes.
 - UI-facing vocabulary (what to call things in nav labels, copy, `data-pw` ids): [docs/terminology.md](docs/terminology.md).
 - Repo harness hookup examples: [docs/harness.md](docs/harness.md).
+- There is **no docstring-coverage gate**. The contract is TypeScript types, tests, and
+  `docs/` / `AGENTS.md`. Do not add JSDoc to satisfy a percentage, and do not land a
+  docstring-coverage check (see #558).
 
 ## Operator-editable configuration
 
