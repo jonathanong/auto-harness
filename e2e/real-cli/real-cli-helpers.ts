@@ -23,6 +23,35 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return (await runCommandOk("git", args, { cwd })).trim();
 }
 
+/** Shared singleton; retry CAS so parallel real-cli specs do not 409 each other. */
+async function enableSessionLogUploadAlways(request: APIRequestContext): Promise<void> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const settingsRes = await request.get(`${API}/api/v1/session-log-settings`);
+    expect(settingsRes.ok(), `session-log-settings get failed: ${await settingsRes.text()}`).toBe(
+      true,
+    );
+    const settings = (await settingsRes.json()) as { version?: number; uploadMode?: string };
+    if (settings.uploadMode === "always") return;
+    const upload = await request.put(`${API}/api/v1/session-log-settings`, {
+      data: {
+        version: settings.version ?? 0,
+        uploadMode: "always",
+        batchMaxKb: 1,
+        batchMaxLines: 1,
+        batchMaxWaitMs: 1000,
+      },
+    });
+    if (upload.ok()) return;
+    if (upload.status() !== 409) {
+      expect(upload.ok(), `session-log-settings upload always failed: ${await upload.text()}`).toBe(
+        true,
+      );
+      return;
+    }
+  }
+  throw new Error("session-log-settings upload always: version conflict retries exhausted");
+}
+
 /**
  * Full real-CLI orchestration flow, shared by claude/codex/grok specs:
  * real temp git repo, real in-process agent daemon (real WS, real subprocess), real
@@ -70,20 +99,7 @@ export async function runRealCliSession(opts: {
     expect(providerRes.ok(), `create provider failed: ${await providerRes.text()}`).toBeTruthy();
     const provider = await providerRes.json();
 
-    const settingsRes = await request.get(`${API}/api/v1/session-log-settings`);
-    const settings = (await settingsRes.json()) as { version?: number };
-    const upload = await request.put(`${API}/api/v1/session-log-settings`, {
-      data: {
-        version: settings.version ?? 0,
-        uploadMode: "always",
-        batchMaxKb: 1,
-        batchMaxLines: 1,
-        batchMaxWaitMs: 1000,
-      },
-    });
-    expect(upload.ok(), `session-log-settings upload always failed: ${await upload.text()}`).toBe(
-      true,
-    );
+    await enableSessionLogUploadAlways(request);
 
     const commandRes = await request.post(`${API}/api/v1/commands`, {
       data: {
