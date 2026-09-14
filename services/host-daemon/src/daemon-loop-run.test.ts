@@ -204,9 +204,9 @@ describe("DaemonLoop run", () => {
         );
         expect(status?.cliResumeRef).toBe(testCase.resumeRef);
         expect(localLogs.some((line) => line.includes(testCase.resumeRef))).toBe(false);
-        expect(
-          localLogs.some((line) => line.includes("[CLI resume reference redacted]")),
-        ).toBe(true);
+        expect(localLogs.some((line) => line.includes("[CLI resume reference redacted]"))).toBe(
+          true,
+        );
       } finally {
         loop.stop();
         cleanup();
