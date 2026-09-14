@@ -99,7 +99,7 @@ describe("pending durable writes", () => {
     trackLogPersist(state, "other-session", new Promise<void>(() => {}));
 
     await expect(archiveSessionLogs(state, "mine")).resolves.toMatchObject({
-      key: "sessions/mine/logs.jsonl",
+      key: "sessions/mine/logs.jsonl.gz",
     });
   });
 
@@ -125,6 +125,6 @@ describe("pending durable writes", () => {
     expect(settled).toBe(false);
     release?.();
 
-    await expect(archive).resolves.toMatchObject({ key: "sessions/mine/logs.jsonl" });
+    await expect(archive).resolves.toMatchObject({ key: "sessions/mine/logs.jsonl.gz" });
   });
 });

@@ -261,7 +261,7 @@ describe("ControlPlane lifecycle", () => {
     });
     expect(uploaded).toEqual([
       {
-        key: "sessions/sess-1/logs.jsonl",
+        key: "sessions/sess-1/logs.jsonl.gz",
         body: '{"timestamp":"2026-01-01T00:00:00.000Z","stream":"stdout","content":"hi"}\n',
         contentType: "application/x-ndjson",
       },

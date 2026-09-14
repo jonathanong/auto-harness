@@ -6,7 +6,7 @@ import { ControlPlane } from "./control-plane.ts";
 describe("durable archive expiry reads", () => {
   it("persists a pending archive as expired before reporting data loss", async () => {
     const plane = new ControlPlane({ now: () => "2026-01-08T00:00:00.000Z" });
-    const key = "sessions/session/logs.jsonl";
+    const key = "sessions/session/logs.jsonl.gz";
     plane.state.archives.set(key, {
       key,
       contentType: "application/x-ndjson",
@@ -14,7 +14,7 @@ describe("durable archive expiry reads", () => {
       status: "pending",
       objectStored: false,
       retryState: "pending",
-      retryOrder: "2026-01-01T00:00:00.000Z#sessions/session/logs.jsonl",
+      retryOrder: "2026-01-01T00:00:00.000Z#sessions/session/logs.jsonl.gz",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
 
@@ -34,7 +34,7 @@ describe("durable archive expiry reads", () => {
     const plane = new ControlPlane({
       storage: {
         getArchive: async () => ({
-          key: "sessions/session/logs.jsonl",
+          key: "sessions/session/logs.jsonl.gz",
           contentType: "application/x-ndjson",
           bodyBytes: 0,
           status: "expired",
@@ -58,7 +58,7 @@ describe("durable archive expiry reads", () => {
       now: () => "2026-01-08T00:00:00.000Z",
       storage: {
         getArchive: async () => ({
-          key: "sessions/session/logs.jsonl",
+          key: "sessions/session/logs.jsonl.gz",
           contentType: "application/x-ndjson",
           bodyBytes: 0,
           status: "pending",
@@ -77,7 +77,7 @@ describe("durable archive expiry reads", () => {
     });
     expect(queryLogs).toHaveBeenCalledOnce();
     expect(expireArchive).toHaveBeenCalledWith(
-      "sessions/session/logs.jsonl",
+      "sessions/session/logs.jsonl.gz",
       "2026-01-08T00:00:00.000Z",
     );
   });
@@ -89,7 +89,7 @@ describe("durable archive expiry reads", () => {
       now: () => "2026-01-08T00:00:00.000Z",
       storage: {
         getArchive: async () => ({
-          key: "sessions/session/logs.jsonl",
+          key: "sessions/session/logs.jsonl.gz",
           contentType: "application/x-ndjson",
           bodyBytes: 42,
           status: "pending",
@@ -113,7 +113,7 @@ describe("durable archive expiry reads", () => {
 
   it("does not expire a live captured claim after a stale pending GET snapshot", async () => {
     const plane = new ControlPlane({ now: () => "2026-01-08T00:00:00.000Z" });
-    const key = "sessions/session/logs.jsonl";
+    const key = "sessions/session/logs.jsonl.gz";
     const pending = {
       key,
       contentType: "application/x-ndjson",
@@ -153,7 +153,7 @@ describe("durable archive expiry reads", () => {
       archiveReader: {
         createDownload: async () => ({
           available: true,
-          downloadUrl: "https://example.com/logs.jsonl",
+          downloadUrl: "https://example.com/logs.jsonl.gz",
           expiresAt: "2026-01-08T00:05:00.000Z",
         }),
       },
@@ -161,7 +161,7 @@ describe("durable archive expiry reads", () => {
         getArchive: vi
           .fn()
           .mockResolvedValueOnce({
-            key: "sessions/session/logs.jsonl",
+            key: "sessions/session/logs.jsonl.gz",
             contentType: "application/x-ndjson",
             bodyBytes: 4,
             status: "pending",
@@ -172,7 +172,7 @@ describe("durable archive expiry reads", () => {
             updatedAt: "2026-01-01T00:00:00.000Z",
           })
           .mockResolvedValueOnce({
-            key: "sessions/session/logs.jsonl",
+            key: "sessions/session/logs.jsonl.gz",
             contentType: "application/x-ndjson",
             bodyBytes: 4,
             status: "complete",
@@ -187,7 +187,7 @@ describe("durable archive expiry reads", () => {
 
     await expect(plane.getArchiveDownloadDurable("session")).resolves.toEqual({
       state: "archived",
-      downloadUrl: "https://example.com/logs.jsonl",
+      downloadUrl: "https://example.com/logs.jsonl.gz",
       expiresAt: "2026-01-08T00:05:00.000Z",
       contentType: "application/x-ndjson",
       bodyBytes: 4,
@@ -200,7 +200,7 @@ describe("durable archive expiry reads", () => {
       now: () => "2026-01-08T00:00:00.000Z",
       storage: {
         getArchive: async () => ({
-          key: "sessions/session/logs.jsonl",
+          key: "sessions/session/logs.jsonl.gz",
           contentType: "application/x-ndjson",
           bodyBytes: 0,
           status: "pending",

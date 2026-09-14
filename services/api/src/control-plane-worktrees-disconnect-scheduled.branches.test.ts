@@ -73,7 +73,7 @@ describe("scheduled disconnect branch coverage", () => {
       status: "failed",
       errorCode: "host_lost",
     });
-    expect(terminal.archives.has("sessions/s/logs.jsonl")).toBe(false);
+    expect(terminal.archives.has("sessions/s/logs.jsonl.gz")).toBe(false);
   });
 
   it("uses the active-claim query and skips unrelated sessions", async () => {

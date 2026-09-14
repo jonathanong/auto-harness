@@ -253,7 +253,7 @@ describe("scheduled terminal and retry message branches", () => {
     expect(state.pendingAcks.has("s")).toBe(false);
     expect(archives).toEqual([
       expect.objectContaining({
-        key: "sessions/s/logs.jsonl",
+        key: "sessions/s/logs.jsonl.gz",
         status: "pending",
         objectStored: false,
       }),

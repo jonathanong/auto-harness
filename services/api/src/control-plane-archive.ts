@@ -59,7 +59,7 @@ export async function archiveSessionLogs(
   retryClaim?: { retryState: "pending" | "processing"; retryOrder: string },
   deferBody = false,
 ): Promise<ArchiveObject> {
-  const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
+  const key = `${state.archivePrefix}${sessionId}/logs.jsonl.gz`;
   // REST/WebSocket Lambdas do not have S3 credentials.  Persist only a bounded retry pointer;
   // Cron, which owns the archive writer, reads the durable session logs later.  In particular,
   // do not materialize a potentially huge transcript in the short-lived WS invocation.
@@ -292,7 +292,7 @@ export async function retrySessionArchiveIfNeeded(
   retryClaim?: { retryState: "pending" | "processing"; retryOrder: string },
 ): Promise<void> {
   if (!state.archiveWriter) return;
-  const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
+  const key = `${state.archivePrefix}${sessionId}/logs.jsonl.gz`;
   const metadata = state.storage ? await state.storage.getArchive(key) : state.archives.get(key);
   if (metadata?.status === "expired") return;
   if (metadata?.status === "complete" && metadata.objectStored) return;
@@ -403,7 +403,7 @@ export function queueSessionArchive(state: ControlPlaneState, sessionId: string)
 }
 
 export function getArchive(state: ControlPlaneState, sessionId: string): ArchiveMetadata | null {
-  return state.archives.get(`${state.archivePrefix}${sessionId}/logs.jsonl`) ?? null;
+  return state.archives.get(`${state.archivePrefix}${sessionId}/logs.jsonl.gz`) ?? null;
 }
 
 /** Resolve durable archive state and mint a fresh verified download when one is available. */
@@ -412,7 +412,7 @@ export async function getArchiveDownloadDurable(
   sessionId: string,
   terminalAt?: string,
 ): Promise<SessionArchiveReadResponse> {
-  const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
+  const key = `${state.archivePrefix}${sessionId}/logs.jsonl.gz`;
   let metadata = state.storage ? await state.storage.getArchive(key) : state.archives.get(key);
   if (metadata) state.archives.set(key, metadata);
   if (metadata?.status === "expired") return { state: "expired" };

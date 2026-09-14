@@ -10,7 +10,7 @@ import {
 import type { ArchiveMetadata } from "./control-plane-types.ts";
 
 const pending: ArchiveMetadata = {
-  key: "sessions/session/logs.jsonl",
+  key: "sessions/session/logs.jsonl.gz",
   contentType: "application/x-ndjson",
   bodyBytes: 0,
   status: "pending",

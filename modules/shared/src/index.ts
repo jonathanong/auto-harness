@@ -72,6 +72,7 @@ export {
   type SessionLogSettings,
   type SessionLogUploadMode,
 } from "./session-log-settings.ts";
+export { concatGzipMembers, gunzipToUtf8, gzipJsonlLines } from "./session-log-gzip.ts";
 
 export {
   HOST_CAPABILITIES,

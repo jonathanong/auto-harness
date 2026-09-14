@@ -117,7 +117,7 @@ describe("POST /api/v1/sessions/:id/archive", () => {
 
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({
-      key: `sessions/${own.id}/logs.jsonl`,
+      key: `sessions/${own.id}/logs.jsonl.gz`,
       contentType: "application/x-ndjson",
     });
     expect((res.json as { bodyBytes: number }).bodyBytes).toBeGreaterThan(0);
@@ -154,10 +154,10 @@ describe("POST /api/v1/sessions/:id/archive", () => {
 describe("GET /api/v1/sessions/:id/archive", () => {
   it("returns a verified download without caching the signed URL", async () => {
     const { plane, invoke, own, downloads } = await harness();
-    plane.state.archives.set(`sessions/${own.id}/logs.jsonl`, {
-      key: `sessions/${own.id}/logs.jsonl`,
+    plane.state.archives.set(`sessions/${own.id}/logs.jsonl.gz`, {
+      key: `sessions/${own.id}/logs.jsonl.gz`,
       versionId: "archive-v1",
-      objectKey: "sessions/another-session/logs.jsonl",
+      objectKey: "sessions/another-session/logs.jsonl.gz",
       contentType: "application/x-ndjson",
       bodyBytes: 42,
       status: "complete",
@@ -176,7 +176,7 @@ describe("GET /api/v1/sessions/:id/archive", () => {
       contentType: "application/x-ndjson",
       bodyBytes: 42,
     });
-    expect(downloads).toEqual([`sessions/${own.id}/logs.jsonl`]);
+    expect(downloads).toEqual([`sessions/${own.id}/logs.jsonl.gz`]);
   });
 
   it("distinguishes recent and unavailable transcripts", async () => {
@@ -188,8 +188,8 @@ describe("GET /api/v1/sessions/:id/archive", () => {
       json: { state: "dynamodb" },
     });
     expect(recent.headers.get("cache-control")).toBe("no-store");
-    plane.state.archives.set(`sessions/${own.id}/logs.jsonl`, {
-      key: `sessions/${own.id}/logs.jsonl`,
+    plane.state.archives.set(`sessions/${own.id}/logs.jsonl.gz`, {
+      key: `sessions/${own.id}/logs.jsonl.gz`,
       versionId: "archive-v1",
       contentType: "application/x-ndjson",
       bodyBytes: 42,
@@ -219,8 +219,8 @@ describe("GET /api/v1/sessions/:id/archive", () => {
     const { plane, invokeAsHost, own, downloads } = await harness();
     const record = plane.state.sessions.get(own.id)!;
     plane.state.sessions.set(own.id, { ...record, hostId: "host-b" });
-    plane.state.archives.set(`sessions/${own.id}/logs.jsonl`, {
-      key: `sessions/${own.id}/logs.jsonl`,
+    plane.state.archives.set(`sessions/${own.id}/logs.jsonl.gz`, {
+      key: `sessions/${own.id}/logs.jsonl.gz`,
       versionId: "archive-v1",
       contentType: "application/x-ndjson",
       bodyBytes: 42,
