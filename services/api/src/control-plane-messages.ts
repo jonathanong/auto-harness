@@ -68,6 +68,7 @@ import type {
 import { assignQueued } from "./control-plane-assign.ts";
 import {
   assignScheduledQueuedDurable,
+  holdsScheduledLeaseLocal,
   releaseScheduledLeaseLocal,
 } from "./control-plane-scheduled-assign.ts";
 import { assignWorkspaceQueuedDurable } from "./control-plane-workspace-assign.ts";
@@ -2459,6 +2460,7 @@ function applySessionStatus(
 
   const terminal = isTerminalSessionStatus(msg.status);
   const patch = transitionEffect(plan, "patch_report");
+  const finish = transitionEffect(plan, "finish");
 
   if (session.status !== "running") {
     if (
@@ -2493,8 +2495,18 @@ function applySessionStatus(
     return { ok: true };
   }
 
+  // Mint before releasing so the failed checkout stays reserved through the
+  // deferred hook, matching the durable finish/release transactions.
+  const deferredHandoff =
+    finish !== undefined &&
+    msg.deferTerminalHookResult === true &&
+    protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
+      ? deferredTerminalHookHandoff(state, session, msg, reportingHostId)
+      : undefined;
   const releasedMainCheckout = transitionEffect(plan, "release_lease")
-    ? releaseScheduledLeaseLocal(state, session)
+    ? deferredHandoff?.mainCheckoutLease === true
+      ? holdsScheduledLeaseLocal(state, session)
+      : releaseScheduledLeaseLocal(state, session)
     : false;
   if (
     transitionEffect(plan, "release_lease") &&
@@ -2526,12 +2538,18 @@ function applySessionStatus(
     state.pendingAcks.delete(msg.sessionId);
     releaseProviderAccountLease(state, session);
     if (session.mainCheckoutLease) {
-      delete session.mainCheckoutLease;
-      delete session.assignmentConnectionId;
-      delete session.assignmentSentAt;
-      delete session.ackReceivedAt;
-      delete session.reconnectDeadlineAt;
-    } else if (transitionEffect(plan, "release_worktree") && session.worktreeId) {
+      if (deferredHandoff?.mainCheckoutLease !== true) {
+        delete session.mainCheckoutLease;
+        delete session.assignmentConnectionId;
+        delete session.assignmentSentAt;
+        delete session.ackReceivedAt;
+        delete session.reconnectDeadlineAt;
+      }
+    } else if (
+      transitionEffect(plan, "release_worktree") &&
+      session.worktreeId &&
+      deferredHandoff?.worktreeId !== session.worktreeId
+    ) {
       releaseWorktree(state, session.worktreeId);
     } else if (transitionEffect(plan, "release_workspace")) {
       releaseWorkspaceSlotLocal(state, session, msg.workspaceSlotError);
@@ -2540,7 +2558,6 @@ function applySessionStatus(
     const cooldown = transitionEffect(plan, "cooldown");
     const requeue = transitionEffect(plan, "requeue");
     const suppress = transitionEffect(plan, "suppress_target");
-    const finish = transitionEffect(plan, "finish");
     if (cooldown) {
       emitCooldown();
       const account = state.providerAccounts.get(cooldown.providerAccountId);
@@ -2580,12 +2597,6 @@ function applySessionStatus(
       }
       if (finish.errorCode !== undefined) session.errorCode = finish.errorCode;
       if (finish.errorMessage !== undefined) session.errorMessage = finish.errorMessage;
-      // Mint before clearing worktreeId so the handoff keeps the failed checkout.
-      const deferredHandoff =
-        msg.deferTerminalHookResult === true &&
-        protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
-          ? deferredTerminalHookHandoff(state, session, msg, reportingHostId)
-          : undefined;
       if (deferredHandoff) session.terminalHookHandoff = deferredHandoff;
       session.worktreeId = null;
       session.workspaceSlotId = null;

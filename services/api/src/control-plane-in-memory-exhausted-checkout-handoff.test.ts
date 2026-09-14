@@ -97,6 +97,10 @@ describe("in-memory exhausted checkout handoff", () => {
       errorCode: "checkout_fetch_failed",
       terminalHookHandoff: { handoffId: "handoff", worktreeId: "worktree" },
     });
+    expect(state.worktrees.get("worktree")).toMatchObject({
+      status: "busy",
+      currentSessionId: "session",
+    });
     expect(state.sessions.get("session")).not.toHaveProperty("result");
     expect(getArchive(state, "session")).toBeNull();
 
@@ -138,6 +142,10 @@ describe("in-memory exhausted checkout handoff", () => {
       terminalHookHandoffSettled: { handoffId: "handoff", hostId: "host" },
     });
     expect(state.sessions.get("session")).not.toHaveProperty("terminalHookHandoff");
+    expect(state.worktrees.get("worktree")).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+    });
     expect(getArchive(state, "session")).toMatchObject({ status: "pending" });
   });
 
