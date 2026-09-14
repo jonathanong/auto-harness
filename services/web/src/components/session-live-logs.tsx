@@ -47,15 +47,16 @@ export function SessionLiveLogs({
   useEffect(() => {
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
+    const ac = new AbortController();
 
     const poll = (): void => {
       if (stopped) return;
       void fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}/logs?limit=1000`, {
         credentials: "same-origin",
         cache: "no-store",
+        signal: ac.signal,
       })
         .then(async (response) => {
-          if (stopped) return;
           if (!response.ok) throw new Error("log poll failed");
           const body = (await response.json()) as { items?: LiveLogEntry[] };
           const incoming = Array.isArray(body.items) ? body.items : [];
@@ -76,6 +77,7 @@ export function SessionLiveLogs({
     poll();
     return () => {
       stopped = true;
+      ac.abort();
       if (retryTimer !== undefined) clearTimeout(retryTimer);
     };
   }, [sessionId, pollMs]);
@@ -110,6 +112,7 @@ export function SessionLiveLogs({
   useEffect(() => {
     let stopped = false;
     let socket: WebSocket | undefined;
+    const ac = new AbortController();
     void viewerTicket()
       .then((ticket) => {
         if (stopped) return;
@@ -124,9 +127,10 @@ export function SessionLiveLogs({
               void fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}/logs?limit=1000`, {
                 credentials: "same-origin",
                 cache: "no-store",
+                signal: ac.signal,
               })
                 .then(async (response) => {
-                  if (stopped || !response.ok) return;
+                  if (!response.ok) return;
                   const body = (await response.json()) as { items?: LiveLogEntry[] };
                   setItems(mergeInitialLiveLogs(Array.isArray(body.items) ? body.items : []));
                   setConnectionState("live");
@@ -142,6 +146,7 @@ export function SessionLiveLogs({
       .catch(() => undefined);
     return () => {
       stopped = true;
+      ac.abort();
       if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: "session:unsubscribe", sessionId }));
       }
