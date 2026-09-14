@@ -96,6 +96,22 @@ describe("S3ArchiveWriter", () => {
     expect(tokens).toEqual([undefined, "page-2"]);
   });
 
+  it("skips list entries without string keys", async () => {
+    const writer = new S3ArchiveWriter(
+      {
+        send: async () => ({
+          Contents: [{}, { Key: 1 }, { Key: "sessions/s/parts/1-1.jsonl.gz" }],
+        }),
+      },
+      "private-archives",
+    );
+    await expect(writer.listKeys("sessions/s/")).resolves.toEqual([
+      "sessions/s/parts/1-1.jsonl.gz",
+    ]);
+    const empty = new S3ArchiveWriter({ send: async () => ({}) }, "private-archives");
+    await expect(empty.listKeys("sessions/s/")).resolves.toEqual([]);
+  });
+
   it("puts and gets gzip session log objects", async () => {
     const stored = new Map<string, Buffer>();
     const writer = new S3ArchiveWriter(

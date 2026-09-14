@@ -63,5 +63,19 @@ describe("session log settings storage", () => {
         1,
       ),
     ).resolves.toBe(false);
+    const canceled = {
+      name: "TransactionCanceledException",
+      CancellationReasons: [{ Code: "ConditionalCheckFailed" }],
+    };
+    await expect(
+      putSessionLogSettings(
+        {
+          tables: { integrations: "Integrations" } as never,
+          doc: { send: vi.fn().mockRejectedValue(canceled) } as never,
+        },
+        record,
+        1,
+      ),
+    ).resolves.toBe(false);
   });
 });

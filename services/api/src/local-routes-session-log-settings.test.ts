@@ -102,5 +102,17 @@ describe("session log settings routes", () => {
         })
       ).status,
     ).toBe(500);
+    const successAudit = new ControlPlane();
+    successAudit.appendAuditLog = async () => {
+      throw new Error("audit down");
+    };
+    const successAudited = createLocalApp({ authMode: "off", plane: successAudit });
+    expect(
+      (
+        await invokeHandler(successAudited.handler, "PUT", "/api/v1/session-log-settings", {
+          version: 0,
+        })
+      ).status,
+    ).toBe(500);
   });
 });

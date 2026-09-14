@@ -75,4 +75,23 @@ describe("live log HTTP", () => {
     expect(missing.status).toBe(404);
     await started.close();
   });
+
+  it("treats a missing request url as the root path", async () => {
+    const started = startLiveLogHttp({
+      port: 0,
+      subscribe: () => () => undefined,
+    });
+    if (!started.server.listening) await once(started.server, "listening");
+    let status = 0;
+    const res = {
+      writeHead(code: number) {
+        status = code;
+        return this;
+      },
+      end() {},
+    };
+    started.server.emit("request", { method: "GET" }, res);
+    expect(status).toBe(404);
+    await started.close();
+  });
 });
