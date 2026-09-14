@@ -42,11 +42,12 @@ Cache skip fingerprints operator-declared host-absolute files (`setupCacheHostIn
 fingerprint. POSIX daemons reject Windows-absolute and UNC host paths when applying that list;
 the control plane still accepts those spellings for mixed fleets. The filtered child environment from `createChildEnv()` is also part of the fingerprint,
 so a rotated allowlisted token, changed `PATH`, or removed variable after a daemon restart is a
-cache miss. App-generated per-session `GH_CONFIG_DIR` isolation directories are omitted from that
-fingerprint and restored from the live child environment, so GitHub App sessions can still skip
-setup. Operator-allowlisted `GH_CONFIG_DIR` values stay in the fingerprint. A cache hit drops a
-stored App-generated isolation directory that is absent from live child env, and restores a
-setup-exported `GH_CONFIG_DIR`. The host never auto-detects sourced
+cache miss. The session-minted App-generated `GH_CONFIG_DIR` isolation directory is omitted from
+that fingerprint because it is the exact path this session minted, not because of a path prefix,
+and restored from the live child environment, so GitHub App sessions can still skip setup.
+Operator-allowlisted `GH_CONFIG_DIR` values stay in the fingerprint even if they share that path
+shape. A cache hit drops a stored App-generated isolation directory that is absent from live
+child env, and restores a setup-exported `GH_CONFIG_DIR`. The host never auto-detects sourced
 files or undeclared manifests. After the assigned command is authorized to spawn, the daemon drops
 the sidecar rather than reconstructing ignored outputs such as `node_modules`; a later fresh
 session with matching inputs re-runs setup. Native resume still skips every setup script. Cache

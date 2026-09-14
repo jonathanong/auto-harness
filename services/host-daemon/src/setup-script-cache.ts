@@ -31,6 +31,7 @@ async function digestDeclaredInputs(input: {
   extraPaths: readonly string[];
   hostPaths: readonly string[];
   childEnv?: NodeJS.ProcessEnv;
+  appGeneratedGitHubConfigDir?: string;
   signal?: AbortSignal;
 }): Promise<string | undefined> {
   const hash = startSetupFingerprint(
@@ -48,7 +49,7 @@ async function digestDeclaredInputs(input: {
     input.hostPaths,
   );
   if (!hashed) return undefined;
-  appendChildEnv(hash, input.childEnv);
+  appendChildEnv(hash, input.childEnv, input.appGeneratedGitHubConfigDir);
   return hash.digest("hex");
 }
 
@@ -75,6 +76,7 @@ export async function resolveSetupCacheState(input: {
   extraPaths: readonly string[];
   hostPaths?: readonly string[];
   childEnv?: NodeJS.ProcessEnv;
+  appGeneratedGitHubConfigDir?: string;
   signal?: AbortSignal;
 }): Promise<
   { skip: true; environment: NodeJS.ProcessEnv } | { skip: false; fingerprintToStore?: string }
@@ -87,6 +89,9 @@ export async function resolveSetupCacheState(input: {
     extraPaths: input.extraPaths,
     hostPaths: input.hostPaths ?? [],
     ...(input.childEnv ? { childEnv: input.childEnv } : {}),
+    ...(input.appGeneratedGitHubConfigDir
+      ? { appGeneratedGitHubConfigDir: input.appGeneratedGitHubConfigDir }
+      : {}),
     ...(input.signal ? { signal: input.signal } : {}),
   });
   if (!fingerprint) return { skip: false };
@@ -96,7 +101,11 @@ export async function resolveSetupCacheState(input: {
   }
   return {
     skip: true,
-    environment: applyLiveEphemeralChildEnv(stored.environment, input.childEnv),
+    environment: applyLiveEphemeralChildEnv(
+      stored.environment,
+      input.childEnv,
+      input.appGeneratedGitHubConfigDir,
+    ),
   };
 }
 
@@ -108,6 +117,7 @@ export async function matchingSetupFingerprintAfterSetup(input: {
   extraPaths: readonly string[];
   hostPaths?: readonly string[];
   childEnv?: NodeJS.ProcessEnv;
+  appGeneratedGitHubConfigDir?: string;
   expectedFingerprint: string;
   signal?: AbortSignal;
 }): Promise<string | undefined> {
@@ -118,6 +128,9 @@ export async function matchingSetupFingerprintAfterSetup(input: {
     extraPaths: input.extraPaths,
     hostPaths: input.hostPaths ?? [],
     ...(input.childEnv ? { childEnv: input.childEnv } : {}),
+    ...(input.appGeneratedGitHubConfigDir
+      ? { appGeneratedGitHubConfigDir: input.appGeneratedGitHubConfigDir }
+      : {}),
     ...(input.signal ? { signal: input.signal } : {}),
   });
   return fingerprint === input.expectedFingerprint ? fingerprint : undefined;

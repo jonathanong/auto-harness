@@ -40,6 +40,7 @@ export async function runSetupIfNeeded(
   githubApp?: GitHubAppConfig,
   nowMs?: () => number,
   setupCacheDir?: string,
+  isolatedGitHubConfigDir?: string,
 ): Promise<SessionSetupResult> {
   // Fingerprint this pre-setup env; setup replaces `environment` with captured exports.
   const baseEnvironment = createChildEnv(childEnvSource);
@@ -64,6 +65,7 @@ export async function runSetupIfNeeded(
     extraPaths,
     hostPaths,
     childEnv: baseEnvironment,
+    ...(isolatedGitHubConfigDir ? { appGeneratedGitHubConfigDir: isolatedGitHubConfigDir } : {}),
     ...(signal ? { signal } : {}),
   });
   if (cache.skip) {
@@ -166,6 +168,9 @@ export async function runSetupIfNeeded(
         hostPaths,
         childEnv: baseEnvironment,
         expectedFingerprint: cache.fingerprintToStore,
+        ...(isolatedGitHubConfigDir
+          ? { appGeneratedGitHubConfigDir: isolatedGitHubConfigDir }
+          : {}),
         ...(signal ? { signal } : {}),
       });
       if (fingerprint) {

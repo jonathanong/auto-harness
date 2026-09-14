@@ -72,6 +72,7 @@ export async function runCachedSetup(
   baseline = "abc123",
   signal?: AbortSignal,
   childEnvSource: NodeJS.ProcessEnv = process.env,
+  isolatedGitHubConfigDir?: string,
 ) {
   const logs: SessionLogChunk[] = [];
   const streamer = new LogStreamer(
@@ -97,6 +98,7 @@ export async function runCachedSetup(
     undefined,
     undefined,
     cacheDir,
+    isolatedGitHubConfigDir,
   );
   return {
     failure,

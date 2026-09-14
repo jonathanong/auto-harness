@@ -241,6 +241,7 @@ export async function runClaimedSession(
       githubApp,
       nowMs,
       setupCacheDir,
+      isolatedGitHubConfigDir,
     );
   } catch (error) {
     return await finishClaimedSession(
