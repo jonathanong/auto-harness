@@ -25,14 +25,14 @@ export const DEFAULT_SESSION_LOG_SETTINGS: SessionLogSettings = {
   controlPlanePollMs: 60_000,
 };
 
-export const SESSION_LOG_POLL_MS_MIN = 5_000;
-export const SESSION_LOG_POLL_MS_MAX = 5 * 60_000;
-export const SESSION_LOG_BATCH_MAX_KB_MIN = 1;
-export const SESSION_LOG_BATCH_MAX_KB_MAX = 5 * 1024;
-export const SESSION_LOG_BATCH_MAX_LINES_MIN = 1;
-export const SESSION_LOG_BATCH_MAX_LINES_MAX = 50_000;
-export const SESSION_LOG_BATCH_MAX_WAIT_MS_MIN = 1_000;
-export const SESSION_LOG_BATCH_MAX_WAIT_MS_MAX = 5 * 60_000;
+const SESSION_LOG_POLL_MS_MIN = 5_000;
+const SESSION_LOG_POLL_MS_MAX = 5 * 60_000;
+const SESSION_LOG_BATCH_MAX_KB_MIN = 1;
+const SESSION_LOG_BATCH_MAX_KB_MAX = 5 * 1024;
+const SESSION_LOG_BATCH_MAX_LINES_MIN = 1;
+const SESSION_LOG_BATCH_MAX_LINES_MAX = 50_000;
+const SESSION_LOG_BATCH_MAX_WAIT_MS_MIN = 1_000;
+const SESSION_LOG_BATCH_MAX_WAIT_MS_MAX = 5 * 60_000;
 
 export function isSessionLogUploadMode(value: unknown): value is SessionLogUploadMode {
   return (
