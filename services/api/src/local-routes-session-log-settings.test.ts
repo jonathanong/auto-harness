@@ -65,4 +65,42 @@ describe("session log settings routes", () => {
       ).status,
     ).toBe(500);
   });
+
+  it("rejects non-PUT methods and non-conflict put failures", async () => {
+    const { handler } = createLocalApp({ authMode: "off" });
+    expect((await invokeHandler(handler, "POST", "/api/v1/session-log-settings", {})).status).toBe(
+      404,
+    );
+    const saved = await invokeHandler(handler, "PUT", "/api/v1/session-log-settings", {
+      version: 0,
+      uploadMode: "subscribed",
+      batchMaxKb: 16,
+      batchMaxLines: 20,
+      batchMaxWaitMs: 5_000,
+      controlPlanePollMs: 10_000,
+    });
+    expect(saved.status).toBe(200);
+    const validation = new ControlPlane();
+    validation.putSessionLogSettings = async () => ({ ok: false, error: "bad version" });
+    const validating = createLocalApp({ authMode: "off", plane: validation });
+    expect(
+      (
+        await invokeHandler(validating.handler, "PUT", "/api/v1/session-log-settings", {
+          version: 0,
+        })
+      ).status,
+    ).toBe(400);
+    const auditFail = new ControlPlane();
+    auditFail.appendAuditLog = async () => {
+      throw new Error("audit down");
+    };
+    const audited = createLocalApp({ authMode: "off", plane: auditFail });
+    expect(
+      (
+        await invokeHandler(audited.handler, "PUT", "/api/v1/session-log-settings", {
+          version: -1,
+        })
+      ).status,
+    ).toBe(500);
+  });
 });
