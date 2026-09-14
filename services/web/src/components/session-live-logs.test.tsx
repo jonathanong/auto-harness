@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+/* eslint-disable max-lines -- live poll, viewer notify, and unmount races share one fixture. */
 
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -173,6 +174,86 @@ describe("SessionLiveLogs", () => {
         new MessageEvent("message", { data: JSON.stringify({ type: "session:log-part" }) }),
       );
       sockets[0]?.emit("message", new MessageEvent("message", { data: "{" }));
+    });
+    await settle();
+    view.unmount();
+  });
+
+  it("ignores in-flight polls after unmount and non-array log pages", async () => {
+    let releaseLogs!: () => void;
+    const logsGate = new Promise<void>((resolve) => {
+      releaseLogs = resolve;
+    });
+    let releaseStatus!: () => void;
+    const statusGate = new Promise<void>((resolve) => {
+      releaseStatus = resolve;
+    });
+    let releaseTicket!: () => void;
+    const ticketGate = new Promise<void>((resolve) => {
+      releaseTicket = resolve;
+    });
+    const sockets: Array<{ emit(type: string, event: Event): void }> = [];
+    class FakeWebSocket {
+      static OPEN = 1;
+      readyState = 1;
+      private readonly listeners = new Map<string, Array<(event: Event) => void>>();
+      constructor(public url: string) {
+        sockets.push(this);
+      }
+      addEventListener(type: string, handler: (event: Event) => void) {
+        const list = this.listeners.get(type) ?? [];
+        list.push(handler);
+        this.listeners.set(type, list);
+      }
+      emit(type: string, event: Event) {
+        for (const handler of this.listeners.get(type) ?? []) handler(event);
+      }
+      send() {}
+      close() {
+        this.readyState = 3;
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    let failLogs = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("session-log-settings")) return new Response(null, { status: 500 });
+        if (path.includes("viewer-ticket")) {
+          await ticketGate;
+          return Response.json({ ticket: "ticket" });
+        }
+        if (path.includes("/logs")) {
+          await logsGate;
+          return failLogs ? new Response(null, { status: 500 }) : Response.json({ items: "nope" });
+        }
+        await statusGate;
+        return Response.json({ status: 1 });
+      }),
+    );
+    const first = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    first.unmount();
+    releaseLogs();
+    releaseStatus();
+    releaseTicket();
+    await settle();
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-1" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    await settle();
+    failLogs = true;
+    await act(async () => {
+      sockets
+        .at(-1)
+        ?.emit(
+          "message",
+          new MessageEvent("message", { data: JSON.stringify({ type: "session:log-part" }) }),
+        );
     });
     await settle();
     view.unmount();
