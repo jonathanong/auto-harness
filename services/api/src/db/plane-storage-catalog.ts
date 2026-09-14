@@ -172,7 +172,6 @@ export async function putLogFenced(
   const attempts = sessionAttemptChecks(ctx, fence);
   if (attempts === null) return false;
   const table = ctx.tables.sessionLogs;
-  if (!table) return true;
   try {
     await sendFencedLogTransaction(
       ctx,
@@ -180,7 +179,7 @@ export async function putLogFenced(
         TransactItems: [
           hostLockCheck(ctx, fence),
           ...attempts,
-          { Put: { TableName: table, Item: sessionLogItem(rec) } },
+          ...(table ? [{ Put: { TableName: table, Item: sessionLogItem(rec) } }] : []),
         ],
       }),
     );
@@ -204,7 +203,6 @@ export async function putLogsFenced(
   const attempts = sessionAttemptChecks(ctx, fence);
   if (attempts === null) return false;
   const table = ctx.tables.sessionLogs;
-  if (!table) return true;
   const uniqueRecords = new Map<string, LogRecord>();
   for (const record of records) {
     uniqueRecords.set(JSON.stringify([record.sessionId, record.timestampSeq]), record);
@@ -216,9 +214,11 @@ export async function putLogsFenced(
         TransactItems: [
           hostLockCheck(ctx, fence),
           ...attempts,
-          ...[...uniqueRecords.values()].map((record) => ({
-            Put: { TableName: table, Item: sessionLogItem(record) },
-          })),
+          ...(table
+            ? [...uniqueRecords.values()].map((record) => ({
+                Put: { TableName: table, Item: sessionLogItem(record) },
+              }))
+            : []),
         ],
       }),
     );
