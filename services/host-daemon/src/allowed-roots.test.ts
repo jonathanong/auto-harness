@@ -78,8 +78,7 @@ describe("allowed roots realpath checks", () => {
   it("returns canonical claimed paths and uses native hook absoluteness", async () => {
     const root = await tempDir("canonical-claim");
     const repo = join(root, "repo");
-    await mkdir(repo);
-    await mkdir(join(repo, "wt"));
+    await mkdir(join(repo, "wt"), { recursive: true });
     await writeFile(join(repo, "wt", "hook.sh"), "#!/bin/sh\n");
     const claimed = await assertClaimedPathsAllowed({
       cwd: join(repo, "wt"),
@@ -92,25 +91,28 @@ describe("allowed roots realpath checks", () => {
     expect(claimed.terminalHookScript).toBe(
       await resolvePathForRootCheck(join(await realpath(repo), "wt", "hook.sh")),
     );
+    const windowsAbsolute = [
+      "C:\\hooks\\done.cmd",
+      "\\\\server\\share\\done.cmd",
+      "//server/share/done.cmd",
+      "/\\host/share/env",
+      "\\/host/share/env",
+    ];
+    expect(windowsAbsolute.map(isForeignWindowsAbsolutePath)).toEqual(
+      windowsAbsolute.map(() => process.platform !== "win32"),
+    );
     if (process.platform === "win32") {
-      expect(isForeignWindowsAbsolutePath("C:\\hooks\\done.cmd")).toBe(false);
-      expect(isForeignWindowsAbsolutePath("\\\\server\\share\\done.cmd")).toBe(false);
-      expect(isForeignWindowsAbsolutePath("//server/share/done.cmd")).toBe(false);
       expect(resolveHookPath("C:\\repo", "C:\\hooks\\done.cmd")).toBe("C:\\hooks\\done.cmd");
     } else {
-      expect(isForeignWindowsAbsolutePath("C:\\hooks\\done.cmd")).toBe(true);
-      expect(isForeignWindowsAbsolutePath("\\\\server\\share\\done.cmd")).toBe(true);
-      expect(isForeignWindowsAbsolutePath("//server/share/done.cmd")).toBe(true);
-      expect(() => resolveHookPath("/repo", "C:\\hooks\\done.cmd")).toThrow("not valid on");
-      expect(() => resolveHookPath("/repo", "//server/share/done.cmd")).toThrow("not valid on");
+      expect(() => resolveHookPath("/repo", "/\\host/share/env")).toThrow("not valid on");
+      expect(resolveHookPath("/repo", "///opt/hooks/done.sh")).toBe("///opt/hooks/done.sh");
     }
   });
 
   it("validates inventory paths and terminal hooks against allowed roots", async () => {
     const root = await tempDir("cfg");
     const repo = join(root, "repo");
-    await mkdir(repo);
-    await mkdir(join(repo, "hooks"));
+    await mkdir(join(repo, "hooks"), { recursive: true });
     await writeFile(join(repo, "hooks", "done.sh"), "#!/bin/sh\n");
     await writeFile(join(root, "hook.sh"), "#!/bin/sh\n");
     const config: DaemonConfig = {
