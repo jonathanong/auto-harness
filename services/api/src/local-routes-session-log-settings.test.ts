@@ -114,5 +114,37 @@ describe("session log settings routes", () => {
         })
       ).status,
     ).toBe(500);
+    const conflictAudit = new ControlPlane();
+    conflictAudit.putSessionLogSettings = async () => ({
+      ok: false,
+      error: "version conflict",
+      conflict: true,
+    });
+    conflictAudit.appendAuditLog = async () => {
+      throw new Error("audit down");
+    };
+    const conflictAudited = createLocalApp({ authMode: "off", plane: conflictAudit });
+    expect(
+      (
+        await invokeHandler(conflictAudited.handler, "PUT", "/api/v1/session-log-settings", {
+          version: 0,
+        })
+      ).status,
+    ).toBe(500);
+    const putAudit = new ControlPlane();
+    putAudit.putSessionLogSettings = async () => {
+      throw new Error("down");
+    };
+    putAudit.appendAuditLog = async () => {
+      throw new Error("audit down");
+    };
+    const putAudited = createLocalApp({ authMode: "off", plane: putAudit });
+    expect(
+      (
+        await invokeHandler(putAudited.handler, "PUT", "/api/v1/session-log-settings", {
+          version: 0,
+        })
+      ).status,
+    ).toBe(500);
   });
 });
