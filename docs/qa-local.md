@@ -176,6 +176,10 @@ pnpm local:host-pane
 # [deploy-host-daemon.md](deploy-host-daemon.md).
 export HARNESS_HOST_ID=local-qa-1
 export HARNESS_API_URL=http://127.0.0.1:7420
+# Provider-targeted sessions (grok/claude/codex) stay queued until this file
+# advertises each attached account ready. Use the operator's real $HOME for
+# local QA; unique per-account homes are a production isolation concern.
+# export HARNESS_EXECUTION_PROFILES=$WORK/execution-profiles.json
 pnpm local:daemon start
 ```
 
@@ -219,14 +223,19 @@ Settings page is confusing.
    token per line). The presets request provider JSON envelopes; Codex is `codex exec --json`, **not** `-p` (`-p` is
    `--profile`). Skip `codex` if the binary is missing.
 4. Create a Provider Account under each; **attach them to the host**.
-   Note whether the UI warns if you skip attach.
+   Note whether the UI warns if you skip attach. Then write
+   `$WORK/execution-profiles.json` with each attached account id mapping
+   `{ "home": "$HOME" }`, set `HARNESS_EXECUTION_PROFILES` to that path, and
+   **restart the daemon**. Without that advertisement, provider sessions stay
+   `queued` and `POST /scheduler/assign` returns `{ "items": [] }`.
 5. **Commands** — add a standalone (providerless) command named
    `echo-prompt`, argv `echo`, append-prompt on. This is the required
-   dry run.
+   dry run. For `grok-print`, leave append-prompt separator **off**.
 
 Confirm `GET /api/v1/session-targets` lists the configured providers plus
 `echo-prompt`. A provider that is missing there is almost always "account
-not attached."
+not attached." A provider that is listed but whose sessions never leave
+`queued` is almost always a missing execution profile.
 
 Host pane (`:7422`): you should see the same inventory. You must not
 _need_ it. Record whether attach/edit is possible there and whether the
@@ -267,6 +276,14 @@ configured, also run row 1 as `codex exec --json` (not `-p`).
 
 Watch the session detail live log, not just `curl`. Spawn line must be
 the resolved argv.
+
+Default **session log upload is off**: a completed grok session still shows
+**No logs yet** on the control plane and `GET /sessions/:id/logs` is
+`{ "items": [] }`. That is the autonomous default, not a failed run. Turn
+**Settings → Session logs → Upload mode** to `always` (or `subscribed`)
+before expecting grok stdout on the control plane. The host pane live
+stream still shows output while the session is running, even when upload
+is off. After a reload, host pane falls back to the same REST page.
 
 ### 5.3 Negative
 
@@ -351,7 +368,10 @@ working tree.
       writes — not an operator Add host step
 - [ ] Providers `grok` and `claude` + accounts attached; standalone
       `echo-prompt` exists; `codex` (`codex exec`) if the binary is present
-- [ ] Echo session completed; logs present
+- [ ] Echo session completed; logs present when upload is on
+- [ ] With upload **off**, a completed grok session shows empty control-plane logs
+- [ ] With upload **always**, grok stdout (`QA_SESSION_OK`) appears on
+      `GET /sessions/:id/logs` and the control-plane session page
 - [ ] At least one `claude -p` and one `grok -p` session completed with
       expected stdout
 - [ ] If Codex was configured: at least one `codex exec` session completed
