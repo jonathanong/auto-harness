@@ -1,4 +1,4 @@
-import { mkdtemp, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -80,5 +80,24 @@ describe("runSetupIfNeeded setup cache environment", () => {
     const secondRun = await runCachedSetup(baseAssign(), claimed, second.runner, cacheDir);
     expect(secondRun.failure).toBeNull();
     expect(second.calls()).toBe(1);
+  });
+
+  it("does not store a sidecar when inventory no longer matches the claim", async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "auto-harness-setup-cache-fence-"));
+    const { claimed } = await claimSetupCache({ worktreeSetup: "pnpm install" });
+    let checks = 0;
+    claimed.currentExecutionTarget = async () => {
+      checks += 1;
+      if (checks > 1) throw new Error("host inventory changed after this checkout was claimed");
+    };
+    const first = countingSetupRunner({ SETUP_TOKEN: "from-setup" });
+    const firstRun = await runCachedSetup(baseAssign(), claimed, first.runner, cacheDir);
+    expect(firstRun.failure).toBeNull();
+    expect(first.calls()).toBe(1);
+    expect(checks).toBeGreaterThan(1);
+    expect(firstRun.system).toContain(
+      "Setup succeeded, but the setup cache could not be stored; the next fresh session will re-run setup.",
+    );
+    expect(await readdir(cacheDir)).toEqual([]);
   });
 });

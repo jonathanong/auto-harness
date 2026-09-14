@@ -157,6 +157,7 @@ export async function runSetupIfNeeded(
   streamer.write("system", "Setup complete.");
   if (setupCacheDir && cache.fingerprintToStore && baseline) {
     try {
+      await claimed.currentExecutionTarget?.();
       const fingerprint = await matchingSetupFingerprintAfterSetup({
         checkoutSha: baseline,
         cwd: claimed.cwd,

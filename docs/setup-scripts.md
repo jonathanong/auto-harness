@@ -55,7 +55,12 @@ miss, not `setup_failed`. Same-user session processes can still read those files
 split of the cache directory would close that residual read risk.
 On daemon start and after inventory apply, sidecars whose worktree id and checkout path are no
 longer in inventory (removed or relocated worktrees, including scheduled main checkouts) are
-deleted. A missing sidecar is a cache miss and re-runs setup; it never fails the session.
+deleted. Each sweep streams the cache directory and bounds both examined entries and unlink
+attempts, including failures, so a large or unreadable directory cannot stall startup. Hitting
+that cap schedules another bounded batch without waiting for an inventory change or restart.
+Setup that finishes after its worktree was removed does not store a sidecar, and releasing that
+claim sweeps again. A missing sidecar is a cache miss and re-runs setup; it never fails the
+session.
 
 ### Workspace profile boundary
 
