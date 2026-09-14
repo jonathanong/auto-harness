@@ -11,7 +11,11 @@ export type ArchiveWriter = {
   }): Promise<ArchiveWriteResult | void>;
 };
 
-export type ArchiveWriteResult = { versionId: string };
+export type ArchiveWriteResult = {
+  versionId: string;
+  contentType?: string;
+  bodyBytes?: number;
+};
 
 type ArchiveS3Client = {
   send(command: PutObjectCommand): Promise<unknown>;
@@ -34,11 +38,12 @@ export class S3ArchiveWriter implements ArchiveWriter {
     if (!isSessionLogObjectKey(object.key)) {
       throw new Error(`Refusing unexpected archive key: ${object.key}`);
     }
+    const gzipped = gzipSync(object.body);
     const result = (await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
         Key: object.key,
-        Body: gzipSync(object.body),
+        Body: gzipped,
         ContentType: "application/gzip",
         ContentEncoding: "gzip",
         ServerSideEncryption: "AES256",
@@ -47,7 +52,11 @@ export class S3ArchiveWriter implements ArchiveWriter {
     if (typeof result.VersionId !== "string" || result.VersionId.length === 0) {
       throw new Error("S3 archive upload did not return a version id");
     }
-    return { versionId: result.VersionId };
+    return {
+      versionId: result.VersionId,
+      contentType: "application/gzip",
+      bodyBytes: gzipped.length,
+    };
   }
 }
 

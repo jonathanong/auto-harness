@@ -21,7 +21,11 @@ describe("S3ArchiveWriter", () => {
         body: '{"timestamp":"2026-01-01T00:00:00.000Z","stream":"stdout","content":"ok"}\n',
         contentType: "application/x-ndjson",
       }),
-    ).resolves.toEqual({ versionId: "archive-v1" });
+    ).resolves.toEqual({
+      versionId: "archive-v1",
+      contentType: "application/gzip",
+      bodyBytes: expect.any(Number),
+    });
     expect(commands).toHaveLength(1);
     expect((commands[0] as { input: Record<string, unknown> }).input).toEqual({
       Body: expect.any(Uint8Array),

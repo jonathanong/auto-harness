@@ -44,9 +44,10 @@ async function rewriteWinningArchive(
   });
   const versionId = archiveVersionId(result);
   if (!versionId) return;
+  const stored = storedArchiveObject({ key, body, contentType: current.contentType }, result);
   const repaired = {
     ...current,
-    bodyBytes: Buffer.byteLength(body),
+    ...stored,
     updatedAt: state.now(),
     versionId,
   };
@@ -206,8 +207,7 @@ export async function archiveSessionLogs(
         state,
         {
           key,
-          contentType: object.contentType,
-          bodyBytes: Buffer.byteLength(object.body),
+          ...storedArchiveObject(object, writeResult),
           status: "complete",
           objectStored: true,
           updatedAt: state.now(),
@@ -222,8 +222,10 @@ export async function archiveSessionLogs(
   delete storedMetadata.retryState;
   delete storedMetadata.retryOrder;
   delete storedMetadata.capturedRetryOrder;
+  const storedObject = storedArchiveObject(object, writeResult);
   const complete: ArchiveMetadata = {
     ...storedMetadata,
+    ...storedObject,
     status: "complete",
     objectStored: state.archiveWriter !== undefined,
     updatedAt: state.now(),
@@ -260,6 +262,22 @@ function archiveVersionId(result: ArchiveWriteResult | void | undefined): string
   return result && typeof result.versionId === "string" && result.versionId.length > 0
     ? result.versionId
     : undefined;
+}
+
+function storedArchiveObject(
+  object: ArchiveObject,
+  result: ArchiveWriteResult | void | undefined,
+): { contentType: string; bodyBytes: number } {
+  return {
+    contentType:
+      result && typeof result.contentType === "string" && result.contentType.length > 0
+        ? result.contentType
+        : object.contentType,
+    bodyBytes:
+      result && typeof result.bodyBytes === "number"
+        ? result.bodyBytes
+        : Buffer.byteLength(object.body),
+  };
 }
 
 /** A TTL cutoff is only evidence of expiry after a bounded read confirms no log remains. */

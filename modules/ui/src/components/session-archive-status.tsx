@@ -168,7 +168,7 @@ export function SessionArchiveStatus({
           disabled={loading}
           data-pw="session-archive-download"
         >
-          Download .jsonl
+          Download .jsonl.gz
         </Button>
       ) : null}
       {error ? (
