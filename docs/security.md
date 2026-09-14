@@ -68,6 +68,13 @@ user. A compromised session can therefore read it; mode `0600` prevents other lo
 session itself. Mitigate this accepted risk by installing the App only on the repositories served by
 that host. Do not install it organization-wide, put it in prompts, or move it to the control plane.
 
+Setup-cache sidecars stay on the host filesystem, never in DynamoDB or the untrusted checkout.
+Each file is mode `0600` and MAC-bound to its worktree identity with a daemon-only key, so a
+session command cannot overwrite another worktree's sidecar into a successful skip. Losing or
+replacing a sidecar is a cache miss and re-runs setup. Because the daemon and session CLIs share
+the `harness` account, a compromised session can still read those files; a distinct OS principal
+for the cache directory is the remaining isolation step.
+
 ### GitHub App use-case decision
 
 Assessed in #492 before further App work. The three candidate uses resolve as follows; do not
