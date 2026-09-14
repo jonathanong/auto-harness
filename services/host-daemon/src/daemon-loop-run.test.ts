@@ -64,12 +64,13 @@ describe("DaemonLoop run", () => {
     const { config, cleanup } = await makeRepo();
     try {
       const serverMsgs: HostToServerMessage[] = [];
+      const localLogs: string[] = [];
       const transport = createAcknowledgingLoopbackTransport({
         sendToServer: (m) => {
           serverMsgs.push(m);
         },
       });
-      const loop = new DaemonLoop({ config, transport });
+      const loop = new DaemonLoop({ config, transport, onLog: (line) => localLogs.push(line) });
       await loop.start();
       expect(serverMsgs.some((m) => m.type === "host:register")).toBe(true);
 
@@ -101,14 +102,10 @@ describe("DaemonLoop run", () => {
             m.cliResumeRef === "daemon-ref",
         ),
       ).toBe(true);
-      expect(serverMsgs.some((m) => m.type === "session:log")).toBe(true);
-      const systemLogs = serverMsgs.flatMap((message) =>
-        message.type === "session:log" && message.stream === "system" ? [message.content] : [],
-      );
-      expect(systemLogs[0]).toMatch(/^Session started at /);
-      expect(systemLogs).toContain("Spawning: printf (argument count: 2)");
-      expect(systemLogs).toContain("Process exited with code 0");
-      expect(systemLogs.at(-1)).toMatch(/^Session completed at /);
+      expect(serverMsgs.some((m) => m.type === "session:log")).toBe(false);
+      expect(localLogs.some((line) => line.includes("Session started at"))).toBe(true);
+      expect(localLogs.some((line) => line.includes("Spawning: printf"))).toBe(true);
+      expect(localLogs.some((line) => line.includes("Process exited with code 0"))).toBe(true);
 
       await loop.keepalive();
       expect(serverMsgs.some((m) => m.type === "host:keepalive")).toBe(true);
@@ -163,6 +160,7 @@ describe("DaemonLoop run", () => {
     it(`forwards and redacts a captured ref on ${testCase.status}`, async () => {
       const { config, cleanup } = await makeRepo();
       const serverMsgs: HostToServerMessage[] = [];
+      const localLogs: string[] = [];
       const transport = createAcknowledgingLoopbackTransport({
         sendToServer: (message) => {
           serverMsgs.push(message);
@@ -176,7 +174,12 @@ describe("DaemonLoop run", () => {
           return testCase.result;
         },
       };
-      const loop = new DaemonLoop({ config, transport, processRunner });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        processRunner,
+        onLog: (line) => localLogs.push(line),
+      });
 
       try {
         await loop.start();
@@ -200,13 +203,9 @@ describe("DaemonLoop run", () => {
             message.type === "session:status" && message.status === testCase.status,
         );
         expect(status?.cliResumeRef).toBe(testCase.resumeRef);
-        const logs = serverMsgs.filter(
-          (message): message is Extract<HostToServerMessage, { type: "session:log" }> =>
-            message.type === "session:log",
-        );
-        expect(logs.some((message) => message.content.includes(testCase.resumeRef))).toBe(false);
+        expect(localLogs.some((line) => line.includes(testCase.resumeRef))).toBe(false);
         expect(
-          logs.some((message) => message.content.includes("[CLI resume reference redacted]")),
+          localLogs.some((line) => line.includes("[CLI resume reference redacted]")),
         ).toBe(true);
       } finally {
         loop.stop();

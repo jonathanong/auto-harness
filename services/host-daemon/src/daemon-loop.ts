@@ -31,7 +31,7 @@ import {
   registerDaemon,
   type DaemonRuntimeIdentity,
 } from "./daemon-registration.ts";
-import { sendDaemonLog } from "./daemon-log-sender.ts";
+import { LogPartBuffer } from "./log-part-buffer.ts";
 import { OutboundQueue } from "./outbound-queue.ts";
 import {
   emptyExecutionProfiles,
@@ -331,6 +331,7 @@ export class DaemonLoop {
   private readonly config: DaemonConfig;
   private readonly transport: DaemonTransport;
   private readonly outbound: OutboundQueue;
+  private readonly logParts = new Map<string, LogPartBuffer>();
   private readonly reconnectAbortMs: number;
   private readonly ackConfirmationMs: number;
   private readonly drainRetryMs: number;
@@ -2176,7 +2177,16 @@ export class DaemonLoop {
   }
 
   private async emitLog(chunk: SessionLogChunk): Promise<void> {
-    await sendDaemonLog(this.outbound, this.onLog, chunk);
+    this.onLog?.(`[${chunk.stream}#${chunk.seq}] ${chunk.content}`);
+    let buffer = this.logParts.get(chunk.sessionId);
+    if (!buffer) {
+      buffer = new LogPartBuffer(chunk.sessionId, undefined, {
+        apiUrl: this.config.apiUrl,
+        ...(this.config.apiKey ? { apiKey: this.config.apiKey } : {}),
+      });
+      this.logParts.set(chunk.sessionId, buffer);
+    }
+    buffer.push(chunk);
   }
 
   private async waitForAcknowledgement(

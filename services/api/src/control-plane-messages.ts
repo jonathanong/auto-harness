@@ -10,6 +10,7 @@ import {
 
 import type { LogRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
+import { gzipLogRecords, putSessionLogPart } from "./session-log-objects.ts";
 import {
   noteSlackSessionLifecycle,
   persistSession,
@@ -614,19 +615,25 @@ export async function handleHostLogBatchDurable(
     return { ok: false, error: "stale host connection" };
   }
   const records = accepted.map((message) => logRecord(message));
-  const attempts = logAttemptFence(accepted);
-  if (
-    !(await storage.putLogsFenced(records, {
-      hostId,
-      connectionId: sourceConnectionId,
-      ...(attempts.length > 0 ? { attempts } : {}),
-    }))
-  ) {
-    return { ok: false, error: "stale host connection" };
-  }
+  const bySession = new Map<string, typeof records>();
   for (const record of records) {
-    state.logs.set(record.sessionId, commitLogRecord(state, record));
-    state.onLogCommitted?.(record);
+    const bucket = bySession.get(record.sessionId) ?? [];
+    bucket.push(record);
+    bySession.set(record.sessionId, bucket);
+  }
+  for (const [sessionId, sessionRecords] of bySession) {
+    const seqs = sessionRecords.map((record) => record.seq);
+    await putSessionLogPart(
+      state,
+      sessionId,
+      Math.min(...seqs),
+      Math.max(...seqs),
+      gzipLogRecords(sessionRecords),
+    );
+    for (const record of sessionRecords) {
+      state.logs.set(record.sessionId, commitLogRecord(state, record));
+      state.onLogCommitted?.(record);
+    }
   }
   return { ok: true };
 }

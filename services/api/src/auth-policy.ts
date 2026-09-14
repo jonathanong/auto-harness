@@ -77,6 +77,7 @@ export function requiredCapability(
   if (matchesRoutePrefix(pathname, "/api/v1/schedules")) {
     return write ? "schedules:write" : "authenticated";
   }
+  if (write && /^\/api\/v1\/sessions\/[^/]+\/log-parts$/.test(pathname)) return "agent:protocol";
   if (write && /^\/api\/v1\/sessions\/[^/]+\/archive$/.test(pathname)) return "sessions:archive";
   if (write && /^\/api\/v1\/sessions\/[^/]+\/children$/.test(pathname)) return "sessions:spawn";
   if (matchesRoutePrefix(pathname, "/api/v1/sessions") && write) return "sessions:write";

@@ -80,6 +80,8 @@ export type ControlPlaneState = {
   /** hostId → session ids with an unsettled in-memory terminal-hook handoff. */
   pendingTerminalHookHandoffsByHost: Map<string, Set<string>>;
   logs: Map<string, LogRecord[]>;
+  /** Gzip session log parts/final objects keyed by S3 object key. */
+  logObjects: Map<string, Buffer>;
   schedules: Map<string, ScheduleRecord>;
   repositories: Map<string, RepositoryRecord>;
   /** Invalidates repository scans that began before a local repository mutation committed. */
@@ -190,6 +192,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     pendingHostSocketPublish: new Set(),
     pendingTerminalHookHandoffsByHost: new Map(),
     logs: new Map(),
+    logObjects: new Map(),
     schedules: new Map(),
     repositories: new Map(),
     repositoryRevision: 0,

@@ -161,7 +161,10 @@ describe("durable host log batches", () => {
         "connection",
       ),
     ).resolves.toEqual({ ok: true });
-    expect(written).toEqual([[10_000, 10_001]]);
+    expect(written).toEqual([]);
+    expect([...plane.state.logObjects.keys()].some((key) => key.includes("10000-10001"))).toBe(
+      true,
+    );
     // Eviction bounds the cache only; the durable transcript stays whole.
     expect(deleted).toEqual([]);
     expect(published).toEqual([10_000, 10_001]);
@@ -172,7 +175,7 @@ describe("durable host log batches", () => {
         .map(({ seq }) => seq),
     ).toEqual([10_000, 10_001]);
 
-    plane.state.storage.putLogsFenced = async () => false;
+    plane.state.storage.getHostLock = async () => "other-connection";
     await expect(
       handleHostLogBatchDurable(plane.state, [message("session", 10_002)], "connection"),
     ).resolves.toEqual({ ok: false, error: "stale host connection" });
@@ -211,7 +214,8 @@ describe("durable host log batches", () => {
         "connection",
       ),
     ).resolves.toEqual({ ok: true });
-    expect(written).toEqual(["current"]);
+    expect(written).toEqual([]);
+    expect(plane.getLogs("session").map((record) => record.content)).toEqual(["current"]);
     // The stale-attempt discard gets its own counter (a known, named cause);
     // no LogSeqGaps fires alongside it since the cache had no prior seq for
     // this session to compare against (an empty ControlPlane, fresh test).
@@ -246,16 +250,8 @@ describe("durable host log batches", () => {
         "connection",
       ),
     ).resolves.toEqual({ ok: true });
-    expect(fences).toEqual([
-      {
-        hostId: "host",
-        connectionId: "connection",
-        attempts: [
-          { sessionId: "session", attemptId: "a" },
-          { sessionId: "session", attemptId: "a" },
-        ],
-      },
-    ]);
+    expect(fences).toEqual([]);
+    expect(plane.state.logObjects.size).toBe(1);
   });
 
   it("writes a batch without attempt fences when no attempt id can be resolved", async () => {
@@ -285,7 +281,8 @@ describe("durable host log batches", () => {
         "connection",
       ),
     ).resolves.toEqual({ ok: true });
-    expect(fences).toEqual([{ hostId: "host", connectionId: "connection" }]);
+    expect(fences).toEqual([]);
+    expect(plane.state.logObjects.size).toBe(1);
   });
 
   it("detects a seq gap against a known cache baseline and reports the missing count", async () => {

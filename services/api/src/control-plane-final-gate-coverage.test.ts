@@ -135,7 +135,8 @@ describe("final host-message gate branches", () => {
     await expect(handleHostLogBatchDurable(state, [log()], "connection")).resolves.toEqual({
       ok: true,
     });
-    expect(storage.putLogsFenced).toHaveBeenCalled();
+    expect(storage.putLogsFenced).not.toHaveBeenCalled();
+    expect(state.logObjects.size).toBeGreaterThan(0);
   });
 
   it("covers durable protocol rejection and no-host session report acknowledgement", async () => {
