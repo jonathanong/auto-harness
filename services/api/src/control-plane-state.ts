@@ -71,6 +71,12 @@ export type ControlPlaneState = {
   connections: Map<string, ConnectionRecord>;
   /** hostId → connectionId (at most one live agent connection — Invariant 3). */
   hostConnection: Map<string, string>;
+  /**
+   * Local WS hub connection IDs whose `host:register` is in-flight but not
+   * yet published to `hostSockets`. Storage-less rollback must not assign
+   * onto that winner until `host:registered` is sent.
+   */
+  pendingHostSocketPublish: Set<string>;
   /** hostId → session ids with an unsettled in-memory terminal-hook handoff. */
   pendingTerminalHookHandoffsByHost: Map<string, Set<string>>;
   logs: Map<string, LogRecord[]>;
@@ -181,6 +187,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     workspaceSlots: new Map(),
     connections: new Map(),
     hostConnection: new Map(),
+    pendingHostSocketPublish: new Set(),
     pendingTerminalHookHandoffsByHost: new Map(),
     logs: new Map(),
     schedules: new Map(),

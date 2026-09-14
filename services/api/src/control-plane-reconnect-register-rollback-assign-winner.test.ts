@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   claimUnackedOnWorktree,
   expectFailedReplace,
+  installUnpublishedWinner,
   loseSessionAfterValidation,
   readyRollbackPlane,
   ROLLBACK_NOW,
@@ -48,6 +49,37 @@ describe("storage-less register rollback assignment with a newer owner", () => {
           type: "session:assign",
           sessionId: "claimed",
           worktreeId: "cap-w",
+        }),
+      },
+    ]);
+  });
+
+  it("defers assignment while the winning socket is unpublished", async () => {
+    const { plane, messages } = readyRollbackPlane();
+    loseSessionAfterValidation(plane, "s", () => {
+      installUnpublishedWinner(plane, "winner", "w-idle");
+      claimUnackedOnWorktree(plane, "claimed", "w2");
+    });
+    await expectFailedReplace(plane, ["w", "w2"]);
+    expect(plane.getSession("claimed")).toMatchObject({ status: "queued" });
+    expect(plane.getSession("claimed")?.hostId ?? null).toBeNull();
+    expect(messages).toEqual([]);
+    const capConnectionId = plane.state.hostConnection.get("cap");
+    if (capConnectionId) plane.disconnectHost(capConnectionId);
+    plane.state.pendingHostSocketPublish.delete("winner");
+    await plane.requestAssignment();
+    expect(plane.getSession("claimed")).toMatchObject({
+      status: "running",
+      hostId: "h",
+      worktreeId: "w-idle",
+    });
+    expect(messages).toEqual([
+      {
+        hostId: "h",
+        message: expect.objectContaining({
+          type: "session:assign",
+          sessionId: "claimed",
+          worktreeId: "w-idle",
         }),
       },
     ]);

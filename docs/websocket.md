@@ -332,7 +332,9 @@ On the storage-less local hub, omitted-session reconcile is awaited before `host
 accepted; a false result fails closed and rolls back provisional ads and unacked claims without
 overwriting a newer same-host catalog inventory, including a delete-and-recreate at version 1.
 Requeued sessions get an assignment request on that host register path so they do not wait for the
-repair sweep.
+repair sweep. If a newer same-host registration already won while reconcile was pending, the sweep
+waits until that winner's socket is published (`host:registered`) so `session:assign` is not dropped
+on the closing loser.
 
 ---
 

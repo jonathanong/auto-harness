@@ -27,6 +27,10 @@ import { WebSocketServer, type WebSocket } from "ws";
 
 import type { AuthService, Principal } from "./auth.ts";
 import type { ControlPlane } from "./control-plane.ts";
+import {
+  clearHostSocketPendingPublish,
+  markHostSocketPendingPublish,
+} from "./control-plane-host-socket-publish.ts";
 import { handleHostLogBatchDurable, MAX_DURABLE_LOG_BATCH_SIZE } from "./control-plane-messages.ts";
 import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import { emitWsMessagesDiscarded } from "./operational-metrics.ts";
@@ -134,7 +138,11 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
         let windowStartedAt = Date.now();
         let messageCount = 0;
         let accepting = true;
-        let pendingRegistration: { hostId: string; closed: boolean } | null = null;
+        let pendingRegistration: {
+          hostId: string;
+          closed: boolean;
+          connectionId: string;
+        } | null = null;
         let drainForReplacement: () => Promise<void>;
 
         // Each caller here knows *why* it's about to close the socket; log that
@@ -171,17 +179,31 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             return;
           }
           const registration =
-            msg.type === "host:register" ? { hostId: msg.hostId, closed: false } : null;
+            msg.type === "host:register"
+              ? {
+                  hostId: msg.hostId,
+                  closed: false,
+                  connectionId: boundConnectionId ?? plane.state.connectionIdFactory(),
+                }
+              : null;
           if (registration) pendingRegistration = registration;
+          // Track the in-flight claim before durable work so an overlapping
+          // fail-closed rollback cannot assign onto this socket until publish.
+          if (registration && !boundConnectionId) {
+            markHostSocketPendingPublish(plane.state, registration.connectionId);
+          }
           const incumbent = registration ? hostDrains.get(registration.hostId) : undefined;
           if (incumbent && incumbent.socket !== socket) await incumbent.drain();
           const result = await plane.handleHostMessageDurable(
             msg,
-            boundConnectionId ?? undefined,
+            registration?.connectionId ?? boundConnectionId ?? undefined,
             msg.type === "host:register",
           );
           if (!result.ok) {
-            if (registration && pendingRegistration === registration) pendingRegistration = null;
+            if (registration) {
+              clearHostSocketPendingPublish(plane.state, registration.connectionId);
+              if (pendingRegistration === registration) pendingRegistration = null;
+            }
             if (socket.readyState === socket.OPEN) {
               socket.send(JSON.stringify({ type: "error", message: result.error }));
             }
@@ -194,12 +216,16 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             // normal disconnect path mark its inventory offline/requeue work.
             if (registration?.closed || socket.readyState !== socket.OPEN) {
               const connectionId = result.connectionId;
-              if (connectionId) await plane.disconnectHostDurable(connectionId);
+              if (connectionId) {
+                clearHostSocketPendingPublish(plane.state, connectionId);
+                await plane.disconnectHostDurable(connectionId);
+              }
               return;
             }
             // Do not overwrite a live socket until the control plane accepted the claim.
             boundHostId = msg.hostId;
             boundConnectionId = result.connectionId!;
+            clearHostSocketPendingPublish(plane.state, boundConnectionId);
             hostSockets.set(msg.hostId, socket);
             hostDrains.set(msg.hostId, { socket, drain: drainForReplacement });
             socket.send(
@@ -421,7 +447,10 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
         socket.on("close", () => {
           accepting = false;
           flushLogBatch();
-          if (pendingRegistration) pendingRegistration.closed = true;
+          if (pendingRegistration) {
+            pendingRegistration.closed = true;
+            clearHostSocketPendingPublish(plane.state, pendingRegistration.connectionId);
+          }
           if (boundHostId && hostDrains.get(boundHostId)?.socket === socket) {
             hostDrains.delete(boundHostId);
           }
