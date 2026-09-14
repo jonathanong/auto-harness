@@ -32,7 +32,10 @@ import {
 } from "./db/plane-storage-types.ts";
 import { createSessionApiKey } from "./control-plane-session-api-key.ts";
 
-export { releaseScheduledLeaseLocal } from "./control-plane-scheduled-lease.ts";
+export {
+  holdsScheduledLeaseLocal,
+  releaseScheduledLeaseLocal,
+} from "./control-plane-scheduled-lease.ts";
 
 const leaseKey = (hostId: string, repositoryId: string) => `${hostId}\0${repositoryId}`;
 

@@ -178,6 +178,8 @@ settlement of a retained deferred status to that deadline.
 Version `6` adds the deferred checkout-failure result handoff: terminal disposition is persisted
 before the daemon runs its retained hook, and archival waits for the post-hook result completion.
 The storage-less local path uses that same two-phase settlement for exhausted checkout failures.
+It also retains the failed worktree or main-checkout lease until settlement or expiry so another
+assignment cannot claim or reset that checkout while the retained hook and result probes run.
 That exhausted checkout-failure handoff also enqueues the terminal Slack lifecycle when it
 settles or expires; host-loss already enqueued Slack at the terminal write.
 Version `5` adds the durable terminal-hook handoff used when final `host_lost` recovery transfers

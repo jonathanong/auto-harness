@@ -591,7 +591,9 @@ contact AWS. The DynamoDB row is bounded pointer/state metadata, never a duplica
 pending row survives an interrupted S3 PUT so the same idempotent object key can be retried.
 A protocol-v6 deferred terminal-hook handoff withholds that archive write until the handoff
 settles or its 24-hour expiry elapses — including on the storage-less local path for an
-exhausted `checkout_fetch_failed` finish.
+exhausted `checkout_fetch_failed` finish. That storage-less finish also keeps the failed
+worktree or main-checkout lease reserved until the same settlement or expiry, matching the
+durable transaction.
 
 ---
 
