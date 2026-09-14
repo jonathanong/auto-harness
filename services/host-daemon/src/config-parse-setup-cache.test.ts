@@ -51,14 +51,19 @@ describe("parseDaemonConfig setup cache inputs", () => {
       expect(
         parseDaemonConfig({
           ...valid,
-          setupCacheHostInputs: ["C:\\auto-harness\\setup\\env", "\\\\host\\share\\env"],
+          setupCacheHostInputs: [
+            "C:\\auto-harness\\setup\\env",
+            "\\\\host\\share\\env",
+            "//host/share/env",
+          ],
         }).setupCacheHostInputs,
-      ).toEqual(["C:\\auto-harness\\setup\\env", "\\\\host\\share\\env"]);
+      ).toEqual(["C:\\auto-harness\\setup\\env", "\\\\host\\share\\env", "//host/share/env"]);
       return;
     }
     for (const setupCacheHostInputs of [
       ["C:\\auto-harness\\setup\\env"],
       ["\\\\host\\share\\env"],
+      ["//host/share/env"],
       ["/opt/auto-harness/setup/host-environment", "C:\\auto-harness\\setup\\env"],
     ]) {
       expect(() =>

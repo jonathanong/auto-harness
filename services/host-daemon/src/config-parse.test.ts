@@ -176,7 +176,11 @@ describe("parseDaemonConfig", () => {
 
   it("rejects foreign Windows terminal-hook paths on non-Windows hosts", () => {
     if (process.platform === "win32") return;
-    for (const terminalHookScript of ["C:\\hooks\\done.cmd", "\\\\server\\share\\done.cmd"]) {
+    for (const terminalHookScript of [
+      "C:\\hooks\\done.cmd",
+      "\\\\server\\share\\done.cmd",
+      "//server/share/done.cmd",
+    ]) {
       expect(() =>
         parseDaemonConfig({
           hostId: "x",

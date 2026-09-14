@@ -95,11 +95,14 @@ describe("allowed roots realpath checks", () => {
     if (process.platform === "win32") {
       expect(isForeignWindowsAbsolutePath("C:\\hooks\\done.cmd")).toBe(false);
       expect(isForeignWindowsAbsolutePath("\\\\server\\share\\done.cmd")).toBe(false);
+      expect(isForeignWindowsAbsolutePath("//server/share/done.cmd")).toBe(false);
       expect(resolveHookPath("C:\\repo", "C:\\hooks\\done.cmd")).toBe("C:\\hooks\\done.cmd");
     } else {
       expect(isForeignWindowsAbsolutePath("C:\\hooks\\done.cmd")).toBe(true);
       expect(isForeignWindowsAbsolutePath("\\\\server\\share\\done.cmd")).toBe(true);
+      expect(isForeignWindowsAbsolutePath("//server/share/done.cmd")).toBe(true);
       expect(() => resolveHookPath("/repo", "C:\\hooks\\done.cmd")).toThrow("not valid on");
+      expect(() => resolveHookPath("/repo", "//server/share/done.cmd")).toThrow("not valid on");
     }
   });
 
