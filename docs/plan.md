@@ -60,7 +60,9 @@ Explicitly out of scope for this project, regardless of how easy any individual 
   `pull_request_review_comment` triggers only, Auto Harness owns comment-author authorization,
   trigger deduplication, and repository-to-command resolution: one tested centralized gate is safer
   than N drifting public-repository workflow copies. Every other ingress path still receives a
-  rendered prompt and does not decide _whether_ to run.
+  rendered prompt and does not decide _whether_ to run. A control-plane GitHub App that holds git
+  credentials or writes check-runs is out of scope; host-side per-session installation tokens and
+  comment ingress are the accepted App uses ([security.md](security.md#github-app-use-case-decision)).
 - **Multi-tenant SaaS.** Single-org control plane; `allowedRepositories` scoping is the extent of
   multi-tenancy, not a hard security boundary between untrusted customers.
 - **Per-session containerization** (see D9).

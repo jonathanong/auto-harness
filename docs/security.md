@@ -66,6 +66,20 @@ user. A compromised session can therefore read it; mode `0600` prevents other lo
 session itself. Mitigate this accepted risk by installing the App only on the repositories served by
 that host. Do not install it organization-wide, put it in prompts, or move it to the control plane.
 
+### GitHub App use-case decision
+
+Assessed in #492 before further App work. The three candidate uses resolve as follows; do not
+re-open them without revisiting D1/D3/D7.
+
+| Candidate                                                                | Decision                                        | Why                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trigger a session from a PR/issue comment without a target-repo workflow | **Accepted** as App-mediated comment ingress    | Control plane owns comment-author authorization, dedup, and repository-to-command resolution ([plan.md](plan.md) §2, [api.md](api.md#github-app-comment-ingress)). It does not receive git credentials. |
+| Control plane writes check-runs/statuses instead of the agent's `gh`     | **Rejected**                                    | D1/D3: the session and its terminal hook write GitHub state from the host. A control-plane check-run writer would be a second GitHub identity and a second credential vault.                            |
+| Installation tokens so hosts drop long-lived git PATs                    | **Accepted on the host, not the control plane** | Per-session installation tokens are minted by the daemon (#508). D7 forbids a control-plane-held App private key; that is the background-agents failure mode [comparison.md](comparison.md) calls out.  |
+
+The control plane may verify GitHub webhook signatures for comment ingress. That is not git
+credential custody. Git transport stays SSH/`gh` on the host.
+
 ## Transport security
 
 | Layer     | Protection                                               |
