@@ -62,6 +62,18 @@ export type {
 } from "./workspace.ts";
 
 export {
+  DEFAULT_SESSION_LOG_SETTINGS,
+  SESSION_LOG_UPLOAD_MODES,
+  isSessionLogObjectKey,
+  isSessionLogUploadMode,
+  normalizeSessionLogSettings,
+  sessionLogArchiveKey,
+  sessionLogPartKey,
+  type SessionLogSettings,
+  type SessionLogUploadMode,
+} from "./session-log-settings.ts";
+
+export {
   HOST_CAPABILITIES,
   defaultMaxConcurrentAssignments,
   hasHostCapability,

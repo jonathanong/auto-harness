@@ -1,9 +1,11 @@
 /** Implementation-measured constants used by the AWS capacity/cost model. */
 
+import { DEFAULT_SESSION_LOG_SETTINGS } from "./session-log-settings.ts";
+
 export const CAPACITY_CONSTANTS = {
   daemonLogMessagesPerSec: 10,
-  controlPlaneLogBatchItems: 25,
-  sessionLogsTtlSeconds: 7 * 24 * 3600,
+  /** Host gzip-part flush; control-plane UI poll uses the same default. */
+  sessionLogBatchMaxWaitSeconds: DEFAULT_SESSION_LOG_SETTINGS.batchMaxWaitMs / 1000,
   websocketKeepaliveSeconds: 20,
   schedulerIntervalSeconds: 60,
   apiGatewayMaxFrameBytes: 32 * 1024,
@@ -23,14 +25,19 @@ export type CapacityWorkload = {
   connectedViewers: number;
   schedules: number;
   archiveBytesPerSession: number;
+  /** When false (default), no S3 log parts are modelled. */
+  sessionLogUpload?: boolean;
 };
 
 export type CapacityEstimate = {
   logChunksPerSession: number;
   /** Worst-case retained ordinary CLI log content, before archive JSONL overhead. */
   logBytesPerSession: number;
+  /** Always 0: log bodies are not DynamoDB items. */
   dynamoLogWritesPerMonth: number;
   dynamoLogTransactionsPerMonth: number;
+  s3PartPutsPerMonth: number;
+  s3FinalPutsPerMonth: number;
   websocketMessagesPerMonth: number;
   lambdaInvocationsPerMonth: number;
   schedulerInvocationsPerMonth: number;
@@ -67,25 +74,28 @@ export function estimateMonthlyCapacity(workload: CapacityWorkload): CapacityEst
     CAPACITY_CONSTANTS.sessionLogMaxBytes,
   );
   const sessionsPerMonth = workload.sessionsPerDay * 30;
-  const dynamoLogWritesPerMonth = sessionsPerMonth * logChunksPerSession;
-  // API Gateway invokes the AWS WebSocket Lambda once per daemon log frame.
-  // Local coalescing does not reduce the deployed transaction count.
-  const dynamoLogTransactionsPerMonth = dynamoLogWritesPerMonth;
+  const dynamoLogWritesPerMonth = 0;
+  const dynamoLogTransactionsPerMonth = 0;
+  const partsPerSession = Math.max(
+    1,
+    Math.ceil(workload.sessionDurationSeconds / CAPACITY_CONSTANTS.sessionLogBatchMaxWaitSeconds),
+  );
+  const upload = workload.sessionLogUpload === true;
+  const s3PartPutsPerMonth = upload ? sessionsPerMonth * partsPerSession : 0;
+  const s3FinalPutsPerMonth = upload ? sessionsPerMonth : 0;
   const connectionMinutes =
     (workload.connectedHosts + workload.connectedViewers) *
     (CAPACITY_CONSTANTS.secondsPerMonth / 60);
   const keepalivesPerMonth =
     (workload.connectedHosts * CAPACITY_CONSTANTS.secondsPerMonth) /
     CAPACITY_CONSTANTS.websocketKeepaliveSeconds;
-  // Each successful keepalive is answered with `host:keepalive-ack` over
-  // postToConnection. That outbound frame is a WebSocket message but not a
-  // Lambda invocation (same as viewer fanout).
   const keepaliveAcksPerMonth = keepalivesPerMonth;
-  const viewerLogMessagesPerMonth = dynamoLogWritesPerMonth * workload.connectedViewers;
-  const inboundWebsocketMessagesPerMonth =
-    dynamoLogWritesPerMonth + keepalivesPerMonth + sessionsPerMonth * 4;
+  // Log bodies do not traverse API Gateway. Optional part-ready notifies are one
+  // outbound frame per part per watching viewer.
+  const viewerPartNotifiesPerMonth = upload ? s3PartPutsPerMonth * workload.connectedViewers : 0;
+  const inboundWebsocketMessagesPerMonth = keepalivesPerMonth + sessionsPerMonth * 4;
   const websocketMessagesPerMonth =
-    inboundWebsocketMessagesPerMonth + keepaliveAcksPerMonth + viewerLogMessagesPerMonth;
+    inboundWebsocketMessagesPerMonth + keepaliveAcksPerMonth + viewerPartNotifiesPerMonth;
   const schedulerInvocationsPerMonth =
     CAPACITY_CONSTANTS.secondsPerMonth / CAPACITY_CONSTANTS.schedulerIntervalSeconds;
   // One EventBridge/Lambda invocation runs per sweep, but it scans/evaluates
@@ -98,6 +108,8 @@ export function estimateMonthlyCapacity(workload: CapacityWorkload): CapacityEst
     logBytesPerSession,
     dynamoLogWritesPerMonth,
     dynamoLogTransactionsPerMonth,
+    s3PartPutsPerMonth,
+    s3FinalPutsPerMonth,
     websocketMessagesPerMonth,
     // Viewer fanout is an outbound gateway message, not an invocation of the WebSocket Lambda.
     lambdaInvocationsPerMonth:

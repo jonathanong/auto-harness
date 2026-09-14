@@ -11,7 +11,7 @@ Cross-plane architecture now lives in **[architecture/](architecture/README.md)*
 | [architecture/assignment.md](architecture/assignment.md)               | Match, round-robin, ack, resume, bounded retry      |
 | [architecture/connection.md](architecture/connection.md)               | Register, keepalive, disconnect, drain              |
 | [architecture/communication.md](architecture/communication.md)         | WebSocket vs the 1-minute cron; what invokes Lambda |
-| [architecture/logs.md](architecture/logs.md)                           | Live tail, REST history, S3 archive                 |
+| [architecture/logs.md](architecture/logs.md)                           | S3 gzip parts; CP poll; host-pane live stream       |
 | [architecture/request-lifetime.md](architecture/request-lifetime.md)   | Browser and host never share a request              |
 | [architecture/gotchas.md](architecture/gotchas.md)                     | Traps, maturity, “do not improve this”              |
 

@@ -702,16 +702,14 @@ rewrite (account cooldown/fallback routing is now Phase 3, not Phase 5):
   work).
 - Agent auto-update — drain (no new jobs), finish in-flight CLIs without kill, then restart.
 - Rate limiting + cost tracking; recompute log-volume assumptions against a real CLI transcript
-  before finalizing DynamoDB/S3 cost estimates (see [costs.md](costs.md) — prior estimates assumed
-  roughly two orders of magnitude fewer log chunks per session than a long-running CLI session
-  actually produces).
+  before finalizing S3 part estimates (see [costs.md](costs.md)).
 - Audit logging (append-only AuditLogs records, authenticated admin history,
   bounded secret-safe metadata, and fail-closed acknowledgement if an audit
   append cannot persist).
 
 **Status (local/runtime code complete; AWS lifecycle proven, long-running fleet unproven):**
 `archiveSessionLogs` serializes
-terminal logs to `sessions/{sessionId}/logs.jsonl`, retains archive metadata in DynamoDB, and uses
+terminal logs to `sessions/{sessionId}/logs.jsonl.gz`, retains archive metadata in DynamoDB, and uses
 the private S3 writer when `ARCHIVE_BUCKET` is configured. Metadata is bounded and records a
 pending first-time upload before the PUT so a repeated terminal message can retry safely. Replacement
 of a version-pinned complete archive uploads first and commits the new version id only on success,

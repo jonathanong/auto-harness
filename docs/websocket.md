@@ -142,8 +142,10 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
 }
 ```
 
-Daemons coalesce consecutive stdout/stderr writes to about **10 WebSocket messages/sec/session**
-(`logBatchMaxWaitMs` 100, `logBatchMaxLines` 100, plus the existing per-frame byte budget).
+Daemons coalesce consecutive stdout/stderr for the **host-pane** live stream at about **10
+messages/sec/session** (`logBatchMaxWaitMs` 100, `logBatchMaxLines` 100, plus the PTY byte budget).
+Those frames are **not** sent on the control-plane `/ws`. S3 gzip parts use the operator batch
+knobs (default 60s / 256 KB / 500 lines) when upload is on.
 A write is split on UTF-8 character and newline boundaries; later pieces never rejoin a
 batch that already rejected an earlier piece. A stream change parks one overflow batch
 instead of dropping the other stream. Coalesced frames still carry `{sessionId, attemptId}`
@@ -264,12 +266,12 @@ never sent over the wire.
 
 ### Server → client
 
-| Type                 | Payload                                                 |
-| -------------------- | ------------------------------------------------------- |
-| `session:log`        | Same as agent log plus `timestampSeq` cursor            |
-| `session:status`     | `{ sessionId, status, exitCode? }`                      |
-| `session:subscribed` | `{ sessionId, cursor, status }` after replay            |
-| `session:error`      | `{ sessionId, code }` (`NOT_FOUND` never reveals scope) |
+| Type                 | Payload                                                                                   |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| `session:log-part`   | `{ sessionId, key, seqStart, seqEnd }` when a gzip part lands and ≥1 viewer is subscribed |
+| `session:status`     | `{ sessionId, status, exitCode? }`                                                        |
+| `session:subscribed` | `{ sessionId, cursor, status }` after replay                                              |
+| `session:error`      | `{ sessionId, code }` (`NOT_FOUND` never reveals scope)                                   |
 
 ---
 
@@ -277,24 +279,19 @@ never sent over the wire.
 
 1. `POST /auth/viewer-ticket` through the web origin with the authenticated browser session. The body is `{ ticket }` and the response is `Cache-Control: no-store`. Service-account credentials cannot mint a ticket.
 2. Connect to API `/ws/viewer?ticket=…` from that same web origin (the server requires a matching `Origin` and consumes the ticket once), then `session:subscribe` for one session id (the server checks repository scope).
-3. Server acknowledges with `session:subscribed` `{ sessionId, cursor, status }` and then tails
-   **new** `session:log` records only. Historical replay is REST
-   [`GET /sessions/:id/logs`](api.md) (newest page, `order=desc`). The viewer socket must not
-   `PostToConnection` a history page on subscribe.
-4. Reconnect with a **fresh** ticket and the last received `timestampSeq` as optional `after`;
-   duplicate log frames are safe (client merge), ticket replay is not.
+3. Server acknowledges with `session:subscribed` `{ sessionId, cursor, status }`. Log **text** is
+   not sent on this socket. When upload is on and this session has subscribers, the server may
+   emit `session:log-part` so the UI can refetch REST immediately; otherwise the UI polls
+   [`GET /sessions/:id/logs`](api.md). The viewer socket must not `PostToConnection` a history
+   page on subscribe.
+4. Reconnect with a **fresh** ticket.
 5. `session:status` reports lifecycle changes; `session:unsubscribe` is sent on leave (or auto on disconnect).
 
 Notes:
 
 - Many clients may subscribe to one session
-- Full history remains bounded REST [`GET /sessions/:id/logs`](api.md); this protocol only fills the live tail. Subscribe does not replay that history over WebSocket.
-- Streams may interleave; order is preserved per stream
-- The daemon already coalesces source-side to ~10 messages/sec/session (see above). Independently,
-  the local WebSocket server coalesces up to 25 adjacent log frames over a short bounded window,
-  flushes them before any later control/status frame, and persists the batch in one
-  connection-fenced DynamoDB transaction before fan-out. The agent's `timestampSeq` order is
-  unchanged; the server never renumbers or reorders chunks.
+- Full history remains bounded REST [`GET /sessions/:id/logs`](api.md) from S3. Subscribe does not replay that history over WebSocket and does not carry log bodies.
+- Host gzip-part flush (kb / lines / time) is independent of the old 10 msg/s PTY coalesce used for the host-pane live stream.
 - The AWS WebSocket Lambda stores viewer identity and subscriptions in DynamoDB. Each committed
   log record is fanned out through the API Gateway Management API, so browser viewing does not
   require a long-running server.
