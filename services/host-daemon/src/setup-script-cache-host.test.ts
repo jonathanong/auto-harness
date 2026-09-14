@@ -169,7 +169,11 @@ describe("setup script host-file fingerprint", () => {
   it("does not treat foreign Windows host paths as cwd-relative files", async () => {
     if (process.platform === "win32") return;
     const { cwd, cacheDir, hostFile } = await fixture();
-    const relativeForeign = ["C:\\auto-harness\\setup\\env", "\\\\host\\share\\env"];
+    const relativeForeign = [
+      "C:\\auto-harness\\setup\\env",
+      "\\\\host\\share\\env",
+      "\\\\\\server\\share\\env",
+    ];
     for (const path of relativeForeign) await writeFile(join(cwd, path), "not-the-host-file");
     // Slash-form `//tmp/...` and mixed `/\host/...` would otherwise open as local paths.
     for (const path of [...relativeForeign, `/${hostFile}`, "/\\host/share/env"]) {

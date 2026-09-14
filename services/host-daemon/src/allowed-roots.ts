@@ -137,10 +137,11 @@ export function resolveHookPath(repositoryPath: string, terminalHookScript: stri
     : join(repositoryPath, terminalHookScript);
 }
 
-/** POSIX-only: drive letters and exactly-two-separator UNC (`//host`, `\\host`, `/\host`, `\/host`). Triple-slash POSIX paths stay local. */
+/** POSIX-only: drive letters, two-or-more leading backslashes, and two-separator UNC including mixed pairs. Triple-slash POSIX paths stay local. */
 export function isForeignWindowsAbsolutePath(path: string): boolean {
   return (
-    process.platform !== "win32" && (/^[\\/]{2}[^\\/]/.test(path) || /^[A-Za-z]:[\\/]/.test(path))
+    process.platform !== "win32" &&
+    (/^\\{2,}/.test(path) || /^[\\/]{2}[^\\/]/.test(path) || /^[A-Za-z]:[\\/]/.test(path))
   );
 }
 
