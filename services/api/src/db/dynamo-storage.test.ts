@@ -5,7 +5,7 @@ import { createDynamoTestCtx } from "../../test-helpers/dynamo-test-helpers.ts";
 const ctx = createDynamoTestCtx("Sto");
 
 describe("DynamoDB Local storage", () => {
-  it("persists sessions worktrees claims locks logs schedules", async () => {
+  it("persists sessions worktrees claims locks schedules", async () => {
     if (!ctx.available || !ctx.storage) {
       expect(true).toBe(true);
       return;
@@ -103,24 +103,6 @@ describe("DynamoDB Local storage", () => {
     expect((await s.listConnections()).length).toBeGreaterThan(0);
     await s.deleteConnection("c3");
     expect(await s.getConnection("c3")).toBeNull();
-
-    await s.putLog({
-      sessionId: "sess-1",
-      timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
-      stream: "stdout",
-      content: "line",
-      timestamp: "2026-01-01T00:00:00.000Z",
-      seq: 1,
-    });
-    await s.putLog({
-      sessionId: "sess-1",
-      timestampSeq: "2026-01-01T00:00:00.000Z#0000000002",
-      stream: "stdout",
-      content: "line2",
-      timestamp: "2026-01-01T00:00:00.000Z",
-      seq: 2,
-    });
-    expect((await s.listLogs("sess-1")).map((l) => l.seq)).toEqual([1, 2]);
 
     await s.putSchedule({
       id: "sch-1",

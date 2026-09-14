@@ -2,13 +2,17 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { createAuthoritativeReadStorage } from "../test-helpers/control-plane-authoritative-read-test-helpers.ts";
+import {
+  createAuthoritativeReadStorage,
+  gzipArchiveWriterFor,
+} from "../test-helpers/control-plane-authoritative-read-test-helpers.ts";
 
 const now = () => "2026-01-01T00:00:00.000Z";
 
 function options(storage: never) {
   return {
     storage,
+    archiveWriter: gzipArchiveWriterFor(storage),
     now,
     repositoryIdFactory: () => "repository",
     scheduleIdFactory: () => "schedule",
@@ -283,11 +287,11 @@ describe("authoritative durable reads", () => {
     const restarted = new ControlPlane(options(storage));
     await restarted.hydrateFromStorage();
     // getLogs (sync, in-memory cache only) is deliberately NOT pre-populated by
-    // hydrateFromStorage: every storage-mode reader — including this test's own
-    // getLogsDurable assertion right below — reads DynamoDB directly, and the sync
-    // accessor's one production call site (viewer-ws-hub.ts) is itself gated behind
-    // `!state.storage`. Hydrating it here used to cost one serial listLogs round trip
-    // per session, unbounded in session count, for a cache nothing in storage mode reads.
+    // hydrateFromStorage: storage-mode readers load gzip objects on demand, and the
+    // sync accessor's one production call site (viewer-ws-hub.ts) is itself gated
+    // behind `!state.storage`. Hydrating it here used to cost one serial listLogs
+    // round trip per session, unbounded in session count, for a cache nothing in
+    // storage mode reads.
     expect(restarted.getLogs("session")).toEqual([]);
     expect(
       (await restarted.getLogsDurable("session", { stream: "stdout", limit: 1 })).map(
@@ -297,7 +301,7 @@ describe("authoritative durable reads", () => {
     expect(restarted.getWorktree("worktree")?.path).toBe("/worktree");
     expect(restarted.getArchive("session")).toMatchObject({
       status: "complete",
-      objectStored: false,
+      objectStored: true,
     });
     expect((await reader.updateRepositoryDurable("repository", { name: "renamed" })).ok).toBe(true);
     expect((await writer.getRepositoryDurable("repository"))?.name).toBe("renamed");

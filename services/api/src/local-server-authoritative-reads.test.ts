@@ -1,23 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { createAuthoritativeReadStorage } from "../test-helpers/control-plane-authoritative-read-test-helpers.ts";
+import {
+  createAuthoritativeReadStorage,
+  createInMemoryGzipArchiveWriter,
+} from "../test-helpers/control-plane-authoritative-read-test-helpers.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 describe("durable session routes", () => {
   it("reads ordered log history written by a different control plane", async () => {
     const storage = createAuthoritativeReadStorage();
-    const objects = new Map<string, Buffer>();
-    const archiveWriter = {
-      putArchive: async () => undefined,
-      putGzipObject: async (key: string, body: Buffer) => {
-        objects.set(key, body);
-      },
-      getGzipObject: async (key: string) => objects.get(key),
-      listKeys: async (prefix: string) =>
-        [...objects.keys()].filter((key) => key.startsWith(prefix)),
-    };
+    const archiveWriter = createInMemoryGzipArchiveWriter();
     const writer = new ControlPlane({
       storage,
       archiveWriter,

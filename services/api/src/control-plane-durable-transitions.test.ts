@@ -927,10 +927,6 @@ describe("durable control-plane transitions", () => {
     expect(await ctx.storage.getHostLock("host-failing-write")).toBeNull();
     expect(await ctx.storage.getConnection("connection-failing-write")).toBeNull();
 
-    const logFailing = Object.create(ctx.storage) as DynamoPlaneStorage;
-    logFailing.putLog = async () => {
-      throw new Error("log write failed");
-    };
     await ctx.storage.putSession({
       id: "session-failing-log",
       repositoryId: "repo-failing-log",
@@ -950,7 +946,13 @@ describe("durable control-plane transitions", () => {
       attemptId: "a",
     });
     const logCreated = new ControlPlane({
-      storage: logFailing,
+      storage: ctx.storage,
+      archiveWriter: {
+        putArchive: async () => undefined,
+        putGzipObject: async () => {
+          throw new Error("log write failed");
+        },
+      },
     });
     await logCreated.hydrateFromStorage();
     await expect(
