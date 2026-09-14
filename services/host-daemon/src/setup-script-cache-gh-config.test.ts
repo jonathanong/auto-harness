@@ -124,10 +124,34 @@ describe("setup cache GH_CONFIG_DIR overlay", () => {
     });
   });
 
+  it("restores a setup-exported GH_CONFIG_DIR on a cache hit", async () => {
+    const { cacheDir, cwd } = await storeSetup(
+      { PATH: "/usr/bin", TOKEN: "old" },
+      { TOKEN: "from-setup", GH_CONFIG_DIR: "/opt/from-setup" },
+    );
+    expect(
+      await resolveSetupCacheState({
+        cacheDir,
+        checkoutSha: "abc",
+        cwd,
+        worktreeId: "wt-1",
+        scripts: ["pnpm install"],
+        extraPaths: ["pnpm-lock.yaml"],
+        childEnv: { PATH: "/usr/bin", TOKEN: "old" },
+      }),
+    ).toEqual({
+      skip: true,
+      environment: { TOKEN: "from-setup", GH_CONFIG_DIR: "/opt/from-setup" },
+    });
+  });
+
   it("drops stored isolation dirs that live child env no longer has", () => {
     expect(
       applyLiveEphemeralChildEnv({ TOKEN: "from-setup", GH_CONFIG_DIR: appDir("stale") }),
     ).toEqual({ TOKEN: "from-setup" });
+    expect(
+      applyLiveEphemeralChildEnv({ TOKEN: "from-setup", GH_CONFIG_DIR: "/opt/from-setup" }),
+    ).toEqual({ TOKEN: "from-setup", GH_CONFIG_DIR: "/opt/from-setup" });
     expect(
       applyLiveEphemeralChildEnv(
         { TOKEN: "from-setup", GH_CONFIG_DIR: appDir("stale") },

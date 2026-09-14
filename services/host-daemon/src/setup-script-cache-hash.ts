@@ -83,7 +83,7 @@ export function appendChildEnv(
   }
 }
 
-/** Keep live isolation dirs on a cache hit; drop stored keys that live child env no longer has. */
+/** Keep live isolation dirs on a cache hit; drop only stale App-generated stored isolation dirs. */
 export function applyLiveEphemeralChildEnv(
   stored: NodeJS.ProcessEnv,
   live: NodeJS.ProcessEnv = {},
@@ -92,7 +92,12 @@ export function applyLiveEphemeralChildEnv(
   for (const key of EPHEMERAL_SETUP_CACHE_ENV_KEYS) {
     const value = live[key];
     if (typeof value === "string") environment[key] = value;
-    else delete environment[key];
+    else {
+      const storedValue = environment[key];
+      if (typeof storedValue === "string" && isEphemeralSetupCacheEnvValue(key, storedValue)) {
+        delete environment[key];
+      }
+    }
   }
   return environment;
 }

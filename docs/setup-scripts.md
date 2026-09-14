@@ -44,7 +44,8 @@ so a rotated allowlisted token, changed `PATH`, or removed variable after a daem
 cache miss. App-generated per-session `GH_CONFIG_DIR` isolation directories are omitted from that
 fingerprint and restored from the live child environment, so GitHub App sessions can still skip
 setup. Operator-allowlisted `GH_CONFIG_DIR` values stay in the fingerprint. A cache hit drops a
-stored isolation directory that is absent from live child env. The host never auto-detects sourced
+stored App-generated isolation directory that is absent from live child env, and restores a
+setup-exported `GH_CONFIG_DIR`. The host never auto-detects sourced
 files or undeclared manifests. After the assigned command is authorized to spawn, the daemon drops
 the sidecar rather than reconstructing ignored outputs such as `node_modules`; a later fresh
 session with matching inputs re-runs setup. Native resume still skips every setup script. Cache

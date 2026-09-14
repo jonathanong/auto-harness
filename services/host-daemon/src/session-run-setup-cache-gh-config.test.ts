@@ -73,6 +73,37 @@ describe("runSetupIfNeeded GH_CONFIG_DIR cache", () => {
     expect(secondRun.system.join("\n")).not.toContain(appDir("stale"));
   });
 
+  it("restores a setup-exported GH_CONFIG_DIR on a cache hit", async () => {
+    const source = {
+      PATH: "/usr/bin",
+      HOME: "/home/harness",
+      HARNESS_CHILD_ENV_ALLOWLIST: "SETUP_TOKEN",
+      SETUP_TOKEN: "old",
+    };
+    const { cacheDir, claimed } = await primedCache(
+      { SETUP_TOKEN: "from-setup", GH_CONFIG_DIR: "/opt/from-setup" },
+      source,
+    );
+    const second = countingSetupRunner({ SETUP_TOKEN: "must-not-run" });
+    const secondRun = await runCachedSetup(
+      baseAssign(),
+      claimed,
+      second.runner,
+      cacheDir,
+      "abc123",
+      undefined,
+      source,
+    );
+    expect(second.calls()).toBe(0);
+    expect(secondRun.system).toContain("Setup unchanged; skipping.");
+    expect(secondRun.environment).toEqual({
+      SETUP_TOKEN: "from-setup",
+      GH_CONFIG_DIR: "/opt/from-setup",
+    });
+    expect(secondRun.system.join("\n")).not.toContain("from-setup");
+    expect(secondRun.system.join("\n")).not.toContain("/opt/from-setup");
+  });
+
   it("re-runs setup when an operator-allowlisted GH_CONFIG_DIR changes", async () => {
     const { cacheDir, claimed } = await primedCache(
       { SETUP_TOKEN: "from-setup", GH_CONFIG_DIR: "/opt/gh-a" },
