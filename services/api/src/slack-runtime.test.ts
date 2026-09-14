@@ -8,6 +8,7 @@ import {
   DEFAULT_SLACK_NOTIFICATIONS,
   type SlackIntegrationRecord,
 } from "./slack-integration-types.ts";
+import { gzipLogRecords } from "./session-log-objects.ts";
 import { createSlackLifecycleWorker } from "./slack-runtime.ts";
 
 const now = "2026-08-12T10:00:00.000Z";
@@ -363,5 +364,47 @@ describe("Slack production runtime", () => {
     expect(await worker!.runOnce()).toBe(true);
     expect(getSession).toHaveBeenCalledWith("disappeared");
     expect(fetchImpl).toHaveBeenCalled();
+  });
+
+  it("hydrates gzip logs for a failed session with no in-memory transcript", async () => {
+    const store = new MemoryOutbox();
+    const plane = new ControlPlane({
+      storage: Object.assign(store, {
+        getSlackIntegration: async () => slackRecord(),
+        listSessionsByStatus: async () => [],
+      }) as never,
+      secretEncryptor: encryptor(),
+      publicBaseUrl: "https://ui.test",
+      now: () => now,
+    });
+    plane.state.sessions.set(
+      "failed-gz",
+      sessionRecord("failed-gz", "failed", { completedAt: now, exitCode: 1 }),
+    );
+    plane.state.logObjects.set(
+      "sessions/failed-gz/logs.jsonl.gz",
+      gzipLogRecords([
+        {
+          sessionId: "failed-gz",
+          timestamp: now,
+          stream: "stderr",
+          content: "gzip-boom",
+          seq: 1,
+          timestampSeq: `${now}#0000000001`,
+        },
+      ]),
+    );
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true, channel: "C123", ts: "9.0" }), { status: 200 }),
+    );
+    const worker = createSlackLifecycleWorker(plane, {
+      fetch: fetchImpl,
+      worker: { now: () => now },
+    });
+    expect(await worker!.runOnce()).toBe(true);
+    expect(plane.state.logs.get("failed-gz")?.map((record) => record.content)).toEqual([
+      "gzip-boom",
+    ]);
   });
 });
