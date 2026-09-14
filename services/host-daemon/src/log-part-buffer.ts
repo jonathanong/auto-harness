@@ -104,7 +104,7 @@ export class LogPartBuffer {
 
   async flushFinal(): Promise<void> {
     await this.flush();
-    if (this.uploaded.length === 0 || !this.upload) return;
+    if (this.uploaded.length === 0) return;
     await this.put(
       `/api/v1/sessions/${encodeURIComponent(this.sessionId)}/log-archive`,
       concatGzipMembers(this.uploaded),
