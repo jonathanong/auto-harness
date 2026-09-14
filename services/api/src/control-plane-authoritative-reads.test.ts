@@ -269,7 +269,7 @@ describe("authoritative durable reads", () => {
       status: "idle",
       online: true,
     });
-    expect((await writer.archiveSessionLogs("session")).key).toContain("session/logs.jsonl");
+    expect((await writer.archiveSessionLogs("session")).key).toContain("session/logs.jsonl.gz");
     await writer.settleStorage();
     expect(await reader.getSessionDurable("session")).toMatchObject({ prompt: "work" });
     expect((await reader.listSessionsPageDurable()).items.map((session) => session.id)).toEqual([

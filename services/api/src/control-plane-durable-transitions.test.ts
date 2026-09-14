@@ -818,13 +818,13 @@ describe("durable control-plane transitions", () => {
       "temporary archive outage",
     );
     expect((await ctx.storage.getSession("session-idempotent"))?.status).toBe("completed");
-    expect(await ctx.storage.getArchive("sessions/session-idempotent/logs.jsonl")).toMatchObject({
+    expect(await ctx.storage.getArchive("sessions/session-idempotent/logs.jsonl.gz")).toMatchObject({
       status: "pending",
       objectStored: false,
     });
     archiveUnavailable = false;
     expect((await planeCreated.plane.handleHostMessageDurable(terminal)).ok).toBe(true);
-    expect(await ctx.storage.getArchive("sessions/session-idempotent/logs.jsonl")).toMatchObject({
+    expect(await ctx.storage.getArchive("sessions/session-idempotent/logs.jsonl.gz")).toMatchObject({
       status: "complete",
       objectStored: true,
     });

@@ -55,13 +55,13 @@ describe("archive writer with real DynamoDB Local", () => {
     await expect(archiveSessionLogs(state, "session-failure")).rejects.toThrow(
       "object store unavailable",
     );
-    expect(await ctx.storage.getArchive("sessions/session-failure/logs.jsonl")).toMatchObject({
+    expect(await ctx.storage.getArchive("sessions/session-failure/logs.jsonl.gz")).toMatchObject({
       status: "pending",
       objectStored: false,
     });
     unavailable = false;
     await retrySessionArchiveIfNeeded(state, "session-failure");
-    expect(await ctx.storage.getArchive("sessions/session-failure/logs.jsonl")).toMatchObject({
+    expect(await ctx.storage.getArchive("sessions/session-failure/logs.jsonl.gz")).toMatchObject({
       status: "complete",
       objectStored: true,
     });
@@ -93,7 +93,7 @@ describe("archive writer with real DynamoDB Local", () => {
 
   it("does not expire an in-flight processing archive retry claim", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
-    const key = "sessions/session-processing/logs.jsonl";
+    const key = "sessions/session-processing/logs.jsonl.gz";
     await ctx.storage.putArchive({
       key,
       contentType: "application/x-ndjson",
@@ -136,7 +136,7 @@ describe("archive writer with real DynamoDB Local", () => {
 
   it("expires an empty processing archive retry claim", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
-    const key = "sessions/session-empty-processing/logs.jsonl";
+    const key = "sessions/session-empty-processing/logs.jsonl.gz";
     await ctx.storage.putArchive({
       key,
       contentType: "application/x-ndjson",
@@ -156,7 +156,7 @@ describe("archive writer with real DynamoDB Local", () => {
 
   it("expires a pending archive so a late retry cannot mark it complete", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
-    const key = "sessions/session-expired/logs.jsonl";
+    const key = "sessions/session-expired/logs.jsonl.gz";
     await ctx.storage.putArchive({
       key,
       contentType: "application/x-ndjson",
@@ -168,7 +168,7 @@ describe("archive writer with real DynamoDB Local", () => {
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
     await ctx.storage.putArchive({
-      key: "sessions/session-complete/logs.jsonl",
+      key: "sessions/session-complete/logs.jsonl.gz",
       contentType: "application/x-ndjson",
       bodyBytes: 1,
       status: "complete",
@@ -210,9 +210,9 @@ describe("archive writer with real DynamoDB Local", () => {
       objectStored: false,
     });
     await expect(
-      ctx.storage.expireArchive("sessions/session-complete/logs.jsonl", "2026-01-08T00:00:00.000Z"),
+      ctx.storage.expireArchive("sessions/session-complete/logs.jsonl.gz", "2026-01-08T00:00:00.000Z"),
     ).resolves.toBe(false);
-    expect(await ctx.storage.getArchive("sessions/session-complete/logs.jsonl")).toMatchObject({
+    expect(await ctx.storage.getArchive("sessions/session-complete/logs.jsonl.gz")).toMatchObject({
       status: "complete",
       objectStored: true,
       versionId: "archive-v1",

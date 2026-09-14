@@ -17,7 +17,7 @@ import { inMemorySessionsForPendingHandoffs } from "./control-plane-terminal-hoo
 export const TERMINAL_HOOK_HANDOFF_DELIVERY_LIMIT = 500;
 
 function pendingArchiveIntent(state: ControlPlaneState, sessionId: string): ArchiveMetadata {
-  const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
+  const key = `${state.archivePrefix}${sessionId}/logs.jsonl.gz`;
   const updatedAt = state.now();
   return {
     key,

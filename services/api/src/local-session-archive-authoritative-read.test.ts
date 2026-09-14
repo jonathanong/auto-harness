@@ -28,7 +28,7 @@ describe("durable session archive reads", () => {
     const persistedSession = writer.state.sessions.get("session")!;
     await writer.state.storage!.createSession({ ...persistedSession, status: "completed" });
     await writer.state.storage!.putArchive({
-      key: "sessions/session/logs.jsonl",
+      key: "sessions/session/logs.jsonl.gz",
       versionId: "archive-v1",
       contentType: "application/x-ndjson",
       bodyBytes: 17,
@@ -57,7 +57,7 @@ describe("durable session archive reads", () => {
       downloadUrl: "https://archive.example.test/fresh",
       bodyBytes: 17,
     });
-    expect(reader.state.archives.get("sessions/session/logs.jsonl")).toMatchObject({
+    expect(reader.state.archives.get("sessions/session/logs.jsonl.gz")).toMatchObject({
       status: "complete",
     });
   });
@@ -90,8 +90,8 @@ describe("durable session archive reads", () => {
       if (!created.ok) return;
       const session = created.session;
       plane.state.sessions.set(session.id, { ...session, status });
-      plane.state.archives.set(`sessions/${session.id}/logs.jsonl`, {
-        key: `sessions/${session.id}/logs.jsonl`,
+      plane.state.archives.set(`sessions/${session.id}/logs.jsonl.gz`, {
+        key: `sessions/${session.id}/logs.jsonl.gz`,
         versionId: "archive-v1",
         contentType: "application/x-ndjson",
         bodyBytes: 0,

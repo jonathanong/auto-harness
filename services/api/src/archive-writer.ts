@@ -1,3 +1,6 @@
+import { gzipSync } from "node:zlib";
+
+import { isSessionLogObjectKey } from "@auto-harness/shared";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 export type ArchiveWriter = {
@@ -28,15 +31,16 @@ export class S3ArchiveWriter implements ArchiveWriter {
     body: string;
     contentType: string;
   }): Promise<ArchiveWriteResult> {
-    if (!/^sessions\/[^/]+\/logs(?:\.[^/]+)?\.jsonl$/.test(object.key)) {
+    if (!isSessionLogObjectKey(object.key)) {
       throw new Error(`Refusing unexpected archive key: ${object.key}`);
     }
     const result = (await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
         Key: object.key,
-        Body: object.body,
-        ContentType: object.contentType,
+        Body: gzipSync(object.body),
+        ContentType: "application/gzip",
+        ContentEncoding: "gzip",
         ServerSideEncryption: "AES256",
       }),
     )) as { VersionId?: unknown };
