@@ -40,14 +40,14 @@ import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import type { PlaneStorageCtx, ScheduleRecord } from "./plane-storage-types.ts";
 
 const archive = {
-  key: "sessions/session/logs.jsonl",
+  key: "sessions/session/logs.jsonl.gz",
   contentType: "application/x-ndjson",
   bodyBytes: 5,
   status: "pending" as const,
   objectStored: false,
   updatedAt: "2026-01-01T00:00:00.000Z",
   retryState: "processing" as const,
-  retryOrder: "2026-01-01T00:00:00.000Z#sessions/session/logs.jsonl",
+  retryOrder: "2026-01-01T00:00:00.000Z#sessions/session/logs.jsonl.gz",
 };
 
 function archiveCtx(send: (command: unknown) => Promise<unknown>): PlaneStorageCtx {
@@ -145,14 +145,14 @@ describe("archive retry storage", () => {
     const legacy = vi
       .fn()
       .mockResolvedValueOnce({
-        Items: [{ ...archive, key: "sessions/z/logs.jsonl", retryOrder: undefined }],
+        Items: [{ ...archive, key: "sessions/z/logs.jsonl.gz", retryOrder: undefined }],
       })
       .mockResolvedValueOnce({
-        Items: [{ ...archive, key: "sessions/a/logs.jsonl", retryOrder: undefined }],
+        Items: [{ ...archive, key: "sessions/a/logs.jsonl.gz", retryOrder: undefined }],
       });
     await expect(listPendingArchives(archiveCtx(legacy), 2)).resolves.toEqual([
-      expect.objectContaining({ key: "sessions/a/logs.jsonl" }),
-      expect.objectContaining({ key: "sessions/z/logs.jsonl" }),
+      expect.objectContaining({ key: "sessions/a/logs.jsonl.gz" }),
+      expect.objectContaining({ key: "sessions/z/logs.jsonl.gz" }),
     ]);
   });
 

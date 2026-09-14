@@ -3,7 +3,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { SessionArchiveIncompleteReason } from "@auto-harness/shared";
 
 const DOWNLOAD_EXPIRES_SECONDS = 5 * 60;
-const ARCHIVE_CONTENT_DISPOSITION = 'attachment; filename="session-logs.jsonl"';
+const ARCHIVE_CONTENT_DISPOSITION = 'attachment; filename="session-logs.jsonl.gz"';
 
 type ArchiveS3Client = {
   send(command: HeadObjectCommand): Promise<{
@@ -65,7 +65,7 @@ export class S3ArchiveReader implements ArchiveReader {
     versionId: string;
     now: string;
   }): Promise<ArchiveReaderResult> {
-    if (!/^sessions\/[^/]+\/logs\.jsonl$/.test(input.key)) return { available: false };
+    if (!/^sessions\/[^/]+\/logs\.jsonl\.gz$/.test(input.key)) return { available: false };
     try {
       const head = await this.client.send(
         new HeadObjectCommand({ Bucket: this.bucket, Key: input.key, VersionId: input.versionId }),

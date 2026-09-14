@@ -126,7 +126,7 @@ export function SessionArchiveStatus({
       if (next.state !== "archived") return;
       const anchor = document.createElement("a");
       anchor.href = next.downloadUrl;
-      anchor.download = "session-logs.jsonl";
+      anchor.download = "session-logs.jsonl.gz";
       anchor.rel = "noopener";
       anchor.style.display = "none";
       document.body.append(anchor);
@@ -168,7 +168,7 @@ export function SessionArchiveStatus({
           disabled={loading}
           data-pw="session-archive-download"
         >
-          Download .jsonl
+          Download .jsonl.gz
         </Button>
       ) : null}
       {error ? (

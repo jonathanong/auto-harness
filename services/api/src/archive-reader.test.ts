@@ -29,7 +29,7 @@ describe("S3ArchiveReader", () => {
     const fixture = reader();
     await expect(
       fixture.reader.createDownload({
-        key: "sessions/session-1/logs.jsonl",
+        key: "sessions/session-1/logs.jsonl.gz",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
         versionId: "archive-v1",
@@ -43,15 +43,15 @@ describe("S3ArchiveReader", () => {
     expect(fixture.send.mock.calls[0]![0]).toBeInstanceOf(HeadObjectCommand);
     expect(fixture.send.mock.calls[0]![0].input).toEqual({
       Bucket: "archive-bucket",
-      Key: "sessions/session-1/logs.jsonl",
+      Key: "sessions/session-1/logs.jsonl.gz",
       VersionId: "archive-v1",
     });
     expect(fixture.sign.mock.calls[0]![1]).toBeInstanceOf(GetObjectCommand);
     expect(fixture.sign.mock.calls[0]![1].input).toEqual({
       Bucket: "archive-bucket",
-      Key: "sessions/session-1/logs.jsonl",
+      Key: "sessions/session-1/logs.jsonl.gz",
       VersionId: "archive-v1",
-      ResponseContentDisposition: 'attachment; filename="session-logs.jsonl"',
+      ResponseContentDisposition: 'attachment; filename="session-logs.jsonl.gz"',
       ResponseContentType: "application/x-ndjson",
     });
     expect(fixture.sign.mock.calls[0]![2]).toEqual({
@@ -68,7 +68,7 @@ describe("S3ArchiveReader", () => {
     });
     await expect(
       fixture.reader.createDownload({
-        key: "sessions/empty/logs.jsonl",
+        key: "sessions/empty/logs.jsonl.gz",
         contentType: "application/x-ndjson",
         bodyBytes: 0,
         versionId: "empty-v1",
@@ -87,7 +87,7 @@ describe("S3ArchiveReader", () => {
     const fixture = reader();
     await expect(
       fixture.reader.createDownload({
-        key: "sessions/session-1/logs.jsonl",
+        key: "sessions/session-1/logs.jsonl.gz",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
         versionId: "archive-v1",
@@ -109,7 +109,7 @@ describe("S3ArchiveReader", () => {
     const fixture = reader({ ContentLength: 12, ContentType: "application/x-ndjson" });
     await expect(
       fixture.reader.createDownload({
-        key: "sessions/session-1/logs.jsonl",
+        key: "sessions/session-1/logs.jsonl.gz",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
         versionId: "archive-v1",
@@ -123,7 +123,7 @@ describe("S3ArchiveReader", () => {
     const fixture = reader({ VersionId: "different-v1" });
     await expect(
       fixture.reader.createDownload({
-        key: "sessions/session-1/logs.jsonl",
+        key: "sessions/session-1/logs.jsonl.gz",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
         versionId: "archive-v1",
@@ -146,7 +146,7 @@ describe("S3ArchiveReader", () => {
     });
     await expect(
       fixture.reader.createDownload({
-        key: "sessions/session-1/logs.jsonl",
+        key: "sessions/session-1/logs.jsonl.gz",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
         versionId: "archive-v1",
@@ -166,7 +166,7 @@ describe("S3ArchiveReader", () => {
     });
     await expect(
       fixture.reader.createDownload({
-        key: "sessions/session-1/logs.jsonl",
+        key: "sessions/session-1/logs.jsonl.gz",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
         versionId: "glacier-v1",
@@ -182,7 +182,7 @@ describe("S3ArchiveReader", () => {
     );
     await expect(
       missing.createDownload({
-        key: "sessions/session-1/logs.jsonl",
+        key: "sessions/session-1/logs.jsonl.gz",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
         versionId: "archive-v1",
@@ -194,7 +194,7 @@ describe("S3ArchiveReader", () => {
     denied.sign.mockRejectedValueOnce(new Error("denied"));
     await expect(
       denied.reader.createDownload({
-        key: "sessions/session-1/logs.jsonl",
+        key: "sessions/session-1/logs.jsonl.gz",
         contentType: "application/x-ndjson",
         bodyBytes: 12,
         versionId: "archive-v1",

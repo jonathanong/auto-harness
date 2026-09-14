@@ -41,7 +41,7 @@ const handoff = {
 };
 
 function archiveIntent(sessionId: string) {
-  const key = `sessions/${sessionId}/logs.jsonl`;
+  const key = `sessions/${sessionId}/logs.jsonl.gz`;
   return {
     key,
     contentType: "application/x-ndjson",
@@ -201,7 +201,7 @@ describe("DynamoDB Local terminal hook handoffs", () => {
       ctx.doc.send(
         new GetCommand({
           TableName: tables.archives,
-          Key: { key: "sessions/finish-handoff/logs.jsonl" },
+          Key: { key: "sessions/finish-handoff/logs.jsonl.gz" },
         }),
       ),
     ).resolves.toMatchObject({
@@ -258,7 +258,7 @@ describe("DynamoDB Local terminal hook handoffs", () => {
       ctx.doc.send(
         new GetCommand({
           TableName: tables.archives,
-          Key: { key: "sessions/expire-handoff/logs.jsonl" },
+          Key: { key: "sessions/expire-handoff/logs.jsonl.gz" },
         }),
       ),
     ).resolves.toMatchObject({

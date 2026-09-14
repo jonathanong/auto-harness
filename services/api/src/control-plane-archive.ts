@@ -44,9 +44,10 @@ async function rewriteWinningArchive(
   });
   const versionId = archiveVersionId(result);
   if (!versionId) return;
+  const stored = storedArchiveObject({ key, body, contentType: current.contentType }, result);
   const repaired = {
     ...current,
-    bodyBytes: Buffer.byteLength(body),
+    ...stored,
     updatedAt: state.now(),
     versionId,
   };
@@ -59,7 +60,7 @@ export async function archiveSessionLogs(
   retryClaim?: { retryState: "pending" | "processing"; retryOrder: string },
   deferBody = false,
 ): Promise<ArchiveObject> {
-  const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
+  const key = `${state.archivePrefix}${sessionId}/logs.jsonl.gz`;
   // REST/WebSocket Lambdas do not have S3 credentials.  Persist only a bounded retry pointer;
   // Cron, which owns the archive writer, reads the durable session logs later.  In particular,
   // do not materialize a potentially huge transcript in the short-lived WS invocation.
@@ -206,8 +207,7 @@ export async function archiveSessionLogs(
         state,
         {
           key,
-          contentType: object.contentType,
-          bodyBytes: Buffer.byteLength(object.body),
+          ...storedArchiveObject(object, writeResult),
           status: "complete",
           objectStored: true,
           updatedAt: state.now(),
@@ -222,8 +222,10 @@ export async function archiveSessionLogs(
   delete storedMetadata.retryState;
   delete storedMetadata.retryOrder;
   delete storedMetadata.capturedRetryOrder;
+  const storedObject = storedArchiveObject(object, writeResult);
   const complete: ArchiveMetadata = {
     ...storedMetadata,
+    ...storedObject,
     status: "complete",
     objectStored: state.archiveWriter !== undefined,
     updatedAt: state.now(),
@@ -262,6 +264,22 @@ function archiveVersionId(result: ArchiveWriteResult | void | undefined): string
     : undefined;
 }
 
+function storedArchiveObject(
+  object: ArchiveObject,
+  result: ArchiveWriteResult | void | undefined,
+): { contentType: string; bodyBytes: number } {
+  return {
+    contentType:
+      result && typeof result.contentType === "string" && result.contentType.length > 0
+        ? result.contentType
+        : object.contentType,
+    bodyBytes:
+      result && typeof result.bodyBytes === "number"
+        ? result.bodyBytes
+        : Buffer.byteLength(object.body),
+  };
+}
+
 /** A TTL cutoff is only evidence of expiry after a bounded read confirms no log remains. */
 async function recentLogsRemain(state: ControlPlaneState, sessionId: string): Promise<boolean> {
   if (!state.storage) return (state.logs.get(sessionId)?.length ?? 0) > 0;
@@ -292,7 +310,7 @@ export async function retrySessionArchiveIfNeeded(
   retryClaim?: { retryState: "pending" | "processing"; retryOrder: string },
 ): Promise<void> {
   if (!state.archiveWriter) return;
-  const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
+  const key = `${state.archivePrefix}${sessionId}/logs.jsonl.gz`;
   const metadata = state.storage ? await state.storage.getArchive(key) : state.archives.get(key);
   if (metadata?.status === "expired") return;
   if (metadata?.status === "complete" && metadata.objectStored) return;
@@ -300,7 +318,7 @@ export async function retrySessionArchiveIfNeeded(
 }
 
 function archiveSessionId(key: string): string | null {
-  const match = /^sessions\/([^/]+)\/logs\.jsonl$/.exec(key);
+  const match = /^sessions\/([^/]+)\/logs\.jsonl\.gz$/.exec(key);
   return match?.[1] ?? null;
 }
 
@@ -403,7 +421,7 @@ export function queueSessionArchive(state: ControlPlaneState, sessionId: string)
 }
 
 export function getArchive(state: ControlPlaneState, sessionId: string): ArchiveMetadata | null {
-  return state.archives.get(`${state.archivePrefix}${sessionId}/logs.jsonl`) ?? null;
+  return state.archives.get(`${state.archivePrefix}${sessionId}/logs.jsonl.gz`) ?? null;
 }
 
 /** Resolve durable archive state and mint a fresh verified download when one is available. */
@@ -412,7 +430,7 @@ export async function getArchiveDownloadDurable(
   sessionId: string,
   terminalAt?: string,
 ): Promise<SessionArchiveReadResponse> {
-  const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
+  const key = `${state.archivePrefix}${sessionId}/logs.jsonl.gz`;
   let metadata = state.storage ? await state.storage.getArchive(key) : state.archives.get(key);
   if (metadata) state.archives.set(key, metadata);
   if (metadata?.status === "expired") return { state: "expired" };

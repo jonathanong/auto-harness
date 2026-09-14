@@ -17,17 +17,22 @@ describe("S3ArchiveWriter", () => {
     );
     await expect(
       writer.putArchive({
-        key: "sessions/session-1/logs.jsonl",
+        key: "sessions/session-1/logs.jsonl.gz",
         body: '{"timestamp":"2026-01-01T00:00:00.000Z","stream":"stdout","content":"ok"}\n',
         contentType: "application/x-ndjson",
       }),
-    ).resolves.toEqual({ versionId: "archive-v1" });
+    ).resolves.toEqual({
+      versionId: "archive-v1",
+      contentType: "application/gzip",
+      bodyBytes: expect.any(Number),
+    });
     expect(commands).toHaveLength(1);
     expect((commands[0] as { input: Record<string, unknown> }).input).toEqual({
-      Body: expect.any(String),
+      Body: expect.any(Uint8Array),
       Bucket: "private-archives",
-      ContentType: "application/x-ndjson",
-      Key: "sessions/session-1/logs.jsonl",
+      ContentEncoding: "gzip",
+      ContentType: "application/gzip",
+      Key: "sessions/session-1/logs.jsonl.gz",
       ServerSideEncryption: "AES256",
     });
   });
@@ -35,11 +40,11 @@ describe("S3ArchiveWriter", () => {
   it("rejects keys outside the archive prefix and stays disabled without a bucket", async () => {
     const writer = new S3ArchiveWriter({ send: async () => undefined }, "private-archives");
     await expect(
-      writer.putArchive({ key: "other/logs.jsonl", body: "", contentType: "text/plain" }),
+      writer.putArchive({ key: "other/logs.jsonl.gz", body: "", contentType: "text/plain" }),
     ).rejects.toThrow("unexpected archive key");
     await expect(
       writer.putArchive({
-        key: "sessions/nested/session/logs.jsonl",
+        key: "sessions/nested/session/logs.jsonl.gz",
         body: "",
         contentType: "application/x-ndjson",
       }),
@@ -55,7 +60,7 @@ describe("S3ArchiveWriter", () => {
     const writer = new S3ArchiveWriter({ send: async () => ({}) }, "private-archives");
     await expect(
       writer.putArchive({
-        key: "sessions/session/logs.jsonl",
+        key: "sessions/session/logs.jsonl.gz",
         body: "",
         contentType: "text/plain",
       }),

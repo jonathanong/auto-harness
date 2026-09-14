@@ -5,7 +5,7 @@ import { ControlPlane } from "./control-plane.ts";
 describe("durable archive reads", () => {
   it("distinguishes terminal transcripts whose recent-log retention has expired", async () => {
     const plane = new ControlPlane({ now: () => "2026-01-08T00:00:00.000Z" });
-    const key = "sessions/session/logs.jsonl";
+    const key = "sessions/session/logs.jsonl.gz";
     plane.state.archives.set(key, {
       key,
       contentType: "application/x-ndjson",
@@ -47,8 +47,8 @@ describe("durable archive reads", () => {
         },
       },
     });
-    plane.state.archives.set("sessions/session/logs.jsonl", {
-      key: "sessions/session/logs.jsonl",
+    plane.state.archives.set("sessions/session/logs.jsonl.gz", {
+      key: "sessions/session/logs.jsonl.gz",
       versionId: "archive-v1",
       contentType: "application/x-ndjson",
       bodyBytes: 42,
@@ -66,8 +66,8 @@ describe("durable archive reads", () => {
   it("withholds legacy complete rows that have no persisted S3 version", async () => {
     const createDownload = vi.fn();
     const plane = new ControlPlane({ archiveReader: { createDownload } });
-    plane.state.archives.set("sessions/session/logs.jsonl", {
-      key: "sessions/session/logs.jsonl",
+    plane.state.archives.set("sessions/session/logs.jsonl.gz", {
+      key: "sessions/session/logs.jsonl.gz",
       contentType: "application/x-ndjson",
       bodyBytes: 42,
       status: "complete",
@@ -86,8 +86,8 @@ describe("durable archive reads", () => {
     const plane = new ControlPlane({
       archiveReader: { createDownload: async () => ({ available: false }) },
     });
-    plane.state.archives.set("sessions/session/logs.jsonl", {
-      key: "sessions/session/logs.jsonl",
+    plane.state.archives.set("sessions/session/logs.jsonl.gz", {
+      key: "sessions/session/logs.jsonl.gz",
       contentType: "application/x-ndjson",
       bodyBytes: 42,
       status: "complete",

@@ -9,7 +9,7 @@ const ctx = createDynamoTestCtx("ArcRp");
 describe("complete archive replacement with real DynamoDB Local", () => {
   it("leaves the last complete archive when replacement upload fails", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
-    const key = "sessions/session-replace-fail/logs.jsonl";
+    const key = "sessions/session-replace-fail/logs.jsonl.gz";
     await ctx.storage.putArchive({
       key,
       versionId: "complete-v1",
@@ -39,7 +39,7 @@ describe("complete archive replacement with real DynamoDB Local", () => {
 
   it("publishes replacement metadata only after the new version is stored", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
-    const key = "sessions/session-replace-ok/logs.jsonl";
+    const key = "sessions/session-replace-ok/logs.jsonl.gz";
     await ctx.storage.putArchive({
       key,
       versionId: "complete-v1",
@@ -63,7 +63,7 @@ describe("complete archive replacement with real DynamoDB Local", () => {
 
   it("rejects a stale complete replacement generation", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
-    const key = "sessions/session-replace-stale/logs.jsonl";
+    const key = "sessions/session-replace-stale/logs.jsonl.gz";
     await ctx.storage.putArchive({
       key,
       versionId: "complete-v1",

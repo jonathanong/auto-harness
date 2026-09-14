@@ -11,7 +11,7 @@ import { createControlPlaneState } from "./control-plane-state.ts";
 import type { ArchiveMetadata } from "./control-plane-types.ts";
 
 function storedComplete(sessionId: string, versionId?: string): ArchiveMetadata {
-  const key = `sessions/${sessionId}/logs.jsonl`;
+  const key = `sessions/${sessionId}/logs.jsonl.gz`;
   return {
     key,
     contentType: "application/x-ndjson",
@@ -58,7 +58,7 @@ describe("archive replacement preserves the last complete generation", () => {
       "object store unavailable",
     );
     expect(putArchive).not.toHaveBeenCalled();
-    expect(state.archives.get("sessions/replace-fail/logs.jsonl")).toMatchObject({
+    expect(state.archives.get("sessions/replace-fail/logs.jsonl.gz")).toMatchObject({
       status: "complete",
       objectStored: true,
       versionId: "complete-v1",
@@ -78,12 +78,12 @@ describe("archive replacement preserves the last complete generation", () => {
       now: () => "2026-01-02T00:00:00.000Z",
     });
     state.archives.set(
-      "sessions/replace-ok/logs.jsonl",
+      "sessions/replace-ok/logs.jsonl.gz",
       storedComplete("replace-ok", "complete-v1"),
     );
 
     await archiveSessionLogs(state, "replace-ok");
-    expect(state.archives.get("sessions/replace-ok/logs.jsonl")).toMatchObject({
+    expect(state.archives.get("sessions/replace-ok/logs.jsonl.gz")).toMatchObject({
       status: "complete",
       objectStored: true,
       versionId: "complete-v2",
@@ -106,7 +106,7 @@ describe("archive replacement preserves the last complete generation", () => {
       firstUploadStarted = resolve;
     });
     let uploads = 0;
-    const key = "sessions/replace-race/logs.jsonl";
+    const key = "sessions/replace-race/logs.jsonl.gz";
     const state = createControlPlaneState({
       archiveWriter: {
         putArchive: async () => {
@@ -132,7 +132,7 @@ describe("archive replacement preserves the last complete generation", () => {
   });
 
   it("does not publish stale replacement metadata when the durable generation loses", async () => {
-    const key = "sessions/replace-durable/logs.jsonl";
+    const key = "sessions/replace-durable/logs.jsonl.gz";
     const putArchive = vi.fn(async () => undefined);
     const replaceCompleteArchive = vi.fn(async () => false);
     const current = storedComplete("replace-durable", "complete-v1");
@@ -171,7 +171,9 @@ describe("archive replacement preserves the last complete generation", () => {
     await archiveSessionLogs(state, "replace-commit");
     expect(replaceCompleteArchive).toHaveBeenCalledOnce();
     expect(putArchive).not.toHaveBeenCalled();
-    expect(state.archives.get("sessions/replace-commit/logs.jsonl")?.versionId).toBe("complete-v2");
+    expect(state.archives.get("sessions/replace-commit/logs.jsonl.gz")?.versionId).toBe(
+      "complete-v2",
+    );
   });
 
   it("leaves the previous complete row when a replacement upload has no version id", async () => {
@@ -179,12 +181,12 @@ describe("archive replacement preserves the last complete generation", () => {
       archiveWriter: { putArchive: async () => undefined },
     });
     state.archives.set(
-      "sessions/replace-no-version/logs.jsonl",
+      "sessions/replace-no-version/logs.jsonl.gz",
       storedComplete("replace-no-version", "complete-v1"),
     );
 
     await archiveSessionLogs(state, "replace-no-version");
-    expect(state.archives.get("sessions/replace-no-version/logs.jsonl")?.versionId).toBe(
+    expect(state.archives.get("sessions/replace-no-version/logs.jsonl.gz")?.versionId).toBe(
       "complete-v1",
     );
   });
@@ -228,7 +230,7 @@ describe("archive replacement preserves the last complete generation", () => {
 
     await archiveSessionLogs(state, "replace-fallback");
     expect(putArchive).not.toHaveBeenCalled();
-    expect(state.archives.get("sessions/replace-fallback/logs.jsonl")?.versionId).toBe(
+    expect(state.archives.get("sessions/replace-fallback/logs.jsonl.gz")?.versionId).toBe(
       "complete-v1",
     );
   });
@@ -253,7 +255,7 @@ describe("archive replacement preserves the last complete generation", () => {
   });
 
   it("repairs a legacy complete winner through a fenced replacement", async () => {
-    const key = "sessions/legacy-replace-repair/logs.jsonl";
+    const key = "sessions/legacy-replace-repair/logs.jsonl.gz";
     const pending = {
       key,
       contentType: "application/x-ndjson",
@@ -330,7 +332,7 @@ describe("archive replacement preserves the last complete generation", () => {
     expect(putArchive).toHaveBeenCalledWith(
       expect.objectContaining({ status: "pending", objectStored: false }),
     );
-    expect(state.archives.get("sessions/legacy-fail/logs.jsonl")).toMatchObject({
+    expect(state.archives.get("sessions/legacy-fail/logs.jsonl.gz")).toMatchObject({
       status: "pending",
       objectStored: false,
     });
@@ -354,7 +356,7 @@ describe("archive replacement preserves the last complete generation", () => {
     });
 
     await expect(archiveSessionLogs(state, "legacy-race")).resolves.toMatchObject({
-      key: "sessions/legacy-race/logs.jsonl",
+      key: "sessions/legacy-race/logs.jsonl.gz",
     });
     expect(putArchive).not.toHaveBeenCalled();
   });
@@ -503,7 +505,7 @@ describe("archive replacement preserves the last complete generation", () => {
       storage: { listLogs: async () => [], putArchive } as never,
     });
     state.archives.set(
-      "sessions/replace-cache/logs.jsonl",
+      "sessions/replace-cache/logs.jsonl.gz",
       storedComplete("replace-cache", "complete-v1"),
     );
 
