@@ -407,4 +407,30 @@ describe("Slack production runtime", () => {
       "gzip-boom",
     ]);
   });
+
+  it("does not cache empty gzip hydrate for a failed session", async () => {
+    const store = new MemoryOutbox();
+    const plane = new ControlPlane({
+      storage: Object.assign(store, {
+        getSlackIntegration: async () => slackRecord(),
+        listSessionsByStatus: async () => [],
+      }) as never,
+      secretEncryptor: encryptor(),
+      publicBaseUrl: "https://ui.test",
+      now: () => now,
+    });
+    plane.state.sessions.set(
+      "failed-empty",
+      sessionRecord("failed-empty", "failed", { completedAt: now, exitCode: 1 }),
+    );
+    const worker = createSlackLifecycleWorker(plane, {
+      fetch: vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ok: true, channel: "C123", ts: "9.1" }), { status: 200 }),
+      ),
+      worker: { now: () => now },
+    });
+    expect(await worker!.runOnce()).toBe(true);
+    expect(plane.state.logs.has("failed-empty")).toBe(false);
+  });
 });

@@ -40,7 +40,7 @@ export function cancelSession(
     return { ok: true, session: toPublic(state, session) };
   }
   if (transitionEffect(plan, "release_worktree") && worktreeId) releaseWorktree(state, worktreeId);
-  if (!cancel.holdAssignment) releaseProviderAccountLease(state, session);
+  releaseProviderAccountLease(state, session);
   session.worktreeId = null;
   session.hostId = null;
   const storage = state.storage;

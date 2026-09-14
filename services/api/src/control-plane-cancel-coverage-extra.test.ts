@@ -42,9 +42,24 @@ describe("additional cancellation branch coverage", () => {
     const state = createControlPlaneState({ now: () => "2026-01-01T00:01:00.000Z" });
     const row = session({ status: "queued", worktreeId: "worktree" });
     state.sessions.set(row.id, row);
+    state.worktrees.set("worktree", {
+      id: "worktree",
+      name: "worktree",
+      hostId: "host",
+      repositoryId: "repository",
+      path: "/tmp/worktree",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: row.id,
+    });
     expect(cancelSession(state, row.id)).toMatchObject({
       ok: true,
       session: { status: "cancelled", worktreeId: null },
+    });
+    expect(state.worktrees.get("worktree")).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
     });
   });
 
