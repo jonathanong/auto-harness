@@ -169,10 +169,10 @@ export async function putLogFenced(
   rec: LogRecord,
   fence: HostLogFence,
 ): Promise<boolean> {
-  const table = ctx.tables.sessionLogs;
-  if (!table) return true;
   const attempts = sessionAttemptChecks(ctx, fence);
   if (attempts === null) return false;
+  const table = ctx.tables.sessionLogs;
+  if (!table) return true;
   try {
     await sendFencedLogTransaction(
       ctx,
@@ -201,10 +201,10 @@ export async function putLogsFenced(
   fence: HostLogFence,
 ): Promise<boolean> {
   if (records.length === 0) return true;
-  const table = ctx.tables.sessionLogs;
-  if (!table) return true;
   const attempts = sessionAttemptChecks(ctx, fence);
   if (attempts === null) return false;
+  const table = ctx.tables.sessionLogs;
+  if (!table) return true;
   const uniqueRecords = new Map<string, LogRecord>();
   for (const record of records) {
     uniqueRecords.set(JSON.stringify([record.sessionId, record.timestampSeq]), record);
