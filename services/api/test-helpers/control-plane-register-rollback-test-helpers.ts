@@ -113,6 +113,44 @@ export function readyRollbackPlane() {
   return { plane, messages: collectHostMessages(plane) };
 }
 
+export function installUnpublishedWinner(
+  plane: ControlPlane,
+  connectionId: string,
+  idleWorktreeId: string,
+) {
+  plane.state.connections.set(connectionId, {
+    connectionId,
+    type: "host",
+    hostId: "h",
+    connectedAt: ROLLBACK_NOW,
+    lastHeartbeatAt: ROLLBACK_NOW,
+    repositoryIds: ["r"],
+    capabilities: [],
+    negotiatedProtocolVersion: 1,
+    runtime: { daemonVersion: "test/seeded", gitVersion: "2.36.0", gitReady: true },
+  });
+  plane.state.hostConnection.set("h", connectionId);
+  plane.state.pendingHostSocketPublish.add(connectionId);
+  plane.state.worktrees.set(idleWorktreeId, durableWorktree(idleWorktreeId, null));
+  const inventory = plane.state.hostInventories.get("h");
+  if (!inventory) return;
+  plane.state.hostInventories.set("h", {
+    ...inventory,
+    repositories: inventory.repositories.map((repo) => ({
+      ...repo,
+      worktrees: [
+        ...repo.worktrees.filter((wt) => wt.id === "w"),
+        {
+          ...(repo.worktrees[0] ?? { labels: [] }),
+          id: idleWorktreeId,
+          name: idleWorktreeId,
+          path: `/${idleWorktreeId}`,
+        },
+      ],
+    })),
+  });
+}
+
 export function claimUnackedOnWorktree(plane: ControlPlane, sessionId: string, worktreeId: string) {
   const session = plane.state.sessions.get(sessionId);
   if (!session) throw new Error(`missing ${sessionId}`);

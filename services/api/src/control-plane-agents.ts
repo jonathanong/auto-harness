@@ -17,6 +17,7 @@ import { validateRegisterWorktreeNames } from "./control-plane-worktree-names.ts
 import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 import { releaseWorktree } from "./control-plane-worktree-release.ts";
 import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
+import { requestAssignmentAfterInMemoryRegisterRollback } from "./control-plane-host-socket-publish.ts";
 import { reconcileHostOwnedSessions } from "./control-plane-reconnect-omitted.ts";
 import { requestAssignment } from "./request-assignment.ts";
 import { ignoreStaleReconnectClaim } from "./control-plane-reconnect-confirm.ts";
@@ -978,7 +979,15 @@ export async function registerHostDurable(
     );
     // Otherwise a recovered session sits queued until the next cron sweep or
     // an unrelated scheduling event, defeating the point of a fast recovery.
-    if (requeued.length > 0) await requestAssignment(state);
+    // Skip when a newer same-host socket is still unpublished: assigning now
+    // marks the session running and `createWsDelivery` drops the frame on the
+    // closing loser (the winner's later sweep then skips it until ACK timeout).
+    await requestAssignmentAfterInMemoryRegisterRollback(
+      state,
+      requeued,
+      opts.hostId,
+      result.connectionId,
+    );
     return { ok: false, error: "reported running session lost reconnect reconciliation" };
   }
   const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);
