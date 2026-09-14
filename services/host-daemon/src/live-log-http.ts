@@ -1,4 +1,4 @@
-import { createServer, type Server } from "node:http";
+import { createServer, type Server, type ServerResponse } from "node:http";
 
 import type { SessionLogChunk } from "@auto-harness/shared";
 
@@ -17,6 +17,7 @@ export function startLiveLogHttp(options: {
   subscribe: (sessionId: string, emit: (chunk: SessionLogChunk) => void) => () => void;
   log?: (line: string) => void;
 }): { close: () => Promise<void>; server: Server } {
+  const clients = new Set<ServerResponse>();
   const server: Server = createServer((req, res) => {
     if (req.method !== "GET") {
       res.writeHead(405).end();
@@ -28,16 +29,26 @@ export function startLiveLogHttp(options: {
       res.writeHead(404).end();
       return;
     }
+    let sessionId: string;
+    try {
+      sessionId = decodeURIComponent(match[1]!);
+    } catch {
+      res.writeHead(400).end();
+      return;
+    }
     res.writeHead(200, {
       "content-type": "text/event-stream",
       "cache-control": "no-store",
       connection: "keep-alive",
-      "access-control-allow-origin": "*",
     });
-    const unsubscribe = options.subscribe(decodeURIComponent(match[1]!), (chunk) => {
+    clients.add(res);
+    const unsubscribe = options.subscribe(sessionId, (chunk) => {
       res.write(`data: ${JSON.stringify(chunk)}\n\n`);
     });
-    req.on("close", unsubscribe);
+    req.on("close", () => {
+      clients.delete(res);
+      unsubscribe();
+    });
   });
   server.listen(options.port, "127.0.0.1", () => {
     options.log?.(`live log stream listening on 127.0.0.1:${String(options.port)}`);
@@ -49,6 +60,8 @@ export function startLiveLogHttp(options: {
     server,
     close: () =>
       new Promise((resolve, reject) => {
+        for (const client of clients) client.end();
+        clients.clear();
         server.close((error) => (error ? reject(error) : resolve()));
       }),
   };

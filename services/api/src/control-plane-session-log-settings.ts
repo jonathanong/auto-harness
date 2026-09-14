@@ -33,11 +33,14 @@ export async function putSessionLogSettings(
   if (!Number.isSafeInteger(input.version) || input.version < 0) {
     return { ok: false, error: "version must contain the observed non-negative integer version" };
   }
-  const settings = normalizeSessionLogSettings(input);
   const current =
     state.storage && typeof state.storage.getSessionLogSettings === "function"
       ? await state.storage.getSessionLogSettings()
       : state.sessionLogSettings;
+  const settings = normalizeSessionLogSettings({
+    ...current,
+    ...input,
+  });
   if ((current?.version ?? 0) !== input.version) {
     return { ok: false, error: "version conflict", conflict: true };
   }

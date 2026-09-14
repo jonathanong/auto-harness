@@ -84,7 +84,7 @@ export async function putSessionLogArchive(
   return key;
 }
 
-export function assertGzipJsonlPart(
+function assertGzipJsonlPart(
   sessionId: string,
   seqStart: number,
   seqEnd: number,

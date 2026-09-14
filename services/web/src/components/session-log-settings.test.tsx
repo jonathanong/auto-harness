@@ -62,4 +62,17 @@ describe("SessionLogSettingsForm", () => {
     expect(field(view.container, "session-log-settings-forbidden")).toBeTruthy();
     view.unmount();
   });
+
+  it("shows an error when the load request rejects", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("offline");
+      }),
+    );
+    const view = mountForm(<SessionLogSettingsForm />, { pathname: "/settings/session-logs" });
+    await settle();
+    expect(field(view.container, "session-log-settings-error")).toBeTruthy();
+    view.unmount();
+  });
 });

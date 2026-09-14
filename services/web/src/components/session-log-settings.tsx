@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- load, save, and field controls share one settings form. */
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
@@ -41,24 +42,28 @@ export function SessionLogSettingsForm() {
   );
 
   useEffect(() => {
-    void apiFetch("/api/v1/session-log-settings", { cache: "no-store" }).then(async (response) => {
-      if (response.status === 401 || response.status === 403) {
-        setLoadState("forbidden");
-        return;
-      }
-      if (!response.ok) {
+    void apiFetch("/api/v1/session-log-settings", { cache: "no-store" })
+      .then(async (response) => {
+        if (response.status === 401 || response.status === 403) {
+          setLoadState("forbidden");
+          return;
+        }
+        if (!response.ok) {
+          setLoadState("error");
+          return;
+        }
+        const value = (await response.json()) as PublicSessionLogSettings;
+        setUploadMode(value.uploadMode);
+        setBatchMaxKb(String(value.batchMaxKb));
+        setBatchMaxLines(String(value.batchMaxLines));
+        setBatchMaxWaitMs(String(value.batchMaxWaitMs));
+        setControlPlanePollMs(String(value.controlPlanePollMs));
+        setVersion(value.version);
+        setLoadState("ready");
+      })
+      .catch(() => {
         setLoadState("error");
-        return;
-      }
-      const value = (await response.json()) as PublicSessionLogSettings;
-      setUploadMode(value.uploadMode);
-      setBatchMaxKb(String(value.batchMaxKb));
-      setBatchMaxLines(String(value.batchMaxLines));
-      setBatchMaxWaitMs(String(value.batchMaxWaitMs));
-      setControlPlanePollMs(String(value.controlPlanePollMs));
-      setVersion(value.version);
-      setLoadState("ready");
-    });
+      });
   }, []);
 
   if (loadState === "loading") {
@@ -88,33 +93,40 @@ export function SessionLogSettingsForm() {
 
   const save = () =>
     start(async () => {
-      const response = await apiFetch("/api/v1/session-log-settings", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          version,
-          uploadMode,
-          batchMaxKb: Number(batchMaxKb),
-          batchMaxLines: Number(batchMaxLines),
-          batchMaxWaitMs: Number(batchMaxWaitMs),
-          controlPlanePollMs: Number(controlPlanePollMs),
-        }),
-      });
-      if (!response.ok) {
+      try {
+        const response = await apiFetch("/api/v1/session-log-settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            version,
+            uploadMode,
+            batchMaxKb: Number(batchMaxKb),
+            batchMaxLines: Number(batchMaxLines),
+            batchMaxWaitMs: Number(batchMaxWaitMs),
+            controlPlanePollMs: Number(controlPlanePollMs),
+          }),
+        });
+        if (!response.ok) {
+          showToast("Unable to save session log settings.", {
+            variant: "destructive",
+            pw: "session-log-settings-error",
+          });
+          return;
+        }
+        const saved = (await response.json()) as PublicSessionLogSettings;
+        setVersion(saved.version);
+        setUploadMode(saved.uploadMode);
+        setBatchMaxKb(String(saved.batchMaxKb));
+        setBatchMaxLines(String(saved.batchMaxLines));
+        setBatchMaxWaitMs(String(saved.batchMaxWaitMs));
+        setControlPlanePollMs(String(saved.controlPlanePollMs));
+        showToast("Session log settings saved.", { pw: "session-log-settings-success" });
+      } catch {
         showToast("Unable to save session log settings.", {
           variant: "destructive",
           pw: "session-log-settings-error",
         });
-        return;
       }
-      const saved = (await response.json()) as PublicSessionLogSettings;
-      setVersion(saved.version);
-      setUploadMode(saved.uploadMode);
-      setBatchMaxKb(String(saved.batchMaxKb));
-      setBatchMaxLines(String(saved.batchMaxLines));
-      setBatchMaxWaitMs(String(saved.batchMaxWaitMs));
-      setControlPlanePollMs(String(saved.controlPlanePollMs));
-      showToast("Session log settings saved.", { pw: "session-log-settings-success" });
     });
 
   return (

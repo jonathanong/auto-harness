@@ -35,4 +35,14 @@ describe("session log settings", () => {
       settings: { uploadMode: "subscribed", batchMaxKb: 64, version: 2 },
     });
   });
+
+  it("preserves omitted knobs on a partial update", async () => {
+    const plane = new ControlPlane();
+    await plane.putSessionLogSettings({ version: 0, uploadMode: "always", batchMaxLines: 12 });
+    const updated = await plane.putSessionLogSettings({ version: 1, uploadMode: "subscribed" });
+    expect(updated).toMatchObject({
+      ok: true,
+      settings: { uploadMode: "subscribed", batchMaxLines: 12 },
+    });
+  });
 });

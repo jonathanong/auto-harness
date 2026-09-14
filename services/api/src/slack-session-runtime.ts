@@ -1,4 +1,6 @@
 import type { SessionRecord } from "./db/types.ts";
+import type { ControlPlaneState } from "./control-plane-state.ts";
+import { readSessionLogObjects } from "./session-log-objects.ts";
 import type { SlackIntegrationRecord, SlackNotifications } from "./slack-integration-types.ts";
 import { planSlackLifecycle } from "./slack-lifecycle.ts";
 import { enqueueSlackDeliveries } from "./slack-outbox.ts";
@@ -102,6 +104,12 @@ async function ensureFailedSessionLogsLoaded(
 ): Promise<void> {
   const failed = session.status === "failed" || session.status === "timed_out";
   if (!failed || state.logs.has(session.id)) return;
+  try {
+    const logs = await readSessionLogObjects(state as ControlPlaneState, session.id);
+    if (logs && logs.length > 0) state.logs.set(session.id, logs);
+  } catch {
+    return;
+  }
 }
 
 /**

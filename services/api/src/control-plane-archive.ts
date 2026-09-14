@@ -284,8 +284,12 @@ function storedArchiveObject(
 /** A TTL cutoff is only evidence of expiry after a bounded read confirms no log remains. */
 async function recentLogsRemain(state: ControlPlaneState, sessionId: string): Promise<boolean> {
   if ((state.logs.get(sessionId)?.length ?? 0) > 0) return true;
-  const fromObjects = await readSessionLogObjects(state, sessionId);
-  return (fromObjects?.length ?? 0) > 0;
+  try {
+    const fromObjects = await readSessionLogObjects(state, sessionId);
+    return (fromObjects?.length ?? 0) > 0;
+  } catch {
+    return true;
+  }
 }
 
 async function archiveBody(state: ControlPlaneState, sessionId: string): Promise<string> {

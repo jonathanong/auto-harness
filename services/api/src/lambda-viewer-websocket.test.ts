@@ -286,4 +286,31 @@ describe("Lambda viewer WebSocket adapter", () => {
     ).resolves.toBe(200);
     expect(ctx.connections.has("viewer-1")).toBe(false);
   });
+
+  it("clears host watch when the first subscribe acknowledgement is gone", async () => {
+    const watches: Array<[string, string, boolean]> = [];
+    const ctx = fixture();
+    const sockets = createLambdaViewerSockets({
+      auth: ctx.auth as never,
+      management: ctx.management as never,
+      storage: ctx.storage,
+      publicBaseUrl: origin,
+      onSessionWatch: (hostId, sessionId, watching) => {
+        watches.push([hostId, sessionId, watching]);
+      },
+    });
+    await sockets.connect("viewer-1", "ticket", origin);
+    ctx.sessions.set("session-1", { repositoryId: "repo-1", status: "running", hostId: "host-1" });
+    ctx.management.send.mockRejectedValueOnce({ name: "GoneException" });
+    await expect(
+      sockets.message(
+        "viewer-1",
+        JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+      ),
+    ).resolves.toBe(200);
+    expect(watches).toEqual([
+      ["host-1", "session-1", true],
+      ["host-1", "session-1", false],
+    ]);
+  });
 });

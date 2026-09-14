@@ -184,6 +184,10 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
         }))
       ) {
         await removeViewerFanout(dependencies.storage, message.sessionId, connectionId);
+        const remaining = await viewerConnectionIds(dependencies.storage, message.sessionId);
+        if (remaining.length === 0 && session.hostId) {
+          dependencies.onSessionWatch?.(session.hostId, message.sessionId, false);
+        }
       }
       return 200;
     },
@@ -204,6 +208,13 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
         }
         if (!(await post(viewerId, { type: "session:log-part", ...event }))) {
           await removeViewerFanout(dependencies.storage, event.sessionId, viewerId);
+          const remaining = await viewerConnectionIds(dependencies.storage, event.sessionId);
+          if (remaining.length === 0) {
+            const session = await dependencies.storage.getSession(event.sessionId);
+            if (session?.hostId) {
+              dependencies.onSessionWatch?.(session.hostId, event.sessionId, false);
+            }
+          }
         }
       }
     },

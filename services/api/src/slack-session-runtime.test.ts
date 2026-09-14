@@ -5,6 +5,7 @@ import type { SessionRecord } from "./db/types.ts";
 import type { SlackDeliveryRecord, SlackOutboxStore } from "./slack-delivery-types.ts";
 import { DEFAULT_SLACK_NOTIFICATIONS } from "./slack-integration-types.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
+import { gzipLogRecords, putSessionLogPart } from "./session-log-objects.ts";
 import {
   enqueueSlackSessionLifecycle,
   reconcileSlackSession,
@@ -237,5 +238,42 @@ describe("Slack session lifecycle reconciliation", () => {
     };
     await enqueueSlackSessionLifecycle(disabled, row);
     expect(store.items.size).toBe(0);
+  });
+
+  it("hydrates failed-session stderr tails from gzip log objects", async () => {
+    const store = new InsertStore();
+    const plane = createControlPlaneState({
+      storage: {
+        enqueue: store.enqueue.bind(store),
+        getSlackIntegration: async () => ({
+          id: "slack",
+          type: "slack",
+          defaultChannel: "#ops",
+          enabled: true,
+          notifications: DEFAULT_SLACK_NOTIFICATIONS,
+          botToken: "xoxb-test",
+          createdAt: now,
+          updatedAt: now,
+        }),
+      } as never,
+    });
+    await putSessionLogPart(
+      plane,
+      "session-1",
+      1,
+      1,
+      gzipLogRecords([
+        {
+          sessionId: "session-1",
+          timestamp: now,
+          stream: "stderr",
+          content: "boom",
+          seq: 1,
+          timestampSeq: `${now}#0000000001`,
+        },
+      ]),
+    );
+    await enqueueSlackSessionLifecycle(plane, session("failed"));
+    expect(plane.logs.get("session-1")?.some((record) => record.content === "boom")).toBe(true);
   });
 });

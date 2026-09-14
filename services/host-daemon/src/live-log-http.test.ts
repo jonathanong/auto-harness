@@ -36,7 +36,25 @@ describe("live log HTTP", () => {
     const reader = response.body!.getReader();
     const { value } = await reader.read();
     expect(new TextDecoder().decode(value)).toContain("hello");
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
     await reader.cancel();
+    await started.close();
+  });
+
+  it("rejects malformed percent encoding before subscribing", async () => {
+    let subscribed = 0;
+    const started = startLiveLogHttp({
+      port: 0,
+      subscribe: () => {
+        subscribed += 1;
+        return () => undefined;
+      },
+    });
+    if (!started.server.listening) await once(started.server, "listening");
+    const port = (started.server.address() as AddressInfo).port;
+    const response = await fetch(`http://127.0.0.1:${String(port)}/sessions/%/logs/stream`);
+    expect(response.status).toBe(400);
+    expect(subscribed).toBe(0);
     await started.close();
   });
 });
