@@ -46,6 +46,11 @@ That is a **product constraint**, not an implementation preference: it is how yo
 
 Auto Harness AWS infrastructure is designed to be nearly free to operate. Costs scale with usage but stay negligible next to **subscription seats**, **plan quotas**, and **VPS** capacity. The control plane should not be the line item you worry about.
 
+**Modelled AWS coordination floor at the reference workload: ~$121/month.** That is list-price
+arithmetic on measured volumes, not an invoice — table under
+[Modelled monthly AWS subtotal](#modelled-monthly-aws-subtotal-the-number-this-page-was-missing).
+Seats and the VPS are extra and dominate.
+
 ## AWS cost model (measured implementation + modelled workload)
 
 The AWS runtime has been deployed and account-tested — see the Maturity table in
@@ -93,14 +98,44 @@ pages for the deployment region before approving a budget.
 | Archive bytes / session | 256 KiB         | JSONL model; 3 objects were purged in `qa` without size metrics                             |
 | SessionLogs TTL         | 7 days          | `ttl` on new writes                                                                         |
 
-At that workload the model reports ~27M DynamoDB log item writes/month and ~27M
-transactional write items/month, ~81M WebSocket messages/month (including keepalive
-acks and each viewer copy), ~27.4M Lambda invocations/month (viewer fanout and keepalive
-acks are outbound and do not invoke Lambda; the 43,200 scheduler sweeps do), 43,200
-scheduler invocations and 432,000 schedule evaluations/month, and ~750 MiB archive PUT
-volume/month. Queue throughput is 100 assigns/day plus the one-minute repair sweep.
-Re-run `estimateMonthlyCapacity` when the session mix changes; do not scale by session
-count alone.
+At that workload `estimateMonthlyCapacity(REFERENCE_WORKLOAD)` reports:
+
+| Volume                       | Count      |
+| ---------------------------- | ---------- |
+| DynamoDB log item writes     | 27,000,000 |
+| WebSocket messages           | 81,530,400 |
+| Lambda invocations           | 27,344,400 |
+| EventBridge cron invocations | 43,200     |
+| Schedule evaluations         | 432,000    |
+| Connection-minutes (2+2)     | 172,800    |
+| Archive PUT volume           | 750 MiB    |
+
+Queue throughput is 100 assigns/day plus the one-minute repair sweep. Re-run
+`estimateMonthlyCapacity` when the session mix changes; do not scale by session count alone.
+
+### Modelled monthly AWS subtotal (the number this page was missing)
+
+There is **no invoice** in this repository and **no measured AWS bill**. The table below is the
+reference workload × the list prices already on this page. Lambda **duration** is omitted (it
+needs measured GB-seconds). DynamoDB is a **1 WRU per 1 KB item floor** — `TransactWriteItems`
+bills 2 WRU per item, and larger chunks cost more.
+
+| Line                                     | Arithmetic            | Modelled $/month |
+| ---------------------------------------- | --------------------- | ---------------- |
+| Lambda invocations                       | 27.3444M × $0.20 / 1M | $5.47            |
+| API Gateway REST                         | 30K × $3.50 / 1M      | $0.11            |
+| API Gateway WebSocket messages           | 81.5304M × $1.00 / 1M | $81.53           |
+| API Gateway WebSocket connection-minutes | 172,800 × $0.25 / 1M  | $0.04            |
+| DynamoDB log writes (1 WRU/item floor)   | 27M × $1.25 / 1M      | $33.75           |
+| S3 archive PUT volume                    | 750 MiB × $0.023 / GB | $0.02            |
+| **Coordination floor**                   | sum of priced rows    | **~$121**        |
+
+Add Lambda duration on top (example only: 256 MB × 100 ms × 27.3444M invokes ≈ **+$12**). If every
+log write is a 1 KB `TransactWriteItems` item, DynamoDB doubles to **$67.50** and the floor becomes
+**~$155**. WebSocket **messages** dominate. Vendor seats and the VPS are **not** in this subtotal
+and are the real bill — see [The real cost](#the-real-cost-subscriptions--hosts-not-api-tokens).
+
+Unit prices are illustrative; verify current regional AWS pricing before budgeting.
 
 ## Cost by Component
 

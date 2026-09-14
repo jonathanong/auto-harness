@@ -4,8 +4,8 @@ Short version: **hosts do not poll for work.** They hold a WebSocket. The contro
 **pushes** `session:assign`. The one-minute EventBridge rule is a **repair sweep**, not the
 dispatcher.
 
-Cost model: **[costs.md](../costs.md)** (measured rates × a reference workload — not a monthly
-invoice). Wire types: [websocket.md](../websocket.md). Request-lifetime split:
+Cost model: **[costs.md](../costs.md)** — modelled AWS coordination floor **~$121/month** at the
+reference workload (not an invoice). Wire types: [websocket.md](../websocket.md). Request-lifetime split:
 [request-lifetime.md](request-lifetime.md).
 
 ## Who talks how
@@ -52,17 +52,20 @@ next session can drain. See [assignment.md](assignment.md).
 
 **Yes — one Cron Lambda per minute**, plus keepalives. That is not how sessions get assigned.
 
-| Clock                 | Interval  | Invokes Lambda?                                                              | What it is for                                                                                           |
-| --------------------- | --------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| EventBridge cron      | 60 s      | Cron Lambda                                                                  | Due schedules, ack-deadline requeue, running timeouts, stale hosts, Slack outbox, archive retry          |
-| Host `host:keepalive` | ~20 s     | WebSocket `$default`                                                         | Beat API Gateway’s idle timeout; durable heartbeat. Ack is outbound `postToConnection`, not a 2nd invoke |
-| Scheduler on events   | Immediate | The REST/WS handler that saw the event, then a **separate** assignment sweep | Create, resume, clone, register, terminal, usage-limit — **this** is the dispatcher                      |
+| Clock                 | Interval  | Invokes Lambda?                                                                                                                                  | What it is for                                                                                           |
+| --------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| EventBridge cron      | 60 s      | Cron Lambda                                                                                                                                      | Due schedules, ack-deadline requeue, running timeouts, stale hosts, Slack outbox, archive retry          |
+| Host `host:keepalive` | ~20 s     | WebSocket `$default`                                                                                                                             | Beat API Gateway’s idle timeout; durable heartbeat. Ack is outbound `postToConnection`, not a 2nd invoke |
+| Scheduler on events   | Immediate | REST: `enqueueAssignment` submits an async Cron invoke (await submit, not the sweep). Host WS: `requestAssignment` **inline** in this `$default` | Create, resume, clone, register, terminal, usage-limit — **this** is the dispatcher                      |
 
 At the [costs.md](../costs.md) reference workload that is 43,200 scheduler/cron invocations per
 month from EventBridge alone. Assignment does **not** wait for that tick: `POST /sessions`
-persists `queued` and enqueues the sweep on another invocation (`InvocationType: Event` of the
-cron function on AWS; in-process locally), then returns. Browser requests never `await` the host
-([request-lifetime.md](request-lifetime.md)).
+persists `queued`, **awaits** `enqueueAssignment()` (on AWS that is submitting
+`InvocationType: Event` of the cron function; locally it is in-process), then returns 201. The
+sweep itself is a different invocation. Browser requests never `await` the host
+([request-lifetime.md](request-lifetime.md)). Host-driven events (register, terminal,
+usage-limit) call `requestAssignment` in the current WebSocket `$default` invocation — they do
+not Event-invoke Cron.
 
 ```mermaid
 sequenceDiagram
@@ -71,15 +74,16 @@ sequenceDiagram
     participant DDB as DynamoDB
     participant Sweep as Assignment sweep
     participant Agent as Host WebSocket
+    participant WS as WS Lambda
 
     CI->>REST: POST /sessions
     REST->>DDB: Insert queued
+    REST->>Sweep: enqueueAssignment async Event invoke
     REST-->>CI: 201 plus url
-    REST->>Sweep: async Event invoke
     Sweep->>DDB: Claim idle worktree or main-checkout lease
     Sweep->>Agent: postToConnection session:assign
-    Agent->>Sweep: session:ack inbound WS Lambda
-    Sweep->>DDB: status running
+    Agent->>WS: session:ack
+    WS->>DDB: Durable ackReceivedAt
 ```
 
 Lambda has no process to hold a server-side ping. Keepalive is **agent-initiated**. A successful
@@ -91,13 +95,15 @@ local `send()` is not an ack. Protocol-2 daemons re-arm the stall watchdog only 
 ```mermaid
 flowchart TD
     EB[EventBridge every 60s] --> Cron[Cron Lambda]
+    Cron --> Queue["fullScan queued sessions: missed prompt/scheduled/workspace assigns"]
     Cron --> Due[Due schedules: claim nextRunAt, maybe create type=scheduled]
     Cron --> Ack[Unacked assigns: requeue]
     Cron --> TO[Running past ackReceivedAt plus timeout: timed_out]
-    Cron --> Stale[Stale hosts / missed assigns]
+    Cron --> Stale[Stale hosts]
     Cron --> Outbox[Slack outbox plus cancel redelivery]
     Cron --> Arch[Archive retry: at most 25 pending uploads]
-    Due --> Sched[Scheduler: push session:assign if a host is eligible]
+    Queue --> Sched[Scheduler: push session:assign if a host is eligible]
+    Due --> Sched
 ```
 
 If EventBridge were down, **in-flight** create/register/terminal would still assign. Missed acks,
