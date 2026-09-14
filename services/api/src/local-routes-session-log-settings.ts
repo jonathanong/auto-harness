@@ -1,7 +1,11 @@
+import {
+  isSessionLogUploadMode,
+  thrownMessage,
+  type SessionLogSettings,
+} from "@auto-harness/shared";
+
 import { writeRouteAudit } from "./local-audit.ts";
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
-import type { SessionLogSettings } from "@auto-harness/shared";
-import { isSessionLogUploadMode } from "@auto-harness/shared";
 
 const PATH = "/api/v1/session-log-settings";
 const ALLOWED = new Set([
@@ -32,7 +36,7 @@ export async function handleSessionLogSettingsRoutes(ctx: RouteCtx): Promise<boo
       send(ctx.res, 400, {
         error: {
           code: "VALIDATION_ERROR",
-          message: error instanceof Error ? error.message : "invalid configuration",
+          message: thrownMessage(error),
         },
       });
     }
