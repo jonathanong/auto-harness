@@ -108,9 +108,18 @@ export async function readSessionLogObjects(
   for (const key of listed ?? []) keys.add(key);
   if (keys.size === 0) return undefined;
   const archiveKey = sessionLogArchiveKey(sessionId);
-  const ordered = keys.has(archiveKey)
-    ? [archiveKey]
-    : [...keys].toSorted((left, right) => left.localeCompare(right));
+  if (keys.has(archiveKey)) {
+    const archived =
+      state.logObjects.get(archiveKey) ?? (await state.archiveWriter?.getGzipObject?.(archiveKey));
+    if (archived) {
+      const records = parseGzipJsonlLogs(sessionId, archived);
+      records.sort((left, right) => left.timestampSeq.localeCompare(right.timestampSeq));
+      return query ? selectLogs(records, query) : records;
+    }
+    keys.delete(archiveKey);
+    if (keys.size === 0) return undefined;
+  }
+  const ordered = [...keys].toSorted((left, right) => left.localeCompare(right));
   const records: LogRecord[] = [];
   for (const key of ordered) {
     const stored = state.logObjects.get(key) ?? (await state.archiveWriter?.getGzipObject?.(key));

@@ -157,4 +157,28 @@ describe("session log objects", () => {
       "archive",
     ]);
   });
+
+  it("falls back to parts when the terminal archive body is missing", async () => {
+    const part = gzipLogRecords([
+      {
+        sessionId: "sess",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        stream: "stdout",
+        content: "part",
+        seq: 1,
+        timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+      },
+    ]);
+    const objects = new Map<string, Buffer>([["sessions/sess/parts/1-1.jsonl.gz", part]]);
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => undefined,
+        listKeys: async () => ["sessions/sess/logs.jsonl.gz", "sessions/sess/parts/1-1.jsonl.gz"],
+        getGzipObject: async (key) => objects.get(key),
+      },
+    });
+    expect((await readSessionLogObjects(state, "sess"))?.map((record) => record.content)).toEqual([
+      "part",
+    ]);
+  });
 });
