@@ -511,4 +511,63 @@ describe("daemon registration", () => {
     ).rejects.toThrow("registration failed");
     expect(config).not.toHaveProperty("setupCacheInputs");
   });
+
+  it("commits host-absolute setup cache inputs into the live inventory", async () => {
+    const config = {
+      hostId: "h",
+      setupCacheHostInputs: ["/opt/old"],
+      repositories: [],
+      providerAccounts: [],
+    };
+    const next = { ...config, setupCacheHostInputs: ["/opt/new"] };
+    await applyDaemonInventory(
+      config,
+      next,
+      { ensureAll: async () => undefined } as never,
+      async () => undefined,
+    );
+    expect(config.setupCacheHostInputs).toEqual(["/opt/new"]);
+    await applyDaemonInventory(
+      config,
+      { hostId: "h", repositories: [], providerAccounts: [] },
+      { ensureAll: async () => undefined } as never,
+      async () => undefined,
+    );
+    expect(config).not.toHaveProperty("setupCacheHostInputs");
+  });
+
+  it("restores host-absolute setup cache inputs when registration fails", async () => {
+    const config = {
+      hostId: "h",
+      setupCacheHostInputs: ["/opt/old"],
+      repositories: [],
+      providerAccounts: [],
+    };
+    await expect(
+      applyDaemonInventory(
+        config,
+        { ...config, setupCacheHostInputs: ["/opt/new"] },
+        { ensureAll: async () => undefined } as never,
+        async () => {
+          throw new Error("registration failed");
+        },
+      ),
+    ).rejects.toThrow("registration failed");
+    expect(config.setupCacheHostInputs).toEqual(["/opt/old"]);
+  });
+
+  it("does not keep newly applied host-absolute cache inputs after registration fails", async () => {
+    const config = { hostId: "h", repositories: [], providerAccounts: [] };
+    await expect(
+      applyDaemonInventory(
+        config,
+        { ...config, setupCacheHostInputs: ["/opt/new"] },
+        { ensureAll: async () => undefined } as never,
+        async () => {
+          throw new Error("registration failed");
+        },
+      ),
+    ).rejects.toThrow("registration failed");
+    expect(config).not.toHaveProperty("setupCacheHostInputs");
+  });
 });

@@ -21,7 +21,7 @@ import {
 } from "./environment-requirements.ts";
 import { parseAllowedRoots, parseTerminalHookScript } from "./host-exec-config.ts";
 import { parseHostUpdateConfig } from "./host-update-config.ts";
-import { parseSetupCacheInputs } from "./setup-cache-inputs.ts";
+import { parseSetupCacheHostInputs, parseSetupCacheInputs } from "./setup-cache-inputs.ts";
 
 // Registration also carries daemon identity/runtime and reconnect metadata that is not part of
 // the persisted inventory. Keep a conservative cushion so an inventory near the frame limit
@@ -60,6 +60,14 @@ function optionalCacheInputs(
 ): { setupCacheInputs: string[] } | Record<string, never> {
   if (!Object.hasOwn(raw, "setupCacheInputs")) return {};
   return { setupCacheInputs: parseSetupCacheInputs(raw.setupCacheInputs, ctx) ?? [] };
+}
+
+function optionalHostCacheInputs(
+  raw: Record<string, unknown>,
+  ctx: string,
+): { setupCacheHostInputs: string[] } | Record<string, never> {
+  if (!Object.hasOwn(raw, "setupCacheHostInputs")) return {};
+  return { setupCacheHostInputs: parseSetupCacheHostInputs(raw.setupCacheHostInputs, ctx) ?? [] };
 }
 
 function parseWorktree(rawWorktree: unknown, index: number, repositoryId: string): HostWorktree {
@@ -286,6 +294,7 @@ export function parseHostInventory(
   const inventory: HostInventory = {
     ...(setupScript !== undefined ? { setupScript } : {}),
     ...optionalCacheInputs(value, "setupCacheInputs"),
+    ...optionalHostCacheInputs(value, "setupCacheHostInputs"),
     ...(allowedRoots !== undefined ? { allowedRoots } : {}),
     ...(requiredEnvironment.length ? { requiredEnvironment } : {}),
     ...(updateConfig !== undefined ? { updateConfig } : {}),

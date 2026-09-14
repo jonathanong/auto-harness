@@ -39,6 +39,7 @@ describe("getInventory / putInventory", () => {
         JSON.stringify({
           setupScript: "source ~/.zshrc",
           setupCacheInputs: ["pnpm-lock.yaml"],
+          setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
           allowedRoots: ["/opt/harness"],
           requiredEnvironment: ["TOKEN"],
           updateConfig: {
@@ -62,6 +63,7 @@ describe("getInventory / putInventory", () => {
       expect(inv.repositories).toHaveLength(1);
       expect(inv.setupScript).toBe("source ~/.zshrc");
       expect(inv.setupCacheInputs).toEqual(["pnpm-lock.yaml"]);
+      expect(inv.setupCacheHostInputs).toEqual(["/opt/auto-harness/setup/host-environment"]);
       expect(inv.allowedRoots).toEqual(["/opt/harness"]);
       expect(inv.requiredEnvironment).toEqual(["TOKEN"]);
       expect(inv.updateConfig).toMatchObject({ enabled: true });
@@ -102,6 +104,7 @@ describe("getInventory / putInventory", () => {
       const ok = await putInventory("host-1", {
         setupScript: "source ~/.zshrc",
         setupCacheInputs: [],
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
         updateConfig: {
@@ -123,6 +126,7 @@ describe("getInventory / putInventory", () => {
       expect(sentBody).toEqual({
         setupScript: "source ~/.zshrc",
         setupCacheInputs: [],
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
         updateConfig: {
@@ -179,6 +183,7 @@ describe("getInventory / putInventory", () => {
           {
             setupScript: "echo",
             setupCacheInputs: ["pnpm-lock.yaml"],
+            setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
             allowedRoots: ["/opt/harness"],
             updateConfig,
             repositories: [{ id: "repo", terminalHookScript: "/opt/harness/hook.sh" }],
@@ -190,6 +195,7 @@ describe("getInventory / putInventory", () => {
       expect(sent.body).toEqual({
         setupScript: "echo",
         setupCacheInputs: ["pnpm-lock.yaml"],
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
         allowedRoots: ["/opt/harness"],
         updateConfig,
         repositories: [{ id: "repo", terminalHookScript: "/opt/harness/hook.sh" }],

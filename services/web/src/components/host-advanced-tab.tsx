@@ -7,6 +7,7 @@ export function HostAdvancedTab({
   initialVersion,
   setupScript,
   setupCacheInputs,
+  setupCacheHostInputs,
   allowedRoots,
   requiredEnvironment,
   updateConfig,
@@ -18,6 +19,7 @@ export function HostAdvancedTab({
   initialVersion: number;
   setupScript: string | undefined;
   setupCacheInputs?: string[] | undefined;
+  setupCacheHostInputs?: string[] | undefined;
   allowedRoots: string[] | undefined;
   requiredEnvironment: string[] | undefined;
   updateConfig?: HostUpdateConfig | undefined;
@@ -38,6 +40,7 @@ export function HostAdvancedTab({
             hostId={hostId}
             setupScript={setupScript}
             setupCacheInputs={setupCacheInputs}
+            setupCacheHostInputs={setupCacheHostInputs}
             allowedRoots={allowedRoots}
             requiredEnvironment={requiredEnvironment}
             canWriteExecConfig={canWriteExecConfig}

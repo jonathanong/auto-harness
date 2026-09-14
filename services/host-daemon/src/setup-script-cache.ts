@@ -54,6 +54,31 @@ function appendExtraFile(
   writeLengthPrefixed(hash, contents);
 }
 
+async function digestDeclaredInputs(input: {
+  checkoutSha: string;
+  cwd: string;
+  scripts: readonly string[];
+  extraPaths: readonly string[];
+  hostPaths: readonly string[];
+  signal?: AbortSignal;
+}): Promise<string | undefined> {
+  const hash = startSetupFingerprint(
+    input.checkoutSha,
+    input.scripts,
+    input.extraPaths.length + input.hostPaths.length,
+  );
+  const hashed = await forEachDeclaredSetupFile(
+    input.cwd,
+    input.extraPaths,
+    (path, contents) => {
+      appendExtraFile(hash, path, contents);
+    },
+    input.signal,
+    input.hostPaths,
+  );
+  return hashed ? hash.digest("hex") : undefined;
+}
+
 /** Stable digest of the operator-supplied inputs that may skip a later setup. */
 export function fingerprintSetup(parts: SetupFingerprintParts): string {
   const hash = startSetupFingerprint(parts.checkoutSha, parts.scripts, parts.extraFiles.length);
@@ -143,22 +168,21 @@ export async function resolveSetupCacheState(input: {
   worktreeId: string;
   scripts: readonly string[];
   extraPaths: readonly string[];
+  hostPaths?: readonly string[];
   signal?: AbortSignal;
 }): Promise<
   { skip: true; environment: NodeJS.ProcessEnv } | { skip: false; fingerprintToStore?: string }
 > {
   if (!input.cacheDir || !input.checkoutSha) return { skip: false };
-  const hash = startSetupFingerprint(input.checkoutSha, input.scripts, input.extraPaths.length);
-  const hashed = await forEachDeclaredSetupFile(
-    input.cwd,
-    input.extraPaths,
-    (path, contents) => {
-      appendExtraFile(hash, path, contents);
-    },
-    input.signal,
-  );
-  if (!hashed) return { skip: false };
-  const fingerprint = hash.digest("hex");
+  const fingerprint = await digestDeclaredInputs({
+    checkoutSha: input.checkoutSha,
+    cwd: input.cwd,
+    scripts: input.scripts,
+    extraPaths: input.extraPaths,
+    hostPaths: input.hostPaths ?? [],
+    ...(input.signal ? { signal: input.signal } : {}),
+  });
+  if (!fingerprint) return { skip: false };
   const stored = await readStoredSetupCache(input.cacheDir, input.worktreeId, input.cwd);
   if (!stored || stored.fingerprint !== fingerprint) {
     return { skip: false, fingerprintToStore: fingerprint };
@@ -172,19 +196,17 @@ export async function matchingSetupFingerprintAfterSetup(input: {
   cwd: string;
   scripts: readonly string[];
   extraPaths: readonly string[];
+  hostPaths?: readonly string[];
   expectedFingerprint: string;
   signal?: AbortSignal;
 }): Promise<string | undefined> {
-  const hash = startSetupFingerprint(input.checkoutSha, input.scripts, input.extraPaths.length);
-  const hashed = await forEachDeclaredSetupFile(
-    input.cwd,
-    input.extraPaths,
-    (path, contents) => {
-      appendExtraFile(hash, path, contents);
-    },
-    input.signal,
-  );
-  if (!hashed) return undefined;
-  const fingerprint = hash.digest("hex");
+  const fingerprint = await digestDeclaredInputs({
+    checkoutSha: input.checkoutSha,
+    cwd: input.cwd,
+    scripts: input.scripts,
+    extraPaths: input.extraPaths,
+    hostPaths: input.hostPaths ?? [],
+    ...(input.signal ? { signal: input.signal } : {}),
+  });
   return fingerprint === input.expectedFingerprint ? fingerprint : undefined;
 }

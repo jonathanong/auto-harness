@@ -1,9 +1,10 @@
+/* eslint-disable max-lines -- inventory and exec-config client writes share one fetch surface. */
 import { apiBase, apiErrorMessage, thrownMessage } from "./api-client.ts";
 import { parseRequiredEnvironment } from "./environment-requirements.ts";
 import { emptyHostInventory, type HostInventory } from "./host-inventory.ts";
 import { isHostCapability, normalizeHostCapabilities } from "./host-capabilities.ts";
 import type { HostExecConfigPatch } from "./host-exec-config.ts";
-import { parseSetupCacheInputs } from "./setup-cache-inputs.ts";
+import { parseSetupCacheHostInputs, parseSetupCacheInputs } from "./setup-cache-inputs.ts";
 import { parseHostUpdateConfig } from "./host-update-config.ts";
 
 /**
@@ -43,6 +44,12 @@ async function readInventory(
             setupCacheInputs: parseSetupCacheInputs(cfg.setupCacheInputs, "setupCacheInputs") ?? [],
           }
         : {}),
+      ...(Object.hasOwn(cfg, "setupCacheHostInputs")
+        ? {
+            setupCacheHostInputs:
+              parseSetupCacheHostInputs(cfg.setupCacheHostInputs, "setupCacheHostInputs") ?? [],
+          }
+        : {}),
       ...(Array.isArray(cfg.allowedRoots) &&
       cfg.allowedRoots.every((root) => typeof root === "string")
         ? { allowedRoots: cfg.allowedRoots as string[] }
@@ -78,6 +85,9 @@ export async function putInventory(
     body: JSON.stringify({
       ...(inv.setupScript !== undefined ? { setupScript: inv.setupScript } : {}),
       ...(inv.setupCacheInputs !== undefined ? { setupCacheInputs: inv.setupCacheInputs } : {}),
+      ...(inv.setupCacheHostInputs !== undefined
+        ? { setupCacheHostInputs: inv.setupCacheHostInputs }
+        : {}),
       ...(inv.allowedRoots !== undefined ? { allowedRoots: inv.allowedRoots } : {}),
       ...(inv.requiredEnvironment !== undefined
         ? { requiredEnvironment: inv.requiredEnvironment }
@@ -115,6 +125,9 @@ export async function putExecConfig(
     body: JSON.stringify({
       ...(patch.setupScript !== undefined ? { setupScript: patch.setupScript } : {}),
       ...(patch.setupCacheInputs !== undefined ? { setupCacheInputs: patch.setupCacheInputs } : {}),
+      ...(patch.setupCacheHostInputs !== undefined
+        ? { setupCacheHostInputs: patch.setupCacheHostInputs }
+        : {}),
       ...(patch.allowedRoots !== undefined ? { allowedRoots: patch.allowedRoots } : {}),
       ...(patch.updateConfig !== undefined ? { updateConfig: patch.updateConfig } : {}),
       ...(patch.repositories !== undefined ? { repositories: patch.repositories } : {}),

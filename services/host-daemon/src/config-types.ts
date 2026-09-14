@@ -53,6 +53,7 @@ export type DaemonConfig = {
   apiKey?: string;
   setupScript?: string;
   setupCacheInputs?: string[];
+  setupCacheHostInputs?: string[];
   allowedRoots?: string[];
   requiredEnvironment?: string[];
   updateConfig?: HostUpdateConfig;

@@ -44,6 +44,7 @@ export default async function SettingsPage() {
     {
       setupScript: inventory.setupScript,
       setupCacheInputs: inventory.setupCacheInputs,
+      setupCacheHostInputs: inventory.setupCacheHostInputs,
       allowedRoots: inventory.allowedRoots,
       requiredEnvironment: inventory.requiredEnvironment,
       repositories: inventory.repositories,
@@ -96,6 +97,7 @@ export default async function SettingsPage() {
           hostId={id}
           setupScript={inventory.setupScript}
           setupCacheInputs={inventory.setupCacheInputs}
+          setupCacheHostInputs={inventory.setupCacheHostInputs}
           allowedRoots={inventory.allowedRoots}
           requiredEnvironment={inventory.requiredEnvironment}
           canWriteExecConfig={canEditExecConfig}

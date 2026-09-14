@@ -2,7 +2,7 @@ import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
 
-import { isSetupCacheInputPath } from "@auto-harness/shared";
+import { isSetupCacheHostInputPath, isSetupCacheInputPath } from "@auto-harness/shared";
 
 /** Upper bound for each operator-declared setup-cache extra file, and for their aggregate. */
 export const MAX_SETUP_CACHE_INPUT_BYTES = 16 * 1024 * 1024;
@@ -19,6 +19,11 @@ export type SetupCacheReadableHandle = {
 function resolveDeclaredPath(cwd: string, relativePath: string): string | undefined {
   if (!isSetupCacheInputPath(relativePath)) return undefined;
   return join(cwd, ...relativePath.split("/"));
+}
+
+function resolveHostPath(path: string): string | undefined {
+  if (!isSetupCacheHostInputPath(path)) return undefined;
+  return path;
 }
 
 function openFlags(): number {
@@ -75,16 +80,23 @@ export async function forEachDeclaredSetupFile(
   relativePaths: readonly string[],
   onFile: (relativePath: string, contents: Buffer) => void,
   signal?: AbortSignal,
+  hostPaths: readonly string[] = [],
 ): Promise<boolean> {
   let remaining = MAX_SETUP_CACHE_INPUT_BYTES;
-  for (const relativePath of relativePaths) {
+  const files: Array<{ fingerprintPath: string; resolvedPath: string | undefined }> = [
+    ...relativePaths.map((path) => ({
+      fingerprintPath: path,
+      resolvedPath: resolveDeclaredPath(cwd, path),
+    })),
+    ...hostPaths.map((path) => ({ fingerprintPath: path, resolvedPath: resolveHostPath(path) })),
+  ];
+  for (const file of files) {
     if (signal?.aborted) return false;
-    const resolved = resolveDeclaredPath(cwd, relativePath);
-    if (resolved === undefined) return false;
-    const contents = await readBoundedRegularFile(resolved, signal, remaining);
+    if (file.resolvedPath === undefined) return false;
+    const contents = await readBoundedRegularFile(file.resolvedPath, signal, remaining);
     if (contents === undefined) return false;
     remaining -= contents.length;
-    onFile(relativePath, contents);
+    onFile(file.fingerprintPath, contents);
   }
   return true;
 }

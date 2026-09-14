@@ -11,6 +11,7 @@ import type { GitClient } from "./git.ts";
 export type ClaimedWorktree = {
   hostSetupScript?: string;
   hostSetupCacheInputs?: string[];
+  hostSetupCacheHostInputs?: string[];
   repository: RepositoryConfig;
   worktree: WorktreeConfig;
   cwd: string;
@@ -146,10 +147,14 @@ export class WorktreeManager {
     const claimedAllowedRoots = this.effectiveAllowedRoots();
     const claimedHostSetupScript = this.config.setupScript;
     const claimedHostSetupCacheInputs = this.config.setupCacheInputs ?? [];
+    const claimedHostSetupCacheHostInputs = this.config.setupCacheHostInputs ?? [];
     return {
       ...(claimedHostSetupScript !== undefined ? { hostSetupScript: claimedHostSetupScript } : {}),
       ...(claimedHostSetupCacheInputs.length
         ? { hostSetupCacheInputs: claimedHostSetupCacheInputs }
+        : {}),
+      ...(claimedHostSetupCacheHostInputs.length
+        ? { hostSetupCacheHostInputs: claimedHostSetupCacheHostInputs }
         : {}),
       ...(claimedAllowedRoots.length ? { allowedRoots: claimedAllowedRoots } : {}),
       repository: claimedRepository,
@@ -191,6 +196,10 @@ export class WorktreeManager {
               ) ||
               !sameOptionalString(claimedWorktree.setupScript, currentWorktree.setupScript) ||
               !sameStrings(claimedHostSetupCacheInputs, this.config.setupCacheInputs ?? []) ||
+              !sameStrings(
+                claimedHostSetupCacheHostInputs,
+                this.config.setupCacheHostInputs ?? [],
+              ) ||
               !sameStrings(
                 claimedRepository.setupCacheInputs ?? [],
                 currentRepository.setupCacheInputs ?? [],

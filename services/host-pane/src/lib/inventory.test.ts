@@ -15,6 +15,7 @@ describe("loadHostInventoryWithVersion", () => {
       Response.json({
         setupScript: "source ~/.zshrc",
         setupCacheInputs: ["pnpm-lock.yaml"],
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
         repositories: [],
@@ -27,6 +28,7 @@ describe("loadHostInventoryWithVersion", () => {
       inventory: {
         setupScript: "source ~/.zshrc",
         setupCacheInputs: ["pnpm-lock.yaml"],
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
         repositories: [],
@@ -40,6 +42,7 @@ describe("loadHostInventoryWithVersion", () => {
     setApiTransportForTests(async () =>
       Response.json({
         setupCacheInputs: [1],
+        setupCacheHostInputs: [1],
         repositories: [],
         providerAccounts: [],
       }),

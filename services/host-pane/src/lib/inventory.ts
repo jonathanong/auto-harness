@@ -62,6 +62,10 @@ export async function loadHostInventoryWithVersion(
         cfg.setupCacheInputs.every((path) => typeof path === "string")
           ? { setupCacheInputs: cfg.setupCacheInputs as string[] }
           : {}),
+        ...(Array.isArray(cfg.setupCacheHostInputs) &&
+        cfg.setupCacheHostInputs.every((path) => typeof path === "string")
+          ? { setupCacheHostInputs: cfg.setupCacheHostInputs as string[] }
+          : {}),
         ...(Array.isArray(cfg.allowedRoots) &&
         cfg.allowedRoots.every((root) => typeof root === "string")
           ? { allowedRoots: cfg.allowedRoots as string[] }

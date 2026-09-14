@@ -83,6 +83,7 @@ describe("host registration repository inventory", () => {
       plane.putHostInventory("host", {
         setupScript: "source ~/.zshrc",
         setupCacheInputs: ["pnpm-lock.yaml"],
+        setupCacheHostInputs: ["/opt/auto-harness/setup/host-environment"],
         allowedRoots: ["/harness"],
         requiredEnvironment: ["GLOBAL_TOKEN"],
         repositories: [
@@ -105,6 +106,9 @@ describe("host registration repository inventory", () => {
     ).toEqual({ ok: true, connectionId: "connection" });
     expect(plane.getHostInventory("host")?.setupScript).toBe("source ~/.zshrc");
     expect(plane.getHostInventory("host")?.setupCacheInputs).toEqual(["pnpm-lock.yaml"]);
+    expect(plane.getHostInventory("host")?.setupCacheHostInputs).toEqual([
+      "/opt/auto-harness/setup/host-environment",
+    ]);
     expect(plane.getHostInventory("host")?.allowedRoots).toEqual(["/harness"]);
     expect(plane.getHostInventory("host")?.requiredEnvironment).toEqual(["GLOBAL_TOKEN"]);
     expect(plane.getHostInventory("host")?.repositories[0]?.requiredEnvironment).toEqual([

@@ -746,8 +746,9 @@ Resume sessions continue to skip every setup script so a destructive setup canno
 conversation's existing worktree.
 
 A later fresh session skips those scripts when the fingerprint of the checked-out SHA, the exact
-setup script texts that would run (host then scoped), and the contents of every
-operator-declared `setupCacheInputs` path matches the last successful setup for that worktree.
+setup script texts that would run (host then scoped), the contents of every
+operator-declared `setupCacheInputs` path, and every operator-declared `setupCacheHostInputs`
+host-absolute file matches the last successful setup for that worktree.
 After setup succeeds, the daemon rehashes those declared extras. If they changed, it does not store
 a cache entry, so the next fresh checkout (which restores the original bytes) re-runs setup.
 Unchanged extras may still be stored. The fingerprint schema version is part of the digest, so
@@ -764,7 +765,11 @@ and the next fresh session re-runs setup. Sidecars whose worktree id and checkou
 longer in inventory — a removed worktree, a relocated path, or a replaced main checkout — are
 deleted on daemon start and after inventory apply, bounded so a large cache directory cannot stall
 startup. A missing sidecar is a miss, never `setup_failed`. Configure `setupCacheInputs` next to
-setup scripts (`fleet:exec-config`); paths must be relative checkout paths with no `..` segments.
+setup scripts (`fleet:exec-config`); those paths must be relative checkout paths with no `..`
+segments or absolute prefixes. Declare host-owned files such as
+`/opt/auto-harness/setup/host-environment` as `setupCacheHostInputs` (absolute paths, no `..`
+segments). Omitting that list keeps the SHA/script/relative-extra fingerprint. The host never
+auto-detects sourced files.
 
 ### Command resolution hardening
 

@@ -14,6 +14,8 @@ test("host setup and validated raw inventory editor preserve conflict semantics"
   await page.goto(`/hosts/${id}?tab=advanced`);
   await expect(page.getByTestId("form-host-setup-script")).toBeVisible();
   await expect(page.getByTestId("host-exec-config-alert")).toBeVisible();
+  await expect(page.getByTestId("host-setup-cache-inputs")).toBeVisible();
+  await expect(page.getByTestId("host-setup-cache-host-inputs")).toBeVisible();
   await expect(page.getByTestId("host-allowed-roots")).toBeVisible();
   await expect(page.getByTestId("host-required-environment")).toBeVisible();
   await page.getByTestId("host-setup-script").fill("source ~/.zshrc");

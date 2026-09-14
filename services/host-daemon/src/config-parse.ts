@@ -15,7 +15,7 @@ import type {
   WorktreeConfig,
 } from "./config-types.ts";
 import { isForeignWindowsAbsolutePath } from "./allowed-roots.ts";
-import { assignSetupCacheInputs } from "./config-setup-cache.ts";
+import { assignSetupCacheHostInputs, assignSetupCacheInputs } from "./config-setup-cache.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -177,6 +177,7 @@ export function parseDaemonConfig(
     config.setupScript = raw.setupScript;
   }
   assignSetupCacheInputs(config, raw, "setupCacheInputs");
+  assignSetupCacheHostInputs(config, raw, "setupCacheHostInputs");
   const allowedRoots = parseAllowedRoots(raw.allowedRoots);
   if (allowedRoots?.length) config.allowedRoots = allowedRoots;
   const workspacePools = parseWorkspacePools(raw.workspacePools);

@@ -182,9 +182,13 @@ export { parseHostInventory } from "./host-inventory-parse.ts";
 export {
   MAX_SETUP_CACHE_INPUTS,
   MAX_SETUP_CACHE_INPUT_LENGTH,
+  isSetupCacheHostInputPath,
   isSetupCacheInputPath,
+  parseSetupCacheHostInputs,
+  parseSetupCacheHostInputsField,
   parseSetupCacheInputs,
   parseSetupCacheInputsField,
+  presentSetupCacheHostInputs,
   presentSetupCacheInputs,
   splitSetupCacheInputLines,
 } from "./setup-cache-inputs.ts";
