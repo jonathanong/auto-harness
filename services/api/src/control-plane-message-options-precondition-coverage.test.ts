@@ -51,10 +51,16 @@ function deferredStatus(status: "completed" | "failed" = "failed") {
 }
 
 describe("durable host message preconditions and handoff replay ownership", () => {
-  it("rejects a structured result before reading or mutating a legacy connection's session", async () => {
+  it("processes a structured result from a connection reporting an old sourceProtocolVersion", async () => {
+    // The control plane no longer tracks a graduated per-feature protocol
+    // floor: every live host connection negotiated exactly
+    // HOST_PROTOCOL_VERSION (see modules/shared/src/constants.ts), so a
+    // `sourceProtocolVersion` argument below that is not a "legacy daemon"
+    // that can still be connected — it can only be stale/unset transport
+    // metadata, and must not gate reading or acknowledging the report.
     const state = createControlPlaneState({ now: () => NOW });
     const getSession = vi.fn(async () => resolvedSession());
-    setDurableReadStorage(state, { getSession });
+    setDurableReadStorage(state, { getSession, getHostLock: async () => "legacy-connection" });
 
     await expect(
       handleHostMessageDurable(
@@ -65,9 +71,18 @@ describe("durable host message preconditions and handoff replay ownership", () =
         false,
         2,
       ),
-    ).resolves.toEqual({ ok: false, error: "session result requires host protocol 3" });
-    expect(getSession).not.toHaveBeenCalled();
-    expect(state.sessions).toHaveLength(0);
+    ).resolves.toEqual({
+      ok: true,
+      terminalHookHandoffId: "handoff",
+      terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
+      sessionStatusAcknowledged: {
+        sessionId: "session",
+        attemptId: "attempt",
+        terminalHookHandoffId: "handoff",
+        terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
+      },
+    });
+    expect(getSession).toHaveBeenCalled();
   });
 
   it("acknowledges but does not replay a matching-attempt handoff to a different host", async () => {
@@ -151,7 +166,11 @@ describe("durable host message preconditions and handoff replay ownership", () =
     });
   });
 
-  it("replays a matching handoff ID but withholds its expiry from a legacy daemon", async () => {
+  it("replays a matching handoff ID with its expiry regardless of the reported sourceProtocolVersion", async () => {
+    // The expiry used to be withheld below TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION;
+    // that graduated gate is gone (every negotiated host connection is exactly
+    // HOST_PROTOCOL_VERSION), so a stale `sourceProtocolVersion` argument (6)
+    // must not change the replayed ack shape.
     const state = createControlPlaneState({ now: () => NOW });
     const session = resolvedSession();
     setDurableReadStorage(state, {
@@ -164,10 +183,12 @@ describe("durable host message preconditions and handoff replay ownership", () =
     ).resolves.toEqual({
       ok: true,
       terminalHookHandoffId: "handoff",
+      terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
       sessionStatusAcknowledged: {
         sessionId: "session",
         attemptId: "attempt",
         terminalHookHandoffId: "handoff",
+        terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
       },
     });
   });

@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- workspace assignment routing and protocol cases share one fixture. */
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
 
 import { assignWorkspaceQueuedDurable } from "./control-plane-workspace-assign.ts";
@@ -165,30 +166,31 @@ describe("workspace assignment matrix", () => {
     expect(plane.getSession(session.id)).not.toHaveProperty("errorMessage");
   });
 
-  it.each([
-    [3, "authorized"],
-    [4, "pending"],
-  ] as const)(
-    "initializes workspace command-start state for protocol %s",
-    async (protocolVersion, primaryCommandStartState) => {
-      const { plane } = workspacePlane();
-      const session = createWorkspaceSession(plane);
-      const connection = plane.state.connections.get("connection-1")!;
-      connection.protocolVersion = protocolVersion;
-      connection.negotiatedProtocolVersion = protocolVersion;
-      const tryAssignWorkspaceSession = vi.fn(async () => true);
-      plane.state.storage = { tryAssignWorkspaceSession } as never;
+  it("initializes workspace command-start state as pending for the negotiated host protocol", async () => {
+    // There is no more graduated command-start-authorization floor below
+    // HOST_PROTOCOL_VERSION (the removed COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION
+    // gate) — every negotiated host connection is exactly HOST_PROTOCOL_VERSION,
+    // so a fresh workspace assignment always starts "pending" a durable
+    // command-start acknowledgement.
+    const { plane } = workspacePlane();
+    const session = createWorkspaceSession(plane);
+    const connection = plane.state.connections.get("connection-1")!;
+    connection.protocolVersion = HOST_PROTOCOL_VERSION;
+    connection.negotiatedProtocolVersion = HOST_PROTOCOL_VERSION;
+    const tryAssignWorkspaceSession = vi.fn(async () => true);
+    plane.state.storage = { tryAssignWorkspaceSession } as never;
 
-      await expect(
-        assignWorkspaceQueuedDurable(plane.state, undefined, { readModelLoaded: true }),
-      ).resolves.toHaveLength(1);
+    await expect(
+      assignWorkspaceQueuedDurable(plane.state, undefined, { readModelLoaded: true }),
+    ).resolves.toHaveLength(1);
 
-      expect(tryAssignWorkspaceSession).toHaveBeenCalledWith(
-        expect.objectContaining({ primaryCommandStartState }),
-      );
-      expect(plane.state.sessions.get(session.id)).toMatchObject({ primaryCommandStartState });
-    },
-  );
+    expect(tryAssignWorkspaceSession).toHaveBeenCalledWith(
+      expect.objectContaining({ primaryCommandStartState: "pending" }),
+    );
+    expect(plane.state.sessions.get(session.id)).toMatchObject({
+      primaryCommandStartState: "pending",
+    });
+  });
 
   it("dispatches provider-account workspace routes and updates account recency", async () => {
     const { plane, messages } = workspacePlane();

@@ -299,6 +299,7 @@ describe("in-memory recovery handoff delivery", () => {
       registerHost(state, {
         hostId: "host",
         worktrees: [],
+        protocolVersion: 7,
         deferRunningSessionReconcile: true,
       }),
     ).toEqual({ ok: true, connectionId: "conn" });
@@ -306,6 +307,7 @@ describe("in-memory recovery handoff delivery", () => {
       registerHostDurable(state, {
         hostId: "host",
         worktrees: [],
+        protocolVersion: 7,
         replaceExisting: true,
       }),
     ).resolves.toMatchObject({ ok: true });

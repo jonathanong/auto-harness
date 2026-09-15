@@ -1,3 +1,4 @@
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
 
 import { getArchive } from "./control-plane-archive.ts";
@@ -37,7 +38,7 @@ function running(overrides: Partial<SessionRecord> = {}): SessionRecord {
   };
 }
 
-function v7State(protocolVersion = 7) {
+function v7State() {
   const deliveries: unknown[] = [];
   const state = createControlPlaneState({
     now: () => NOW,
@@ -53,8 +54,8 @@ function v7State(protocolVersion = 7) {
     lastHeartbeatAt: NOW,
     repositoryIds: ["repo"],
     capabilities: [],
-    protocolVersion,
-    negotiatedProtocolVersion: protocolVersion,
+    protocolVersion: HOST_PROTOCOL_VERSION,
+    negotiatedProtocolVersion: HOST_PROTOCOL_VERSION,
   });
   return { state, deliveries };
 }
@@ -150,17 +151,6 @@ describe("in-memory exhausted checkout handoff", () => {
   });
 
   it("archives immediately when a v7 handoff cannot be minted", () => {
-    const legacy = v7State(6);
-    legacy.state.sessions.set("session", running());
-    expect(handleHostMessage(legacy.state, exhaustedFailure(), "connection")).toEqual({ ok: true });
-    expect(legacy.deliveries).toContainEqual({
-      type: "session:status-acknowledged",
-      sessionId: "session",
-      attemptId: "attempt",
-    });
-    expect(legacy.state.sessions.get("session")?.terminalHookHandoff).toBeUndefined();
-    expect(legacy.state.pendingPersists).toHaveLength(1);
-
     const emptyHost = v7State();
     emptyHost.state.connections.get("connection")!.hostId = "";
     emptyHost.state.sessions.set("session", running({ hostId: null }));
