@@ -1,4 +1,5 @@
 /* eslint-disable max-lines */
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -67,6 +68,11 @@ describe("durable host-message fencing", () => {
         type: "host:register",
         hostId: "host",
         worktrees: [],
+        protocolVersion: HOST_PROTOCOL_VERSION,
+        daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+        daemonStartedAt: "2026-08-11T00:00:00.000Z",
+        runningAttempts: [],
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
         capabilities: { features: ["scheduled-main-checkout"] },
         maxConcurrentAssignments: 2,
       }),
@@ -201,6 +207,7 @@ describe("durable host-message fencing", () => {
         attemptId: "a",
         retryAccepted: false,
         terminalHookHandoffId: "handoff",
+        terminalHookHandoffExpiresAt: "2099-01-01T00:00:00.000Z",
       },
     });
   });
@@ -300,6 +307,8 @@ describe("durable host-message fencing", () => {
     plane.state.storage = {
       getSession: async () => running(),
       getHostLock: async () => "current",
+      getWorktree: async () => undefined,
+      listActiveSessionsByHost: async () => [],
       acknowledgeSession: async () => true,
       heartbeatConnection: async () => false,
       finishSession: async () => false,
