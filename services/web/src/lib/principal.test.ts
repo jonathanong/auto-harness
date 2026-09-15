@@ -32,7 +32,7 @@ describe("can", () => {
     expect(can({ ...operator, role: "admin" }, "accounts:write")).toBe(true);
     expect(
       can(
-        { username: "scoped", role: "admin", kind: "user", allowedRepositoryIds: ["repo"] },
+        { username: "scoped", role: "maintainer", kind: "user", allowedRepositoryIds: ["repo"] },
         "accounts:write",
       ),
     ).toBe(false);

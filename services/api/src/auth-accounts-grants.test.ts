@@ -20,11 +20,11 @@ describe("account grant helpers", () => {
     );
   });
 
-  it("rejects illegal role and scope combinations after remapping legacy shapes", () => {
+  it("rejects illegal role and scope combinations at account writes", () => {
     expect(() => assertAccountGrant("admin")).not.toThrow();
     expect(() => assertAccountGrant("agent", { boundHostId: "h" })).not.toThrow();
-    expect(() => assertAccountGrant("admin", { allowedRepositoryIds: ["r"] })).not.toThrow();
-    expect(() => assertAccountGrant("operator", { boundHostId: "h" })).not.toThrow();
+    expect(() => assertAccountGrant("admin", { allowedRepositoryIds: ["r"] })).toThrow(/admin/);
+    expect(() => assertAccountGrant("operator", { boundHostId: "h" })).toThrow(/agent/);
     expect(() => assertAccountGrant("agent")).toThrow(/boundHostId/);
     expect(() => assertAccountGrant("read-only", { boundHostId: "h" })).toThrow(/agent/);
   });
