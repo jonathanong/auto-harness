@@ -20,6 +20,8 @@ function makePlane(): ControlPlane {
 }
 
 function seedSessions(plane: ControlPlane): void {
+  plane.createRepository({ id: "r1", name: "r1", url: "https://example.test/r1.git" });
+  plane.createRepository({ id: "r2", name: "r2", url: "https://example.test/r2.git" });
   plane.createCommand({ id: "cmd-echo", name: "echo", argv: ["echo"], providerId: null });
   for (let i = 0; i < 7; i++) {
     expect(

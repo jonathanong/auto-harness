@@ -99,6 +99,7 @@ describe("resume target/fallbacks override", () => {
 
   it("still requires the source to have been assigned at least once", () => {
     const plane = new ControlPlane({ shardCount: 1 });
+    plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
     plane.createCommand({ id: "cmd-new", name: "new", argv: ["new"] });
     plane.state.sessions.set(
       "unassigned",
