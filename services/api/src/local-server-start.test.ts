@@ -9,6 +9,7 @@ describe("startLocalServer", () => {
     const port = 17420 + Math.floor(Math.random() * 1000);
     const store = new MemorySessionStore({ idFactory: () => "sess-ls" });
     store.plane.createCommand({ id: "cmd-c", name: "c", argv: ["echo"], providerId: null });
+    store.plane.createRepository({ id: "r", name: "r", url: "https://example.test/r.git" });
     // Explicit in-process plane (unit test); production uses DynamoDB Local via useDynamo.
     const server = await startLocalServer({
       port,
