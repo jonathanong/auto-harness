@@ -11,6 +11,22 @@ import {
 } from "../test-helpers/daemon-loop-test-helpers.ts";
 import { SpawnProcessRunner, type ProcessRunner } from "./executor.ts";
 
+/** These tests don't exercise the durable retry-disposition handshake itself,
+ * so accept every deferred checkout-failure status immediately instead of
+ * hanging forever waiting for a reply nothing here would ever send. */
+function acknowledgeStatus(
+  transport: ReturnType<typeof createAcknowledgingLoopbackTransport>,
+  message: HostToServerMessage,
+): void {
+  if (message.type !== "session:status") return;
+  transport.deliver({
+    type: "session:status-acknowledged",
+    sessionId: message.sessionId,
+    attemptId: message.attemptId,
+    retryAccepted: true,
+  });
+}
+
 describe("DaemonLoop errors", () => {
   it("keeps Git credentials out of logs and the final session status", async () => {
     const { config, cleanup } = await makeRepo();
@@ -20,6 +36,7 @@ describe("DaemonLoop errors", () => {
       const transport = createAcknowledgingLoopbackTransport({
         sendToServer: (message) => {
           serverMsgs.push(message);
+          acknowledgeStatus(transport, message);
         },
       });
       const fallback = new SpawnProcessRunner();
@@ -115,6 +132,7 @@ describe("DaemonLoop errors", () => {
       const transport = createAcknowledgingLoopbackTransport({
         sendToServer: (message) => {
           serverMsgs.push(message);
+          acknowledgeStatus(transport, message);
         },
       });
       const fallback = new SpawnProcessRunner();
@@ -228,6 +246,7 @@ describe("DaemonLoop errors", () => {
       const transport = createAcknowledgingLoopbackTransport({
         sendToServer: (m) => {
           serverMsgs.push(m);
+          acknowledgeStatus(transport, m);
         },
       });
       const loop = new DaemonLoop({ config, transport });
