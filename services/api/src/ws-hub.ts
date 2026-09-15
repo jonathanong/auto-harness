@@ -395,12 +395,11 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
           }
           if (boundHostId && hostSockets.get(boundHostId) === socket) {
             hostSockets.delete(boundHostId);
-            if (boundConnectionId) {
-              const connectionId = boundConnectionId;
-              // Keep the durable lease alive until every already-accepted log
-              // has either committed or failed its connection-fenced batch.
-              void messageTail.then(() => plane.disconnectHostDurable(connectionId));
-            }
+            // boundConnectionId is always set alongside boundHostId. Keep the
+            // durable lease alive until every already-accepted write has
+            // either committed or failed its connection-fenced batch.
+            const connectionId = boundConnectionId!;
+            void messageTail.then(() => plane.disconnectHostDurable(connectionId));
           }
         });
       };
@@ -528,10 +527,6 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
         return null;
       }
       const advertised = parseHostCapabilitiesAdvertisement(message.capabilities)!;
-      const maxConcurrentAssignments =
-        typeof message.maxConcurrentAssignments === "number"
-          ? message.maxConcurrentAssignments
-          : advertised.maxConcurrentAssignments;
       const normalized = {
         ...(message as HostToServerMessage),
         type: "host:register",
@@ -544,7 +539,7 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
           ? {
               capabilities: {
                 features: advertised.features,
-                ...(maxConcurrentAssignments !== undefined ? { maxConcurrentAssignments } : {}),
+                maxConcurrentAssignments: advertised.maxConcurrentAssignments,
               },
             }
           : {}),

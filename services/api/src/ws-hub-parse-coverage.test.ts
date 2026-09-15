@@ -296,8 +296,21 @@ describe("parseHostMessage exhaustive wire validation", () => {
         at: "2026-08-11T00:00:00.000Z",
         runningSessions: [null],
       },
+      {
+        type: "session:terminal-hook-complete",
+        sessionId: "session-1",
+        handoffId: "handoff-1",
+        result: { status: "not-a-real-status" },
+      },
       { type: "not-supported" },
     ];
     for (const candidate of invalid) expect(parseHostMessage(candidate)).toBe(null);
+    expect(
+      parseHostMessage({
+        type: "session:terminal-hook-complete",
+        sessionId: "session-1",
+        handoffId: "handoff-1",
+      }),
+    ).toMatchObject({ type: "session:terminal-hook-complete" });
   });
 });

@@ -43,6 +43,19 @@ describe("WebSocket hub connection guards", () => {
       await waitForMessage(rebound, "host:registered");
       rebound.send(JSON.stringify(register("host-2")));
       expect(await waitForClose(rebound)).toBe(1008);
+
+      const noSession = await open(`${harness.origin}/ws`);
+      noSession.send(JSON.stringify(register("host-no-session")));
+      await waitForMessage(noSession, "host:registered");
+      noSession.send(
+        JSON.stringify({
+          type: "session:ack",
+          sessionId: "missing-session",
+          worktreeId: null,
+          attemptId: "attempt-1",
+        }),
+      );
+      expect(await waitForClose(noSession)).toBe(1008);
     } finally {
       await harness.close();
     }
