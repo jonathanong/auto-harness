@@ -522,6 +522,69 @@ describe("archive retry state", () => {
     expect(expireArchive).not.toHaveBeenCalled();
   });
 
+  it("records a captured empty-retry byte count before completing the retry", async () => {
+    const recordArchiveRetryCapture = vi.fn(async () => true);
+    const completeArchiveRetry = vi.fn(async () => true);
+    const key = "sessions/empty-capture/logs.jsonl.gz";
+    const state = createControlPlaneState({
+      now: () => "2026-01-01T00:01:00.000Z",
+      archiveWriter: { putArchive: async () => undefined },
+      storage: {
+        getArchive: async () => ({
+          key,
+          contentType: "application/x-ndjson",
+          bodyBytes: 0,
+          status: "pending",
+          objectStored: false,
+          retryState: "processing",
+          retryOrder: "claim-order",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        }),
+        listLogs: async () => [],
+        queryLogs: async () => [],
+        recordArchiveRetryCapture,
+        completeArchiveRetry,
+      } as never,
+    });
+    await retrySessionArchiveIfNeeded(state, "empty-capture", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(recordArchiveRetryCapture).toHaveBeenCalledWith(key, "claim-order", 0);
+    expect(completeArchiveRetry).toHaveBeenCalledOnce();
+  });
+
+  it("does not complete an empty retry that loses the capture fence", async () => {
+    let uploaded = 0;
+    const completeArchiveRetry = vi.fn(async () => true);
+    const state = createControlPlaneState({
+      now: () => "2026-01-01T00:01:00.000Z",
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+      storage: {
+        getArchive: async () => ({
+          key: "sessions/empty-lost-capture/logs.jsonl.gz",
+          contentType: "application/x-ndjson",
+          bodyBytes: 0,
+          status: "pending",
+          objectStored: false,
+          retryState: "processing",
+          retryOrder: "claim-order",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        }),
+        listLogs: async () => [],
+        queryLogs: async () => [],
+        recordArchiveRetryCapture: async () => false,
+        completeArchiveRetry,
+      } as never,
+    });
+    await retrySessionArchiveIfNeeded(state, "empty-lost-capture", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(uploaded).toBe(0);
+    expect(completeArchiveRetry).not.toHaveBeenCalled();
+  });
+
   it("does not let an old empty retry expire a newer in-memory claim", async () => {
     let uploaded = 0;
     const key = "sessions/empty-stale/logs.jsonl.gz";
@@ -1148,6 +1211,44 @@ describe("archive retry state", () => {
       '{"timestamp":"1","stream":"stdout","content":"old"}\n',
       '{"timestamp":"1","stream":"stdout","content":"new"}\n',
     ]);
+  });
+
+  it("republishes a legacy unversioned archive once a rewrite wins a fresh version", async () => {
+    const key = "sessions/legacy-rewrite/logs.jsonl.gz";
+    const legacy = {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 5,
+      status: "complete" as const,
+      objectStored: true,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    let puts = 0;
+    const state = createControlPlaneState({
+      now: () => "2026-01-02T00:00:00.000Z",
+      archiveWriter: {
+        putArchive: async () => {
+          puts += 1;
+          return { versionId: `v${puts}` };
+        },
+      },
+      storage: {
+        getArchive: async () => legacy,
+        completeArchiveRetry: async () => false,
+        replaceCompleteArchive: async () => true,
+      } as never,
+    });
+    state.logs.set("legacy-rewrite", [
+      { timestamp: "1", stream: "stdout", content: "hello" } as never,
+    ]);
+    await archiveSessionLogs(state, "legacy-rewrite", {
+      retryState: "processing",
+      retryOrder: "claim-1",
+    });
+    // One upload from the normal retry attempt, a second from the repair rewrite
+    // triggered once `completeArchiveRetry` reports the fence was lost.
+    expect(puts).toBe(2);
+    expect(state.archives.get(key)?.versionId).toBe("v2");
   });
 
   it.each(["missing-result", "missing-version"])(

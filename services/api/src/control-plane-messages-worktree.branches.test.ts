@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- terminal variants share one durable worktree fixture. */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
@@ -124,5 +124,43 @@ describe("durable worktree terminal branches", () => {
       summary: "cancelled result",
       summarySource: "harness",
     });
+  });
+
+  it("stamps a fresh completedAt and forwards the write fence for a retained worktree handoff", async () => {
+    const current = row("retained-worktree", { status: "cancelled" });
+    let persisted: SessionRecord = current;
+    const finishSession = vi.fn(async (options: Record<string, unknown>) => {
+      persisted = {
+        ...current,
+        terminalHookHandoff: options.terminalHookHandoff as never,
+        completedAt: options.completedAt as string,
+      };
+      return true;
+    });
+    const state = run(current, {
+      getSession: async () => persisted,
+      getHostLock: async () => "fence-connection",
+      finishSession,
+    });
+
+    await expect(
+      handleHostMessageDurable(
+        state,
+        terminal("retained-worktree", "completed", { deferTerminalHookResult: true }),
+        "fence-connection",
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      sessionStatusAcknowledged: { terminalHookHandoffId: expect.any(String) },
+    });
+    // No `completedAt` was stamped yet, and the report arrived on the host's
+    // current connection, so the retained finish must fall back to the current
+    // time and forward that connection as the write fence.
+    expect(finishSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        completedAt: NOW,
+        fence: { hostId: "host", connectionId: "fence-connection" },
+      }),
+    );
   });
 });

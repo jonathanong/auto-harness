@@ -716,6 +716,27 @@ describe("Lambda runtime adapters", () => {
     });
   });
 
+  it("discards a well-formed frame whose hostId does not match the authenticated lease", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await expect(
+        runtime.websocket({
+          body: JSON.stringify({
+            type: "host:keepalive",
+            hostId: "some-other-host",
+            at: "2026-08-12T00:00:20.000Z",
+          }),
+          requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+        }),
+      ).resolves.toEqual({ statusCode: 403 });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('"reason":"hostId mismatch"'));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("delivers v7 terminal-hook handoffs sequentially after registration on the inbound socket", async () => {
     const fixture = runtimeFixture();
     fixture.sessions.set("lost", {
@@ -1079,6 +1100,37 @@ describe("Lambda runtime adapters", () => {
     }
   });
 
+  it("stays fail-closed when a public base URL refetch also comes up empty", async () => {
+    const fixture = runtimeFixture();
+    fixture.plane.state.publicBaseUrl = undefined as unknown as string;
+    const previousParam = process.env.PUBLIC_BASE_URL_SSM_PARAM;
+    const previousWs = process.env.WS_API_ENDPOINT;
+    const send = vi.fn(async () => ({ Parameter: {} }));
+    try {
+      process.env.PUBLIC_BASE_URL_SSM_PARAM = "/auto-harness/qa/public-base-url";
+      process.env.WS_API_ENDPOINT = "https://example.execute-api.us-east-1.amazonaws.com/prod";
+      const runtime = await createLambdaRuntime({
+        auth: fixture.auth as never,
+        created: { plane: fixture.plane, storage: fixture.storage } as never,
+        management: fixture.management,
+        ssmClient: { send } as never,
+      });
+      await expect(
+        runtime.websocket({
+          headers: { origin: "https://d1234.cloudfront.net" },
+          queryStringParameters: { ticket: "viewer-ticket" },
+          requestContext: { connectionId: "viewer-refetch-empty", routeKey: "$connect" },
+        }),
+      ).resolves.toEqual({ statusCode: 403 });
+      expect(send).toHaveBeenCalled();
+    } finally {
+      if (previousParam === undefined) delete process.env.PUBLIC_BASE_URL_SSM_PARAM;
+      else process.env.PUBLIC_BASE_URL_SSM_PARAM = previousParam;
+      if (previousWs === undefined) delete process.env.WS_API_ENDPOINT;
+      else process.env.WS_API_ENDPOINT = previousWs;
+    }
+  });
+
   it("rehydrates auth on connect when the runtime constructed AuthService itself", async () => {
     const fixture = runtimeFixture();
     const previous = {
@@ -1195,6 +1247,44 @@ describe("Lambda runtime adapters", () => {
       }),
     ).resolves.toEqual({ statusCode: 200 });
     expect(fixture.connections.has("viewer-1")).toBe(false);
+  });
+
+  it("notifies the owning host when the first viewer subscribes and the last unsubscribes", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    fixture.sessions.set("session-1", {
+      id: "session-1",
+      repositoryId: "repository-1",
+      status: "running",
+      hostId: "host-1",
+    });
+    fixture.management.send.mockClear();
+    await expect(
+      runtime.websocket({
+        headers: { origin: "http://localhost:7421" },
+        queryStringParameters: { ticket: "viewer-ticket" },
+        requestContext: { connectionId: "viewer-1", routeKey: "$connect" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+        requestContext: { connectionId: "viewer-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({ type: "session:log-watch", sessionId: "session-1" });
+    fixture.management.send.mockClear();
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({ type: "session:unsubscribe", sessionId: "session-1" }),
+        requestContext: { connectionId: "viewer-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({ type: "session:log-unwatch", sessionId: "session-1" });
   });
 
   it("preserves an existing log callback and rejects malformed client connection rows", async () => {
@@ -2598,6 +2688,34 @@ describe("loadSlackAppCredentials", () => {
         ).rejects.toBe(failure);
       }
     } finally {
+      if (previousParam === undefined) delete process.env.HARNESS_SLACK_APP_SSM_PARAM;
+      else process.env.HARNESS_SLACK_APP_SSM_PARAM = previousParam;
+    }
+  });
+
+  it("constructs the default SSM client when none is injected", async () => {
+    const previousLocal = process.env.HARNESS_SLACK_APP;
+    const previousParam = process.env.HARNESS_SLACK_APP_SSM_PARAM;
+    const send = vi.spyOn(SSMClient.prototype, "send").mockImplementation(async () => ({
+      Parameter: {
+        Value: JSON.stringify({
+          clientId: "default-client",
+          clientSecret: "secret",
+          signingSecret: "slack-signing_secret-123",
+        }),
+      },
+    }));
+    try {
+      delete process.env.HARNESS_SLACK_APP;
+      process.env.HARNESS_SLACK_APP_SSM_PARAM = "/slack/app";
+      await expect(loadSlackAppCredentials()).resolves.toMatchObject({
+        clientId: "default-client",
+      });
+      expect(send).toHaveBeenCalled();
+    } finally {
+      send.mockRestore();
+      if (previousLocal === undefined) delete process.env.HARNESS_SLACK_APP;
+      else process.env.HARNESS_SLACK_APP = previousLocal;
       if (previousParam === undefined) delete process.env.HARNESS_SLACK_APP_SSM_PARAM;
       else process.env.HARNESS_SLACK_APP_SSM_PARAM = previousParam;
     }

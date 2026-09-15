@@ -130,22 +130,23 @@ export async function archiveSessionLogs(
     if (!state.storage && liveInMemoryClaimBlocksEmptyExpiry(claimed, ownedRetry.retryOrder)) {
       return object;
     }
-    if (!replacement) {
-      const existing = state.storage ? await state.storage.getArchive(object.key) : claimed;
-      if (archiveRetentionElapsed(state.now(), [existing?.updatedAt])) {
-        const logsRemain = await recentLogsRemain(state, sessionId);
-        const latest = state.archives.get(object.key);
-        if (!state.storage && liveInMemoryClaimBlocksEmptyExpiry(latest, ownedRetry.retryOrder)) {
-          return object;
-        }
-        if (logsRemain) return object;
-        await persistExpiredArchive(state, object.key, {
-          ...pending,
-          retryState: "processing",
-          retryOrder: ownedRetry.retryOrder,
-        });
+    // `replacement` is only ever set from `current`, and `current` is forced to `null`
+    // whenever `retryClaim` (hence `ownedRetry`) is supplied a few lines up -- so
+    // `replacement` is always falsy here. No test can make this `false`.
+    const existing = state.storage ? await state.storage.getArchive(object.key) : claimed;
+    if (archiveRetentionElapsed(state.now(), [existing?.updatedAt])) {
+      const logsRemain = await recentLogsRemain(state, sessionId);
+      const latest = state.archives.get(object.key);
+      if (!state.storage && liveInMemoryClaimBlocksEmptyExpiry(latest, ownedRetry.retryOrder)) {
         return object;
       }
+      if (logsRemain) return object;
+      await persistExpiredArchive(state, object.key, {
+        ...pending,
+        retryState: "processing",
+        retryOrder: ownedRetry.retryOrder,
+      });
+      return object;
     }
   }
   if (

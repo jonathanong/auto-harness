@@ -171,6 +171,81 @@ it("fences a published slot during rollback after the inventory lease changes", 
   expect(slots[0]).toMatchObject({ online: false });
 });
 
+it("skips a slot during rollback once its offline rewrite loses the fence", async () => {
+  const plane = new ControlPlane({ connectionIdFactory: () => "candidate" });
+  const baseSlots = [
+    {
+      id: "slot-a",
+      hostId: "h",
+      workspacePoolId: "pool",
+      name: "a",
+      path: "/workspace/a",
+      status: "idle" as const,
+      online: false,
+      currentSessionId: null,
+      connectionId: "old",
+    },
+    {
+      id: "slot-b",
+      hostId: "h",
+      workspacePoolId: "pool",
+      name: "b",
+      path: "/workspace/b",
+      status: "idle" as const,
+      online: false,
+      currentSessionId: null,
+      connectionId: "old",
+    },
+  ];
+  let listCalls = 0;
+  const fencedCallCount: Record<string, number> = {};
+  plane.state.storage = {
+    tryRegisterHost: async () => true,
+    getHostInventory: async () => null,
+    listWorktreesByHost: async () => [],
+    listWorkspaceSlotsByHost: async () => {
+      listCalls += 1;
+      // The rollback re-read observes an intervening change to slot-b, simulating a
+      // replacement connection that already rewrote it after this candidate's publish.
+      return listCalls === 1
+        ? baseSlots
+        : baseSlots.map((slot) =>
+            slot.id === "slot-b"
+              ? { ...slot, connectionId: "candidate", path: "/workspace/b-changed" }
+              : { ...slot, connectionId: "candidate" },
+          );
+    },
+    putWorkspaceSlot: async () => undefined,
+    putWorkspaceSlotFenced: async (next: { id: string }) => {
+      fencedCallCount[next.id] = (fencedCallCount[next.id] ?? 0) + 1;
+      // slot-b's second (rollback) fence attempt loses the race.
+      return !(next.id === "slot-b" && fencedCallCount[next.id] === 2);
+    },
+    putHostInventoryFenced: async () => ({ ok: false, reason: "lease" as const }),
+    releaseHostConnection: async () => true,
+    getHostLock: async () => null,
+  } as never;
+
+  await expect(
+    plane.registerHostDurable({
+      hostId: "h",
+      worktrees: [],
+      workspacePools: [],
+      commandProfiles: [],
+      replaceExisting: true,
+    }),
+  ).resolves.toEqual({
+    ok: false,
+    error: "host connection changed while publishing inventory",
+  });
+
+  // slot-a's rollback fence succeeded and got rewritten offline.
+  expect(plane.state.workspaceSlots.get("slot-a")).toMatchObject({ online: false });
+  // slot-b's rollback fence was lost, so the stale offline rewrite never applied --
+  // the cache keeps whatever the publish step (its first, successful fence) wrote.
+  expect(plane.state.workspaceSlots.get("slot-b")).toMatchObject({ path: "/workspace/b" });
+});
+
 it("accepts an exact durable workspace ownership claim before confirming its reconnect", async () => {
   const plane = new ControlPlane({ connectionIdFactory: () => "replacement" });
   const session = runningWorkspaceSession();

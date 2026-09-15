@@ -535,6 +535,12 @@ export class DaemonLoop {
     inventoryPolicyBlocked = this.inventoryPolicyBlocked,
     config = this.config,
   }: { inventoryPolicyBlocked?: boolean; config?: DaemonConfig } = {}): Promise<void> {
+    // Snapshot alongside the inventoryPolicyBlocked parameter default above,
+    // before the only await in this method: all three flags that decide the
+    // advertised draining state are read at the same point, rather than
+    // mixing a pre-await snapshot with two reads taken after probeGitReadiness
+    // has had a chance to run other message handling in between.
+    const draining = this.drainRequested || this.draining || inventoryPolicyBlocked;
     this.runtime ??= await probeGitReadiness(this.processRunner);
     const readiness = providerAccountReadiness(this.executionProfiles);
     const runningAttempts = this.confirmableOwnedAttempts();
@@ -542,7 +548,7 @@ export class DaemonLoop {
       config,
       this.transport,
       runningAttempts.map((attempt) => attempt.sessionId),
-      this.drainRequested || this.draining || inventoryPolicyBlocked,
+      draining,
       this.daemonIdentity,
       this.runtime,
       runningAttempts,
@@ -1201,9 +1207,12 @@ export class DaemonLoop {
             return;
           }
           const handoff: PendingTerminalHookHandoff = {
-            ...(handoffExpiresAtMs !== undefined && Number.isFinite(handoffExpiresAtMs)
-              ? { expiresAtMs: handoffExpiresAtMs }
-              : {}),
+            // syntheticV7Handoff is true here (checked above at line 1193), so the
+            // expiry guard a few lines up already returned before this point unless
+            // validHandoffExpiresAtMs — and therefore handoffExpiresAtMs, and the
+            // msg.terminalHookHandoffExpiresAt it was parsed from — is defined and
+            // finite. Both fields below are always present by the time we get here.
+            expiresAtMs: handoffExpiresAtMs as number,
             message: {
               type: "session:terminal-hook",
               handoffId: msg.terminalHookHandoffId,
@@ -1214,10 +1223,7 @@ export class DaemonLoop {
                 import("@auto-harness/shared").SessionStatus,
                 "completed" | "failed" | "cancelled" | "timed_out"
               >,
-              ...(msg.terminalHookHandoffExpiresAt !== undefined &&
-              Number.isFinite(handoffExpiresAtMs)
-                ? { expiresAt: msg.terminalHookHandoffExpiresAt }
-                : {}),
+              expiresAt: msg.terminalHookHandoffExpiresAt as string,
               ...(pending.message.errorCode !== undefined
                 ? { errorCode: pending.message.errorCode }
                 : {}),
@@ -1608,7 +1614,9 @@ export class DaemonLoop {
           type: "session:terminal-hook-complete",
           sessionId: pending.message.sessionId,
           handoffId: pending.message.handoffId,
-          ...(pending.result !== undefined ? { result: pending.result } : {}),
+          // applyHandoffFallbackResult above always assigns a result when one
+          // isn't already set, so pending.result is never undefined here.
+          result: pending.result as import("@auto-harness/shared").SessionResult,
         },
         { signal: completionController.signal },
       )

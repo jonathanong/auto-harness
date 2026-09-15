@@ -9,6 +9,7 @@ type CapacityInternals = {
     signal: AbortSignal,
     occupy?: () => void,
   ): Promise<boolean>;
+  waitForExecutionCapacityChange(signal: AbortSignal): Promise<boolean>;
   hasSpareExecutionCapacity(): boolean;
   notifyExecutionCapacityWaiters(): void;
   activeTerminalHookHandoffs: number;
@@ -120,6 +121,82 @@ describe("DaemonLoop execution capacity wait coverage", () => {
       expect(occupied).toBe(true);
       expect(entry.executing).toBe(true);
       expect(woken).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("resolves false immediately when the signal is already aborted before the wait begins", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const loop = new DaemonLoop({
+        config,
+        transport: createLoopbackTransport(),
+        executionProfiles: { maxConcurrentAssignments: 1, profiles: new Map() },
+      });
+      const internals = loop as unknown as CapacityInternals;
+      const controller = new AbortController();
+      controller.abort();
+      await expect(internals.waitForExecutionCapacityChange(controller.signal)).resolves.toBe(
+        false,
+      );
+      expect(internals.executionCapacityWaiters.size).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("resolves false via the post-registration recheck when abort lands between entry and listener setup", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const loop = new DaemonLoop({
+        config,
+        transport: createLoopbackTransport(),
+        executionProfiles: { maxConcurrentAssignments: 1, profiles: new Map() },
+      });
+      const internals = loop as unknown as CapacityInternals;
+      // A signal whose `aborted` getter only turns true after the entry check
+      // has already passed, modelling an abort that lands between that guard
+      // and the listener registration a few lines later.
+      let reads = 0;
+      const racingSignal = {
+        get aborted() {
+          reads += 1;
+          return reads > 1;
+        },
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      } as unknown as AbortSignal;
+      await expect(internals.waitForExecutionCapacityChange(racingSignal)).resolves.toBe(false);
+      expect(internals.executionCapacityWaiters.size).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("ignores a redundant settle when a reentrant capacity notification races the synchronous availability check", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const loop = new DaemonLoop({
+        config,
+        transport: createLoopbackTransport(),
+        executionProfiles: { maxConcurrentAssignments: 1, profiles: new Map() },
+      });
+      const internals = loop as unknown as CapacityInternals;
+      const controller = new AbortController();
+      let calls = 0;
+      // Model a capacity release that reentrantly wakes this exact waiter
+      // (via notifyExecutionCapacityWaiters) while this wait's own synchronous
+      // availability check is still in progress. The waiter must settle once,
+      // from whichever source resolves it first; the second settle attempt
+      // has to be a no-op rather than a double resolve/cleanup.
+      internals.hasSpareExecutionCapacity = () => {
+        calls += 1;
+        if (calls === 1) internals.notifyExecutionCapacityWaiters();
+        return true;
+      };
+      await expect(internals.waitForExecutionCapacityChange(controller.signal)).resolves.toBe(true);
+      expect(internals.executionCapacityWaiters.size).toBe(0);
     } finally {
       cleanup();
     }

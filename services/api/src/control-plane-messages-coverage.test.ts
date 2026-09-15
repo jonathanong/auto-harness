@@ -6,6 +6,7 @@ import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-
 import { ControlPlane } from "./control-plane.ts";
 import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
+import { OPERATIONAL_METRIC_ENVIRONMENT_VAR } from "./operational-metrics.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -473,6 +474,45 @@ describe("control-plane host message coverage paths", () => {
     });
   });
 
+  it("does not count an exhausted-retry metric for a first-ever undeferred checkout failure", async () => {
+    const firstRun = running({
+      mainCheckoutLease: true,
+      worktreeId: null,
+      assignmentConnectionId: "connection",
+    });
+    const state = durable(firstRun);
+    state.mainCheckoutLeases.set("host\0repo", {
+      sessionId: firstRun.id,
+      connectionId: "connection",
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.env[OPERATIONAL_METRIC_ENVIRONMENT_VAR] = "test";
+    try {
+      await expect(
+        handleHostMessageDurable(
+          state,
+          status(firstRun.id, "failed", {
+            worktreeId: null,
+            errorCode: "checkout_fetch_failed",
+            deferTerminalHookResult: false,
+          }),
+        ),
+      ).resolves.toMatchObject({ sessionStatusAcknowledged: { sessionId: firstRun.id } });
+      expect(state.sessions.get(firstRun.id)).toMatchObject({
+        status: "failed",
+        errorCode: "checkout_fetch_failed",
+        worktreeId: null,
+      });
+      expect(state.sessions.get(firstRun.id)).not.toHaveProperty("infrastructureRetryCount");
+      expect(
+        log.mock.calls.some(([line]) => String(line).includes("InfrastructureRetryExhausted")),
+      ).toBe(false);
+    } finally {
+      delete process.env[OPERATIONAL_METRIC_ENVIRONMENT_VAR];
+      log.mockRestore();
+    }
+  });
+
   it("fences a worktree retry, preserves it on a lost requeue, and tolerates a missing cache entry", async () => {
     const retry = running();
     const state = durable(retry, {
@@ -570,6 +610,38 @@ describe("control-plane host message coverage paths", () => {
       worktreeId: null,
     });
     expect(state.worktrees.get("worktree")).toMatchObject({ status: "idle" });
+  });
+
+  it("does not count a local exhausted-retry metric for a first-ever undeferred checkout failure", () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const session = running();
+    state.sessions.set(session.id, session);
+    state.worktrees.set("worktree", worktree());
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.env[OPERATIONAL_METRIC_ENVIRONMENT_VAR] = "test";
+    try {
+      expect(
+        handleHostMessage(
+          state,
+          status(session.id, "failed", {
+            errorCode: "checkout_fetch_failed",
+            deferTerminalHookResult: false,
+          }),
+        ),
+      ).toEqual({ ok: true });
+      expect(state.sessions.get(session.id)).toMatchObject({
+        status: "failed",
+        errorCode: "checkout_fetch_failed",
+        worktreeId: null,
+      });
+      expect(state.sessions.get(session.id)).not.toHaveProperty("infrastructureRetryCount");
+      expect(
+        log.mock.calls.some(([line]) => String(line).includes("InfrastructureRetryExhausted")),
+      ).toBe(false);
+    } finally {
+      delete process.env[OPERATIONAL_METRIC_ENVIRONMENT_VAR];
+      log.mockRestore();
+    }
   });
 
   it("cools a local provider account and safely leaves an unowned infrastructure retry queued", () => {

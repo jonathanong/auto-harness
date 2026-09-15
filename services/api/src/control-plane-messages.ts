@@ -640,7 +640,10 @@ export function handleHostMessage(
           : {}),
         ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
         ...(msg.runningAttempts ? { runningAttempts: msg.runningAttempts } : {}),
-        ...(msg.protocolVersion !== undefined ? { protocolVersion: msg.protocolVersion } : {}),
+        // `protocolVersion` is mandatory on `HostToServerMessage` and enforced at the
+        // wire boundary (parseHostMessage rejects anything else), so it is always
+        // present here.
+        protocolVersion: msg.protocolVersion,
         ...(msg.daemonInstanceId && msg.daemonStartedAt
           ? {
               daemonIdentity: {
@@ -869,7 +872,10 @@ export async function handleHostMessageDurable(
         : {}),
       ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
       ...(msg.runningAttempts ? { runningAttempts: msg.runningAttempts } : {}),
-      ...(msg.protocolVersion !== undefined ? { protocolVersion: msg.protocolVersion } : {}),
+      // `protocolVersion` is mandatory on `HostToServerMessage` and enforced at the
+      // wire boundary (parseHostMessage rejects anything else), so it is always
+      // present here.
+      protocolVersion: msg.protocolVersion,
       ...(msg.daemonInstanceId && msg.daemonStartedAt
         ? {
             daemonIdentity: {
@@ -1135,7 +1141,10 @@ export async function handleHostMessageDurable(
       sessionId: msg.sessionId,
       handoffId: msg.handoffId,
       hostId: handoff.hostId,
-      ...(fence?.connectionId ? { connectionId: fence.connectionId } : {}),
+      // `handoff.hostId` above is always a non-empty string, so the equality check
+      // just above (`handoff.hostId !== fence?.hostId`) already returned early
+      // unless `fence` is defined — it is never undefined here.
+      connectionId: fence!.connectionId,
       ...(completedResult ? { result: completedResult } : {}),
     });
     return settled
@@ -1497,9 +1506,9 @@ async function applySessionStatusDurable(
       ok: true,
       applied: true,
       terminalHookHandoffId: committedHandoff.handoffId,
-      ...(committedHandoff.expiresAt !== undefined
-        ? { terminalHookHandoffExpiresAt: committedHandoff.expiresAt }
-        : {}),
+      // `expiresAt` is mandatory on `terminalHookHandoff` (db/types.ts), so it is
+      // always present on a committed handoff.
+      terminalHookHandoffExpiresAt: committedHandoff.expiresAt,
     };
   }
   if (
@@ -1600,18 +1609,15 @@ async function applySessionStatusDurable(
     // path never retries non-terminal reports in the first place. Safe to stop
     // the daemon's retry loop.
     const retryAccepted = settledCheckoutFetchRetryDisposition(msg, session);
+    // Not `deferredTerminalHookHandoffId(msg, session)`: this function's own early
+    // return above already handles `msg.deferTerminalHookResult === true &&
+    // session.terminalHookHandoff?.attemptId === msg.attemptId` for this exact
+    // (unchanged) `session`/`msg` pair. Reaching this "ignore" branch means that
+    // predicate was false, so it can only still be false here.
     return {
       ok: true,
       applied: true,
       ...(retryAccepted !== undefined ? { retryAccepted } : {}),
-      ...(deferredTerminalHookHandoffId(msg, session) !== undefined
-        ? { terminalHookHandoffId: deferredTerminalHookHandoffId(msg, session) }
-        : {}),
-      ...(deferredTerminalHookHandoffExpiresAt(msg, session) !== undefined
-        ? {
-            terminalHookHandoffExpiresAt: deferredTerminalHookHandoffExpiresAt(msg, session),
-          }
-        : {}),
     };
   }
   if (
@@ -1744,18 +1750,18 @@ async function applySessionStatusDurable(
   if (session.status !== "running") {
     // The session row is already durably resolved to a non-running status by
     // some other transition; this report cannot change it further.
+    //
+    // A deferred-hook replay for this attempt is handled earlier: whenever
+    // `msg.deferTerminalHookResult === true` and `session.terminalHookHandoff`
+    // already belongs to this attempt, the guard above (see
+    // `session.terminalHookHandoff?.attemptId === msg.attemptId`) returns
+    // unconditionally before this point is ever reached. So by construction
+    // `deferredTerminalHookHandoffId`/`deferredTerminalHookHandoffExpiresAt`
+    // can only ever be `undefined` here, and including them would be dead.
     return {
       ok: true,
       applied: true,
       ...(isFirstCheckoutFetchFailure(msg, session) ? { retryAccepted: false } : {}),
-      ...(deferredTerminalHookHandoffId(msg, session) !== undefined
-        ? { terminalHookHandoffId: deferredTerminalHookHandoffId(msg, session) }
-        : {}),
-      ...(deferredTerminalHookHandoffExpiresAt(msg, session) !== undefined
-        ? {
-            terminalHookHandoffExpiresAt: deferredTerminalHookHandoffExpiresAt(msg, session),
-          }
-        : {}),
     };
   }
   const cooldown = transitionEffect(plan, "cooldown");

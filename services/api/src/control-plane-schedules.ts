@@ -295,7 +295,11 @@ export function prepareUpdateSchedule(
     delete next.destroyWorkspaceAfter;
   } else {
     delete next.ref;
-    if (mode.workspacePoolId) next.workspacePoolId = mode.workspacePoolId;
+    // The workspace arm of `ScheduleMode` types `workspacePoolId` as a required,
+    // non-empty string (validated by `validateScheduleMode`'s `.trim()` check above), so
+    // this is never falsy here. TS can't narrow that discriminant through the truthy
+    // check on the sibling `repositoryId` field, hence the assertion rather than an `if`.
+    next.workspacePoolId = mode.workspacePoolId!;
     if (mode.setupProfileId) next.setupProfileId = mode.setupProfileId;
     else delete next.setupProfileId;
     if (

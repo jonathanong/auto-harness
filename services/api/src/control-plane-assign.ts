@@ -410,14 +410,17 @@ function clearResumePin(session: import("./db/types.ts").SessionRecord): void {
 /** Whether the assigned host's daemon has advertised support for fetching
  * `GET /sessions/:id/prior-context` and writing the result to the worktree. */
 function hostAdvertisesPriorContext(state: ControlPlaneState, hostId: string): boolean {
-  const connectionId = state.hostConnection.get(hostId);
-  const connection = connectionId ? state.connections.get(connectionId) : undefined;
+  // `hostId` is always a placement candidate's host, already filtered by
+  // `isSchedulableWorktree`/`hostGitReady` (queue-placement-planner.ts), which requires
+  // `state.hostConnection.get(hostId)` to be defined -- so the lookup never misses here.
+  const connection = state.connections.get(state.hostConnection.get(hostId)!);
   return hasHostCapability(connection?.capabilities, "prior-session-context");
 }
 
 function hostAdvertisesSessionSpawn(state: ControlPlaneState, hostId: string): boolean {
-  const connectionId = state.hostConnection.get(hostId);
-  const connection = connectionId ? state.connections.get(connectionId) : undefined;
+  // See `hostAdvertisesPriorContext` above: candidates only ever come from hosts with a
+  // live connection.
+  const connection = state.connections.get(state.hostConnection.get(hostId)!);
   return hasHostCapability(connection?.capabilities, "session-spawn");
 }
 

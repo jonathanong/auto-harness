@@ -200,6 +200,43 @@ describe("DaemonLoop command-start authorization", () => {
     }
   });
 
+  it("ignores a duplicate command-start acknowledgement for an already-finished authorization", async () => {
+    const transport = new ProtocolTransport();
+    const loop = await startedLoop(transport);
+    try {
+      transport.negotiate(HOST_PROTOCOL_VERSION);
+      const pending = authorize(loop);
+      expect(
+        transport.sent.filter((message) => message.type === "session:command-start"),
+      ).toHaveLength(1);
+      transport.deliver({
+        type: "session:command-start-acknowledged",
+        sessionId: assign.sessionId,
+        attemptId: assign.attemptId,
+      });
+      await expect(pending).resolves.toBe(true);
+      const pendingCommandStarts = (
+        loop as unknown as { pendingCommandStarts: Map<string, unknown> }
+      ).pendingCommandStarts;
+      expect(pendingCommandStarts.size).toBe(0);
+
+      // A durable ack can be redelivered (e.g. control-plane retry) after the
+      // authorization it settles has already been removed. Redelivery must be
+      // a harmless no-op rather than resolving anything a second time or
+      // throwing when the pending entry is gone.
+      expect(() => {
+        transport.deliver({
+          type: "session:command-start-acknowledged",
+          sessionId: assign.sessionId,
+          attemptId: assign.attemptId,
+        });
+      }).not.toThrow();
+      expect(pendingCommandStarts.size).toBe(0);
+    } finally {
+      loop.stop();
+    }
+  });
+
   it("replays pending v4 authorization after reconnect registration", async () => {
     const transport = new ProtocolTransport();
     const loop = await startedLoop(transport);

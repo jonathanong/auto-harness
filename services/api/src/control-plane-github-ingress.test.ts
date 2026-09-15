@@ -778,6 +778,7 @@ describe("GitHub ingress config", () => {
       type: "github-ingress",
       encryptedSecret: 'cipher:{"secret":"secret"}',
       enabled: true,
+      generation: "22222222-2222-4222-8222-222222222222",
       bindings: [
         {
           githubRepositoryId: 42,
@@ -813,5 +814,52 @@ describe("GitHub ingress config", () => {
       ok: false,
       conflict: true,
     });
+  });
+
+  it("persists a durable update once storage accepts the conditional put", async () => {
+    const current = {
+      id: "github-ingress",
+      type: "github-ingress",
+      encryptedSecret: 'cipher:{"secret":"secret"}',
+      enabled: true,
+      generation: "33333333-3333-4333-8333-333333333333",
+      bindings: [
+        {
+          githubRepositoryId: 42,
+          repositoryId: "repo",
+          target: { commandId: "command" },
+          fallbacks: [],
+          queueTtlSeconds: 3600,
+          timeout: 60,
+          priority: 0,
+          requiredLabels: [],
+          defaultRef: "refs/heads/main",
+          allowedLogins: [],
+        },
+      ],
+      version: 1,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    let put: unknown;
+    const plane = createPlane();
+    plane.state.storage = {
+      getGitHubIngressConfig: async () => current,
+      putGitHubIngressConfig: async (record: unknown) => {
+        put = record;
+        return true;
+      },
+      getRepository: async () => ({ id: "repo", name: "repo", url: "https://example.test/repo" }),
+      listCommands: async () => [
+        { id: "command", name: "command", argv: ["echo"], providerId: null },
+      ],
+      listProviders: async () => [],
+      listProviderAccounts: async () => [],
+    } as never;
+    await expect(plane.updateGitHubIngressConfig({ bindings: [binding] })).resolves.toMatchObject({
+      ok: true,
+      integration: { generation: current.generation, version: 2 },
+    });
+    expect(put).toMatchObject({ generation: current.generation, version: 2 });
   });
 });
