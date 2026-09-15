@@ -123,6 +123,12 @@ describe("scheduled dispatcher coverage edges", () => {
   it("returns scheduled main-checkout assignments from the scheduler route", async () => {
     const plane = new ControlPlane({ idFactory: () => "run", now: () => NOW, shardCount: 1 });
     plane.createCommand({ id: "cmd", name: "cmd", argv: ["tool"], providerId: null });
+    plane.createRepository({
+      id: "repo",
+      name: "repo",
+      url: "https://example.test/repo.git",
+      defaultBranch: "main",
+    });
     plane.registerHost({
       hostId: "host",
       worktrees: [],

@@ -74,6 +74,16 @@ function baseState() {
     createdAt: NOW,
     updatedAt: NOW,
   });
+  state.repositories.set("repo", {
+    id: "repo",
+    name: "repo",
+    url: "https://example.test/repo.git",
+    defaultBranch: "main",
+    admissionState: "active",
+    admissionStateChangedAt: NOW,
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
   return state;
 }
 
