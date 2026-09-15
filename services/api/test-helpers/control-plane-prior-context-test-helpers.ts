@@ -70,6 +70,7 @@ function assignedFixtureSession(
  * `host-a` into advertising capabilities such as `prior-session-context`. */
 export function finishedCommandSwapSourcePlane(hostCapabilities: string[] = []): ControlPlane {
   const plane = deterministicPlane();
+  plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
   plane.createCommand({
     id: "cmd-old",
     name: "old",
