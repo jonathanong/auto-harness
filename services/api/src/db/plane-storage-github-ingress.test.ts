@@ -60,19 +60,6 @@ describe("GitHub ingress integration storage", () => {
     );
   });
 
-  it("fences legacy records by requiring generation to remain absent", async () => {
-    const send = vi.fn().mockResolvedValue({});
-    await expect(putGitHubIngressConfig(ctx(send), githubRecord, 1, undefined, null)).resolves.toBe(
-      true,
-    );
-    await expect(deleteGitHubIngressConfig(ctx(send), 1, null)).resolves.toBe(true);
-    for (const call of send.mock.calls) {
-      expect(
-        (call[0] as { input: { ConditionExpression: string } }).input.ConditionExpression,
-      ).toContain("attribute_not_exists(#generation)");
-    }
-  });
-
   it("exposes the singleton operations through the storage facade", async () => {
     let reads = 0;
     const storage = new DynamoPlaneStorage(

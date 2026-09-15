@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { KEEPALIVE_ACK_PROTOCOL_VERSION } from "@auto-harness/shared";
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { DaemonLoop } from "./daemon-loop.ts";
@@ -48,7 +48,7 @@ describe("DaemonLoop keepalive ack watchdog", () => {
     try {
       const afterStart = harness.stallArms.length;
       expect(afterStart).toBeGreaterThan(0);
-      harness.negotiate?.(KEEPALIVE_ACK_PROTOCOL_VERSION);
+      harness.negotiate?.(HOST_PROTOCOL_VERSION);
       const afterRegistered = harness.stallArms.length;
       expect(afterRegistered).toBe(afterStart + 1);
 
@@ -111,7 +111,7 @@ describe("DaemonLoop keepalive ack watchdog", () => {
     });
     try {
       await loop.start();
-      negotiate?.(KEEPALIVE_ACK_PROTOCOL_VERSION);
+      negotiate?.(HOST_PROTOCOL_VERSION);
       const afterRegistered = stallArms.length;
       rmSync(home, { recursive: true, force: true });
       await loop.keepalive();
@@ -120,19 +120,6 @@ describe("DaemonLoop keepalive ack watchdog", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
       cleanup();
-    }
-  });
-
-  it("keeps send-based re-arm when host:registered omits protocolVersion", async () => {
-    const harness = await startStallLoop();
-    try {
-      harness.negotiate?.();
-      const afterRegistered = harness.stallArms.length;
-      await harness.loop.keepalive();
-      expect(harness.stallArms.length).toBe(afterRegistered + 1);
-      harness.loop.stop();
-    } finally {
-      harness.cleanup();
     }
   });
 });

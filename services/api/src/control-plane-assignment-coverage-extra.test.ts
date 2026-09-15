@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- assignment coverage cases share one fixture. */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   assignQueued,
@@ -97,7 +97,7 @@ function providerAssignmentState() {
     capabilities: [],
     repositoryIds: ["repo"],
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-    protocolVersion: 1,
+    protocolVersion: 7,
     providerAccountReadiness: [
       { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
     ],
@@ -255,7 +255,7 @@ describe("assignment residual coverage", () => {
       repositoryIds: ["repo"],
       capabilities: [],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-      protocolVersion: 1,
+      protocolVersion: 7,
     });
     state.hostConnection.set("host", "connection");
     const liveGet = state.hostConnection.get.bind(state.hostConnection);
@@ -314,6 +314,15 @@ describe("assignment residual coverage", () => {
       attemptIdFactory: () => "attempt",
       shardCount: 1,
     });
+    state.repositories.set("repo", {
+      id: "repo",
+      name: "repo",
+      url: "/repo",
+      defaultBranch: "main",
+      admissionState: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
     // The pinned Command must still exist in the catalog, or the deleted-Command guard
     // (#438 Part A) rejects the frozen route before this test ever reaches assignment.
     state.commands.set("frozen", {
@@ -345,7 +354,7 @@ describe("assignment residual coverage", () => {
       capabilities: [],
       repositoryIds: ["repo"],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-      protocolVersion: 1,
+      protocolVersion: 7,
     });
     state.hostConnection.set("host", "connection");
     setDurableReadStorage(state, {
@@ -402,82 +411,6 @@ describe("assignment residual coverage", () => {
     );
   });
 
-  it("reconciles legacy host capacity after prompt and scheduled ACK releases commit", async () => {
-    const releaseLegacyHostAssignment = vi.fn(async () => false);
-    const prompt = session({
-      id: "prompt",
-      status: "running",
-      worktreeId: "w",
-      hostId: "host",
-      attemptId: "prompt-attempt",
-      assignmentSentAt: NOW,
-      assignmentConnectionId: "prompt-connection",
-      resolvedRoute: {
-        targetIndex: 0,
-        providerAccountId: "account",
-        commandId: "missing",
-        hostId: "host",
-        worktreeId: "w",
-        attemptId: "prompt-attempt",
-      },
-    });
-    const promptState = createControlPlaneState({ now: () => NOW, ackDeadlineMs: 1 });
-    promptState.sessions.set(prompt.id, prompt);
-    setDurableReadStorage(promptState, {
-      listAllSessions: async () => [prompt],
-      tryRequeueSession: async () => true,
-      releaseLegacyHostAssignment,
-    });
-
-    await expect(enforceAckDeadlinesDurable(promptState, Date.parse(NOW) + 2)).resolves.toEqual([
-      "prompt",
-    ]);
-
-    const scheduled = session({
-      id: "scheduled",
-      type: "scheduled",
-      source: "schedule",
-      status: "running",
-      worktreeId: null,
-      hostId: "host",
-      mainCheckoutLease: true,
-      attemptId: "scheduled-attempt",
-      assignmentSentAt: NOW,
-      assignmentConnectionId: "scheduled-connection",
-      resolvedRoute: {
-        targetIndex: 0,
-        providerAccountId: "account",
-        commandId: "missing",
-        hostId: "host",
-        worktreeId: null,
-        attemptId: "scheduled-attempt",
-      },
-    });
-    const scheduledState = createControlPlaneState({ now: () => NOW, ackDeadlineMs: 1 });
-    scheduledState.sessions.set(scheduled.id, scheduled);
-    setDurableReadStorage(scheduledState, {
-      listAllSessions: async () => [scheduled],
-      releaseMainCheckoutSession: async () => true,
-      releaseLegacyHostAssignment,
-    });
-
-    await expect(enforceAckDeadlinesDurable(scheduledState, Date.parse(NOW) + 2)).resolves.toEqual([
-      "scheduled",
-    ]);
-    expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
-      sessionId: "prompt",
-      attemptId: "prompt-attempt",
-      hostId: "host",
-      connectionId: "prompt-connection",
-    });
-    expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
-      sessionId: "scheduled",
-      attemptId: "scheduled-attempt",
-      hostId: "host",
-      connectionId: "scheduled-connection",
-    });
-  });
-
   it("drops a stale scheduled deadline that lacks an assignment fence", async () => {
     const state = createControlPlaneState({ ackDeadlineMs: 1 });
     const row = session({
@@ -506,6 +439,15 @@ describe("assignment residual coverage", () => {
       now: () => NOW,
       attemptIdFactory: () => "attempt",
       shardCount: 1,
+    });
+    state.repositories.set("repo", {
+      id: "repo",
+      name: "repo",
+      url: "/repo",
+      defaultBranch: "main",
+      admissionState: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
     });
     state.providers.set("provider", {
       id: "provider",
@@ -537,7 +479,7 @@ describe("assignment residual coverage", () => {
         capabilities: [],
         repositoryIds: ["repo"],
         runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-        protocolVersion: 1,
+        protocolVersion: 7,
         providerAccountReadiness: [
           { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
         ],
@@ -562,6 +504,15 @@ describe("assignment residual coverage", () => {
       now: () => NOW,
       attemptIdFactory: () => "attempt",
       shardCount: 1,
+    });
+    state.repositories.set("repo", {
+      id: "repo",
+      name: "repo",
+      url: "/repo",
+      defaultBranch: "main",
+      admissionState: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
     });
     state.providers.set("provider", {
       id: "provider",
@@ -591,7 +542,7 @@ describe("assignment residual coverage", () => {
       capabilities: [],
       repositoryIds: ["repo"],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-      protocolVersion: 1,
+      protocolVersion: 7,
       providerAccountReadiness: [
         { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
       ],

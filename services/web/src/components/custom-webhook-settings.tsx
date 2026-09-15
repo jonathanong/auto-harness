@@ -134,7 +134,16 @@ export function CustomWebhookSettings() {
       try {
         const { id: _id, generation, ...settings } = config;
         const body: Record<string, unknown> = { ...settings };
-        if (submittedConfigured) body.generation = generation ?? "legacy";
+        if (submittedConfigured) {
+          if (typeof generation !== "string" || generation.length === 0) {
+            showToast("Unable to save custom webhook configuration.", {
+              variant: "destructive",
+              pw: "custom-webhook-error",
+            });
+            return;
+          }
+          body.generation = generation;
+        }
         if (secret) body.secret = secret;
         const response = await apiFetch(submittedEndpoint!, {
           method: submittedConfigured ? "PUT" : "POST",
@@ -175,7 +184,7 @@ export function CustomWebhookSettings() {
         method: "DELETE",
         headers: {
           "if-match": String(config.version!),
-          "if-match-generation": config.generation ?? "legacy",
+          "if-match-generation": config.generation!,
         },
         cache: "no-store",
       });

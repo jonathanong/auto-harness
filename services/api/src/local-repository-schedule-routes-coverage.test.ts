@@ -21,6 +21,7 @@ function seededPlane(storage?: object): ControlPlane {
     name: "repository",
     url: "/repository",
     defaultBranch: "main",
+    admissionState: "active",
     createdAt: NOW,
     updatedAt: NOW,
   });

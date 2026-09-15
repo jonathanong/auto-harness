@@ -18,6 +18,7 @@ describe("createLocalApp health and sessions", () => {
       providerId: null,
     });
     store.plane.createCommand({ id: "cmd-x", name: "x", argv: ["x"], providerId: null });
+    store.plane.createRepository({ id: "r1", name: "r1", url: "https://example.test/r1.git" });
     const { handler } = createLocalApp({ store });
 
     const invoke = async (

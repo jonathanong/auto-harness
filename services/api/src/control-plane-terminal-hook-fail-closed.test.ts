@@ -77,24 +77,6 @@ describe("terminal hook fail-closed result settlement", () => {
     });
   });
 
-  it("keeps protocol-v5 host-loss completions result-less", async () => {
-    const state = connectedState(5);
-    state.sessions.set("session", failedHandoff());
-    expect(
-      handleHostMessage(
-        state,
-        { type: "session:terminal-hook-complete", sessionId: "session", handoffId: "handoff" },
-        "connection",
-      ),
-    ).toEqual({ ok: true });
-    await Promise.resolve();
-    expect(state.sessions.get("session")).not.toHaveProperty("result");
-    expect(state.sessions.get("session")?.terminalHookHandoffSettled).toEqual({
-      handoffId: "handoff",
-      hostId: "host",
-    });
-  });
-
   it("preserves the first committed result across duplicate completions", async () => {
     const state = connectedState(6);
     state.sessions.set("session", failedHandoff());
@@ -193,7 +175,7 @@ describe("terminal hook fail-closed result settlement", () => {
         handoffId: "handoff",
         hostId: "host",
         connectionId: "connection",
-        protocolVersion: 6,
+        protocolVersion: 7,
       }),
     ).resolves.toBe(true);
     expect(state.sessions.get("session")?.result).toEqual({

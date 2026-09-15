@@ -103,9 +103,8 @@ function parseVersion(value: unknown): number {
   return version;
 }
 
-function parseGeneration(value: unknown): string | null {
+function parseGeneration(value: unknown): string {
   const generation = (value as { generation?: unknown }).generation;
-  if (generation === "legacy") return null;
   if (typeof generation !== "string" || generation.length === 0)
     throw new Error("generation must contain the observed integration generation");
   return generation;
@@ -119,8 +118,7 @@ function parseExpectedVersion(value: string | string[] | undefined): number {
   return version;
 }
 
-function parseExpectedGeneration(value: string | string[] | undefined): string | null {
-  if (value === "legacy") return null;
+function parseExpectedGeneration(value: string | string[] | undefined): string {
   if (typeof value !== "string" || value.length === 0)
     throw new Error("If-Match-Generation must contain the observed integration generation");
   return value;

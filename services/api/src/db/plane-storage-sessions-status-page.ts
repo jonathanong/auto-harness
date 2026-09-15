@@ -4,9 +4,8 @@ import type { SessionStatus } from "@auto-harness/shared";
 import {
   compareSessionsForQueue,
   SESSIONS_QUEUE_ORDER_INDEX,
-  SESSIONS_STATUS_CREATED_INDEX,
+  SESSIONS_CREATED_ORDER_INDEX,
 } from "../control-plane-ordering.ts";
-import { indexUnavailable, repairQueuedQueueOrder } from "./plane-storage-sessions-queue.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import { itemToSession, type PlaneStorageCtx } from "./plane-storage-types.ts";
 import type { SessionRecord } from "./types.ts";
@@ -38,21 +37,12 @@ export async function listSessionsByStatusPage(
   limit: number,
 ): Promise<SessionRecord[]> {
   if (status !== "queued") {
-    return (await queryStatusPage(ctx, SESSIONS_STATUS_CREATED_INDEX, status, shard, limit)).map(
+    return (await queryStatusPage(ctx, SESSIONS_CREATED_ORDER_INDEX, status, shard, limit)).map(
       itemToSession,
     );
   }
-  let ordered: Record<string, unknown>[] = [];
-  try {
-    ordered = await queryStatusPage(ctx, SESSIONS_QUEUE_ORDER_INDEX, status, shard, limit);
-  } catch (error) {
-    if (!indexUnavailable(error)) throw error;
-  }
-  const legacy = await queryStatusPage(ctx, SESSIONS_STATUS_CREATED_INDEX, status, shard, limit);
-  for (const item of legacy) await repairQueuedQueueOrder(ctx, item);
-  const byId = new Map<string, Record<string, unknown>>();
-  for (const item of [...legacy, ...ordered]) {
-    if (typeof item.id === "string") byId.set(item.id, item);
-  }
-  return [...byId.values()].map(itemToSession).toSorted(compareSessionsForQueue).slice(0, limit);
+  return (await queryStatusPage(ctx, SESSIONS_QUEUE_ORDER_INDEX, status, shard, limit))
+    .map(itemToSession)
+    .toSorted(compareSessionsForQueue)
+    .slice(0, limit);
 }

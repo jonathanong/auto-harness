@@ -13,7 +13,7 @@ import type {
   TerminalStatusAcknowledgedMessage,
 } from "./terminal-hook-handoff.ts";
 import type { CommandResumeSpec } from "./command-resume.ts";
-import type { HostCapability, HostCapabilitiesAdvertisement } from "./host-capabilities.ts";
+import type { HostCapabilitiesAdvertisement } from "./host-capabilities.ts";
 import type { HostRuntimeReport } from "./host-runtime.ts";
 import type { HostRunningAttempt, ProviderAccountReadiness } from "./host-registration.ts";
 import type { SessionUsage } from "./usage.ts";
@@ -213,26 +213,26 @@ export type HostToServerMessage =
       /** Host-local workspace slots in the daemon's initial inventory snapshot. */
       workspacePools?: WorkspacePoolAttachment[];
       /**
-       * Feature flags (legacy array) or `{ features, maxConcurrentAssignments }`.
-       * parseHostMessage flattens this to a feature array plus a sibling cap.
+       * `{ features, maxConcurrentAssignments }`. parseHostMessage flattens
+       * this to a feature array plus a sibling cap.
        */
-      capabilities?: HostCapability[] | HostCapabilitiesAdvertisement;
-      /** Host-wide concurrent assignment cap; omitted means a legacy daemon. */
+      capabilities?: HostCapabilitiesAdvertisement;
+      /** Host-wide concurrent assignment cap after parse flattening. */
       maxConcurrentAssignments?: number;
       /** Ready local execution profiles; credentials never appear here. */
       providerAccountReadiness?: ProviderAccountReadiness[];
       /** Running daemon-owned sessions, used to reconcile an interrupted socket. */
       runningSessions?: string[];
       /** Attempt-fenced reconnect claims; ignored when the attempt is no longer current. */
-      runningAttempts?: HostRunningAttempt[];
-      /** Host control-channel protocol. Missing means a legacy daemon (version 0). */
-      protocolVersion?: number;
+      runningAttempts: HostRunningAttempt[];
+      /** Host control-channel protocol. Parse requires HOST_PROTOCOL_VERSION. */
+      protocolVersion: number;
       /** Stable for one daemon process and reused across socket reconnects. */
-      daemonInstanceId?: string;
+      daemonInstanceId: string;
       /** Process start time reported alongside daemonInstanceId. */
-      daemonStartedAt?: string;
-      /** Git checkout-recovery readiness and daemon package version. Missing means legacy. */
-      runtime?: HostRuntimeReport;
+      daemonStartedAt: string;
+      /** Git checkout-recovery readiness and daemon package version. */
+      runtime: HostRuntimeReport;
       /** A reconnecting daemon retains drain until this shutdown completes. */
       draining?: true;
     }

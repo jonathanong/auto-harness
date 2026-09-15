@@ -92,7 +92,7 @@ describe("keepalive-driven session reconciliation (local mode and scheduled sess
     expect(releaseReason).toBe("daemon no longer reports session as running; requeued");
   });
 
-  it("skips reconciliation entirely for a legacy daemon that omits runningSessions", async () => {
+  it("treats an omitted keepalive runningSessions list as empty and reconciles", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     seedConnectedHost(state);
     let listed = false;
@@ -109,6 +109,6 @@ describe("keepalive-driven session reconciliation (local mode and scheduled sess
       handleHostMessageDurable(state, { type: "host:keepalive", hostId: "h", at: NOW }, "c"),
     ).resolves.toEqual({ ok: true });
 
-    expect(listed).toBe(false);
+    expect(listed).toBe(true);
   });
 });

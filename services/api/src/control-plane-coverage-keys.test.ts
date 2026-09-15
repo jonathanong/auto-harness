@@ -72,6 +72,11 @@ describe("ControlPlane coverage: concurrency ids list and resume metadata", () =
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
     });
+    planeI.createRepository({
+      id: "repo-1",
+      name: "repo-1",
+      url: "https://example.test/repo-1.git",
+    });
     planeI.state.sessions.set("src", {
       id: "src",
       hostId: null,

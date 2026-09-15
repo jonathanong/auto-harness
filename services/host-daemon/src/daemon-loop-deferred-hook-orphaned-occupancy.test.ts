@@ -90,7 +90,7 @@ describe("DaemonLoop orphaned deferred-hook occupancy", () => {
         finishHook = finish;
       });
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver(assignment("checkout-failure", "wt-1"));
       await waitFor(() =>
         sent.some(
@@ -104,7 +104,7 @@ describe("DaemonLoop orphaned deferred-hook occupancy", () => {
         () => (loop as unknown as { inflight: Map<string, unknown> }).inflight.size === 0,
       );
       await loop.resumeFromDrain();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver({
         type: "session:status-acknowledged",
         sessionId: "checkout-failure",
@@ -152,7 +152,7 @@ describe("DaemonLoop orphaned deferred-hook occupancy", () => {
         finishHook = finish;
       });
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver(assignment("checkout-failure", "wt-1"));
       await waitFor(() =>
         sent.some(

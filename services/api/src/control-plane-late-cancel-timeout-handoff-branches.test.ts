@@ -74,7 +74,7 @@ function deferred(extra: Record<string, unknown> = {}) {
 }
 
 describe("in-memory late handoff mint fences", () => {
-  it("covers protocol, expiry, attempt, host, and replay fences", () => {
+  it("covers expiry, attempt, host, and replay fences", () => {
     const detached = v7State();
     detached.state.sessions.set(
       "session",
@@ -84,11 +84,6 @@ describe("in-memory late handoff mint fences", () => {
     expect(detached.deliveries).toContainEqual(
       expect.objectContaining({ terminalHookHandoffId: "handoff", retryAccepted: false }),
     );
-
-    const legacy = v7State(6);
-    legacy.state.sessions.set("session", running({ status: "cancelled", completedAt: NOW }));
-    expect(handleHostMessage(legacy.state, deferred(), "connection")).toEqual({ ok: true });
-    expect(legacy.state.sessions.get("session")?.terminalHookHandoff).toBeUndefined();
 
     const expired = v7State();
     expired.state.sessions.set(
@@ -142,18 +137,21 @@ describe("in-memory late handoff mint fences", () => {
       expect.objectContaining({ retryAccepted: true, terminalHookHandoffId: "handoff" }),
     );
 
-    const v6Replay = v7State(6);
-    v6Replay.state.sessions.set(
+    const noRetryAttemptReplay = v7State();
+    noRetryAttemptReplay.state.sessions.set(
       "session",
       running({ status: "cancelled", terminalHookHandoff: { ...HANDOFF, status: "failed" } }),
     );
-    expect(handleHostMessage(v6Replay.state, deferred(), "connection")).toEqual({ ok: true });
-    expect(v6Replay.deliveries).toContainEqual({
+    expect(handleHostMessage(noRetryAttemptReplay.state, deferred(), "connection")).toEqual({
+      ok: true,
+    });
+    expect(noRetryAttemptReplay.deliveries).toContainEqual({
       type: "session:status-acknowledged",
       sessionId: "session",
       attemptId: "attempt",
       retryAccepted: false,
       terminalHookHandoffId: "handoff",
+      terminalHookHandoffExpiresAt: EXPIRES,
     });
 
     const genericReplay = v7State();

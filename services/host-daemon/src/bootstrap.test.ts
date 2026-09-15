@@ -10,11 +10,16 @@ import {
 import { valid } from "../test-helpers/config-test-helpers.ts";
 
 describe("httpBaseFromApiUrl", () => {
-  it("normalizes http, https, ws, wss and trailing /ws", () => {
+  it("normalizes HTTP(S) origins and refuses websocket or /ws paths", () => {
     expect(httpBaseFromApiUrl("http://127.0.0.1:7420/")).toBe("http://127.0.0.1:7420");
-    expect(httpBaseFromApiUrl("https://api.example/ws")).toBe("https://api.example");
-    expect(httpBaseFromApiUrl("ws://127.0.0.1:7420/ws")).toBe("http://127.0.0.1:7420");
-    expect(httpBaseFromApiUrl("wss://api.example/ws/")).toBe("https://api.example");
+    expect(httpBaseFromApiUrl("https://api.example")).toBe("https://api.example");
+    expect(() => httpBaseFromApiUrl("https://api.example/ws")).toThrow(/\/ws path/);
+    expect(() => httpBaseFromApiUrl("ws://127.0.0.1:7420/ws")).toThrow(/HTTP\(S\)/);
+    expect(() => httpBaseFromApiUrl("wss://api.example/ws/")).toThrow(/HTTP\(S\)/);
+  });
+
+  it("rejects a value that isn't a parseable URL at all", () => {
+    expect(() => httpBaseFromApiUrl("not a url")).toThrow(/invalid control-plane URL/);
   });
 });
 
@@ -30,11 +35,11 @@ describe("fetchHostInventory", () => {
   it("maps identity and host inventory", async () => {
     const fetchFn = vi.fn(async () => Response.json({ repositories: valid.repositories }));
     const config = await fetchHostInventory(
-      { hostId: "local-1", apiUrl: "ws://127.0.0.1:7420/ws", apiKey: "hns_x" },
+      { hostId: "local-1", apiUrl: "http://127.0.0.1:7420", apiKey: "hns_x" },
       { fetchFn: fetchFn as unknown as typeof fetch },
     );
     expect(config.hostId).toBe("local-1");
-    expect(config.apiUrl).toBe("ws://127.0.0.1:7420/ws");
+    expect(config.apiUrl).toBe("http://127.0.0.1:7420");
     expect(config.apiKey).toBe("hns_x");
     expect(config.repositories[0]?.id).toBe("repo-1");
   });

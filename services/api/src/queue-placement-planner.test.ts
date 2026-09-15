@@ -49,7 +49,7 @@ function markHostReady(plane: ControlPlane, hostId: string, repositoryId = "repo
     capabilities: ["scheduled-main-checkout"],
     repositoryIds: [repositoryId],
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-    protocolVersion: 1,
+    protocolVersion: 7,
   });
   plane.state.hostConnection.set(hostId, connectionId);
   plane.state.hostInventories.set(hostId, {
@@ -151,7 +151,7 @@ describe("queue placement planner", () => {
     seedBaseCommand(plane);
     markHostReady(plane, "host");
     const connection = plane.state.connections.get("host-connection")!;
-    plane.state.connections.set("host-connection", { ...connection, protocolVersion: 0 });
+    plane.state.connections.set("host-connection", { ...connection, protocolVersion: 1 });
     plane.seedWorktree({
       id: "wt",
       name: "wt",
@@ -169,7 +169,7 @@ describe("queue placement planner", () => {
     expect(
       targetIsAvailable(plane.state, catalog, { commandId: BASE_COMMAND_ID }, Date.parse(NOW)),
     ).toBe(false);
-    plane.state.connections.set("host-connection", { ...connection, protocolVersion: 1 });
+    plane.state.connections.set("host-connection", { ...connection, protocolVersion: 7 });
     expect(explainPromptPlacement(plane.state, catalog, session(), Date.parse(NOW))).toBe(
       "assignable",
     );
@@ -232,6 +232,15 @@ describe("queue placement planner", () => {
 
   it("clears a resume pin when its provider profile is no longer ready", () => {
     const plane = new ControlPlane({ now: () => NOW, shardCount: 1 });
+    plane.state.repositories.set("repo-1", {
+      id: "repo-1",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      admissionState: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
     plane.state.providers.set("prov", { id: "prov", name: "prov", defaultCommandId: "cmd" });
     plane.state.commands.set("cmd", {
       id: "cmd",
@@ -407,6 +416,10 @@ describe("queue placement planner", () => {
       ]).action,
     ).toBe("cancel");
     plane.state.repositories.get("repo-1")!.admissionState = "active";
+    // Durable schedules always stamp a principalId onto the sessions they fire (see
+    // "refactor: remove ownerless schedule compatibility"), so an ownerless scheduled
+    // session can no longer occur in practice. There is no special-cased cancel for it
+    // any more: it is just unroutable like any other session with no eligible host.
     expect(
       planScheduledPlacement(
         plane.state,
@@ -414,7 +427,7 @@ describe("queue placement planner", () => {
         session({ id: "orphan", type: "scheduled", source: "schedule" }),
         [],
       ),
-    ).toMatchObject({ action: "cancel", reason: "missing_principal" });
+    ).toMatchObject({ action: "skip", reason: "no_eligible_host" });
     expect(
       planScheduledPlacement(
         plane.state,
@@ -450,6 +463,15 @@ describe("queue placement planner", () => {
 
   it("selects a later ready account on the same worktree", () => {
     const plane = new ControlPlane({ now: () => NOW, shardCount: 1 });
+    plane.state.repositories.set("repo-1", {
+      id: "repo-1",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      admissionState: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
     plane.state.providers.set("prov", { id: "prov", name: "prov", defaultCommandId: "cmd" });
     plane.state.commands.set("cmd", {
       id: "cmd",

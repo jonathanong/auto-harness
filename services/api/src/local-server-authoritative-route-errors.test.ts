@@ -8,11 +8,13 @@ const unavailable = async () => {
   throw new Error("storage unavailable");
 };
 
+const activeRepository = { id: "repository", admissionState: "active" as const };
+
 const auditStorage = {
   putAuditLog: async () => undefined,
   listAuditLogs: async () => ({ items: [] }),
   listAllAuditLogs: async () => [],
-  getRepository: async () => null,
+  getRepository: async (id: string) => (id === activeRepository.id ? activeRepository : null),
 };
 
 function unavailablePlane(): ControlPlane {

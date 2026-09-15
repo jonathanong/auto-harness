@@ -191,7 +191,7 @@ export function GitHubIngressSettings() {
       }
       const body = {
         ...(secret ? { secret } : {}),
-        ...(configured ? { version, generation: generation ?? "legacy" } : {}),
+        ...(configured ? { version, generation } : {}),
         enabled,
         bindings: bindings.map((binding, index) => ({
           githubRepositoryId: Number(binding.githubRepositoryId),
@@ -237,7 +237,7 @@ export function GitHubIngressSettings() {
           method: "DELETE",
           headers: {
             "if-match": String(version),
-            "if-match-generation": generation ?? "legacy",
+            "if-match-generation": generation!,
           },
         });
         if (!response.ok) throw new Error("delete failed");

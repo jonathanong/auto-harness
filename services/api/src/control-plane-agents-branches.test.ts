@@ -94,13 +94,13 @@ describe("agent registration branch boundaries", () => {
         ],
         commandProfiles: [],
         runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-        protocolVersion: 1,
+        protocolVersion: 7,
       }),
     ).toEqual({ ok: true, connectionId: "runtime" });
     expect(plane.state.connections.get("runtime")?.runtime).toMatchObject({
       daemonVersion: "test",
     });
-    expect(plane.state.connections.get("runtime")?.protocolVersion).toBe(1);
+    expect(plane.state.connections.get("runtime")?.protocolVersion).toBe(7);
     expect(plane.getHostInventory("runtime-host")).toMatchObject({
       repositories: [{ worktrees: [{ labels: ["daemon"] }] }],
     });
@@ -579,7 +579,7 @@ describe("agent registration branch boundaries", () => {
     ]);
   });
 
-  it("accepts the legacy unreported runtime sentinel and rejects a host without a durable owner", async () => {
+  it("rejects the legacy unreported runtime sentinel and rejects a host without a durable owner", async () => {
     const plane = new ControlPlane();
     expect(
       await plane.registerHostDurable({
@@ -593,7 +593,7 @@ describe("agent registration branch boundaries", () => {
           gitReadinessReason: "git_readiness_unreported",
         },
       }),
-    ).toMatchObject({ ok: true });
+    ).toEqual({ ok: false, error: "runtime report is invalid" });
     plane.state.storage = {
       getHostLock: async () => null,
     } as never;
@@ -658,5 +658,92 @@ describe("agent registration branch boundaries", () => {
     expect(disconnectHost(plane.state, "stale")).toEqual([]);
     expect(plane.state.hostConnection.get("h")).toBe("live");
     expect(plane.state.connections.has("live")).toBe(true);
+  });
+
+  it("carries an advertised assignment cap into the durable connection record", async () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "c" });
+    plane.state.storage = {
+      tryRegisterHost: async () => true,
+      getHostInventory: async () => null,
+      getWorktree: async () => null,
+      putWorktreeFenced: async () => true,
+      listWorktreesByHost: async () => [],
+      putHostInventoryFenced: async () => ({ ok: true }),
+    } as never;
+    await expect(
+      plane.registerHostDurable({
+        hostId: "h",
+        worktrees: inventory,
+        commandProfiles: [],
+        maxConcurrentAssignments: 5,
+      }),
+    ).resolves.toEqual({ ok: true, connectionId: "c" });
+    expect(plane.state.connections.get("c")?.maxConcurrentAssignments).toBe(5);
+  });
+
+  it("continues a version retry once the advertised pool still exists", async () => {
+    let attempts = 0;
+    const plane = new ControlPlane({ connectionIdFactory: () => "c" });
+    plane.state.storage = {
+      getWorkspacePool: async () => ({ id: "pool", name: "pool", setupProfiles: [] }),
+      tryRegisterHost: async () => true,
+      getHostInventory: async () => null,
+      listWorktreesByHost: async () => [],
+      listActiveSessionsByHost: async () => [],
+      putHostInventoryFenced: async () => (
+        (attempts += 1),
+        attempts === 1 ? { ok: false as const, reason: "version" as const } : { ok: true as const }
+      ),
+      releaseHostConnection: async () => true,
+      getHostLock: async () => null,
+    } as never;
+    await expect(
+      plane.registerHostDurable({
+        hostId: "h",
+        worktrees: [],
+        workspacePools: [{ workspacePoolId: "pool", slots: [] }],
+      }),
+    ).resolves.toEqual({ ok: true, connectionId: "c" });
+    expect(attempts).toBe(2);
+  });
+
+  it("keeps an orphaned worktree's labels when its repository drops off a retry", async () => {
+    // The daemon no longer advertises "orphan-repo", so the rebuilt inventory has no
+    // entry for it on the version-conflict retry; the republish must leave labels alone.
+    const orphan = {
+      id: "orphan-wt",
+      name: "orphan",
+      hostId: "h",
+      repositoryId: "orphan-repo",
+      path: "/orphan",
+      labels: ["kept"],
+      status: "idle" as const,
+      online: false,
+      currentSessionId: null,
+    };
+    const putWorktreeFenced = vi.fn(async () => true);
+    let attempts = 0;
+    const plane = new ControlPlane({ connectionIdFactory: () => "c" });
+    plane.state.storage = {
+      tryRegisterHost: async () => true,
+      getHostInventory: async () => null,
+      getWorktree: async () => null,
+      listWorktreesByHost: async () => [orphan],
+      listActiveSessionsByHost: async () => [],
+      putWorktreeFenced,
+      putHostInventoryFenced: async () => (
+        (attempts += 1),
+        attempts === 1 ? { ok: false as const, reason: "version" as const } : { ok: true as const }
+      ),
+      releaseHostConnection: async () => true,
+      getHostLock: async () => null,
+    } as never;
+    await expect(
+      plane.registerHostDurable({ hostId: "h", worktrees: [], commandProfiles: [] }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(putWorktreeFenced).toHaveBeenCalledTimes(2);
+    for (const call of putWorktreeFenced.mock.calls) {
+      expect(call[0]).toMatchObject({ id: "orphan-wt", labels: ["kept"] });
+    }
   });
 });

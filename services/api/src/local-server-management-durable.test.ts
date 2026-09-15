@@ -31,6 +31,7 @@ const repository: RepositoryRecord = {
   name: "repo",
   url: "https://example.test/repo.git",
   defaultBranch: "main",
+  admissionState: "active",
   createdAt: "t",
   updatedAt: "t",
 };

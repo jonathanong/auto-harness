@@ -15,7 +15,6 @@ import {
   hostProviderAccountReady,
 } from "./control-plane-provider-account-leases.ts";
 import { repositoryAdmissionOpen } from "./control-plane-repository-admission-state.ts";
-import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import {
   resolveSessionTargetRouteAt,
   resolveSessionTargetRoutesAt,
@@ -28,7 +27,6 @@ type PlacementWaitReason =
   | "queue_expired"
   | "admission_closed"
   | "admission_draining"
-  | "missing_principal"
   | "already_assigned"
   | "no_idle_worktree"
   | "no_eligible_host"
@@ -45,7 +43,7 @@ type PromptPlacementPlan =
 
 type ScheduledPlacementPlan =
   | { action: "expire" }
-  | { action: "cancel"; reason: "admission_draining" | "missing_principal" }
+  | { action: "cancel"; reason: "admission_draining" }
   | { action: "skip"; reason: PlacementWaitReason }
   | {
       action: "assign";
@@ -265,7 +263,6 @@ export function planScheduledPlacement(
   if (!repositoryAdmissionOpen(admissionState)) {
     return { action: "skip", reason: "admission_closed" };
   }
-  if (!sessionPrincipalId(session)) return { action: "cancel", reason: "missing_principal" };
   const candidates: Array<{
     hostId: string;
     connectionId: string;

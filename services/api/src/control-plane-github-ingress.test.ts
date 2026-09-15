@@ -83,6 +83,7 @@ describe("GitHub ingress config", () => {
       type: "github-ingress",
       encryptedSecret: "cipher:{}",
       enabled: true,
+      generation: "11111111-1111-4111-8111-111111111111",
       bindings: [
         {
           ...binding,
@@ -373,16 +374,6 @@ describe("GitHub ingress config", () => {
     await expect(
       plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] }),
     ).resolves.toMatchObject({ ok: false, conflict: true });
-  });
-
-  it("assigns a creation generation when updating a legacy in-memory config", async () => {
-    const plane = createPlane();
-    await plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
-    delete plane.state.githubIngressConfig!.generation;
-    const updated = await plane.updateGitHubIngressConfig({ bindings: [binding] });
-    expect(updated).toMatchObject({ ok: true });
-    if (!updated.ok) throw new Error("expected update to succeed");
-    expect(updated.integration.generation).toEqual(expect.any(String));
   });
 
   it("allows only one concurrent in-memory create after delayed encryption", async () => {
@@ -706,23 +697,6 @@ describe("GitHub ingress config", () => {
     });
   });
 
-  it("accepts a legacy generation fence and rejects legacy deletion of current config", async () => {
-    const legacy = createPlane();
-    await legacy.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
-    const record = await legacy.getGitHubIngressConfigRecord();
-    delete record!.generation;
-    await expect(
-      legacy.updateGitHubIngressConfig({ bindings: [binding] }, 1, null),
-    ).resolves.toMatchObject({ ok: true });
-
-    const current = createPlane();
-    await current.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
-    await expect(current.deleteGitHubIngressConfig(1, null)).resolves.toMatchObject({
-      ok: false,
-      conflict: true,
-    });
-  });
-
   it("documents the runtime UTF-8 byte bound for defaultRef", () => {
     const openapi = readFileSync(new URL("../../../docs/openapi.yaml", import.meta.url), "utf8");
     expect(openapi).toContain('pattern: "^refs/heads/[^~^:?*\\\\\\\\[]+$"');
@@ -804,6 +778,7 @@ describe("GitHub ingress config", () => {
       type: "github-ingress",
       encryptedSecret: 'cipher:{"secret":"secret"}',
       enabled: true,
+      generation: "22222222-2222-4222-8222-222222222222",
       bindings: [
         {
           githubRepositoryId: 42,
@@ -839,5 +814,52 @@ describe("GitHub ingress config", () => {
       ok: false,
       conflict: true,
     });
+  });
+
+  it("persists a durable update once storage accepts the conditional put", async () => {
+    const current = {
+      id: "github-ingress",
+      type: "github-ingress",
+      encryptedSecret: 'cipher:{"secret":"secret"}',
+      enabled: true,
+      generation: "33333333-3333-4333-8333-333333333333",
+      bindings: [
+        {
+          githubRepositoryId: 42,
+          repositoryId: "repo",
+          target: { commandId: "command" },
+          fallbacks: [],
+          queueTtlSeconds: 3600,
+          timeout: 60,
+          priority: 0,
+          requiredLabels: [],
+          defaultRef: "refs/heads/main",
+          allowedLogins: [],
+        },
+      ],
+      version: 1,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    let put: unknown;
+    const plane = createPlane();
+    plane.state.storage = {
+      getGitHubIngressConfig: async () => current,
+      putGitHubIngressConfig: async (record: unknown) => {
+        put = record;
+        return true;
+      },
+      getRepository: async () => ({ id: "repo", name: "repo", url: "https://example.test/repo" }),
+      listCommands: async () => [
+        { id: "command", name: "command", argv: ["echo"], providerId: null },
+      ],
+      listProviders: async () => [],
+      listProviderAccounts: async () => [],
+    } as never;
+    await expect(plane.updateGitHubIngressConfig({ bindings: [binding] })).resolves.toMatchObject({
+      ok: true,
+      integration: { generation: current.generation, version: 2 },
+    });
+    expect(put).toMatchObject({ generation: current.generation, version: 2 });
   });
 });

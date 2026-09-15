@@ -36,6 +36,9 @@ describe("DynamoDB Local control plane hydrate", () => {
       replaceExisting: true,
     });
     expect(reg.ok).toBe(true);
+    expect(
+      plane.createRepository({ id: "r1", name: "r1", url: "https://example.test/r1.git" }).ok,
+    ).toBe(true);
     plane.createCommand({ id: "cmd-c", name: "c", argv: ["echo"], providerId: null });
     const created = plane.createSession({
       repositoryId: "r1",

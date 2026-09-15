@@ -116,13 +116,6 @@ export function createDynamoClients(options: CreateDynamoClientOptions = {}): Dy
   return { client, doc };
 }
 
-/** @deprecated prefer createDynamoClients */
-export function createDynamoDocumentClient(
-  options: CreateDynamoClientOptions = {},
-): DynamoDBDocumentClient {
-  return createDynamoClients(options).doc;
-}
-
 export function statusShardAttr(status: string, shard: number): string {
   return `${status}#${shard}`;
 }

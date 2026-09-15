@@ -241,48 +241,6 @@ describe("DaemonLoop terminal status retry", () => {
     }
   });
 
-  it("keeps the legacy local retention fallback for a v6 synthetic handoff", async () => {
-    const { config, cleanup } = await makeRepo();
-    try {
-      const transport = createLoopbackTransport({ sendToServer: () => undefined });
-      const loop = new DaemonLoop({ config, transport });
-      await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
-      const pending = pendingTerminalStatusOf(loop);
-      pending.set("done-session\0attempt-1", {
-        message: {
-          ...statusMessage,
-          deferTerminalHookResult: true,
-          errorCode: "checkout_fetch_failed",
-        },
-        firstAttemptedAtMs: Date.now(),
-        sending: false,
-        controller: new AbortController(),
-        settleDeferredTerminalHook: async () => undefined,
-      });
-
-      transport.deliver({
-        type: "session:status-acknowledged",
-        sessionId: "done-session",
-        attemptId: "attempt-1",
-        retryAccepted: false,
-        terminalHookHandoffId: "handoff",
-      });
-      await flushMicrotasks();
-
-      const handoff = (
-        loop as unknown as {
-          pendingTerminalHookHandoffs: Map<string, { expiresAtMs?: number }>;
-        }
-      ).pendingTerminalHookHandoffs.get("handoff");
-      expect(handoff).toBeDefined();
-      expect(handoff?.expiresAtMs).toBeUndefined();
-      loop.stop();
-    } finally {
-      cleanup();
-    }
-  });
-
   it("handles a retry disposition acknowledged during the initial status send", async () => {
     const { config, cleanup } = await makeRepo();
     try {
@@ -330,7 +288,7 @@ describe("DaemonLoop terminal status retry", () => {
         },
       };
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 4 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver({
         ...replacementAssignment("attempt-immediate-status-ack"),
         sessionId: "immediate-status-ack",
@@ -389,7 +347,7 @@ describe("DaemonLoop terminal status retry", () => {
         },
       };
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 4 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
 
       transport.deliver({
         type: "session:assign",
@@ -571,6 +529,82 @@ describe("DaemonLoop terminal status retry", () => {
 
       finish();
       await loop.waitForIdle();
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("never starts the runner when the replacement itself is cancelled before the superseded disposition settles", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createAcknowledgingLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport });
+      let runnerStarted = false;
+      (
+        loop as unknown as {
+          runner: { run(): Promise<{ status: "completed"; exitCode: number; logs: [] }> };
+        }
+      ).runner = {
+        async run() {
+          runnerStarted = true;
+          return { status: "completed", exitCode: 0, logs: [] };
+        },
+      };
+      await loop.start();
+
+      const oldStatusController = new AbortController();
+      let settleSuperseded!: () => void;
+      const supersededSettled = new Promise<void>((resolve) => {
+        settleSuperseded = resolve;
+      });
+      pendingTerminalStatusOf(loop).set("done-session\0attempt-old", {
+        message: { ...statusMessage, attemptId: "attempt-old" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: oldStatusController,
+        settleDeferredTerminalHook: async () => {
+          await supersededSettled;
+        },
+      });
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "done-session",
+        attemptId: "attempt-replacement",
+        repositoryId: "demo",
+        prompt: "hello",
+        resolvedArgv: ["printf", "%s", "hello"],
+        timeout: 30,
+        worktreeId: "wt-1",
+        assignedAt: new Date().toISOString(),
+      });
+
+      await flushMicrotasks();
+      expect(loop.inflightCount()).toBe(1);
+      expect(oldStatusController.signal.aborted).toBe(true);
+      expect(runnerStarted).toBe(false);
+
+      const inflight = (
+        loop as unknown as {
+          inflight: Map<string, { controller: AbortController; acknowledged: boolean }>;
+        }
+      ).inflight;
+      // Confirm the replacement's own assignment ack already landed, so the
+      // abort below can only be observed at the target-fence wait (line 1879)
+      // rather than short-circuiting the earlier acknowledgeAssignment gate.
+      expect(inflight.get("done-session\0attempt-replacement")?.acknowledged).toBe(true);
+
+      // The replacement is still waiting on the superseded disposition's target
+      // fence (settleSuperseded has not resolved yet). Cancel the replacement
+      // itself now: waitForTargetFence must resolve via the abort listener
+      // rather than the target-work promise, and acquireExecutionSlot/runAssign
+      // must never run.
+      inflight.get("done-session\0attempt-replacement")?.controller.abort();
+
+      await vi.waitFor(() => expect(loop.inflightCount()).toBe(0));
+      expect(runnerStarted).toBe(false);
+
+      settleSuperseded();
       loop.stop();
     } finally {
       cleanup();
@@ -818,7 +852,7 @@ describe("DaemonLoop terminal status retry", () => {
         },
       };
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver({
         type: "session:assign",
         sessionId: "finishing-during-shutdown",
@@ -979,7 +1013,7 @@ describe("DaemonLoop terminal status retry", () => {
         },
       };
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 4 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
 
       transport.deliver({
         ...replacementAssignment("attempt-retained"),

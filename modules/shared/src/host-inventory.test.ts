@@ -5,7 +5,6 @@ import {
   addHostWorktree,
   defaultWorktreePath,
   emptyHostInventory,
-  mergeHostRepository,
   removeHostRepository,
   removeHostWorktree,
   updateHostSetupScript,
@@ -182,18 +181,6 @@ describe("host-inventory", () => {
     });
     inv = removeHostRepository(inv, "demo");
     expect(inv.repositories).toEqual([]);
-  });
-
-  it("legacy mergeHostRepository still forces a single worktree", () => {
-    const next = mergeHostRepository(null, {
-      id: "demo",
-      path: "/repo",
-      defaultBranch: "main",
-      worktreeId: "wt-1",
-      worktreeName: "wt-1",
-    });
-    expect(next.repositories[0]?.worktrees[0]?.path).toBe("/repo/.worktrees/wt-1");
-    expect(next.repositories[0]?.worktrees[0]?.labels).toEqual([]);
   });
 
   it("upsertHostRepository preserves scripts by default and allows overriding them", () => {

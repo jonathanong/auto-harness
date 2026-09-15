@@ -177,39 +177,37 @@ allow (local loopback).
 
 ## Create-time validation
 
-`POST /auth/users` and `POST /auth/service-accounts` run `normalizeAccountGrant()`
-(`effectiveRole`) **then** `accountGrantError`. Legacy daemon/scoped-admin shapes
-are rewritten to the named role and stored; remaining illegal combinations
-return `400 VALIDATION_ERROR`:
+`POST /auth/users` and `POST /auth/service-accounts` run `accountGrantError`
+on the submitted grant. Illegal combinations return `400 VALIDATION_ERROR`.
+`boundHostId` on a non-`agent` role is still treated as `agent` at request
+time (`effectiveRole`) so a bound key cannot author sessions.
 
-| Combination                                                    | Result                                                                                         |
-| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `admin` + `allowedRepositoryIds` or `boundHostId`              | Remapped: scoped admin → `maintainer`, bound admin → `agent`.                                  |
-| `agent` without `boundHostId`                                  | Rejected.                                                                                      |
-| any non-`agent` except `read-only` + `boundHostId`             | Remapped to `agent` so pre-migration daemon keys can still be replaced during manual rotation. |
-| `read-only` + `boundHostId`                                    | Rejected (no escalation).                                                                      |
-| `agent` + `allowedRepositoryIds`                               | Allowed (inventory/session reads still filtered).                                              |
-| `author` / `operator` / `maintainer` / `read-only` + repo list | Allowed.                                                                                       |
+| Combination                                                    | Result                                                 |
+| -------------------------------------------------------------- | ------------------------------------------------------ |
+| `admin` + `allowedRepositoryIds` or `boundHostId`              | Rejected. Admin must be unscoped.                      |
+| `agent` without `boundHostId`                                  | Rejected.                                              |
+| any non-`agent` except `read-only` + `boundHostId`             | Rejected at write; request-time fence maps to `agent`. |
+| `read-only` + `boundHostId`                                    | Rejected (no escalation).                              |
+| `agent` + `allowedRepositoryIds`                               | Allowed (inventory/session reads still filtered).      |
+| `author` / `operator` / `maintainer` / `read-only` + repo list | Allowed.                                               |
 
 Users accept optional `allowedRepositoryIds` the same way service accounts do.
 
 ---
 
-## Legacy mapping
+## Request-time mapping
 
-Older rows stored `operator` or `admin` plus a bind or repo list. Those still
-authenticate. `effectiveRole()` maps them **at request time** (the stored role
-is not rewritten on read). Creation and replacement during manual rotation apply
-the same mapping **before** grant validation so a deployed daemon key can be replaced.
-Remapping to `agent` applies to **any non-`agent` role with `boundHostId`**, except
-`read-only` with `boundHostId`. Unbound `operator` remains `operator`.
+Writes reject illegal role+scope combinations. A stored `boundHostId` is still a
+security fence at request time: `effectiveRole()` maps any non-`read-only` role
+with `boundHostId` to `agent` so that key cannot author sessions. Admin plus a
+repository list is **not** rewritten to `maintainer`.
 
 | Stored                                                     | Effective                   |
 | ---------------------------------------------------------- | --------------------------- |
 | `read-only`                                                | `read-only`                 |
 | `operator`, no bind                                        | `operator`                  |
 | any non-`agent` role with `boundHostId` except `read-only` | `agent`                     |
-| `admin` + `allowedRepositoryIds`, no bind                  | `maintainer`                |
+| `admin` + `allowedRepositoryIds`, no bind                  | `admin` (write is rejected) |
 | `admin`, unscoped                                          | `admin`                     |
 | `read-only` + `boundHostId`                                | `read-only` (no escalation) |
 

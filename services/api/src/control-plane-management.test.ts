@@ -107,6 +107,16 @@ describe("ControlPlane operator management", () => {
       scheduleIdFactory: () => "sched-auto",
       now: () => "2026-01-01T00:00:00.000Z",
     });
+    plane.createRepository({
+      id: "repo-1",
+      name: "repo-1",
+      url: "https://example.test/repo-1.git",
+    });
+    plane.createRepository({
+      id: "repo-2",
+      name: "repo-2",
+      url: "https://example.test/repo-2.git",
+    });
     plane.createCommand({
       id: "cmd-echo",
       name: "echo-prompt",

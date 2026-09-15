@@ -4,11 +4,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION,
-  DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
-  KEEPALIVE_ACK_PROTOCOL_VERSION,
-  SESSION_RESULT_PROTOCOL_VERSION,
-  TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION,
   harnessSessionResult,
   thrownMessage,
   type HostRuntimeReport,
@@ -109,7 +104,7 @@ export type DaemonLoopOptions = {
   pendingStatusMaxCount?: number;
   /** Retry at most this many pending terminal statuses per keepalive tick. */
   statusRetriesPerTick?: number;
-  /** Legacy v6 deferred-result completions have no absolute handoff expiry. */
+  /** Bound on local-age fallback when a handoff has no absolute expiry. */
   pendingTerminalHookHandoffMaxAgeMs?: number;
   /** Bound replacement-hook completion retention while the server is unreachable. */
   pendingTerminalHookHandoffMaxCount?: number;
@@ -208,7 +203,6 @@ type PendingTerminalHookHandoffMessage = Omit<
 type PendingTerminalHookHandoff = {
   message: PendingTerminalHookHandoffMessage;
   expiresAtMs?: number;
-  /** Retained solely for legacy v6 deferred-result completions. */
   firstAttemptedAtMs?: number;
   complete: boolean;
   executing: boolean;
@@ -341,16 +335,8 @@ export class DaemonLoop {
   private readonly keepaliveTimeoutMs: number;
   private readonly keepaliveStallMs: number;
   private keepaliveStallTimer: ReturnType<typeof setTimeout> | undefined;
-  /** Control-plane protocol negotiated by the latest accepted registration. */
+  /** Control-plane protocol from the latest accepted registration. */
   private serverProtocolVersion = 0;
-  /**
-   * Set from `host:registered.protocolVersion`. When true, a local keepalive
-   * write is not evidence the peer received it — only `host:keepalive-ack`
-   * (and a fresh `host:registered`) re-arm the stall timer.
-   */
-  private requireKeepaliveAck = false;
-  /** A result is only sent after the control plane has explicitly negotiated v3. */
-  private supportsSessionResult = false;
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   private readonly daemonIdentity: DaemonRuntimeIdentity;
   private readonly processRunner: ProcessRunner;
@@ -549,13 +535,20 @@ export class DaemonLoop {
     inventoryPolicyBlocked = this.inventoryPolicyBlocked,
     config = this.config,
   }: { inventoryPolicyBlocked?: boolean; config?: DaemonConfig } = {}): Promise<void> {
+    // Snapshot alongside the inventoryPolicyBlocked parameter default above,
+    // before the only await in this method: all three flags that decide the
+    // advertised draining state are read at the same point, rather than
+    // mixing a pre-await snapshot with two reads taken after probeGitReadiness
+    // has had a chance to run other message handling in between.
+    const draining = this.drainRequested || this.draining || inventoryPolicyBlocked;
+    this.runtime ??= await probeGitReadiness(this.processRunner);
     const readiness = providerAccountReadiness(this.executionProfiles);
     const runningAttempts = this.confirmableOwnedAttempts();
     await registerDaemon(
       config,
       this.transport,
       runningAttempts.map((attempt) => attempt.sessionId),
-      this.drainRequested || this.draining || inventoryPolicyBlocked,
+      draining,
       this.daemonIdentity,
       this.runtime,
       runningAttempts,
@@ -572,9 +565,6 @@ export class DaemonLoop {
       !this.hasPendingAcknowledgement()
     ) {
       await this.register();
-      // Protocol 2 waits for host:registered. A local register write is not
-      // peer evidence — the same invariant as keepalive send() below.
-      if (!this.requireKeepaliveAck) this.armKeepaliveStallTimer();
       return false;
     }
     this.retryPendingTerminalStatuses();
@@ -600,9 +590,6 @@ export class DaemonLoop {
       `keepalive timed out after ${this.keepaliveTimeoutMs}ms`,
       this.timers,
     );
-    // Protocol 2+ waits for host:keepalive-ack. A resolved local write only
-    // proves the bytes hit this process's socket buffer.
-    if (!this.requireKeepaliveAck) this.armKeepaliveStallTimer();
     return true;
   }
   /**
@@ -826,17 +813,6 @@ export class DaemonLoop {
 
   private handleRegistered(protocolVersion?: number): void {
     this.serverProtocolVersion = protocolVersion ?? 0;
-    // A reconnect can negotiate an older peer than the connection that
-    // created these checkpoints.  The older peer cannot acknowledge a
-    // v4 command-start, so leave the authorization gate closed rather
-    // than leaving the session-runner waiting forever.  This also wins
-    // over any late ACK from the superseded connection; stop() and abort
-    // use the same false settlement through finishCommandStart().
-    if (this.serverProtocolVersion < COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION) {
-      for (const key of this.pendingCommandStarts.keys()) {
-        this.finishCommandStart(key, false);
-      }
-    }
     // A reconnect registration carrying `draining: true` is itself a
     // durable acknowledgement. This covers a lost drain reply.
     if (this.drainRequested) this.confirmDrain();
@@ -846,8 +822,6 @@ export class DaemonLoop {
     this.retryPendingTerminalStatuses();
     this.retryPendingCommandStarts();
     this.retryPendingTerminalHookHandoffs();
-    this.requireKeepaliveAck = (protocolVersion ?? 0) >= KEEPALIVE_ACK_PROTOCOL_VERSION;
-    this.supportsSessionResult = (protocolVersion ?? 0) >= SESSION_RESULT_PROTOCOL_VERSION;
     // A fresh registration is itself proof this connection is live —
     // reset the same deadline a successful keepalive would.
     this.armKeepaliveStallTimer();
@@ -1044,15 +1018,9 @@ export class DaemonLoop {
     this.finishCommandStart(inflightKey(msg.sessionId, msg.attemptId), true);
   }
 
-  /**
-   * Ask a protocol-4 control plane to durably authorize the primary CLI launch.
-   * Legacy peers have no launch checkpoint, so they retain the existing behavior.
-   */
+  /** Ask the control plane to durably authorize the primary CLI launch. */
   private authorizeCommandStart(assign: SessionAssign, signal?: AbortSignal): Promise<boolean> {
     if (!signal) return Promise.resolve(true);
-    if (this.serverProtocolVersion < COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION) {
-      return Promise.resolve(!signal.aborted);
-    }
     if (signal.aborted) return Promise.resolve(false);
     const key = inflightKey(assign.sessionId, assign.attemptId);
     return new Promise<boolean>((resolve) => {
@@ -1084,12 +1052,7 @@ export class DaemonLoop {
   }
 
   private sendCommandStart(key: string, pending: PendingCommandStart): void {
-    if (
-      pending.sending ||
-      pending.signal.aborted ||
-      this.pendingCommandStarts.get(key) !== pending ||
-      this.serverProtocolVersion < COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION
-    )
+    if (pending.sending || pending.signal.aborted || this.pendingCommandStarts.get(key) !== pending)
       return;
     pending.sending = true;
     void this.outbound
@@ -1182,9 +1145,7 @@ export class DaemonLoop {
         ? handoffExpiresAtMs
         : undefined;
       const syntheticV7Handoff =
-        this.serverProtocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
-        msg.terminalHookHandoffId !== undefined &&
-        msg.retryAccepted !== true;
+        msg.terminalHookHandoffId !== undefined && msg.retryAccepted !== true;
       // A v7 status acknowledgement is the control plane's durable handoff
       // lease. Validate it before retaining the checkout or starting its hook:
       // an expired/malformed lease cannot authorize new local side effects.
@@ -1246,9 +1207,12 @@ export class DaemonLoop {
             return;
           }
           const handoff: PendingTerminalHookHandoff = {
-            ...(handoffExpiresAtMs !== undefined && Number.isFinite(handoffExpiresAtMs)
-              ? { expiresAtMs: handoffExpiresAtMs }
-              : {}),
+            // syntheticV7Handoff is true here (checked above at line 1193), so the
+            // expiry guard a few lines up already returned before this point unless
+            // validHandoffExpiresAtMs — and therefore handoffExpiresAtMs, and the
+            // msg.terminalHookHandoffExpiresAt it was parsed from — is defined and
+            // finite. Both fields below are always present by the time we get here.
+            expiresAtMs: handoffExpiresAtMs as number,
             message: {
               type: "session:terminal-hook",
               handoffId: msg.terminalHookHandoffId,
@@ -1259,10 +1223,7 @@ export class DaemonLoop {
                 import("@auto-harness/shared").SessionStatus,
                 "completed" | "failed" | "cancelled" | "timed_out"
               >,
-              ...(msg.terminalHookHandoffExpiresAt !== undefined &&
-              Number.isFinite(handoffExpiresAtMs)
-                ? { expiresAt: msg.terminalHookHandoffExpiresAt }
-                : {}),
+              expiresAt: msg.terminalHookHandoffExpiresAt as string,
               ...(pending.message.errorCode !== undefined
                 ? { errorCode: pending.message.errorCode }
                 : {}),
@@ -1306,7 +1267,6 @@ export class DaemonLoop {
   private async handleTerminalHookHandoff(
     msg: Extract<HostWireMessage, { type: "session:terminal-hook" }>,
   ): Promise<void> {
-    if (this.serverProtocolVersion < TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION) return;
     const expiresAtMs = Date.parse(msg.expiresAt ?? "");
     if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) return;
     const existing = this.pendingTerminalHookHandoffs.get(msg.handoffId);
@@ -1504,10 +1464,7 @@ export class DaemonLoop {
   }
 
   private applyHandoffFallbackResult(pending: PendingTerminalHookHandoff): void {
-    if (
-      pending.result === undefined &&
-      this.serverProtocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION
-    ) {
+    if (pending.result === undefined) {
       pending.result = harnessSessionResult(pending.message.status);
     }
   }
@@ -1657,10 +1614,9 @@ export class DaemonLoop {
           type: "session:terminal-hook-complete",
           sessionId: pending.message.sessionId,
           handoffId: pending.message.handoffId,
-          ...(this.serverProtocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
-          pending.result !== undefined
-            ? { result: pending.result }
-            : {}),
+          // applyHandoffFallbackResult above always assigns a result when one
+          // isn't already set, so pending.result is never undefined here.
+          result: pending.result as import("@auto-harness/shared").SessionResult,
         },
         { signal: completionController.signal },
       )
@@ -1892,9 +1848,8 @@ export class DaemonLoop {
       (pending) => pending.message.sessionId !== msg.sessionId,
     ).length;
     if (
-      this.serverProtocolVersion >= COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION &&
       retainedForOtherSessions + live >=
-        this.pendingStatusMaxCount + this.executionProfiles.maxConcurrentAssignments
+      this.pendingStatusMaxCount + this.executionProfiles.maxConcurrentAssignments
     ) {
       this.onLog?.(`terminal status retry capacity reached: refused assign ${msg.sessionId}`);
       return;
@@ -1922,18 +1877,10 @@ export class DaemonLoop {
     this.worktreeAssignmentTails.set(targetKey, targetWork);
     const work = (async () => {
       try {
-        const usesCommandStartAuthorization =
-          this.serverProtocolVersion >= COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION;
-        // The control plane's ACK deadline governs v4 ownership, not physical
-        // execution. Confirm the v4 assignment before any retained worktree
-        // claim can delay it; the fences below still prevent its runner from
-        // touching the target until the predecessor has released. Older peers
-        // retain their send-after-local-admission behavior.
-        if (
-          usesCommandStartAuthorization &&
-          !(await this.acknowledgeAssignment(msg, controller.signal))
-        )
-          return;
+        // Confirm assignment before any retained worktree claim can delay it;
+        // the fences below still prevent its runner from touching the target
+        // until the predecessor has released.
+        if (!(await this.acknowledgeAssignment(msg, controller.signal))) return;
         // A replacement for this logical session must first settle its old
         // retry disposition. That releases the preceding retained claim and
         // prevents a same-session retry from waiting on itself below.
@@ -1948,11 +1895,6 @@ export class DaemonLoop {
         if (
           previousTargetWork &&
           !(await this.waitForTargetFence(previousTargetWork, controller.signal))
-        )
-          return;
-        if (
-          !usesCommandStartAuthorization &&
-          !(await this.acknowledgeAssignment(msg, controller.signal))
         )
           return;
         if (
@@ -2078,10 +2020,8 @@ export class DaemonLoop {
     const result: SessionRunResult = await this.runner.run(assign, {
       signal,
       initialLogSeq: this.nextLogSeq.get(msg.sessionId) ?? 0,
-      deferCheckoutFetchFailureHook:
-        this.serverProtocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
-      deferPreCommandFailureHook:
-        this.serverProtocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION,
+      deferCheckoutFetchFailureHook: true,
+      deferPreCommandFailureHook: true,
     });
     let settleDeferredTerminalHook = result.settleDeferredTerminalHook;
     let terminalErrorCode = result.errorCode;
@@ -2102,7 +2042,7 @@ export class DaemonLoop {
       ...(result.errorMessage !== undefined ? { errorMessage: result.errorMessage } : {}),
       ...(result.cliResumeRef !== undefined ? { cliResumeRef: result.cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
-      ...(this.supportsSessionResult && result.result !== undefined && !settleDeferredTerminalHook
+      ...(result.result !== undefined && !settleDeferredTerminalHook
         ? { result: result.result }
         : {}),
       ...(settleDeferredTerminalHook ? { deferTerminalHookResult: true } : {}),

@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   finishSessionOptsFromPlan,
-  legacyHostAssignmentForSession,
   requeueUsageLimitedSessionOptsFromPlan,
   requeueUsageLimitedWorkspaceSessionOptsFromPlan,
   suppressProviderlessUsageLimitOptsFromPlan,
@@ -256,7 +255,7 @@ describe("session-transition planner", () => {
       types(
         status({ status: "failed", errorCode: "checkout_fetch_failed" }),
         session(),
-        ctx({ protocolVersion: 6, deferTerminalHookResult: true }),
+        ctx({ protocolVersion: 7, deferTerminalHookResult: true }),
       ),
     ).toEqual(["release_worktree", "requeue", "reschedule"]);
   });
@@ -669,47 +668,6 @@ describe("session-transition planner", () => {
         { attemptId: "attempt" },
       ).hostAssignmentLease,
     ).toBeUndefined();
-    expect(legacyHostAssignmentForSession(session({ assignmentConnectionId: "conn" }))).toEqual({
-      sessionId: "s",
-      attemptId: "attempt",
-      hostId: "host",
-      connectionId: "conn",
-    });
-    expect(
-      legacyHostAssignmentForSession(
-        session({ hostAssignmentLease: { hostId: "host" }, assignmentConnectionId: "conn" }),
-      ),
-    ).toBeUndefined();
-    expect(
-      legacyHostAssignmentForSession(
-        session({ providerAccountLease: row.providerAccountLease, assignmentConnectionId: "conn" }),
-      ),
-    ).toEqual({ sessionId: "s", attemptId: "attempt", hostId: "host", connectionId: "conn" });
-    expect(
-      legacyHostAssignmentForSession(
-        session({
-          resolvedRoute: {
-            targetIndex: 0,
-            commandId: "cmd",
-            providerAccountId: "acct",
-            hostId: "host",
-            worktreeId: "wt",
-            attemptId: "attempt",
-          },
-          assignmentConnectionId: "conn",
-        }),
-      ),
-    ).toEqual({ sessionId: "s", attemptId: "attempt", hostId: "host", connectionId: "conn" });
-    expect(
-      legacyHostAssignmentForSession(
-        session({ assignmentConnectionId: "conn", legacyHostAssignmentReleased: true }),
-      ),
-    ).toBeUndefined();
-    expect(legacyHostAssignmentForSession(session({ hostId: undefined }))).toBeUndefined();
-    expect(
-      legacyHostAssignmentForSession(session({ assignmentConnectionId: undefined })),
-    ).toBeUndefined();
-    expect(legacyHostAssignmentForSession(session({ status: "queued" }))).toBeUndefined();
     expect(
       finishSessionOptsFromPlan(
         session({

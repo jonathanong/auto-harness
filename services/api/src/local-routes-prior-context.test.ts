@@ -33,6 +33,7 @@ describe("GET /sessions/:id/prior-context", () => {
 
   it("404s when the session has no resumedFromSessionId", async () => {
     const plane = new ControlPlane({ shardCount: 1 });
+    plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
     plane.createCommand({ id: "cmd", name: "echo", argv: ["echo"], providerId: null });
     plane.createSession({
       repositoryId: "repo",

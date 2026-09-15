@@ -47,6 +47,26 @@ function ctx(send: (command: unknown) => Promise<unknown>): PlaneStorageCtx {
   } as PlaneStorageCtx;
 }
 
+async function assertGenerationIntegrationFence(command: unknown): Promise<Record<string, never>> {
+  expect(command).toBeInstanceOf(TransactWriteCommand);
+  const items = (command as TransactWriteCommand).input.TransactItems ?? [];
+  const integration = items.find(
+    (item) => "ConditionCheck" in item && item.ConditionCheck?.TableName === "Integrations",
+  );
+  expect(integration).toMatchObject({
+    ConditionCheck: {
+      Key: { id: "custom-webhook:deploy" },
+      ExpressionAttributeValues: {
+        ":type": "custom-webhook",
+        ":version": 2,
+        ":enabled": true,
+        ":generation": "generation",
+      },
+    },
+  });
+  return {};
+}
+
 describe("concurrent session admission conflicts", () => {
   it("maps principal, repository, and drain condition losses", async () => {
     await expect(
@@ -83,46 +103,23 @@ describe("concurrent session admission conflicts", () => {
     });
   });
 
-  it("includes legacy and generation integration fences in the transaction", async () => {
-    for (const generation of [undefined, "generation"]) {
-      const send = async (command: unknown) => {
-        expect(command).toBeInstanceOf(TransactWriteCommand);
-        const items = (command as TransactWriteCommand).input.TransactItems ?? [];
-        const integration = items.find(
-          (item) => "ConditionCheck" in item && item.ConditionCheck?.TableName === "Integrations",
-        );
-        expect(integration).toMatchObject({
-          ConditionCheck: {
-            Key: { id: "custom-webhook:deploy" },
-            ExpressionAttributeValues: {
-              ":type": "custom-webhook",
-              ":version": 2,
-              ":enabled": true,
-            },
-          },
-        });
-        if (generation === undefined) {
-          expect(integration?.ConditionCheck?.ExpressionAttributeValues).not.toHaveProperty(
-            ":generation",
-          );
-        } else {
-          expect(integration).toMatchObject({
-            ConditionCheck: { ExpressionAttributeValues: { ":generation": generation } },
-          });
-        }
-        return {};
-      };
-      await expect(
-        createSession(ctx(send), { ...session, concurrencyId: undefined }, [], undefined, {
+  it("includes the generation integration fence in the transaction", async () => {
+    await expect(
+      createSession(
+        ctx(assertGenerationIntegrationFence),
+        { ...session, concurrencyId: undefined },
+        [],
+        undefined,
+        {
           id: "deploy",
           type: "custom-webhook",
           storageId: "custom-webhook:deploy",
-          ...(generation === undefined ? {} : { generation }),
+          generation: "generation",
           version: 2,
           enabled: true,
-        }),
-      ).resolves.toMatchObject({ created: true });
-    }
+        },
+      ),
+    ).resolves.toMatchObject({ created: true });
   });
 
   it("maps integration fence loss before lock resolution", async () => {

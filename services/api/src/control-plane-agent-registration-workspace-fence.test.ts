@@ -105,6 +105,35 @@ describe("durable workspace-pool registration fence", () => {
     expect(releaseHostConnection).toHaveBeenCalledOnce();
   });
 
+  it("continues a version retry once the advertised pool still exists", async () => {
+    let inventoryAttempts = 0;
+    const plane = new ControlPlane({ connectionIdFactory: () => "c" });
+    plane.state.storage = {
+      getWorkspacePool: async () => ({ id: "pool", name: "pool", setupProfiles: [] }),
+      tryRegisterHost: async () => true,
+      getHostInventory: async () => null,
+      listWorktreesByHost: async () => [],
+      listActiveSessionsByHost: async () => [],
+      putHostInventoryFenced: async () => {
+        inventoryAttempts += 1;
+        return inventoryAttempts === 1
+          ? { ok: false as const, reason: "version" as const }
+          : { ok: true as const };
+      },
+      releaseHostConnection: async () => true,
+      getHostLock: async () => null,
+    } as never;
+
+    await expect(
+      plane.registerHostDurable({
+        hostId: "h",
+        worktrees: [],
+        workspacePools: [{ workspacePoolId: "pool", slots: [] }],
+      }),
+    ).resolves.toEqual({ ok: true, connectionId: "c" });
+    expect(inventoryAttempts).toBe(2);
+  });
+
   it("rejects inventories whose deletion fences would exceed the transaction bound", async () => {
     const putHostInventoryFenced = vi.fn();
     const releaseHostConnection = vi.fn(async () => true);

@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- registration reconciliation scenarios share one inventory fixture. */
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -54,6 +55,7 @@ describe("host registration repository inventory", () => {
       plane.handleHostMessage({
         type: "host:register",
         hostId: "host",
+        protocolVersion: HOST_PROTOCOL_VERSION,
         worktrees: [],
         workspacePools: [
           {
@@ -327,16 +329,17 @@ describe("host registration repository inventory", () => {
       plane.handleHostMessage({
         type: "host:register",
         hostId: "legacy-host",
+        protocolVersion: HOST_PROTOCOL_VERSION,
         worktrees: [],
       }),
     ).toEqual({ ok: true });
     expect(plane.listHosts()).toEqual([
       expect.objectContaining({
         hostId: "legacy-host",
-        daemonVersion: "legacy/unknown",
+        daemonVersion: null,
         gitVersion: null,
         gitReady: false,
-        gitReadinessReason: "git_readiness_unreported",
+        gitReadinessReason: null,
       }),
     ]);
   });

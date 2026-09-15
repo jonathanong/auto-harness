@@ -1,6 +1,8 @@
 /* eslint-disable max-lines -- assignment optional-field and queue-order cases share one fixture. */
 import { describe, expect, it } from "vitest";
 
+import { providerAccountLeaseConcurrencyId } from "@auto-harness/shared";
+
 import { assignQueued, assignQueuedDurable } from "./control-plane-assign.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
@@ -36,6 +38,15 @@ function providerState() {
     now: () => NOW,
     attemptIdFactory: () => "attempt",
     shardCount: 1,
+  });
+  state.repositories.set("repo", {
+    id: "repo",
+    name: "repo",
+    url: "https://example.test/repo.git",
+    defaultBranch: "main",
+    admissionState: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
   });
   state.providers.set("provider", {
     id: "provider",
@@ -78,7 +89,7 @@ function providerState() {
       capabilities: [],
       repositoryIds: ["repo"],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-      protocolVersion: 1,
+      protocolVersion: 7,
       providerAccountReadiness: [
         { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
       ],
@@ -156,56 +167,13 @@ describe("assignment optional-field coverage", () => {
     expect(assignQueued(providerState())).toHaveLength(1);
   });
 
-  it("fails safely as legacy when the host connection disappears after route planning", () => {
-    const probe = providerState();
-    for (const [connectionId, connection] of probe.connections) {
-      probe.connections.set(connectionId, { ...connection, protocolVersion: 99 });
-    }
-    let reads = 0;
-    const probeGet = probe.hostConnection.get.bind(probe.hostConnection);
-    probe.hostConnection.get = (hostId) => {
-      reads += 1;
-      return probeGet(hostId);
-    };
-    expect(assignQueued(probe)).toHaveLength(1);
-
-    const statesAfterOneLostRead: string[] = [];
-    for (let lostRead = 1; lostRead <= reads; lostRead += 1) {
-      const state = providerState();
-      for (const [connectionId, connection] of state.connections) {
-        state.connections.set(connectionId, { ...connection, protocolVersion: 99 });
-      }
-      let currentRead = 0;
-      const get = state.hostConnection.get.bind(state.hostConnection);
-      state.hostConnection.get = (hostId) => {
-        currentRead += 1;
-        return currentRead === lostRead ? undefined : get(hostId);
-      };
-      if (assignQueued(state).length === 1) {
-        statesAfterOneLostRead.push(state.sessions.get("s")!.primaryCommandStartState!);
-      }
-    }
-
-    // Losing the connection at assignment must not retain a protocol-4 pending
-    // launch gate, while losing it only for prior-context capability lookup does
-    // not change the negotiated command-start state.
-    expect(statesAfterOneLostRead).toContain("authorized");
-    expect(statesAfterOneLostRead).toContain("pending");
-  });
-
-  it("backfills queue order before reading the durable assignment queue", async () => {
+  it("withholds assignments from hosts that do not negotiate the current protocol", () => {
     const state = providerState();
-    let backfills = 0;
-    setDurableReadStorage(state, {
-      tryAssignSession: async () => true,
-      expireQueuedSession: async () => false,
-      clearResumePin: async () => true,
-      backfillQueuedSessionQueueOrder: async () => {
-        backfills += 1;
-      },
-    });
-    await expect(assignQueuedDurable(state)).resolves.toHaveLength(1);
-    expect(backfills).toBe(1);
+    for (const [connectionId, connection] of state.connections) {
+      state.connections.set(connectionId, { ...connection, protocolVersion: 99 });
+    }
+    expect(assignQueued(state)).toEqual([]);
+    expect(state.sessions.get("s")?.status).toBe("queued");
   });
 
   it("durably publishes provider account route metadata", async () => {
@@ -435,6 +403,80 @@ describe("assignment optional-field coverage", () => {
       listSessionsByStatus: async (status: string) => (status === "queued" ? [session()] : []),
     });
     await expect(assignQueuedDurable(state)).resolves.toEqual([]);
+    expect(state.sessions.get("s")?.status).toBe("queued");
+  });
+
+  it("advertises the host's assignment cap when the winning connection declares one", async () => {
+    const state = providerState();
+    state.worktrees.delete("worktree-host-b");
+    const connection = state.connections.get("connection-host-a")!;
+    state.connections.set("connection-host-a", { ...connection, maxConcurrentAssignments: 3 });
+    const assignmentInputs: Array<{ hostAssignmentCap?: number }> = [];
+    setDurableReadStorage(state, {
+      tryAssignSession: async (input: { hostAssignmentCap?: number }) => {
+        assignmentInputs.push(input);
+        return true;
+      },
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+    });
+    await expect(assignQueuedDurable(state)).resolves.toHaveLength(1);
+    expect(assignmentInputs[0]?.hostAssignmentCap).toBe(3);
+  });
+
+  it("falls back to the next candidate when a stale duplicate lease occupies every slot", () => {
+    // `accountHasLeaseCapacityFromReadModel` (used for planning) counts distinct holder
+    // session ids, while `tryAcquireProviderAccountLeaseLocal` (used to actually claim a
+    // slot) checks per-slot occupancy in `state.providerAccountLeases`. A stale duplicate
+    // lease -- the same session id occupying every slot, e.g. left behind by legacy
+    // hydration (see `accountHasLeaseCapacityOverCap`'s docstring) -- makes planning think
+    // capacity is free while every slot is actually taken, so the local claim attempt must
+    // fail and the caller must move on to the next candidate instead of assigning.
+    const state = providerState();
+    state.providerAccounts.set("account", {
+      ...state.providerAccounts.get("account")!,
+      maxConcurrentSessions: 2,
+    });
+    for (const slot of [0, 1]) {
+      const concurrencyId = providerAccountLeaseConcurrencyId("account", slot);
+      state.providerAccountLeases.set(concurrencyId, {
+        sessionId: "stale-duplicate",
+        attemptId: "stale-attempt",
+        slot,
+        hostId: "host-a",
+        providerAccountId: "account",
+      });
+    }
+    expect(assignQueued(state)).toEqual([]);
+    expect(state.sessions.get("s")?.status).toBe("queued");
+    expect(state.providerAccountLeases.size).toBe(2);
+  });
+
+  it("re-checks provider account readiness before assigning the next durable candidate", async () => {
+    // Planning (`planPromptPlacement`) computes the whole candidate list once per session.
+    // The durable loop then awaits a storage write per candidate, so a host's advertised
+    // readiness can legitimately change between planning and a later candidate's turn --
+    // this recheck is what protects against assigning onto a host that lost readiness in
+    // that window.
+    const state = providerState();
+    let calls = 0;
+    setDurableReadStorage(state, {
+      tryAssignSession: async () => {
+        calls += 1;
+        const connectionB = state.connections.get("connection-host-b")!;
+        state.connections.set("connection-host-b", {
+          ...connectionB,
+          providerAccountReadiness: [
+            { providerAccountId: "account", ready: false, fingerprint: "a".repeat(64) },
+          ],
+        });
+        return false;
+      },
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+    });
+    await expect(assignQueuedDurable(state)).resolves.toEqual([]);
+    expect(calls).toBe(1);
     expect(state.sessions.get("s")?.status).toBe("queued");
   });
 });

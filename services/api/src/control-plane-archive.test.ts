@@ -522,6 +522,69 @@ describe("archive retry state", () => {
     expect(expireArchive).not.toHaveBeenCalled();
   });
 
+  it("records a captured empty-retry byte count before completing the retry", async () => {
+    const recordArchiveRetryCapture = vi.fn(async () => true);
+    const completeArchiveRetry = vi.fn(async () => true);
+    const key = "sessions/empty-capture/logs.jsonl.gz";
+    const state = createControlPlaneState({
+      now: () => "2026-01-01T00:01:00.000Z",
+      archiveWriter: { putArchive: async () => undefined },
+      storage: {
+        getArchive: async () => ({
+          key,
+          contentType: "application/x-ndjson",
+          bodyBytes: 0,
+          status: "pending",
+          objectStored: false,
+          retryState: "processing",
+          retryOrder: "claim-order",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        }),
+        listLogs: async () => [],
+        queryLogs: async () => [],
+        recordArchiveRetryCapture,
+        completeArchiveRetry,
+      } as never,
+    });
+    await retrySessionArchiveIfNeeded(state, "empty-capture", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(recordArchiveRetryCapture).toHaveBeenCalledWith(key, "claim-order", 0);
+    expect(completeArchiveRetry).toHaveBeenCalledOnce();
+  });
+
+  it("does not complete an empty retry that loses the capture fence", async () => {
+    let uploaded = 0;
+    const completeArchiveRetry = vi.fn(async () => true);
+    const state = createControlPlaneState({
+      now: () => "2026-01-01T00:01:00.000Z",
+      archiveWriter: { putArchive: async () => void (uploaded += 1) },
+      storage: {
+        getArchive: async () => ({
+          key: "sessions/empty-lost-capture/logs.jsonl.gz",
+          contentType: "application/x-ndjson",
+          bodyBytes: 0,
+          status: "pending",
+          objectStored: false,
+          retryState: "processing",
+          retryOrder: "claim-order",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        }),
+        listLogs: async () => [],
+        queryLogs: async () => [],
+        recordArchiveRetryCapture: async () => false,
+        completeArchiveRetry,
+      } as never,
+    });
+    await retrySessionArchiveIfNeeded(state, "empty-lost-capture", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(uploaded).toBe(0);
+    expect(completeArchiveRetry).not.toHaveBeenCalled();
+  });
+
   it("does not let an old empty retry expire a newer in-memory claim", async () => {
     let uploaded = 0;
     const key = "sessions/empty-stale/logs.jsonl.gz";
@@ -1150,6 +1213,44 @@ describe("archive retry state", () => {
     ]);
   });
 
+  it("republishes a legacy unversioned archive once a rewrite wins a fresh version", async () => {
+    const key = "sessions/legacy-rewrite/logs.jsonl.gz";
+    const legacy = {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 5,
+      status: "complete" as const,
+      objectStored: true,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    let puts = 0;
+    const state = createControlPlaneState({
+      now: () => "2026-01-02T00:00:00.000Z",
+      archiveWriter: {
+        putArchive: async () => {
+          puts += 1;
+          return { versionId: `v${puts}` };
+        },
+      },
+      storage: {
+        getArchive: async () => legacy,
+        completeArchiveRetry: async () => false,
+        replaceCompleteArchive: async () => true,
+      } as never,
+    });
+    state.logs.set("legacy-rewrite", [
+      { timestamp: "1", stream: "stdout", content: "hello" } as never,
+    ]);
+    await archiveSessionLogs(state, "legacy-rewrite", {
+      retryState: "processing",
+      retryOrder: "claim-1",
+    });
+    // One upload from the normal retry attempt, a second from the repair rewrite
+    // triggered once `completeArchiveRetry` reports the fence was lost.
+    expect(puts).toBe(2);
+    expect(state.archives.get(key)?.versionId).toBe("v2");
+  });
+
   it.each(["missing-result", "missing-version"])(
     "does not publish a repaired legacy winner when the writer has a %s",
     async (resultKind) => {
@@ -1184,86 +1285,6 @@ describe("archive retry state", () => {
       expect(state.archives.get(key)?.versionId).toBeUndefined();
     },
   );
-
-  it("persists a repaired legacy winner identity to durable metadata", async () => {
-    const key = "sessions/legacy-durable/logs.jsonl.gz";
-    const pending = {
-      key,
-      contentType: "application/x-ndjson",
-      bodyBytes: 0,
-      status: "pending" as const,
-      objectStored: false,
-      retryState: "processing" as const,
-      retryOrder: "claim-order",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    };
-    const complete = { ...pending, status: "complete" as const, objectStored: true };
-    let reads = 0;
-    const putArchive = vi.fn(async () => undefined);
-    const state = createControlPlaneState({
-      archiveWriter: { putArchive: async () => ({ versionId: "repaired-v1" }) },
-      storage: {
-        getArchive: async () => (reads++ === 0 ? pending : complete),
-        listLogs: async () => [{ timestamp: "1", stream: "stdout", content: "legacy" }],
-        completeArchiveRetry: async () => false,
-        putArchive,
-      } as never,
-    });
-    await retrySessionArchiveIfNeeded(state, "legacy-durable", {
-      retryState: "processing",
-      retryOrder: "claim-order",
-    });
-    expect(putArchive).toHaveBeenCalledWith(expect.objectContaining({ versionId: "repaired-v1" }));
-    expect(state.archives.get(key)).toMatchObject({
-      versionId: "repaired-v1",
-      bodyBytes: expect.any(Number),
-    });
-  });
-
-  it("repairs a legacy winner in the in-memory retry fence", async () => {
-    const key = "sessions/legacy-memory/logs.jsonl.gz";
-    let releaseUpload!: () => void;
-    const uploadStarted = new Promise<void>((resolve) => {
-      releaseUpload = resolve;
-    });
-    const state = createControlPlaneState({
-      archiveWriter: {
-        putArchive: async () => {
-          await uploadStarted;
-          return { versionId: "memory-repaired-v1" };
-        },
-      },
-    });
-    state.logs.set("legacy-memory", [
-      { timestamp: "1", stream: "stdout", content: "legacy" } as never,
-    ]);
-    state.archives.set(key, {
-      key,
-      contentType: "application/x-ndjson",
-      bodyBytes: 0,
-      status: "pending",
-      objectStored: false,
-      retryState: "processing",
-      retryOrder: "claim-order",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    });
-    const retry = retrySessionArchiveIfNeeded(state, "legacy-memory", {
-      retryState: "processing",
-      retryOrder: "claim-order",
-    });
-    await Promise.resolve();
-    state.archives.set(key, {
-      key,
-      contentType: "application/x-ndjson",
-      bodyBytes: 0,
-      status: "complete",
-      objectStored: true,
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    });
-    releaseUpload();
-    await retry;
-    expect(state.archives.get(key)).toMatchObject({ versionId: "memory-repaired-v1" });
-  });
 
   it("releases a matching local retry claim after an upload failure", async () => {
     const key = "sessions/local-release/logs.jsonl.gz";

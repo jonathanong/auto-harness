@@ -144,13 +144,9 @@ function resolveNativeResumeRoute(
   }
   if (spec.resumeArgvTemplate && !session.cliResumeRef) return null;
   const providerId = accountId ? catalog.providerAccounts[accountId]?.providerId : undefined;
-  const argv = providerId ? migrateLegacyProviderArgv(spec.argv) : [...spec.argv];
+  const argv = [...spec.argv];
   const resumeArgvTemplate =
-    spec.resumeArgvTemplate === undefined
-      ? undefined
-      : providerId
-        ? migrateLegacyProviderArgv(spec.resumeArgvTemplate)
-        : [...spec.resumeArgvTemplate];
+    spec.resumeArgvTemplate === undefined ? undefined : [...spec.resumeArgvTemplate];
   let validatedResumeArgvTemplate = resumeArgvTemplate;
   if (resumeArgvTemplate !== undefined) {
     const validation = validateCommandResumeSpec({ resumeArgvTemplate });
@@ -220,12 +216,12 @@ function resolveTargets(
     if (!command) return [];
     const providerId = command.providerId;
     if (providerId === null) {
-      const resolvedArgv = buildArgv(command, prompt, false);
+      const resolvedArgv = buildArgv(command, prompt);
       return resolvedArgv
-        ? [{ commandId: command.id, resolvedArgv, resumeSpec: commandResumeSpec(command, false) }]
+        ? [{ commandId: command.id, resolvedArgv, resumeSpec: commandResumeSpec(command) }]
         : [];
     }
-    const resolvedArgv = buildArgv(command, prompt, true);
+    const resolvedArgv = buildArgv(command, prompt);
     if (!resolvedArgv) return [];
     return resolveEligibleAccounts(
       state,
@@ -239,7 +235,7 @@ function resolveTargets(
       providerAccountId: account.id,
       commandId: command.id,
       resolvedArgv,
-      resumeSpec: commandResumeSpec(command, true),
+      resumeSpec: commandResumeSpec(command),
     }));
   }
   const host = state.hostInventories.get(worktree.hostId);
@@ -264,14 +260,14 @@ function resolveTargets(
     const command = commandId ? state.commands.get(commandId) : undefined;
     // This route is account-bound even if an older catalog row has a mismatched
     // providerId, so it still needs a structured provider envelope for usage routing.
-    const resolvedArgv = buildArgv(command, prompt, true);
+    const resolvedArgv = buildArgv(command, prompt);
     if (resolvedArgv && commandId && command) {
       routes.push({
         providerId: target.providerId,
         providerAccountId: account.id,
         commandId,
         resolvedArgv,
-        resumeSpec: commandResumeSpec(command, true),
+        resumeSpec: commandResumeSpec(command),
       });
     }
   }
@@ -450,13 +446,9 @@ export function resolveScheduledSessionTarget(
   return resolveScheduledSessionTargets(state, catalog, session, hostId)[0] ?? null;
 }
 
-function buildArgv(
-  command: CommandRecord | undefined,
-  prompt: string,
-  providerBound: boolean,
-): string[] | null {
+function buildArgv(command: CommandRecord | undefined, prompt: string): string[] | null {
   if (!command || command.argv.length === 0) return null;
-  const argv = providerBound ? migrateLegacyProviderArgv(command.argv) : [...command.argv];
+  const argv = [...command.argv];
   if (!command.appendPrompt) return argv;
   // `--` only neutralizes a leading-dash prompt for getopt-style executables that treat it
   // as "end of options" — some commands (e.g. `printf "%s"`) instead read it as literal
@@ -464,55 +456,10 @@ function buildArgv(
   return command.appendPromptSeparator ? [...argv, "--", prompt] : [...argv, prompt];
 }
 
-/**
- * Compatibility-upgrade pre-existing provider commands at dispatch. The catalog remains
- * operator-authored: explicit format flags and custom executables are never rewritten.
- */
-function migrateLegacyProviderArgv(argv: readonly string[]): string[] {
-  const separator = argv.indexOf("--");
-  const optionEnd = separator < 0 ? argv.length : separator;
-  const optionArgv = argv.slice(0, optionEnd);
-  const executable = executableStem(optionArgv[0]);
-  if (executable === "codex") {
-    if (hasOption(optionArgv, "--json")) return [...argv];
-    const execIndex = optionArgv.indexOf("exec");
-    return execIndex < 0 ? [...argv] : insertArgs(argv, execIndex + 1, ["--json"]);
-  }
-  if (hasOption(optionArgv, "--output-format")) return [...argv];
-  const promptIndex = optionArgv.findIndex((arg) => {
-    if (executable === "claude") return arg === "-p" || arg === "--print";
-    if (executable === "gemini") return arg === "-p" || arg === "--prompt";
-    return executable === "grok" && (arg === "-p" || arg === "--single");
-  });
-  if (promptIndex < 0) return [...argv];
-  // Gemini and Grok prompt switches consume their following value, so the format pair must
-  // precede them. Claude accepts the same order and keeps this migration uniform.
-  return insertArgs(argv, promptIndex, ["--output-format", "json"]);
-}
-
-function executableStem(value: string | undefined): string {
-  if (!value) return "";
-  const normalized = value.replaceAll("\\", "/");
-  const basename = normalized.slice(normalized.lastIndexOf("/") + 1);
-  return basename.replace(/\.(?:exe|cmd|bat)$/iu, "").toLowerCase();
-}
-
-function hasOption(argv: readonly string[], option: string): boolean {
-  return argv.some((arg) => arg === option || arg.startsWith(`${option}=`));
-}
-
-function insertArgs(argv: readonly string[], index: number, args: readonly string[]): string[] {
-  return [...argv.slice(0, index), ...args, ...argv.slice(index)];
-}
-
-function commandResumeSpec(command: CommandRecord, providerBound: boolean): SessionResumeSpec {
-  const argv = providerBound ? migrateLegacyProviderArgv(command.argv) : [...command.argv];
+function commandResumeSpec(command: CommandRecord): SessionResumeSpec {
+  const argv = [...command.argv];
   const resumeArgvTemplate =
-    command.resumeArgvTemplate === undefined
-      ? undefined
-      : providerBound
-        ? migrateLegacyProviderArgv(command.resumeArgvTemplate)
-        : [...command.resumeArgvTemplate];
+    command.resumeArgvTemplate === undefined ? undefined : [...command.resumeArgvTemplate];
   return {
     argv,
     appendPrompt: command.appendPrompt,

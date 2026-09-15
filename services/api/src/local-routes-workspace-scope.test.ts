@@ -93,7 +93,7 @@ describe("workspace route scope", () => {
     const auth = new AuthService({ mode: "required", secret: "s".repeat(32), admins });
     const { apiKey } = await auth.createServiceAccount({
       name: "scoped-admin",
-      role: "admin",
+      role: "operator",
       allowedRepositoryIds: ["repo-1"],
     });
     const { handler } = createLocalApp({
@@ -143,7 +143,7 @@ describe("workspace route scope", () => {
     const auth = new AuthService({ mode: "required", secret: "s".repeat(32), admins });
     const { apiKey } = await auth.createServiceAccount({
       name: "scoped-admin",
-      role: "admin",
+      role: "operator",
       allowedRepositoryIds: ["repo-1"],
     });
     const { handler } = createLocalApp({

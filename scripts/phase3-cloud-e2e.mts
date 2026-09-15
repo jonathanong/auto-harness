@@ -79,6 +79,12 @@ async function main(): Promise<void> {
         transport.deliver(msg);
       },
     });
+    plane.createRepository({
+      id: "demo",
+      name: "demo",
+      url: "https://example.test/demo.git",
+      defaultBranch: "main",
+    });
 
     const loop = new DaemonLoop({ config, transport });
     await loop.start();

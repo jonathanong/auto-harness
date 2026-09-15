@@ -55,12 +55,12 @@ describe("loadDaemonConfig", () => {
       inline: valid,
       env: {
         HARNESS_HOST_ID: "from-env",
-        HARNESS_API_URL: "ws://localhost/ws",
+        HARNESS_API_URL: "http://127.0.0.1:7420",
         HARNESS_API_KEY: "hns_x",
       },
     });
     expect(config.hostId).toBe("from-env");
-    expect(config.apiUrl).toBe("ws://localhost/ws");
+    expect(config.apiUrl).toBe("http://127.0.0.1:7420");
     expect(config.apiKey).toBe("hns_x");
   });
 

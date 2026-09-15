@@ -53,9 +53,7 @@ describe("in-memory pending terminal-hook handoff host index", () => {
       return originalValues();
     };
 
-    await expect(
-      pendingTerminalHookHandoffs(state, "host", { protocolVersion: 7 }),
-    ).resolves.toEqual([
+    await expect(pendingTerminalHookHandoffs(state, "host")).resolves.toEqual([
       expect.objectContaining({
         type: "session:terminal-hook",
         handoffId: "handoff",
@@ -100,14 +98,10 @@ describe("in-memory pending terminal-hook handoff host index", () => {
     state.sessions.clear();
     expect(state.pendingTerminalHookHandoffsByHost.has("host")).toBe(false);
     state.pendingTerminalHookHandoffsByHost.set("host", new Set(["missing"]));
-    await expect(
-      pendingTerminalHookHandoffs(state, "host", { protocolVersion: 7 }),
-    ).resolves.toEqual([]);
+    await expect(pendingTerminalHookHandoffs(state, "host")).resolves.toEqual([]);
     state.pendingTerminalHookHandoffsByHost.delete("host");
     indexPendingTerminalHookHandoff(state, pending({ id: "never-indexed" }), undefined);
     expect(state.pendingTerminalHookHandoffsByHost.has("host")).toBe(false);
-    await expect(
-      pendingTerminalHookHandoffs(state, "host", { protocolVersion: 7 }),
-    ).resolves.toEqual([]);
+    await expect(pendingTerminalHookHandoffs(state, "host")).resolves.toEqual([]);
   });
 });

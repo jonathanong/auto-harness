@@ -3,10 +3,7 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 
 import {
-  ATTEMPT_FENCED_PROTOCOL_VERSION,
-  DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
   HOST_PROTOCOL_VERSION,
-  SESSION_RESULT_PROTOCOL_VERSION,
   MAX_SESSION_LOG_DROPPED,
   isHostRuntimeReport,
   isHostRunningAttempt,
@@ -31,8 +28,6 @@ import {
   clearHostSocketPendingPublish,
   markHostSocketPendingPublish,
 } from "./control-plane-host-socket-publish.ts";
-import { handleHostLogBatchDurable, MAX_DURABLE_LOG_BATCH_SIZE } from "./control-plane-messages.ts";
-import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import { emitWsMessagesDiscarded } from "./operational-metrics.ts";
 import type { RateLimitEvent } from "./rate-limit.ts";
 import { validateUsage } from "./usage.ts";
@@ -340,67 +335,18 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             }
           }
         };
-        type LogMessage = Extract<HostToServerMessage, { type: "session:log" }>;
-        const handleLogBatch = async (batch: readonly LogMessage[]): Promise<void> => {
-          if (
-            boundHostId &&
-            boundConnectionId &&
-            plane.state.hostConnection.get(boundHostId) !== boundConnectionId
-          ) {
-            accepting = false;
-            discardMessages(batch.length, "stale host connection");
-            socket.close(1008, "stale host connection");
-            return;
-          }
-          const allowed: LogMessage[] = [];
-          for (const message of batch) {
-            if (!isAllowedMessage(plane, message, boundHostId, principal, authRequired)) {
-              accepting = false;
-              discardMessages(batch.length - allowed.length, "message not authorized");
-              socket.close(1008, "message not authorized");
-              break;
-            }
-            allowed.push(message);
-          }
-          if (allowed.length === 0) return;
-          // A message cannot pass isAllowedMessage before registration binds
-          // both values for this socket.
-          const result = await handleHostLogBatchDurable(plane.state, allowed, boundConnectionId!);
-          if (!result.ok && socket.readyState === socket.OPEN) {
-            socket.send(JSON.stringify({ type: "error", message: result.error }));
-          }
-        };
         // The ws EventEmitter does not await async listeners. Keep host messages in wire
         // order so a keepalive or status cannot race an in-flight durable registration.
         // Store a recovered tail so one failed durable operation cannot block later frames.
         let messageTail: Promise<void> = Promise.resolve();
-        let pendingLogs: LogMessage[] = [];
-        let logBatchTimer: ReturnType<typeof setTimeout> | undefined;
         const queueWork = (work: () => Promise<void>): void => {
           messageTail = messageTail.then(work).catch(() => {
             accepting = false;
             socket.close(1011, "message handling failed");
           });
         };
-        const flushLogBatch = (): void => {
-          if (logBatchTimer) clearTimeout(logBatchTimer);
-          logBatchTimer = undefined;
-          if (pendingLogs.length === 0) return;
-          const batch = pendingLogs;
-          pendingLogs = [];
-          queueWork(() => handleLogBatch(batch));
-        };
-        const queueLog = (message: LogMessage): void => {
-          pendingLogs.push(message);
-          if (pendingLogs.length >= MAX_DURABLE_LOG_BATCH_SIZE) {
-            flushLogBatch();
-          } else if (!logBatchTimer) {
-            logBatchTimer = setTimeout(flushLogBatch, options.logBatchDelayMs ?? 5);
-          }
-        };
         drainForReplacement = async () => {
           accepting = false;
-          flushLogBatch();
           await messageTail;
           if (socket.readyState === socket.OPEN) socket.close(1008, "host reconnected");
         };
@@ -418,35 +364,28 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
               limit: options.maxMessagesPerSecond ?? MAX_WS_MESSAGES_PER_SECOND,
               actorKey: "websocket-connection",
             });
-            flushLogBatch();
             accepting = false;
             discardMessages(1, "message rate exceeded");
             socket.close(1008, "message rate exceeded");
             return;
           }
-          const protocolVersion =
-            boundConnectionId !== null
-              ? connectionProtocolVersion(plane.state.connections.get(boundConnectionId))
-              : ATTEMPT_FENCED_PROTOCOL_VERSION;
-          const msg = parseHostMessage(raw, { protocolVersion });
+          const msg = parseHostMessage(raw);
           if (!msg) {
-            flushLogBatch();
             accepting = false;
             discardMessages(1, "invalid message");
             socket.close(1008, "invalid message");
             return;
           }
           if (msg.type === "session:log") {
-            queueLog(msg);
+            accepting = false;
+            discardMessages(1, "session:log is not accepted on the control-plane websocket");
+            socket.close(1008, "session:log is not accepted on the control-plane websocket");
           } else {
-            // A terminal/control frame may not overtake preceding logs.
-            flushLogBatch();
             queueWork(() => handleMessage(msg));
           }
         });
         socket.on("close", () => {
           accepting = false;
-          flushLogBatch();
           if (pendingRegistration) {
             pendingRegistration.closed = true;
             clearHostSocketPendingPublish(plane.state, pendingRegistration.connectionId);
@@ -456,12 +395,11 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
           }
           if (boundHostId && hostSockets.get(boundHostId) === socket) {
             hostSockets.delete(boundHostId);
-            if (boundConnectionId) {
-              const connectionId = boundConnectionId;
-              // Keep the durable lease alive until every already-accepted log
-              // has either committed or failed its connection-fenced batch.
-              void messageTail.then(() => plane.disconnectHostDurable(connectionId));
-            }
+            // boundConnectionId is always set alongside boundHostId. Keep the
+            // durable lease alive until every already-accepted write has
+            // either committed or failed its connection-fenced batch.
+            const connectionId = boundConnectionId!;
+            void messageTail.then(() => plane.disconnectHostDurable(connectionId));
           }
         });
       };
@@ -522,10 +460,7 @@ async function authenticateSocket(
   return token ? await auth.authenticateApiKey(token) : null;
 }
 
-export function parseHostMessage(
-  raw: unknown,
-  options?: { protocolVersion?: number },
-): HostToServerMessage | null {
+export function parseHostMessage(raw: unknown): HostToServerMessage | null {
   if (typeof raw !== "string" && !Buffer.isBuffer(raw) && (!raw || typeof raw !== "object"))
     return null;
   try {
@@ -556,10 +491,7 @@ export function parseHostMessage(
           !isWorkspacePoolSnapshot(message.workspacePools)) ||
         (message.capabilities !== undefined &&
           parseHostCapabilitiesAdvertisement(message.capabilities) === null) ||
-        (message.maxConcurrentAssignments !== undefined &&
-          parseHostCapabilitiesAdvertisement({
-            maxConcurrentAssignments: message.maxConcurrentAssignments,
-          }) === null) ||
+        message.maxConcurrentAssignments !== undefined ||
         (message.providerAccountReadiness !== undefined &&
           (!Array.isArray(message.providerAccountReadiness) ||
             validateProviderAccountReadiness(
@@ -569,41 +501,33 @@ export function parseHostMessage(
           (!Array.isArray(message.runningSessions) ||
             message.runningSessions.length > 1_000 ||
             !message.runningSessions.every((sessionId) => boundedText(sessionId)))) ||
-        (message.runningAttempts !== undefined &&
-          (!Array.isArray(message.runningAttempts) ||
-            message.runningAttempts.length > 1_000 ||
-            !message.runningAttempts.every(
-              (attempt) =>
-                isHostRunningAttempt(attempt) &&
-                boundedText(attempt.sessionId) &&
-                boundedText(attempt.attemptId),
-            ) ||
-            new Set(
-              message.runningAttempts.map((attempt) =>
-                isHostRunningAttempt(attempt) ? attempt.sessionId : "",
-              ),
-            ).size !== message.runningAttempts.length)) ||
-        (message.protocolVersion !== undefined &&
-          (typeof message.protocolVersion !== "number" ||
-            !Number.isSafeInteger(message.protocolVersion) ||
-            message.protocolVersion < 0 ||
-            message.protocolVersion > 1_024)) ||
-        (message.daemonInstanceId === undefined) !== (message.daemonStartedAt === undefined) ||
-        (message.daemonInstanceId !== undefined && !isUuid(message.daemonInstanceId)) ||
-        (message.daemonStartedAt !== undefined &&
-          (!boundedText(message.daemonStartedAt, 128) ||
-            !Number.isFinite(Date.parse(message.daemonStartedAt)))) ||
-        (message.runtime !== undefined && !validRuntimeReport(message.runtime)) ||
+        !Array.isArray(message.runningAttempts) ||
+        message.runningAttempts.length > 1_000 ||
+        !message.runningAttempts.every(
+          (attempt) =>
+            isHostRunningAttempt(attempt) &&
+            boundedText(attempt.sessionId) &&
+            boundedText(attempt.attemptId),
+        ) ||
+        new Set(
+          message.runningAttempts.map((attempt) =>
+            isHostRunningAttempt(attempt) ? attempt.sessionId : "",
+          ),
+        ).size !== message.runningAttempts.length ||
+        typeof message.protocolVersion !== "number" ||
+        !Number.isSafeInteger(message.protocolVersion) ||
+        message.protocolVersion < 0 ||
+        message.protocolVersion > 1_024 ||
+        !isUuid(message.daemonInstanceId) ||
+        !boundedText(message.daemonStartedAt, 128) ||
+        !Number.isFinite(Date.parse(message.daemonStartedAt)) ||
+        !validRuntimeReport(message.runtime) ||
         (message.draining !== undefined && message.draining !== true)
       ) {
         return null;
       }
       const advertised = parseHostCapabilitiesAdvertisement(message.capabilities)!;
-      const maxConcurrentAssignments =
-        typeof message.maxConcurrentAssignments === "number"
-          ? message.maxConcurrentAssignments
-          : advertised.maxConcurrentAssignments;
-      const normalized: HostToServerMessage = {
+      const normalized = {
         ...(message as HostToServerMessage),
         type: "host:register",
         hostId: message.hostId as string,
@@ -611,8 +535,14 @@ export function parseHostMessage(
           HostToServerMessage,
           { type: "host:register" }
         >["worktrees"],
-        ...(message.capabilities !== undefined ? { capabilities: advertised.features } : {}),
-        ...(maxConcurrentAssignments !== undefined ? { maxConcurrentAssignments } : {}),
+        ...(message.capabilities !== undefined
+          ? {
+              capabilities: {
+                features: advertised.features,
+                maxConcurrentAssignments: advertised.maxConcurrentAssignments,
+              },
+            }
+          : {}),
         ...(message.providerAccountReadiness !== undefined
           ? {
               providerAccountReadiness: sanitizeProviderAccountReadiness(
@@ -620,7 +550,7 @@ export function parseHostMessage(
               ),
             }
           : {}),
-      };
+      } as HostToServerMessage;
       return normalized;
     }
     if (message.type === "session:ack") {
@@ -654,21 +584,14 @@ export function parseHostMessage(
         (message.cliResumeRef === undefined || isValidCliResumeRef(message.cliResumeRef)) &&
         (message.result === undefined ||
           (isTerminalSessionStatus(message.status) &&
-            (options?.protocolVersion ?? 0) >= SESSION_RESULT_PROTOCOL_VERSION &&
             normalizeSessionResult(message.result) !== undefined)) &&
-        (message.deferTerminalHookResult === undefined ||
-          ((options?.protocolVersion ?? 0) >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
-            message.deferTerminalHookResult === true))
+        (message.deferTerminalHookResult === undefined || message.deferTerminalHookResult === true)
         ? (message as HostToServerMessage)
         : null;
     }
     if (message.type === "session:log") {
       const timestamp = message.timestamp;
       const stream = message.stream;
-      const protocolVersion = options?.protocolVersion ?? ATTEMPT_FENCED_PROTOCOL_VERSION;
-      const attemptIdOk =
-        boundedText(message.attemptId) ||
-        (protocolVersion < ATTEMPT_FENCED_PROTOCOL_VERSION && message.attemptId === undefined);
       const dropped = message.dropped;
       const droppedOk =
         dropped === undefined ||
@@ -677,7 +600,7 @@ export function parseHostMessage(
           dropped >= 0 &&
           dropped <= MAX_SESSION_LOG_DROPPED);
       return boundedText(message.sessionId) &&
-        attemptIdOk &&
+        boundedText(message.attemptId) &&
         (stream === "stdout" || stream === "stderr" || stream === "system") &&
         typeof message.content === "string" &&
         Buffer.byteLength(message.content) <= MAX_LOG_CHUNK_BYTES &&
@@ -705,9 +628,7 @@ export function parseHostMessage(
     if (message.type === "session:terminal-hook-complete") {
       return boundedText(message.sessionId) &&
         boundedText(message.handoffId) &&
-        (message.result === undefined ||
-          ((options?.protocolVersion ?? 0) >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
-            normalizeSessionResult(message.result) !== undefined))
+        (message.result === undefined || normalizeSessionResult(message.result) !== undefined)
         ? (message as HostToServerMessage)
         : null;
     }

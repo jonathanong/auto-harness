@@ -33,11 +33,7 @@ export async function putGitHubIngressConfig(
         expectedVersion === null
           ? "attribute_not_exists(id)"
           : `attribute_exists(id) AND version = :expectedVersion${
-              expectedGeneration === undefined
-                ? ""
-                : expectedGeneration === null
-                  ? " AND attribute_not_exists(#generation)"
-                  : " AND #generation = :expectedGeneration"
+              expectedGeneration === undefined ? "" : " AND #generation = :expectedGeneration"
             }`,
       ...(expectedVersion === null
         ? {}
@@ -73,11 +69,7 @@ export async function deleteGitHubIngressConfig(
         TableName: ctx.tables.integrations,
         Key: { id: "github-ingress" },
         ConditionExpression: `attribute_exists(id) AND version = :expectedVersion${
-          expectedGeneration === undefined
-            ? ""
-            : expectedGeneration === null
-              ? " AND attribute_not_exists(#generation)"
-              : " AND #generation = :expectedGeneration"
+          expectedGeneration === undefined ? "" : " AND #generation = :expectedGeneration"
         }`,
         ExpressionAttributeValues: {
           ":expectedVersion": expectedVersion,

@@ -56,6 +56,12 @@ async function main(): Promise<void> {
       enableWs: true,
       publicBaseUrl: "http://ui",
     });
+    server.plane.createRepository({
+      id: "demo",
+      name: "demo",
+      url: "https://example.test/demo.git",
+      defaultBranch: "main",
+    });
     server.plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
@@ -70,7 +76,7 @@ async function main(): Promise<void> {
     const config: DaemonConfig = {
       hostId: "agent-ws",
       logLevel: "info",
-      apiUrl: `ws://127.0.0.1:${port}/ws`,
+      apiUrl: `http://127.0.0.1:${port}`,
       repositories: [
         {
           id: "demo",

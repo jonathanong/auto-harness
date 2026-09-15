@@ -1,4 +1,5 @@
 /* eslint-disable max-lines */
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import type { SessionRecord } from "./db/types.ts";
@@ -998,6 +999,13 @@ describe("durable control-plane transitions", () => {
       commandProfiles: ["echo"],
     });
     expect(registered.ok).toBe(true);
+    expect(
+      plane.createRepository({
+        id: "local-durable-repo",
+        name: "local-durable-repo",
+        url: "https://example.test/local-durable-repo.git",
+      }).ok,
+    ).toBe(true);
     const created = plane.createSession({
       repositoryId: "local-durable-repo",
       prompt: "local",
@@ -1318,6 +1326,7 @@ describe("durable control-plane transitions", () => {
         await plane.handleHostMessageDurable({
           type: "host:register",
           hostId: "coverage-message-host",
+          protocolVersion: HOST_PROTOCOL_VERSION,
           worktrees: [],
           commandProfiles: [],
         })

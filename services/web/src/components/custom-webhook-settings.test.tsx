@@ -29,6 +29,7 @@ const existing = {
   enabled: true,
   secretConfigured: true,
   version: 2,
+  generation: "11111111-1111-4111-8111-111111111111",
 };
 
 async function settle() {
@@ -78,7 +79,10 @@ describe("CustomWebhookSettings", () => {
     const save = fake.requests[1]?.[1];
     expect(save?.method).toBe("PUT");
     expect(JSON.parse(String(save?.body))).not.toHaveProperty("secret");
-    expect(JSON.parse(String(save?.body))).toMatchObject({ version: 2, generation: "legacy" });
+    expect(JSON.parse(String(save?.body))).toMatchObject({
+      version: 2,
+      generation: "11111111-1111-4111-8111-111111111111",
+    });
     expect(field(view.container, "custom-webhook-delete")).toBeInstanceOf(HTMLButtonElement);
     press(field(view.container, "custom-webhook-delete"));
     expect(document.body.textContent).toContain("Delete custom webhook configuration?");
@@ -88,6 +92,19 @@ describe("CustomWebhookSettings", () => {
     expect(fake.requests[2]?.[1]?.method).toBe("DELETE");
     expect(fake.requests[2]?.[1]?.headers).toMatchObject({ "if-match": "3" });
     view.unmount();
+  });
+
+  it("refuses to save a loaded configuration with no generation stamped", async () => {
+    const { generation: _generation, ...withoutGeneration } = existing;
+    const fake = createApiFake(json(withoutGeneration));
+    const view = mountForm(<CustomWebhookSettings />);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "deploy");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    submit(view.container.querySelector("form")!);
+    await settle();
+    expect(document.body.textContent).toContain("Unable to save custom webhook configuration.");
+    expect(fake.requests).toHaveLength(1);
   });
 
   it("requires a secret for a new configuration and does not update after unmount", async () => {

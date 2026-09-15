@@ -33,6 +33,7 @@ describe("non-durable catalog deletes with storage", () => {
       name: "repository",
       url: "https://example.test/repository",
       defaultBranch: "main",
+      admissionState: "active",
       createdAt: now,
       updatedAt: now,
     });
@@ -138,6 +139,7 @@ describe("non-durable catalog deletes with storage", () => {
       name: "repository",
       url: "https://example.test/repository",
       defaultBranch: "main",
+      admissionState: "active" as const,
       createdAt: now,
       updatedAt: now,
     };

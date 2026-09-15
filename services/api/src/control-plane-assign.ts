@@ -5,7 +5,7 @@ import {
   type HostWireMessage,
 } from "@auto-harness/shared";
 
-import type { WorktreeRecord } from "./db/types.ts";
+import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { sessionForPersistence, toPublic } from "./control-plane-state.ts";
@@ -22,8 +22,6 @@ import {
 } from "./control-plane-durable-read-runtime.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import { planPromptPlacement } from "./queue-placement-planner.ts";
-import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
-import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import { assignLogSettings, getSessionLogSettings } from "./control-plane-session-log-settings.ts";
 import {
   accountHasLeaseCapacity,
@@ -37,7 +35,6 @@ import {
   clearAbandonedUsageLimitRetryFields,
   type AssignmentWriteResult,
 } from "./db/plane-storage-types.ts";
-import { commandStartStateForProtocol } from "./control-plane-command-start.ts";
 import { createSessionApiKey } from "./control-plane-session-api-key.ts";
 
 /**
@@ -111,11 +108,7 @@ export function assignQueued(
         attemptId,
       };
       session.attemptId = attemptId;
-      session.primaryCommandStartState = commandStartStateForProtocol(
-        connectionProtocolVersion(
-          state.connections.get(state.hostConnection.get(candidate.hostId) ?? ""),
-        ),
-      );
+      session.primaryCommandStartState = "pending";
       if (apiKey) session.sessionApiKeyHash = apiKey.hash;
       else delete session.sessionApiKeyHash;
       if (lease) session.providerAccountLease = lease;
@@ -179,9 +172,6 @@ export async function assignQueuedDurable(
     return assignQueued(state, sessionId);
   }
   if (!options?.readModelLoaded) {
-    if (typeof state.storage.backfillQueuedSessionQueueOrder === "function") {
-      await state.storage.backfillQueuedSessionQueueOrder(state.shardCount);
-    }
     await refreshSchedulerReadModel(state);
     await listQueuedSessionsDurable(state, "prompt");
   }
@@ -298,9 +288,7 @@ export async function assignQueuedDurable(
               }
             : {}),
           queueShard: session.queueShard,
-          primaryCommandStartState: commandStartStateForProtocol(
-            connectionProtocolVersion(state.connections.get(connectionId)),
-          ),
+          primaryCommandStartState: "pending",
           ...(apiKey ? { sessionApiKeyHash: apiKey.hash } : {}),
         });
         if (won === true || !lease) break;
@@ -310,7 +298,7 @@ export async function assignQueuedDurable(
       }
       if (won !== true) continue;
       const resumeSpec = session.resumeSpec ?? route.resumeSpec;
-      const nextSession = {
+      const nextSession: SessionRecord = {
         ...session,
         status: "running" as const,
         worktreeId: candidate.id,
@@ -328,9 +316,7 @@ export async function assignQueuedDurable(
           attemptId,
         },
         attemptId,
-        primaryCommandStartState: commandStartStateForProtocol(
-          connectionProtocolVersion(state.connections.get(connectionId)),
-        ),
+        primaryCommandStartState: "pending",
         ...(apiKey ? { sessionApiKeyHash: apiKey.hash } : {}),
         ...(lease ? { providerAccountLease: lease } : {}),
         hostAssignmentLease: { hostId: candidate.hostId },
@@ -424,14 +410,17 @@ function clearResumePin(session: import("./db/types.ts").SessionRecord): void {
 /** Whether the assigned host's daemon has advertised support for fetching
  * `GET /sessions/:id/prior-context` and writing the result to the worktree. */
 function hostAdvertisesPriorContext(state: ControlPlaneState, hostId: string): boolean {
-  const connectionId = state.hostConnection.get(hostId);
-  const connection = connectionId ? state.connections.get(connectionId) : undefined;
+  // `hostId` is always a placement candidate's host, already filtered by
+  // `isSchedulableWorktree`/`hostGitReady` (queue-placement-planner.ts), which requires
+  // `state.hostConnection.get(hostId)` to be defined -- so the lookup never misses here.
+  const connection = state.connections.get(state.hostConnection.get(hostId)!);
   return hasHostCapability(connection?.capabilities, "prior-session-context");
 }
 
 function hostAdvertisesSessionSpawn(state: ControlPlaneState, hostId: string): boolean {
-  const connectionId = state.hostConnection.get(hostId);
-  const connection = connectionId ? state.connections.get(connectionId) : undefined;
+  // See `hostAdvertisesPriorContext` above: candidates only ever come from hosts with a
+  // live connection.
+  const connection = state.connections.get(state.hostConnection.get(hostId)!);
   return hasHostCapability(connection?.capabilities, "session-spawn");
 }
 
@@ -603,7 +592,6 @@ export async function enforceAckDeadlinesDurable(
       state.pendingAcks.delete(sessionId);
       continue;
     }
-    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     const wt = pending.worktreeId ? state.worktrees.get(pending.worktreeId) : undefined;
     if (wt && pending.worktreeId) {
       state.worktrees.set(pending.worktreeId, {

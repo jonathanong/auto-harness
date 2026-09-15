@@ -59,7 +59,7 @@ describe("DaemonLoop deferred terminal status capacity", () => {
         },
       };
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       pendingTerminalStatusOf(loop).set("older\0attempt-older", {
         message: { ...statusMessage, sessionId: "older", attemptId: "attempt-older" },
         firstAttemptedAtMs: Date.now(),

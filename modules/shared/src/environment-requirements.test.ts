@@ -48,8 +48,8 @@ describe("environment requirements", () => {
 });
 
 describe("repository admission compatibility", () => {
-  it("treats only missing legacy values as active and rejects malformed states", () => {
-    expect(repositoryAdmissionState(undefined)).toBe("active");
+  it("rejects missing and malformed admission states as closed", () => {
+    expect(() => repositoryAdmissionState(undefined)).toThrow("invalid repository admission state");
     expect(repositoryAdmissionState("active")).toBe("active");
     expect(() => repositoryAdmissionState("future-state")).toThrow(
       "invalid repository admission state",

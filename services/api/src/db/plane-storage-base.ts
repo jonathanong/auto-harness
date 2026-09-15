@@ -39,9 +39,7 @@ import * as usage from "./plane-storage-usage.ts";
 import * as sessionDrains from "./plane-storage-session-drains.ts";
 import * as repositoryCounts from "./plane-storage-repository-counts.ts";
 import * as workspaces from "./plane-storage-workspaces.ts";
-import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
 import { backfillArchiveRetryIndexPage } from "./ensure-archive-retry-index.ts";
-import { backfillQueuedSessionQueueOrder } from "./ensure-queue-order-index.ts";
 
 /**
  * Sessions/worktrees/locks/schedules/repositories/archives/agent-hosts delegators.
@@ -55,21 +53,11 @@ export class DynamoPlaneStorageBase {
     this.ctx = { doc, tables };
   }
 
-  /** Bounded deployment migration; scheduler callers run at most one page. */
-  migrateSessionDrainActivityLedgerPage(): Promise<boolean> {
-    return migrateSessionDrainActivityLedgerPage(this.ctx.doc, this.ctx.tables);
-  }
-
   migrateArchiveRetryIndexPage(): Promise<boolean> {
     return backfillArchiveRetryIndexPage(this.ctx.doc, {
       archives: this.ctx.tables.archives,
       sessionDrains: this.ctx.tables.sessionDrains,
     });
-  }
-
-  /** Repair queued rows missing `queueOrder`. Safe to repeat; later requeues are also written. */
-  async backfillQueuedSessionQueueOrder(shardCount?: number): Promise<void> {
-    await backfillQueuedSessionQueueOrder(this.ctx.doc, this.ctx.tables.sessions, shardCount);
   }
 
   putSession(session: SessionRecord): Promise<void> {
@@ -466,15 +454,6 @@ export class DynamoPlaneStorageBase {
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"];
   }): Promise<boolean> {
     return hostAssignment.releaseTimedOutHostAssignment(this.ctx, opts);
-  }
-
-  releaseLegacyHostAssignment(opts: {
-    sessionId: string;
-    attemptId: string;
-    hostId: string;
-    connectionId: string;
-  }): Promise<boolean> {
-    return hostAssignment.releaseLegacyHostAssignment(this.ctx, opts);
   }
 
   backfillProviderAccountLease(
@@ -1167,16 +1146,6 @@ export class DynamoPlaneStorageBase {
       newNextRunAt,
       lastRunAt,
     );
-  }
-
-  skipOwnerlessScheduleAndAudit(opts: {
-    scheduleId: string;
-    expectedNextRunAt: string;
-    newNextRunAt: string;
-    lastRunAt: string;
-    audit: import("../audit-types.ts").AuditLogRecord;
-  }): Promise<boolean> {
-    return catalog.skipOwnerlessScheduleAndAudit(this.ctx, opts);
   }
 
   disableLegacyFallbackScheduleAndAudit(opts: {

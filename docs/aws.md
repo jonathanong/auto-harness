@@ -345,13 +345,8 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
      way, so a disappeared writer cannot leave retry attributes that sweeps reclaim forever.
      First-time archives persist pending metadata before the PUT so Cron can retry the same key.
      A complete, stored, version-pinned archive keeps that metadata until a replacement object
-     version is committed; a failed replacement leaves the prior complete row downloadable. A
-     complete stored row with no `versionId` records that fenced pending retry metadata before the
-     replacement PUT, so a Lambda timeout or hung upload remains recoverable without clobbering a
-     newer version-pinned complete row. Completing that upload uses the retry fence, not
-     `replaceCompleteArchive`, because the row is no longer complete. An empty transcript on that
-     legacy replacement path uses the same live-claim check as other empty retries, so a stale
-     generation cannot PUT after the queue await if a newer claim already won. Durable empty
+     version is committed; a failed replacement leaves the prior complete row downloadable.
+     Replacement requires `versionId` on the current complete archive. Durable empty
      replacements also re-check the processing claim with the capture fence before the object PUT.
    - Leave DynamoDB rows intact after upload; this archive path never deletes them
      REST and Cron write the object from those workers; there is no separate archival Lambda.
@@ -495,7 +490,7 @@ Triggered every **60 seconds** by EventBridge.
    NotificationDeliveries rows through chat.postMessage / chat.update (bounded per tick)
 6. Archive retry sweep: claim at most 25 durable `objectStored=false` archive rows and retry
    their idempotent `sessions/{sessionId}/logs.jsonl` uploads; failures remain queued for a later
-   tick. Legacy archive rows are backfilled into the retry index one bounded page at a time.
+   tick.
 ```
 
 The running-timeout sweep is a bound, not a grace window: host timeout is best-effort, and a lost or rejected `session:status` must still converge on the next cron tick after `ackReceivedAt + timeout`.
@@ -542,9 +537,9 @@ If a `session:assign` was in flight when drain started, the agent nacks or fails
 3. For sessions `running` on that agent:
    - Prefer **leave running briefly** (agent may reconnect and re-register in-progress sessions), or
    - After grace (e.g. 2 minutes) with no reconnect: mark `failed` or `timed_out`, clear worktree assignment so queue can move to other agents
-4. For an acknowledged v4 assignment whose durable command-start checkpoint is still `pending`,
+4. For an acknowledged assignment whose durable command-start checkpoint is still `pending`,
    the control plane may retry the logical session once as `host_lost` after the disconnect grace
-   expires. A checkpoint in `authorized`, a legacy/v3 assignment, or any ambiguous/post-launch
+   expires. A checkpoint in `authorized` or any ambiguous/post-launch
    loss is terminal; it is never silently duplicated. The retry keeps the original queue deadline
    and concurrency identity but uses a fresh `attemptId`.
 5. Do **not** auto-reassign an in-flight session to another agent (workspace state is on the original disk)
@@ -588,7 +583,7 @@ configured. It also retains the archive metadata row in DynamoDB. Uploads use SS
 keys outside `sessions/{sessionId}/logs.jsonl.gz` and `sessions/{sessionId}/parts/*.jsonl.gz`. Local tests inject an in-memory writer and never
 contact AWS. The DynamoDB row is bounded pointer/state metadata, never a duplicate log body. A
 pending row survives an interrupted S3 PUT so the same idempotent object key can be retried.
-A protocol-v6 deferred terminal-hook handoff withholds that archive write until the handoff
+A deferred terminal-hook handoff withholds that archive write until the handoff
 settles or its 24-hour expiry elapses — including on the storage-less local path for an
 exhausted `checkout_fetch_failed` finish. That storage-less finish also keeps the failed
 worktree or main-checkout lease reserved until the same settlement or expiry, matching the

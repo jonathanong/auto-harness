@@ -2,11 +2,25 @@
 import { describe, expect, it } from "vitest";
 
 import { buildSessionRecord, validateSessionCreate } from "./control-plane-session-create.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createControlPlaneState, type ControlPlaneState } from "./control-plane-state.ts";
+
+function activateRepo(state: ControlPlaneState, id: string): void {
+  state.repositories.set(id, {
+    id,
+    name: id,
+    url: `https://example.test/${id}.git`,
+    defaultBranch: "main",
+    admissionState: "active",
+    admissionStateChangedAt: "t",
+    createdAt: "t",
+    updatedAt: "t",
+  });
+}
 
 describe("session creation preparation", () => {
   it("rejects malformed bodies and unknown targets", () => {
     const state = createControlPlaneState();
+    activateRepo(state, "repo-1");
     expect(validateSessionCreate(state, null)).toMatchObject({ ok: false });
     expect(
       validateSessionCreate(state, {
@@ -23,6 +37,7 @@ describe("session creation preparation", () => {
       idFactory: () => "session-1",
       now: () => "2026-01-01T00:00:00.000Z",
     });
+    activateRepo(state, "repo-1");
     state.commands.set("command-1", {
       id: "command-1",
       name: "command",
@@ -52,6 +67,7 @@ describe("session creation preparation", () => {
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 2,
     });
+    activateRepo(state, "repo-1");
     state.commands.set("command-1", {
       id: "command-1",
       name: "command",

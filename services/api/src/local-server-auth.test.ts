@@ -113,23 +113,23 @@ describe("createLocalApp authentication routes", () => {
         })
       ).status,
     ).toBe(401);
-    const legacyDaemon = await invoke("POST", "/api/v1/auth/service-accounts", {
-      name: "legacy-daemon",
-      role: "operator",
+    const boundDaemon = await invoke("POST", "/api/v1/auth/service-accounts", {
+      name: "bound-daemon",
+      role: "agent",
       boundHostId: "host-a",
     });
-    expect(legacyDaemon.status).toBe(201);
-    expect(legacyDaemon.json).toMatchObject({
-      account: { name: "legacy-daemon", role: "agent", boundHostId: "host-a" },
+    expect(boundDaemon.status).toBe(201);
+    expect(boundDaemon.json).toMatchObject({
+      account: { name: "bound-daemon", role: "agent", boundHostId: "host-a" },
     });
-    const remappedUser = await invoke("POST", "/api/v1/auth/users", {
+    const scopedMaintainer = await invoke("POST", "/api/v1/auth/users", {
       username: "repo-admin",
       password: "password",
-      role: "admin",
+      role: "maintainer",
       allowedRepositoryIds: ["repo-a"],
     });
-    expect(remappedUser.status).toBe(201);
-    expect(remappedUser.json).toMatchObject({ username: "repo-admin", role: "maintainer" });
+    expect(scopedMaintainer.status).toBe(201);
+    expect(scopedMaintainer.json).toMatchObject({ username: "repo-admin", role: "maintainer" });
     expect((await invoke("DELETE", "/api/v1/auth/users/repo-admin")).status).toBe(204);
     const scopedAccount = await invoke("POST", "/api/v1/auth/service-accounts", {
       name: "agent-b",
@@ -143,11 +143,13 @@ describe("createLocalApp authentication routes", () => {
       ]),
     });
     const accountId = (account.json as { account: { id: string } }).account.id;
-    const legacyId = (legacyDaemon.json as { account: { id: string } }).account.id;
+    const boundDaemonId = (boundDaemon.json as { account: { id: string } }).account.id;
     const scopedId = (scopedAccount.json as { account: { id: string } }).account.id;
     expect((await invoke("DELETE", `/api/v1/auth/service-accounts/${accountId}`)).status).toBe(204);
     expect((await invoke("DELETE", `/api/v1/auth/service-accounts/${accountId}`)).status).toBe(404);
-    expect((await invoke("DELETE", `/api/v1/auth/service-accounts/${legacyId}`)).status).toBe(204);
+    expect((await invoke("DELETE", `/api/v1/auth/service-accounts/${boundDaemonId}`)).status).toBe(
+      204,
+    );
     expect((await invoke("DELETE", `/api/v1/auth/service-accounts/${scopedId}`)).status).toBe(204);
     expect((await invoke("DELETE", "/api/v1/auth/users/alice")).status).toBe(204);
     expect((await invoke("DELETE", "/api/v1/auth/users/alice")).status).toBe(404);

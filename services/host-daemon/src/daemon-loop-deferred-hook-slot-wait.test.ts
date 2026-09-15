@@ -86,7 +86,7 @@ describe("DaemonLoop deferred hook slot wait", () => {
         },
       };
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver(assignment("checkout-failure", "wt-1"));
       await waitFor(() =>
         sent.some(
@@ -159,7 +159,7 @@ describe("DaemonLoop deferred hook slot wait", () => {
           }),
       } as never);
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver({
         type: "session:status-acknowledged",
         sessionId: "lost",

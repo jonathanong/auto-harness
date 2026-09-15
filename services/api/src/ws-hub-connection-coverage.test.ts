@@ -43,6 +43,19 @@ describe("WebSocket hub connection guards", () => {
       await waitForMessage(rebound, "host:registered");
       rebound.send(JSON.stringify(register("host-2")));
       expect(await waitForClose(rebound)).toBe(1008);
+
+      const noSession = await open(`${harness.origin}/ws`);
+      noSession.send(JSON.stringify(register("host-no-session")));
+      await waitForMessage(noSession, "host:registered");
+      noSession.send(
+        JSON.stringify({
+          type: "session:ack",
+          sessionId: "missing-session",
+          worktreeId: null,
+          attemptId: "attempt-1",
+        }),
+      );
+      expect(await waitForClose(noSession)).toBe(1008);
     } finally {
       await harness.close();
     }
@@ -180,10 +193,15 @@ function register(hostId: string, worktreeId?: string) {
   return {
     type: "host:register" as const,
     hostId,
+    protocolVersion: 7,
+    daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+    daemonStartedAt: "2026-08-11T00:00:00.000Z",
+    runningAttempts: [],
     worktrees: worktreeId
       ? [{ id: worktreeId, name: worktreeId, repositoryId: "repo", path: "/worktree", labels: [] }]
       : [],
     commandProfiles: [],
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
   };
 }
 

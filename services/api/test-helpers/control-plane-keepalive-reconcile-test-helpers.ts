@@ -11,7 +11,7 @@ export function connectionRecord() {
     lastHeartbeatAt: NOW,
     commandProfiles: [],
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-    protocolVersion: 1,
+    protocolVersion: 7,
   };
 }
 

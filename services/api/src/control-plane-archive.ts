@@ -9,7 +9,6 @@ import {
   archiveGeneration,
   isCompleteStoredArchive,
   publishCompleteArchiveReplacement,
-  queueLegacyArchiveRetry,
   readArchiveMetadata,
 } from "./control-plane-archive-replace.ts";
 
@@ -96,8 +95,8 @@ export async function archiveSessionLogs(
     contentType: "application/x-ndjson",
   };
   const current = retryClaim ? null : await readArchiveMetadata(state, key);
-  const replacement = isCompleteStoredArchive(current) ? archiveGeneration(current) : null;
-  const legacyUnversioned = isCompleteStoredArchive(current) && !current.versionId;
+  const replacement =
+    isCompleteStoredArchive(current) && current.versionId ? archiveGeneration(current) : null;
   const retryOrder = retryClaim?.retryOrder ?? `${state.now()}#${key}`;
   const pending: ArchiveMetadata = {
     key,
@@ -126,36 +125,28 @@ export async function archiveSessionLogs(
     state.archives.set(object.key, complete);
     return object;
   }
-  if (legacyUnversioned && replacement && !ownedRetry) {
-    const retryPending: ArchiveMetadata = { ...pending, retryState: "processing" };
-    const queued = await queueLegacyArchiveRetry(state, retryPending, replacement);
-    if (!queued) return object;
-    ownedRetry = {
-      retryState: "processing",
-      retryOrder,
-    };
-  }
   if (ownedRetry && pending.bodyBytes === 0) {
     const claimed = state.archives.get(object.key);
     if (!state.storage && liveInMemoryClaimBlocksEmptyExpiry(claimed, ownedRetry.retryOrder)) {
       return object;
     }
-    if (!replacement) {
-      const existing = state.storage ? await state.storage.getArchive(object.key) : claimed;
-      if (archiveRetentionElapsed(state.now(), [existing?.updatedAt])) {
-        const logsRemain = await recentLogsRemain(state, sessionId);
-        const latest = state.archives.get(object.key);
-        if (!state.storage && liveInMemoryClaimBlocksEmptyExpiry(latest, ownedRetry.retryOrder)) {
-          return object;
-        }
-        if (logsRemain) return object;
-        await persistExpiredArchive(state, object.key, {
-          ...pending,
-          retryState: "processing",
-          retryOrder: ownedRetry.retryOrder,
-        });
+    // `replacement` is only ever set from `current`, and `current` is forced to `null`
+    // whenever `retryClaim` (hence `ownedRetry`) is supplied a few lines up -- so
+    // `replacement` is always falsy here. No test can make this `false`.
+    const existing = state.storage ? await state.storage.getArchive(object.key) : claimed;
+    if (archiveRetentionElapsed(state.now(), [existing?.updatedAt])) {
+      const logsRemain = await recentLogsRemain(state, sessionId);
+      const latest = state.archives.get(object.key);
+      if (!state.storage && liveInMemoryClaimBlocksEmptyExpiry(latest, ownedRetry.retryOrder)) {
         return object;
       }
+      if (logsRemain) return object;
+      await persistExpiredArchive(state, object.key, {
+        ...pending,
+        retryState: "processing",
+        retryOrder: ownedRetry.retryOrder,
+      });
+      return object;
     }
   }
   if (

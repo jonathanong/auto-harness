@@ -15,6 +15,7 @@ describe("storage-less register rollback winner socket assignment", () => {
   it("delivers the requeued assign on the published winner, not the closing loser", async () => {
     const plane = new ControlPlane({ idFactory: () => "claimed" });
     seedBaseCommand(plane);
+    plane.createRepository({ id: "r", name: "r", url: "https://example.test/r.git" });
     const host = plane.registerHost({
       hostId: "h",
       worktrees: [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }],

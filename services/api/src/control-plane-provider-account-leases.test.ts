@@ -2,7 +2,6 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { backfillLegacyProviderAccountLeases } from "./control-plane-hydrate-provider-leases.ts";
 import {
   accountHasLeaseCapacity,
   accountHasLeaseCapacityOverCap,
@@ -49,6 +48,13 @@ function seedAccountPlane(opts?: { maxConcurrentSessions?: number; ready?: boole
     shardCount: 1,
     heartbeatStaleMs: 1,
   });
+  expect(
+    plane.createRepository({
+      id: "repo-1",
+      name: "repo-1",
+      url: "https://example.test/repo-1.git",
+    }).ok,
+  ).toBe(true);
   expect(plane.createProvider({ id: "prov-1", name: "claude" }).ok).toBe(true);
   expect(
     plane.createCommand({
@@ -94,7 +100,7 @@ function seedAccountPlane(opts?: { maxConcurrentSessions?: number; ready?: boole
         { id: "wt-1", name: "wt-1", repositoryId: "repo-1", path: "/repo/wt-1", labels: [] },
         { id: "wt-2", name: "wt-2", repositoryId: "repo-1", path: "/repo/wt-2", labels: [] },
       ],
-      protocolVersion: 1,
+      protocolVersion: 7,
       ...(opts?.ready === false
         ? {}
         : {
@@ -122,175 +128,7 @@ function createProviderSession(plane: ControlPlane, prompt: string): void {
   ).toBe(true);
 }
 
-function accountsMap(maxConcurrentSessions: number) {
-  return new Map([
-    [
-      "acct",
-      {
-        id: "acct",
-        providerId: "p",
-        label: "a",
-        createdAt: NOW,
-        updatedAt: NOW,
-        maxConcurrentSessions,
-      },
-    ],
-  ]);
-}
-
 describe("provider account execution-profile leases", () => {
-  it("retries another slot after a concurrent legacy lease backfill", async () => {
-    const sessions = ["a", "b"].map((id) => ({
-      id,
-      status: "running",
-      hostId: "host",
-      attemptId: `${id}-attempt`,
-      resolvedRoute: {
-        targetIndex: 0,
-        providerAccountId: "acct",
-        commandId: "command",
-        hostId: "host",
-        worktreeId: null,
-        attemptId: `${id}-attempt`,
-      },
-    })) as never[];
-    sessions.push({
-      id: "invalid",
-      status: "running",
-      hostId: "host",
-      resolvedRoute: { providerAccountId: "acct", hostId: "host" },
-    } as never);
-    let calls = 0;
-    await backfillLegacyProviderAccountLeases(
-      {
-        storage: {
-          backfillProviderAccountLease: async (opts: { slot: number }) => {
-            calls += 1;
-            if (calls === 1) return { status: "lease_collision" };
-            return {
-              status: "migrated",
-              lease: {
-                concurrencyId: `provider-lease:acct:${String(opts.slot)}`,
-                providerAccountId: "acct",
-                slot: opts.slot,
-                attemptId: "attempt",
-              },
-            };
-          },
-        },
-        providerAccounts: accountsMap(3),
-      } as never,
-      sessions,
-    );
-    expect(calls).toBe(3);
-    expect(sessions[0]).toHaveProperty("providerAccountLease.slot", 1);
-    expect(sessions[1]).toHaveProperty("providerAccountLease.slot", 2);
-  });
-
-  it("caps a legacy backfill hydrate at the account's maxConcurrentSessions", async () => {
-    const sessions = ["a", "b"].map((id) => ({
-      id,
-      status: "running",
-      hostId: "host",
-      attemptId: `${id}-attempt`,
-      resolvedRoute: {
-        targetIndex: 0,
-        providerAccountId: "acct",
-        commandId: "command",
-        hostId: "host",
-        worktreeId: null,
-        attemptId: `${id}-attempt`,
-      },
-    })) as never[];
-    let calls = 0;
-    await backfillLegacyProviderAccountLeases(
-      {
-        storage: {
-          backfillProviderAccountLease: async (opts: { slot: number }) => {
-            calls += 1;
-            return {
-              status: "migrated",
-              lease: {
-                concurrencyId: `provider-lease:acct:${String(opts.slot)}`,
-                providerAccountId: "acct",
-                slot: opts.slot,
-                attemptId: "attempt",
-              },
-            };
-          },
-        },
-        providerAccounts: accountsMap(1),
-      } as never,
-      sessions,
-    );
-    // Only one candidate should ever reach storage: the second must not be
-    // migrated into a slot beyond the account's maxConcurrentSessions of 1.
-    expect(calls).toBe(1);
-    expect(sessions[0]).toHaveProperty("providerAccountLease.slot", 0);
-    expect(sessions[1]).not.toHaveProperty("providerAccountLease");
-  });
-
-  it("handles a legacy session fenced by another hydrator", async () => {
-    const session = {
-      id: "changed",
-      status: "running",
-      hostId: "host",
-      attemptId: "attempt",
-      resolvedRoute: {
-        targetIndex: 0,
-        providerAccountId: "acct",
-        commandId: "command",
-        hostId: "host",
-        worktreeId: null,
-        attemptId: "attempt",
-      },
-    } as never;
-    await backfillLegacyProviderAccountLeases(
-      {
-        storage: {
-          backfillProviderAccountLease: async () => ({ status: "session_changed" }),
-        },
-        providerAccounts: accountsMap(1),
-      } as never,
-      [session],
-    );
-    expect(session).not.toHaveProperty("providerAccountLease");
-  });
-
-  it("hydrates a lease observed after another hydrator wins", async () => {
-    const lease = {
-      concurrencyId: "provider-lease:acct:0",
-      providerAccountId: "acct",
-      slot: 0,
-      attemptId: "attempt",
-    };
-    const session = {
-      id: "changed",
-      status: "running",
-      hostId: "host",
-      attemptId: "attempt",
-      resolvedRoute: {
-        targetIndex: 0,
-        providerAccountId: "acct",
-        commandId: "command",
-        hostId: "host",
-        worktreeId: null,
-        attemptId: "attempt",
-      },
-    } as never;
-    await backfillLegacyProviderAccountLeases(
-      {
-        storage: {
-          backfillProviderAccountLease: async () => ({ status: "session_changed" }),
-          getSession: async () => ({ providerAccountLease: lease }),
-        },
-        providerAccounts: accountsMap(1),
-      } as never,
-      [session],
-    );
-    expect(session.providerAccountLease).toEqual(lease);
-  });
-
   it("fails closed when the exact account profile is not advertised as ready", () => {
     const plane = seedAccountPlane({ ready: false });
     const created = plane.createSession({
@@ -969,36 +807,8 @@ describe("provider account execution-profile leases", () => {
 
   it("rebuilds in-memory leases from running sessions on hydrate", async () => {
     const plane = new ControlPlane();
-    let backfilled: { sessionId: string; slot: number } | undefined;
     plane.state.storage = {
       listAllSessions: async () => [
-        {
-          id: "legacy",
-          repositoryId: "repo",
-          prompt: "p",
-          target: { commandId: "c" },
-          fallbacks: [],
-          targetDisplayNames: [],
-          queueTtlSeconds: 1,
-          queueExpiresAt: NOW,
-          timeout: 1,
-          priority: 0,
-          requiredLabels: [],
-          status: "running",
-          queueShard: 0,
-          createdAt: NOW,
-          hostId: "host",
-          attemptId: "legacy-attempt",
-          resolvedRoute: {
-            targetIndex: 0,
-            providerId: "p",
-            providerAccountId: "acct",
-            commandId: "c",
-            hostId: "host",
-            worktreeId: null,
-            attemptId: "legacy-attempt",
-          },
-        },
         {
           id: "running",
           repositoryId: "repo",
@@ -1088,30 +898,14 @@ describe("provider account execution-profile leases", () => {
       listArchives: async () => [],
       listAllAuditLogs: async () => [],
       listLogs: async () => [],
-      backfillProviderAccountLease: async (opts: { sessionId: string; slot: number }) => {
-        backfilled = opts;
-        return {
-          status: "migrated",
-          lease: {
-            concurrencyId: "provider-lease:acct:1",
-            providerAccountId: "acct",
-            slot: opts.slot,
-            attemptId: "legacy-attempt",
-          },
-        };
-      },
     } as never;
     await plane.hydrateFromStorage();
     expect(plane.state.providerAccountLeases.get("provider-lease:acct:0")).toMatchObject({
       sessionId: "running",
       attemptId: "attempt",
     });
-    expect(plane.state.providerAccountLeases.has("provider-lease:acct:1")).toBe(true);
+    expect(plane.state.providerAccountLeases.has("provider-lease:acct:1")).toBe(false);
     expect(plane.state.providerAccountLeases.has("provider-lease:acct:2")).toBe(false);
-    expect(backfilled).toMatchObject({ sessionId: "legacy", slot: 1 });
-    expect(plane.getSession("legacy")?.providerAccountLease?.concurrencyId).toBe(
-      "provider-lease:acct:1",
-    );
     expect(plane.getProviderAccount("acct")?.maxConcurrentSessions).toBe(2);
   });
 
@@ -1282,9 +1076,8 @@ describe("provider account execution-profile leases", () => {
     });
   });
 
-  it("does not resurrect a released cancelled session as a new backfill candidate", async () => {
+  it("does not resurrect a released cancelled session as a lease occupant", async () => {
     const plane = new ControlPlane();
-    let backfillCalled = false;
     plane.state.storage = {
       listAllSessions: async () => [
         {
@@ -1326,83 +1119,10 @@ describe("provider account execution-profile leases", () => {
       listArchives: async () => [],
       listAllAuditLogs: async () => [],
       listLogs: async () => [],
-      backfillProviderAccountLease: async () => {
-        backfillCalled = true;
-        throw new Error("must not backfill a released cancelled session");
-      },
     } as never;
     await plane.hydrateFromStorage();
-    expect(backfillCalled).toBe(false);
     expect(plane.getSession("released")).not.toHaveProperty("providerAccountLease");
     expect(plane.state.providerAccountLeases.has("provider-lease:acct:0")).toBe(false);
-  });
-
-  it("backfills a cancelled session still mid-release as a legacy candidate", async () => {
-    const plane = new ControlPlane();
-    let backfilled: { sessionId: string; slot: number } | undefined;
-    plane.state.storage = {
-      listAllSessions: async () => [
-        {
-          id: "mid-release",
-          repositoryId: "repo",
-          prompt: "p",
-          target: { commandId: "c" },
-          fallbacks: [],
-          targetDisplayNames: [],
-          queueTtlSeconds: 1,
-          queueExpiresAt: NOW,
-          timeout: 1,
-          priority: 0,
-          requiredLabels: [],
-          status: "cancelled",
-          queueShard: 0,
-          createdAt: NOW,
-          hostId: "host",
-          attemptId: "legacy-attempt",
-          worktreeId: "worktree",
-          resolvedRoute: {
-            targetIndex: 0,
-            providerAccountId: "acct",
-            commandId: "c",
-            hostId: "host",
-            worktreeId: "worktree",
-            attemptId: "legacy-attempt",
-          },
-          // providerAccountLease intentionally absent: not yet acked by the host,
-          // so release hasn't run and worktreeId is still set.
-        },
-      ],
-      listAllWorktrees: async () => [],
-      listConnections: async () => [],
-      listSchedules: async () => [],
-      listRepositories: async () => [],
-      listHostInventories: async () => [],
-      listProviders: async () => [],
-      listProviderAccounts: async () => [
-        { id: "acct", providerId: "p", label: "a", createdAt: NOW, updatedAt: NOW },
-      ],
-      listCommands: async () => [],
-      listArchives: async () => [],
-      listAllAuditLogs: async () => [],
-      listLogs: async () => [],
-      backfillProviderAccountLease: async (opts: { sessionId: string; slot: number }) => {
-        backfilled = opts;
-        return {
-          status: "migrated",
-          lease: {
-            concurrencyId: `provider-lease:acct:${String(opts.slot)}`,
-            providerAccountId: "acct",
-            slot: opts.slot,
-            attemptId: "legacy-attempt",
-          },
-        };
-      },
-    } as never;
-    await plane.hydrateFromStorage();
-    expect(backfilled).toMatchObject({ sessionId: "mid-release", slot: 0 });
-    expect(plane.getSession("mid-release")?.providerAccountLease?.concurrencyId).toBe(
-      "provider-lease:acct:0",
-    );
   });
 
   it("skips occupied slots when acquiring a local lease", () => {
@@ -1588,14 +1308,9 @@ describe("provider account execution-profile leases", () => {
     expect(local).toHaveProperty("result", firstResult);
 
     const durableCalls: unknown[] = [];
-    const legacyCalls: unknown[] = [];
     state.storage = {
       releaseTimedOutProviderAccountLease: async (opts: unknown) => {
         durableCalls.push(opts);
-        return true;
-      },
-      releaseLegacyHostAssignment: async (opts: unknown) => {
-        legacyCalls.push(opts);
         return true;
       },
     } as never;
@@ -1632,19 +1347,10 @@ describe("provider account execution-profile leases", () => {
     );
     expect(durableCalls[1]).not.toHaveProperty("hostAssignmentLease");
     expect(durableCalls[2]).not.toHaveProperty("hostAssignmentLease");
-    expect(legacyCalls).toEqual([
-      {
-        sessionId: "timed-out",
-        attemptId: "timed-out-attempt",
-        hostId: "timed-out-host",
-        connectionId: "timed-out-connection",
-      },
-    ]);
 
     const hostCleanup = vi.fn(async () => true);
     state.storage = {
       releaseTimedOutHostAssignment: hostCleanup,
-      releaseLegacyHostAssignment: async () => true,
     } as never;
     const legacyTimeout = {
       id: "legacy-timeout",

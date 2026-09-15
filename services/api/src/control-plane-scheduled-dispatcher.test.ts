@@ -10,11 +10,17 @@ import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
 const NOW = "2026-01-01T00:00:00.000Z";
 
 function makePlane(over: ConstructorParameters<typeof ControlPlane>[0] = {}) {
-  return new ControlPlane({
+  const plane = new ControlPlane({
     now: () => NOW,
     shardCount: 1,
     ...over,
   });
+  plane.createRepository({
+    id: "repo-1",
+    name: "repo-1",
+    url: "https://example.test/repo-1.git",
+  });
+  return plane;
 }
 
 function seedCommand(plane: ControlPlane, id = "cmd") {

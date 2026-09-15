@@ -116,3 +116,43 @@ it("returns not found when a durable schedule disappears after its delete fence 
     error: "schedule not found",
   });
 });
+
+it("rejects updates to a schedule row that predates ownership", async () => {
+  const current = state();
+  const created = await putScheduleDurable(current, { ...input, repositoryId: "repository" });
+  if (!created.ok) throw new Error(created.error);
+  delete current.schedules.get(created.schedule.id)!.principalId;
+  expect(updateSchedule(current, created.schedule.id, { name: "renamed" })).toEqual({
+    ok: false,
+    error: "schedule must be claimed by an authenticated principal",
+  });
+});
+
+it("rejects a patch that tries to reassign an owned schedule's principal", async () => {
+  const current = state();
+  const created = await putScheduleDurable(current, { ...input, repositoryId: "repository" });
+  if (!created.ok) throw new Error(created.error);
+  expect(current.schedules.get(created.schedule.id)?.principalId).toBe("system");
+  expect(updateSchedule(current, created.schedule.id, { principalId: "someone-else" })).toEqual({
+    ok: false,
+    error: "schedule ownership cannot be transferred",
+  });
+});
+
+it("falls back to the default concurrency id when a legacy row has none", async () => {
+  const current = state();
+  const created = await putScheduleDurable(current, {
+    ...input,
+    repositoryId: "repository",
+    concurrencyId: "custom-lock",
+  });
+  if (!created.ok) throw new Error(created.error);
+  expect(created.schedule.concurrencyId).toBe("custom-lock");
+  // Simulate a legacy row persisted before concurrencyId was mandatory: dropping it here
+  // means the update path must fall back to `schedule-<id>` rather than keep "custom-lock".
+  delete current.schedules.get(created.schedule.id)!.concurrencyId;
+  expect(updateSchedule(current, created.schedule.id, { name: "renamed" })).toMatchObject({
+    ok: true,
+    schedule: { concurrencyId: `schedule-${created.schedule.id}` },
+  });
+});

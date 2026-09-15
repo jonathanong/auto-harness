@@ -26,14 +26,7 @@ describe("createPlaneWsBridge", () => {
     const closeCode = await new Promise<number>((resolve, reject) => {
       const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
       ws.on("open", () => {
-        ws.send(
-          JSON.stringify({
-            type: "host:register",
-            hostId: "a1",
-            worktrees: [],
-            commandProfiles: [],
-          }),
-        );
+        ws.send(JSON.stringify(hostRegistration("a1")));
         ws.send(
           JSON.stringify({ type: "host:keepalive", hostId: "a1", at: new Date().toISOString() }),
         );
@@ -58,6 +51,11 @@ describe("createPlaneWsBridge", () => {
       hostId: "a1",
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
       commandProfiles: ["echo-prompt"],
+      protocolVersion: HOST_PROTOCOL_VERSION,
+      daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+      daemonStartedAt: "2026-08-11T00:00:00.000Z",
+      runningAttempts: [],
+      runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
     };
     expect(parseHostMessage(valid)).toEqual(valid);
     expect(
@@ -114,18 +112,14 @@ describe("createPlaneWsBridge", () => {
       attemptId: "attempt-1",
       deferTerminalHookResult: true,
     };
-    expect(parseHostMessage(deferredStatus, { protocolVersion: 5 })).toBe(null);
-    expect(parseHostMessage(deferredStatus, { protocolVersion: 6 })).toMatchObject(deferredStatus);
+    expect(parseHostMessage(deferredStatus)).toMatchObject(deferredStatus);
     const handoffCompletion = {
       type: "session:terminal-hook-complete",
       sessionId: "s",
       handoffId: "handoff",
       result: { summary: "post-hook", summarySource: "harness" },
     };
-    expect(parseHostMessage(handoffCompletion, { protocolVersion: 5 })).toBe(null);
-    expect(parseHostMessage(handoffCompletion, { protocolVersion: 6 })).toMatchObject(
-      handoffCompletion,
-    );
+    expect(parseHostMessage(handoffCompletion)).toMatchObject(handoffCompletion);
     expect(
       parseHostMessage({
         type: "session:status",
@@ -192,6 +186,11 @@ describe("createPlaneWsBridge", () => {
       idFactory: () => "sess-1",
       shardCount: 1,
     });
+    plane.createRepository({
+      id: "r1",
+      name: "r1",
+      url: "https://example.test/r1.git",
+    });
     plane.createCommand({
       id: "cmd-echo",
       name: "echo-prompt",
@@ -231,7 +230,10 @@ describe("createPlaneWsBridge", () => {
           JSON.stringify({
             type: "host:register",
             hostId: "a1",
-            protocolVersion: 1,
+            protocolVersion: HOST_PROTOCOL_VERSION,
+            daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+            daemonStartedAt: "2026-08-11T00:00:00.000Z",
+            runningAttempts: [],
             worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
             commandProfiles: ["echo-prompt"],
             runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
@@ -331,16 +333,7 @@ describe("createPlaneWsBridge", () => {
     const received: unknown[] = [];
     await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
-      ws.on("open", () =>
-        ws.send(
-          JSON.stringify({
-            type: "host:register",
-            hostId: "a1",
-            worktrees: [],
-            commandProfiles: [],
-          }),
-        ),
-      );
+      ws.on("open", () => ws.send(JSON.stringify(hostRegistration("a1"))));
       ws.on("message", (raw) => {
         const message = JSON.parse(String(raw)) as { type: string };
         received.push(message);
@@ -401,43 +394,13 @@ describe("createPlaneWsBridge", () => {
     await opened.close();
   });
 
-  it("accepts legacy session logs without attemptId after protocol version 0 registration", async () => {
-    const bridge = createPlaneWsBridge({ logBatchDelayMs: 1 });
-    const plane = new ControlPlane();
-    const opened = await openRegisteredHost({
-      bridge,
-      plane,
-      registration: hostRegistration("legacy-host", 0),
-    });
-    plane.state.sessions.set("sess-1", {
-      id: "sess-1",
-      hostId: "legacy-host",
-      attemptId: "owned-attempt",
-      status: "running",
-    } as never);
-    opened.ws.send(
-      JSON.stringify({
-        type: "session:log",
-        sessionId: "sess-1",
-        stream: "stdout",
-        content: "legacy",
-        timestamp: "2026-01-01T00:00:00.000Z",
-        seq: 1,
-      }),
-    );
-    await vi.waitFor(() =>
-      expect(plane.getLogs("sess-1").map((record) => record.content)).toEqual(["legacy"]),
-    );
-    await opened.close();
-  });
-
   it("rejects logs missing attemptId on a fenced protocol connection", async () => {
     const bridge = createPlaneWsBridge();
     const plane = new ControlPlane();
     const opened = await openRegisteredHost({
       bridge,
       plane,
-      registration: hostRegistration("modern-host", 1),
+      registration: hostRegistration("modern-host"),
     });
     plane.state.sessions.set("sess-1", {
       id: "sess-1",
@@ -461,18 +424,18 @@ describe("createPlaneWsBridge", () => {
     await opened.close();
   });
 
-  it("does not disconnect a host that emits a delayed log for a reassigned session", async () => {
-    const bridge = createPlaneWsBridge({ logBatchDelayMs: 1 });
+  it("rejects session logs on the control-plane websocket", async () => {
+    const bridge = createPlaneWsBridge();
     const plane = new ControlPlane();
     const opened = await openRegisteredHost({
       bridge,
       plane,
-      registration: hostRegistration("old-host", 1),
+      registration: hostRegistration("old-host"),
     });
     seedReassignedSession(plane);
+    const closeCode = waitForClose(opened.ws);
     opened.ws.send(sessionLog({ attemptId: "attempt-1", content: "stale" }));
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    expect(opened.ws.readyState).toBe(WebSocket.OPEN);
+    expect(await closeCode).toBe(1008);
     expect(plane.getLogs("sess-1")).toEqual([]);
     await opened.close();
   });
@@ -483,7 +446,7 @@ describe("createPlaneWsBridge", () => {
     const opened = await openRegisteredHost({
       bridge,
       plane,
-      registration: hostRegistration("old-host", 1),
+      registration: hostRegistration("old-host"),
     });
     seedReassignedSession(plane);
     const closeCode = waitForClose(opened.ws);
@@ -498,7 +461,7 @@ describe("createPlaneWsBridge", () => {
     const opened = await openRegisteredHost({
       bridge,
       plane,
-      registration: hostRegistration("old-host", 1),
+      registration: hostRegistration("old-host"),
     });
     seedReassignedSession(plane);
     opened.ws.send(
@@ -520,7 +483,7 @@ describe("createPlaneWsBridge", () => {
     const opened = await openRegisteredHost({
       bridge,
       plane,
-      registration: hostRegistration("old-host", 1),
+      registration: hostRegistration("old-host"),
     });
     seedReassignedSession(plane);
     const closeCode = waitForClose(opened.ws);
@@ -542,7 +505,7 @@ describe("createPlaneWsBridge", () => {
     const opened = await openRegisteredHost({
       bridge,
       plane,
-      registration: hostRegistration("a1", 1),
+      registration: hostRegistration("a1"),
     });
     const at = "2026-09-07T00:00:00.000Z";
     const ack = await new Promise<unknown>((resolve, reject) => {
@@ -624,7 +587,7 @@ describe("createPlaneWsBridge", () => {
     const opened = await openRegisteredHost({
       bridge,
       plane,
-      registration: hostRegistration("orphan-host", 1),
+      registration: hostRegistration("orphan-host"),
     });
     const closeCode = waitForClose(opened.ws);
     opened.ws.send(sessionLog({ sessionId: "missing", attemptId: "attempt-1", content: "orphan" }));
@@ -635,15 +598,18 @@ describe("createPlaneWsBridge", () => {
 
 type Bridge = ReturnType<typeof createPlaneWsBridge>;
 
-function hostRegistration(hostId: string, protocolVersion?: number) {
+function hostRegistration(hostId: string, protocolVersion = HOST_PROTOCOL_VERSION) {
   return {
     type: "host:register",
     hostId,
-    ...(protocolVersion === undefined ? {} : { protocolVersion }),
+    protocolVersion,
+    daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+    daemonStartedAt: "2026-08-11T00:00:00.000Z",
+    runningAttempts: [],
     worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
     commandProfiles: [],
     runtime: {
-      daemonVersion: protocolVersion === 0 ? "0.0.0" : "1.0.0",
+      daemonVersion: "1.0.0",
       gitVersion: "2.36.0",
       gitReady: true,
     },

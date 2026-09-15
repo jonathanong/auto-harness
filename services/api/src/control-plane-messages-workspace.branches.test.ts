@@ -31,6 +31,58 @@ it("releases a local workspace slot and preserves the operator error", async () 
   });
 });
 
+it("stamps a fresh completedAt and forwards the write fence for a retained cancelled workspace handoff", async () => {
+  const { plane } = workspacePlane();
+  const session = createWorkspaceSession(plane);
+  await assignWorkspaceQueuedDurable(plane.state);
+  const current = plane.state.sessions.get(session.id)!;
+  current.status = "cancelled";
+  delete current.completedAt;
+  plane.state.sessions.set(session.id, current);
+  let persisted = current;
+  const finishSession = vi.fn(async (options: Record<string, unknown>) => {
+    persisted = {
+      ...current,
+      terminalHookHandoff: options.terminalHookHandoff as never,
+      completedAt: options.completedAt as string,
+    };
+    return true;
+  });
+  plane.state.storage = {
+    getSession: async () => persisted,
+    getHostLock: async () => "fence-connection",
+    finishSession,
+    putArchive: async () => undefined,
+  } as never;
+
+  await expect(
+    handleHostMessageDurable(
+      plane.state,
+      {
+        type: "session:status",
+        sessionId: session.id,
+        worktreeId: null,
+        attemptId: current.attemptId!,
+        status: "completed",
+        deferTerminalHookResult: true,
+      },
+      "fence-connection",
+    ),
+  ).resolves.toMatchObject({
+    ok: true,
+    sessionStatusAcknowledged: { terminalHookHandoffId: expect.any(String) },
+  });
+  // No `completedAt` was stamped yet, and the report arrived on the host's
+  // current connection, so the retained finish must fall back to the current
+  // time and forward that connection as the write fence.
+  expect(finishSession).toHaveBeenCalledWith(
+    expect.objectContaining({
+      completedAt: "2026-09-12T00:00:00.000Z",
+      fence: { hostId: "host-1", connectionId: "fence-connection" },
+    }),
+  );
+});
+
 it("handles a late durable terminal from a timed-out workspace attempt", async () => {
   const { plane } = workspacePlane();
   const session = createWorkspaceSession(plane);
@@ -328,5 +380,60 @@ it("fences workspace suppression cleanup when the slot ownership or lease metada
   expect(mismatched.plane.state.workspaceSlots.get("slot-1")).toMatchObject({
     status: "busy",
     currentSessionId: "another-session",
+  });
+});
+
+it("carries an existing provider lease and omits an unset host lease or message text", async () => {
+  const { plane } = workspacePlane();
+  const session = createWorkspaceSession(plane);
+  await assignWorkspaceQueuedDurable(plane.state);
+  const current = plane.state.sessions.get(session.id)!;
+  current.providerAccountLease = {
+    concurrencyId: "concurrency-1",
+    providerAccountId: "account-1",
+    slot: 0,
+    attemptId: current.attemptId!,
+  };
+  delete current.hostAssignmentLease;
+  plane.state.sessions.set(session.id, current);
+  const suppress = vi.fn(async () => true);
+  plane.state.storage = {
+    getSession: async () => current,
+    suppressProviderlessUsageLimitWorkspace: suppress,
+    releaseProviderAccountLease: async () => undefined,
+  } as never;
+
+  await expect(
+    handleHostMessageDurable(plane.state, {
+      type: "session:status",
+      sessionId: session.id,
+      worktreeId: null,
+      attemptId: current.attemptId!,
+      status: "failed",
+      errorCode: "usage_limit",
+      workspaceSlotError: "cleanup failed",
+    }),
+  ).resolves.toMatchObject({ ok: true });
+  expect(suppress).toHaveBeenCalledTimes(1);
+  const suppressOpts = suppress.mock.calls[0]![0] as Record<string, unknown>;
+  expect(suppressOpts).toMatchObject({
+    providerAccountLease: {
+      concurrencyId: "concurrency-1",
+      providerAccountId: "account-1",
+      slot: 0,
+    },
+  });
+  expect(suppressOpts).not.toHaveProperty("hostAssignmentLease");
+  expect(suppressOpts).not.toHaveProperty("errorMessage");
+  expect(plane.state.workspaceSlots.get("slot-1")).toMatchObject({
+    status: "error",
+    currentSessionId: null,
+    errorMessage: "cleanup failed",
+  });
+  expect(plane.state.sessions.get(session.id)).toMatchObject({
+    status: "queued",
+    workspaceSlotId: null,
+    hostId: null,
+    suppressedTargetIndexes: [0],
   });
 });

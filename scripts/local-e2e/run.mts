@@ -40,6 +40,12 @@ export async function createSessionViaApi(): Promise<{
     appendPrompt: true,
     providerId: null,
   });
+  plane.createRepository({
+    id: "demo",
+    name: "demo",
+    url: "https://example.test/demo.git",
+    defaultBranch: "main",
+  });
   const store = new MemorySessionStore({ plane });
   const { handler } = createLocalApp({ store });
   let createStatus = 0;

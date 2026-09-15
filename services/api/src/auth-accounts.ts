@@ -83,9 +83,9 @@ export async function createUser(
 ): Promise<Principal> {
   validateCredential(input.username, "username");
   validateCredential(input.password, "password");
-  const normalized = normalizeAccountGrant(input);
-  const grant = accountGrantError(normalized);
+  const grant = accountGrantError(input);
   if (grant) throw new Error(grant);
+  const normalized = normalizeAccountGrant(input);
   if (users.has(input.username) || admins.some((admin) => admin.username === input.username))
     throw new Error("username already exists");
   const user: User = {
@@ -116,7 +116,7 @@ export function assertAccountGrant(
   role: Role,
   extra: { allowedRepositoryIds?: string[]; boundHostId?: string } = {},
 ): void {
-  const grant = accountGrantError(normalizeAccountGrant({ role, ...extra }));
+  const grant = accountGrantError({ role, ...extra });
   if (grant) throw new Error(grant);
 }
 
@@ -140,9 +140,9 @@ export async function createServiceAccount(
   storage?: AuthStorage,
 ): Promise<{ account: Principal & { name: string; createdAt: string }; apiKey: string }> {
   validateCredential(input.name, "name");
-  const normalized = normalizeAccountGrant(input);
-  const grant = accountGrantError(normalized);
+  const grant = accountGrantError(input);
   if (grant) throw new Error(grant);
+  const normalized = normalizeAccountGrant(input);
   const apiKey = `hns_${randomBytes(36).toString("base64url")}`;
   const createdAt = new Date().toISOString();
   const account: ServiceAccount = {
