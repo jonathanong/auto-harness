@@ -90,6 +90,12 @@ describe("resume re-checks out ref after worktree reuse", () => {
         appendPrompt: true,
         providerId: null,
       });
+      plane.createRepository({
+        id: "demo",
+        name: "demo",
+        url: "https://example.test/demo.git",
+        defaultBranch: "main",
+      });
 
       // First session on feature/resume
       const first = plane.createSession({

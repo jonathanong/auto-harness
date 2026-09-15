@@ -2,12 +2,12 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-const script = new URL(
-  "../actions/harness-render-prompt/render-harness-prompt.mts",
-  import.meta.url,
-).pathname;
+const script = fileURLToPath(
+  new URL("../actions/harness-render-prompt/render-harness-prompt.mts", import.meta.url),
+);
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
