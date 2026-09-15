@@ -182,7 +182,7 @@ describe("control-plane terminal message coverage", () => {
 
   it("keeps a locally requeued scheduled checkout failure queued when its background sweep fails", async () => {
     const state = createControlPlaneState({ now: () => NOW });
-    const backfillQueuedSessionQueueOrder = vi.fn(async () => {
+    const listConnections = vi.fn(async () => {
       throw new Error("scheduler read model unavailable");
     });
     const session = running({
@@ -196,10 +196,10 @@ describe("control-plane terminal message coverage", () => {
       sessionId: session.id,
       connectionId: "connection",
     });
-    setDurableReadStorage(state, { backfillQueuedSessionQueueOrder });
+    setDurableReadStorage(state, { listConnections });
 
     expect(handleHostMessage(state, failedCheckoutStatus("session", null))).toEqual({ ok: true });
-    await vi.waitFor(() => expect(backfillQueuedSessionQueueOrder).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(listConnections).toHaveBeenCalledOnce());
     expect(state.sessions.get(session.id)).toMatchObject({
       status: "queued",
       infrastructureRetryCount: 1,

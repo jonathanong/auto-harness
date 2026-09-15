@@ -174,21 +174,6 @@ describe("assignment optional-field coverage", () => {
     expect(state.sessions.get("s")?.status).toBe("queued");
   });
 
-  it("backfills queue order before reading the durable assignment queue", async () => {
-    const state = providerState();
-    let backfills = 0;
-    setDurableReadStorage(state, {
-      tryAssignSession: async () => true,
-      expireQueuedSession: async () => false,
-      clearResumePin: async () => true,
-      backfillQueuedSessionQueueOrder: async () => {
-        backfills += 1;
-      },
-    });
-    await expect(assignQueuedDurable(state)).resolves.toHaveLength(1);
-    expect(backfills).toBe(1);
-  });
-
   it("durably publishes provider account route metadata", async () => {
     const state = providerState();
     setDurableReadStorage(state, {

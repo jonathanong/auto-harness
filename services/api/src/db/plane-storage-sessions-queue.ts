@@ -53,9 +53,9 @@ export async function listSessionsByStatus(
   shard: number,
 ): Promise<SessionRecord[]> {
   if (status !== "queued") {
-    return (
-      await querySessionsByStatusIndex(ctx, SESSIONS_CREATED_ORDER_INDEX, status, shard)
-    ).map(itemToSession);
+    return (await querySessionsByStatusIndex(ctx, SESSIONS_CREATED_ORDER_INDEX, status, shard)).map(
+      itemToSession,
+    );
   }
   return (await querySessionsByStatusIndex(ctx, SESSIONS_QUEUE_ORDER_INDEX, status, shard))
     .map(itemToSession)

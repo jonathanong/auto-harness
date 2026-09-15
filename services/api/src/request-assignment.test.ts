@@ -109,6 +109,7 @@ describe("requestAssignment", () => {
 
   it("refreshes stale provider readiness before bounded event placement", async () => {
     const plane = new ControlPlane({ now: () => NOW, shardCount: 1, idFactory: () => "session" });
+    plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
     plane.createProvider({ id: "provider", name: "vendor", defaultCommandId: "command" });
     plane.createProviderAccount({
       id: "account",

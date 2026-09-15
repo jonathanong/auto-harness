@@ -117,9 +117,6 @@ export async function assignScheduledQueuedDurable(
   options?: { readModelLoaded?: boolean },
 ): Promise<ScheduledAssignment[]> {
   if (state.storage && !options?.readModelLoaded) {
-    if (typeof state.storage.backfillQueuedSessionQueueOrder === "function") {
-      await state.storage.backfillQueuedSessionQueueOrder(state.shardCount);
-    }
     await refreshSchedulerReadModel(state);
     await listQueuedSessionsDurable(state, "scheduled");
   }

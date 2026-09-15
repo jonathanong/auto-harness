@@ -10,6 +10,7 @@ import {
   ResourceInUseException,
   ScalarAttributeType,
 } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { tableNames, type DynamoTableNames } from "./dynamo.ts";
