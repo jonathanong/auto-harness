@@ -122,5 +122,4 @@ describe("DaemonLoop keepalive ack watchdog", () => {
       cleanup();
     }
   });
-
 });
