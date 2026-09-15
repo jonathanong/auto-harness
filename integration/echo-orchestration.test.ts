@@ -78,6 +78,14 @@ describe.skipIf(process.platform === "win32")(
         batchMaxLines: 1,
         batchMaxWaitMs: 1000,
       });
+      expect(
+        server.plane.createRepository({
+          id: "demo",
+          name: "demo",
+          url: "https://example.test/demo.git",
+          defaultBranch: "main",
+        }).ok,
+      ).toBe(true);
       server.plane.seedWorktree({
         id: "wt-1",
         name: "wt-1",
@@ -92,7 +100,7 @@ describe.skipIf(process.platform === "win32")(
       const config: DaemonConfig = {
         hostId: "agent-echo",
         logLevel: "info",
-        apiUrl: `ws://127.0.0.1:${port}/ws`,
+        apiUrl: `http://127.0.0.1:${port}`,
         repositories: [
           {
             id: "demo",
@@ -150,7 +158,7 @@ describe.skipIf(process.platform === "win32")(
         }
         await sleep(100);
       }
-      expect(session?.status).toBe("completed");
+      expect(session?.status, JSON.stringify(session)).toBe("completed");
 
       // Real HTTP round trip, not just the in-process plane accessor.
       const logsRes = await fetch(`http://127.0.0.1:${port}/api/v1/sessions/${id}/logs`);
