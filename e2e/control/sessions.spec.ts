@@ -8,7 +8,7 @@ import {
   withLocalHostLock,
 } from "../local-1-host.ts";
 import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
-import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
+import { HOST_PROTOCOL_VERSION } from "../../modules/shared/src/constants.ts";
 
 test.describe("control plane sessions", () => {
   test("sessions list page and filters", async ({ page, request }) => {

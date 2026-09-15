@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- one end-to-end flow owns the host, viewer, and terminal lifecycle. */
 import { expect, test } from "@playwright/test";
 import { createCatalogRepository } from "../local-1-host.ts";
-import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
+import { HOST_PROTOCOL_VERSION } from "../../modules/shared/src/constants.ts";
 
 const API = `http://127.0.0.1:${7430 + portOffset()}`;
 

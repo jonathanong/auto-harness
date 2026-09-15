@@ -1,4 +1,4 @@
-import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
+import { HOST_PROTOCOL_VERSION } from "../modules/shared/src/constants.ts";
 
 import { WS_BASE } from "./harness-endpoints.ts";
 

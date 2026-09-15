@@ -3,7 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
 import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
-import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
+import { HOST_PROTOCOL_VERSION } from "../../modules/shared/src/constants.ts";
 
 const API = API_BASE;
 

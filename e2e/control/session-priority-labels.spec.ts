@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
+import { HOST_PROTOCOL_VERSION } from "../../modules/shared/src/constants.ts";
 
 const API = `http://127.0.0.1:${7430 + Number(process.env.HARNESS_E2E_PORT_OFFSET ?? 0)}`;
 
