@@ -8,7 +8,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
-import { queueOrderKey, SESSIONS_STATUS_CREATED_INDEX } from "../control-plane-ordering.ts";
+import { queueOrderKey, SESSIONS_CREATED_ORDER_INDEX } from "../control-plane-ordering.ts";
 import {
   listAllSessions,
   listAllWorktrees,
@@ -75,7 +75,7 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
     );
   });
 
-  it("lists non-queued sessions from the createdAt index", async () => {
+  it("lists non-queued sessions from the createdOrder index", async () => {
     const commands: QueryCommand[] = [];
     const ctx = {
       doc: {
@@ -91,7 +91,7 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
       { id: "running" },
     ]);
     expect(commands).toHaveLength(1);
-    expect(commands[0]?.input.IndexName).toBe(SESSIONS_STATUS_CREATED_INDEX);
+    expect(commands[0]?.input.IndexName).toBe(SESSIONS_CREATED_ORDER_INDEX);
   });
 
   it("propagates unexpected queue-order index failures", async () => {

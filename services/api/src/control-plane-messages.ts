@@ -94,7 +94,7 @@ async function requestAssignmentAfterHostEvent(
   await requestAssignment(state);
 }
 
-export const MAX_DURABLE_LOG_BATCH_SIZE = 25;
+const MAX_DURABLE_LOG_BATCH_SIZE = 25;
 const MAX_RETAINED_LOG_CHUNKS = 10_000;
 const MAX_RETAINED_LOG_BYTES = 10 * 1024 * 1024;
 

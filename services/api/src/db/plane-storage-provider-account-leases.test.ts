@@ -2,7 +2,6 @@
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { DEFAULT_MAX_CONCURRENT_SESSIONS } from "@auto-harness/shared";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
@@ -492,10 +491,8 @@ describe("provider account lease storage", () => {
     expect(request.input.TransactItems[0]).toMatchObject({
       ConditionCheck: {
         TableName: "Accounts",
-        ConditionExpression: expect.stringContaining(
-          "(attribute_not_exists(maxConcurrentSessions) AND :slot < :defaultCap) OR maxConcurrentSessions > :slot",
-        ),
-        ExpressionAttributeValues: { ":slot": 1, ":defaultCap": DEFAULT_MAX_CONCURRENT_SESSIONS },
+        ConditionExpression: expect.stringContaining("maxConcurrentSessions > :slot"),
+        ExpressionAttributeValues: { ":slot": 1 },
       },
     });
   });
@@ -809,59 +806,87 @@ describe("DynamoDB Local: backfillProviderAccountLease maxConcurrentSessions cap
 
   beforeAll(async () => {
     ({ client, tables, ctx } = await createLeaseTestContext(`AhLeaseCap${process.pid}`, [
-      // An omitted cap preserves the legacy DEFAULT_MAX_CONCURRENT_SESSIONS fallback.
-      { id: "acct-default" },
+      // maxConcurrentSessions is a mandatory ProviderAccount field (modules/shared/src/providers.ts);
+      // the backfill ConditionCheck no longer defaults a missing value (see
+      // plane-storage-provider-account-cap.ts), so every fixture sets it explicitly.
+      { id: "acct-one", maxConcurrentSessions: 1 },
       { id: "acct-2", maxConcurrentSessions: 2 },
+      // Simulates a pre-existing Dynamo row written before the field was mandatory.
+      { id: "acct-missing-cap" },
     ]));
   });
   afterAll(async () => {
     await deleteLeaseTestTables(client, tables);
   });
 
-  it("migrates a slot within the default cap when maxConcurrentSessions is unset", async () => {
+  it("migrates a slot within an explicit maxConcurrentSessions cap of one", async () => {
     await putSession(ctx, {
       ...session,
-      id: "default-cap-ok",
+      id: "cap-one-ok",
       resolvedRoute: {
         targetIndex: 0,
         commandId: "command",
         hostId: "host",
         worktreeId: null,
         attemptId: "attempt",
-        providerAccountId: "acct-default",
+        providerAccountId: "acct-one",
       },
     });
     await expect(
       backfillProviderAccountLease(ctx, {
-        sessionId: "default-cap-ok",
+        sessionId: "cap-one-ok",
         attemptId: "attempt",
         hostId: "host",
-        providerAccountId: "acct-default",
+        providerAccountId: "acct-one",
         slot: 0,
       }),
     ).resolves.toMatchObject({ status: "migrated" });
   });
 
-  it("refuses a slot at the default cap when maxConcurrentSessions is unset", async () => {
+  it("refuses a slot at an explicit maxConcurrentSessions cap of one", async () => {
     await putSession(ctx, {
       ...session,
-      id: "default-cap-over",
+      id: "cap-one-over",
       resolvedRoute: {
         targetIndex: 0,
         commandId: "command",
         hostId: "host",
         worktreeId: null,
         attemptId: "attempt",
-        providerAccountId: "acct-default",
+        providerAccountId: "acct-one",
       },
     });
     await expect(
       backfillProviderAccountLease(ctx, {
-        sessionId: "default-cap-over",
+        sessionId: "cap-one-over",
         attemptId: "attempt",
         hostId: "host",
-        providerAccountId: "acct-default",
-        slot: DEFAULT_MAX_CONCURRENT_SESSIONS,
+        providerAccountId: "acct-one",
+        slot: 1,
+      }),
+    ).resolves.toEqual({ status: "session_changed" });
+  });
+
+  it("fails closed (no default-cap fallback) when maxConcurrentSessions is missing", async () => {
+    await putSession(ctx, {
+      ...session,
+      id: "missing-cap",
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "command",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "attempt",
+        providerAccountId: "acct-missing-cap",
+      },
+    });
+    await expect(
+      backfillProviderAccountLease(ctx, {
+        sessionId: "missing-cap",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "acct-missing-cap",
+        slot: 0,
       }),
     ).resolves.toEqual({ status: "session_changed" });
   });

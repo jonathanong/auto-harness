@@ -4,7 +4,6 @@ import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 
 /** GSI that stores `compareSessionsForQueue` as an ascending sort key. */
 export const SESSIONS_QUEUE_ORDER_INDEX = "statusShard-queueOrder";
-export const SESSIONS_STATUS_CREATED_INDEX = "statusShard-createdAt";
 /** Durable session-list ordering: creation time plus the public id tie-breaker. */
 export const SESSIONS_CREATED_ORDER_INDEX = "statusShard-createdOrder";
 /** GSI used by durable session list priority ordering (ascending key order). */
