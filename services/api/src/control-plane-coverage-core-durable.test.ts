@@ -1,3 +1,4 @@
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { assignQueuedDurable } from "./control-plane-assign.ts";
@@ -115,6 +116,7 @@ describe("durable control-plane core edge coverage", () => {
       handleHostMessageDurable(plane.state, {
         type: "host:register",
         hostId: "host",
+        protocolVersion: HOST_PROTOCOL_VERSION,
         commandProfiles: [],
         worktrees: [
           {
@@ -134,6 +136,7 @@ describe("durable control-plane core edge coverage", () => {
         {
           type: "host:register",
           hostId: "host",
+          protocolVersion: HOST_PROTOCOL_VERSION,
           commandProfiles: [],
           worktrees: [],
         },
@@ -145,6 +148,9 @@ describe("durable control-plane core edge coverage", () => {
     const now = "2026-01-01T00:00:00.000Z";
     const plane = new ControlPlane({ now: () => now, idFactory: () => "scheduled" });
     seedBaseCommand(plane);
+    expect(
+      plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" }).ok,
+    ).toBe(true);
     const schedule = putScheduleOrThrow(plane, {
       id: "legacy-schedule",
       repositoryId: "repo",

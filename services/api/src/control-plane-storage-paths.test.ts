@@ -35,6 +35,8 @@ describe("ControlPlane storage write-through paths", () => {
       name: "repo",
       url: "https://example.com/r.git",
       defaultBranch: "main",
+      admissionState: "active",
+      admissionStateChangedAt: "t",
       createdAt: "t",
       updatedAt: "t",
     });
@@ -48,6 +50,20 @@ describe("ControlPlane storage write-through paths", () => {
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
     });
+    // Not yet hydrated (that happens below, on purpose) — seed the repositories
+    // these pre-hydration operations need for admission to stay open.
+    for (const id of ["r1", "r2"]) {
+      plane.state.repositories.set(id, {
+        id,
+        name: id,
+        url: `https://example.com/${id}.git`,
+        defaultBranch: "main",
+        admissionState: "active",
+        admissionStateChangedAt: "t",
+        createdAt: "t",
+        updatedAt: "t",
+      });
+    }
 
     plane.registerHost({
       hostId: "a1",
