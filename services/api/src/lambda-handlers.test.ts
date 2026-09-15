@@ -2019,7 +2019,6 @@ describe("Lambda runtime adapters", () => {
         staleHostsReclaimed: 1,
       });
       expect(fixture.schedulerCalls).toEqual([
-        "migration",
         "schedules",
         "sessions",
         "connections",
