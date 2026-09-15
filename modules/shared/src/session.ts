@@ -13,7 +13,7 @@ import type {
   TerminalStatusAcknowledgedMessage,
 } from "./terminal-hook-handoff.ts";
 import type { CommandResumeSpec } from "./command-resume.ts";
-import type { HostCapability, HostCapabilitiesAdvertisement } from "./host-capabilities.ts";
+import type { HostCapabilitiesAdvertisement } from "./host-capabilities.ts";
 import type { HostRuntimeReport } from "./host-runtime.ts";
 import type { HostRunningAttempt, ProviderAccountReadiness } from "./host-registration.ts";
 import type { SessionUsage } from "./usage.ts";

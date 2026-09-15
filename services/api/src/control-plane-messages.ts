@@ -1082,9 +1082,7 @@ export async function handleHostMessageDurable(
     // transient delivery failure must not strand it until a replacement
     // registration. The result is bounded by TERMINAL_HOOK_HANDOFF_DELIVERY_LIMIT
     // and the daemon deduplicates an already-retained handoff.
-    const handoffOptions = {
-      ...(fence?.connectionId ? { connectionId: fence.connectionId } : {}),
-    };
+    const handoffOptions = fence?.connectionId ? { connectionId: fence.connectionId } : {};
     const handoffs = await pendingTerminalHookHandoffs(state, msg.hostId, handoffOptions);
     // A reconciliation pass can create a new handoff while an earlier one is
     // still pending. Some storage adapters return the pre-reconciliation page

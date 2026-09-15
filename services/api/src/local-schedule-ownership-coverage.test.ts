@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { AuthService } from "./auth.ts";
 import { setInMemoryScheduleStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";

@@ -47,6 +47,26 @@ function ctx(send: (command: unknown) => Promise<unknown>): PlaneStorageCtx {
   } as PlaneStorageCtx;
 }
 
+async function assertGenerationIntegrationFence(command: unknown): Promise<Record<string, never>> {
+  expect(command).toBeInstanceOf(TransactWriteCommand);
+  const items = (command as TransactWriteCommand).input.TransactItems ?? [];
+  const integration = items.find(
+    (item) => "ConditionCheck" in item && item.ConditionCheck?.TableName === "Integrations",
+  );
+  expect(integration).toMatchObject({
+    ConditionCheck: {
+      Key: { id: "custom-webhook:deploy" },
+      ExpressionAttributeValues: {
+        ":type": "custom-webhook",
+        ":version": 2,
+        ":enabled": true,
+        ":generation": "generation",
+      },
+    },
+  });
+  return {};
+}
+
 describe("concurrent session admission conflicts", () => {
   it("maps principal, repository, and drain condition losses", async () => {
     await expect(
@@ -84,34 +104,21 @@ describe("concurrent session admission conflicts", () => {
   });
 
   it("includes the generation integration fence in the transaction", async () => {
-    const send = async (command: unknown) => {
-      expect(command).toBeInstanceOf(TransactWriteCommand);
-      const items = (command as TransactWriteCommand).input.TransactItems ?? [];
-      const integration = items.find(
-        (item) => "ConditionCheck" in item && item.ConditionCheck?.TableName === "Integrations",
-      );
-      expect(integration).toMatchObject({
-        ConditionCheck: {
-          Key: { id: "custom-webhook:deploy" },
-          ExpressionAttributeValues: {
-            ":type": "custom-webhook",
-            ":version": 2,
-            ":enabled": true,
-            ":generation": "generation",
-          },
-        },
-      });
-      return {};
-    };
     await expect(
-      createSession(ctx(send), { ...session, concurrencyId: undefined }, [], undefined, {
-        id: "deploy",
-        type: "custom-webhook",
-        storageId: "custom-webhook:deploy",
-        generation: "generation",
-        version: 2,
-        enabled: true,
-      }),
+      createSession(
+        ctx(assertGenerationIntegrationFence),
+        { ...session, concurrencyId: undefined },
+        [],
+        undefined,
+        {
+          id: "deploy",
+          type: "custom-webhook",
+          storageId: "custom-webhook:deploy",
+          generation: "generation",
+          version: 2,
+          enabled: true,
+        },
+      ),
     ).resolves.toMatchObject({ created: true });
   });
 

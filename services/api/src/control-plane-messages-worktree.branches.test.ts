@@ -1,7 +1,5 @@
 /* eslint-disable max-lines -- terminal variants share one durable worktree fixture. */
 import { describe, expect, it } from "vitest";
-import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
-
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
