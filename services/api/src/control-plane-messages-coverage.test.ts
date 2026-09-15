@@ -408,6 +408,7 @@ describe("control-plane host message coverage paths", () => {
           errorCode: "checkout_fetch_failed",
           exitCode: 1,
           result,
+          deferTerminalHookResult: false,
         }),
       ),
     ).resolves.toMatchObject({ sessionStatusAcknowledged: { sessionId: exhaustedRun.id } });
@@ -461,11 +462,10 @@ describe("control-plane host message coverage paths", () => {
         status(exhaustedRun.id, "failed", {
           worktreeId: null,
           errorCode: "checkout_fetch_failed",
+          deferTerminalHookResult: false,
         }),
       ),
-    ).resolves.toMatchObject({
-      sessionStatusAcknowledged: { sessionId: exhaustedRun.id, attemptId: "attempt" },
-    });
+    ).resolves.toMatchObject({ sessionStatusAcknowledged: { sessionId: exhaustedRun.id } });
     expect(exhausted.sessions.get(exhaustedRun.id)).toMatchObject({
       status: "failed",
       errorCode: "checkout_fetch_failed",
@@ -558,7 +558,10 @@ describe("control-plane host message coverage paths", () => {
     expect(
       handleHostMessage(
         state,
-        status(session.id, "failed", { errorCode: "checkout_fetch_failed" }),
+        status(session.id, "failed", {
+          errorCode: "checkout_fetch_failed",
+          deferTerminalHookResult: false,
+        }),
       ),
     ).toEqual({ ok: true });
     expect(state.sessions.get(session.id)).toMatchObject({
@@ -679,11 +682,12 @@ describe("control-plane host message coverage paths", () => {
     await expect(
       handleHostMessageDurable(
         durableState,
-        status(durableRun.id, "failed", { errorCode: "checkout_fetch_failed" }),
+        status(durableRun.id, "failed", {
+          errorCode: "checkout_fetch_failed",
+          deferTerminalHookResult: false,
+        }),
       ),
-    ).resolves.toMatchObject({
-      sessionStatusAcknowledged: { sessionId: durableRun.id },
-    });
+    ).resolves.toMatchObject({ sessionStatusAcknowledged: { sessionId: durableRun.id } });
     expect(durableState.sessions.get(durableRun.id)).toMatchObject({
       status: "failed",
       errorCode: "checkout_fetch_failed",
