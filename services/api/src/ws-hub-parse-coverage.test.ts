@@ -53,11 +53,13 @@ describe("parseHostMessage exhaustive wire validation", () => {
       parseHostMessage({
         ...registration,
         capabilities: { features: ["scheduled-main-checkout"] },
-        maxConcurrentAssignments: 3,
         runningSessions: ["session-1"],
         runningAttempts: [{ sessionId: "session-1", attemptId: "attempt-1" }],
       }),
-    ).toMatchObject({ type: "host:register" });
+    ).toMatchObject({
+      type: "host:register",
+      capabilities: { features: ["scheduled-main-checkout"], maxConcurrentAssignments: 64 },
+    });
     expect(
       parseHostMessage({
         type: "session:ack",
@@ -151,6 +153,7 @@ describe("parseHostMessage exhaustive wire validation", () => {
       { ...registration, capabilities: Array(20).fill("scheduled-main-checkout") },
       { ...registration, capabilities: ["unknown"] },
       { ...registration, capabilities: ["scheduled-main-checkout", "scheduled-main-checkout"] },
+      { ...registration, maxConcurrentAssignments: 4 },
       { ...registration, maxConcurrentAssignments: 0 },
       { ...registration, providerAccountReadiness: [{ providerAccountId: "acct" }] },
       { ...registration, runningSessions: "session-1" },

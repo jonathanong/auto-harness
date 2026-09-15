@@ -424,8 +424,8 @@ describe("createPlaneWsBridge", () => {
     await opened.close();
   });
 
-  it("does not disconnect a host that emits a delayed log for a reassigned session", async () => {
-    const bridge = createPlaneWsBridge({ logBatchDelayMs: 1 });
+  it("rejects session logs on the control-plane websocket", async () => {
+    const bridge = createPlaneWsBridge();
     const plane = new ControlPlane();
     const opened = await openRegisteredHost({
       bridge,
@@ -433,9 +433,9 @@ describe("createPlaneWsBridge", () => {
       registration: hostRegistration("old-host"),
     });
     seedReassignedSession(plane);
+    const closeCode = waitForClose(opened.ws);
     opened.ws.send(sessionLog({ attemptId: "attempt-1", content: "stale" }));
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    expect(opened.ws.readyState).toBe(WebSocket.OPEN);
+    expect(await closeCode).toBe(1008);
     expect(plane.getLogs("sess-1")).toEqual([]);
     await opened.close();
   });

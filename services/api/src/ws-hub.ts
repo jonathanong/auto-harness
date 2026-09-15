@@ -28,7 +28,6 @@ import {
   clearHostSocketPendingPublish,
   markHostSocketPendingPublish,
 } from "./control-plane-host-socket-publish.ts";
-import { handleHostLogBatchDurable, MAX_DURABLE_LOG_BATCH_SIZE } from "./control-plane-messages.ts";
 import { emitWsMessagesDiscarded } from "./operational-metrics.ts";
 import type { RateLimitEvent } from "./rate-limit.ts";
 import { validateUsage } from "./usage.ts";
@@ -336,67 +335,18 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             }
           }
         };
-        type LogMessage = Extract<HostToServerMessage, { type: "session:log" }>;
-        const handleLogBatch = async (batch: readonly LogMessage[]): Promise<void> => {
-          if (
-            boundHostId &&
-            boundConnectionId &&
-            plane.state.hostConnection.get(boundHostId) !== boundConnectionId
-          ) {
-            accepting = false;
-            discardMessages(batch.length, "stale host connection");
-            socket.close(1008, "stale host connection");
-            return;
-          }
-          const allowed: LogMessage[] = [];
-          for (const message of batch) {
-            if (!isAllowedMessage(plane, message, boundHostId, principal, authRequired)) {
-              accepting = false;
-              discardMessages(batch.length - allowed.length, "message not authorized");
-              socket.close(1008, "message not authorized");
-              break;
-            }
-            allowed.push(message);
-          }
-          if (allowed.length === 0) return;
-          // A message cannot pass isAllowedMessage before registration binds
-          // both values for this socket.
-          const result = await handleHostLogBatchDurable(plane.state, allowed, boundConnectionId!);
-          if (!result.ok && socket.readyState === socket.OPEN) {
-            socket.send(JSON.stringify({ type: "error", message: result.error }));
-          }
-        };
         // The ws EventEmitter does not await async listeners. Keep host messages in wire
         // order so a keepalive or status cannot race an in-flight durable registration.
         // Store a recovered tail so one failed durable operation cannot block later frames.
         let messageTail: Promise<void> = Promise.resolve();
-        let pendingLogs: LogMessage[] = [];
-        let logBatchTimer: ReturnType<typeof setTimeout> | undefined;
         const queueWork = (work: () => Promise<void>): void => {
           messageTail = messageTail.then(work).catch(() => {
             accepting = false;
             socket.close(1011, "message handling failed");
           });
         };
-        const flushLogBatch = (): void => {
-          if (logBatchTimer) clearTimeout(logBatchTimer);
-          logBatchTimer = undefined;
-          if (pendingLogs.length === 0) return;
-          const batch = pendingLogs;
-          pendingLogs = [];
-          queueWork(() => handleLogBatch(batch));
-        };
-        const queueLog = (message: LogMessage): void => {
-          pendingLogs.push(message);
-          if (pendingLogs.length >= MAX_DURABLE_LOG_BATCH_SIZE) {
-            flushLogBatch();
-          } else if (!logBatchTimer) {
-            logBatchTimer = setTimeout(flushLogBatch, options.logBatchDelayMs ?? 5);
-          }
-        };
         drainForReplacement = async () => {
           accepting = false;
-          flushLogBatch();
           await messageTail;
           if (socket.readyState === socket.OPEN) socket.close(1008, "host reconnected");
         };
@@ -414,7 +364,6 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
               limit: options.maxMessagesPerSecond ?? MAX_WS_MESSAGES_PER_SECOND,
               actorKey: "websocket-connection",
             });
-            flushLogBatch();
             accepting = false;
             discardMessages(1, "message rate exceeded");
             socket.close(1008, "message rate exceeded");
@@ -422,23 +371,21 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
           }
           const msg = parseHostMessage(raw);
           if (!msg) {
-            flushLogBatch();
             accepting = false;
             discardMessages(1, "invalid message");
             socket.close(1008, "invalid message");
             return;
           }
           if (msg.type === "session:log") {
-            queueLog(msg);
+            accepting = false;
+            discardMessages(1, "session:log is not accepted on the control-plane websocket");
+            socket.close(1008, "session:log is not accepted on the control-plane websocket");
           } else {
-            // A terminal/control frame may not overtake preceding logs.
-            flushLogBatch();
             queueWork(() => handleMessage(msg));
           }
         });
         socket.on("close", () => {
           accepting = false;
-          flushLogBatch();
           if (pendingRegistration) {
             pendingRegistration.closed = true;
             clearHostSocketPendingPublish(plane.state, pendingRegistration.connectionId);
@@ -545,10 +492,7 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
           !isWorkspacePoolSnapshot(message.workspacePools)) ||
         (message.capabilities !== undefined &&
           parseHostCapabilitiesAdvertisement(message.capabilities) === null) ||
-        (message.maxConcurrentAssignments !== undefined &&
-          parseHostCapabilitiesAdvertisement({
-            maxConcurrentAssignments: message.maxConcurrentAssignments,
-          }) === null) ||
+        message.maxConcurrentAssignments !== undefined ||
         (message.providerAccountReadiness !== undefined &&
           (!Array.isArray(message.providerAccountReadiness) ||
             validateProviderAccountReadiness(
@@ -588,7 +532,7 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
         typeof message.maxConcurrentAssignments === "number"
           ? message.maxConcurrentAssignments
           : advertised.maxConcurrentAssignments;
-      const normalized: HostToServerMessage = {
+      const normalized = {
         ...(message as HostToServerMessage),
         type: "host:register",
         hostId: message.hostId as string,
@@ -596,8 +540,14 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
           HostToServerMessage,
           { type: "host:register" }
         >["worktrees"],
-        ...(message.capabilities !== undefined ? { capabilities: advertised.features } : {}),
-        ...(maxConcurrentAssignments !== undefined ? { maxConcurrentAssignments } : {}),
+        ...(message.capabilities !== undefined
+          ? {
+              capabilities: {
+                features: advertised.features,
+                ...(maxConcurrentAssignments !== undefined ? { maxConcurrentAssignments } : {}),
+              },
+            }
+          : {}),
         ...(message.providerAccountReadiness !== undefined
           ? {
               providerAccountReadiness: sanitizeProviderAccountReadiness(
@@ -605,7 +555,7 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
               ),
             }
           : {}),
-      };
+      } as HostToServerMessage;
       return normalized;
     }
     if (message.type === "session:ack") {

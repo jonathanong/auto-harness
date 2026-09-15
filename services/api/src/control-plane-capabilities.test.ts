@@ -26,8 +26,7 @@ describe("host capability advertisements", () => {
         ...requiredRegister,
       }),
     ).toMatchObject({
-      capabilities: ["scheduled-main-checkout"],
-      maxConcurrentAssignments: 64,
+      capabilities: { features: ["scheduled-main-checkout"], maxConcurrentAssignments: 64 },
     });
     expect(
       parseHostMessage({
@@ -46,8 +45,7 @@ describe("host capability advertisements", () => {
         ],
       }),
     ).toMatchObject({
-      capabilities: ["scheduled-main-checkout"],
-      maxConcurrentAssignments: 4,
+      capabilities: { features: ["scheduled-main-checkout"], maxConcurrentAssignments: 4 },
       providerAccountReadiness: [
         { providerAccountId: "acct", ready: true, fingerprint: "a".repeat(64) },
       ],
@@ -61,10 +59,7 @@ describe("host capability advertisements", () => {
         capabilities: { features: ["scheduled-main-checkout"] },
         maxConcurrentAssignments: 4,
       }),
-    ).toMatchObject({
-      capabilities: ["scheduled-main-checkout"],
-      maxConcurrentAssignments: 4,
-    });
+    ).toBeNull();
     expect(
       parseHostMessage({
         type: "host:register",
@@ -90,7 +85,7 @@ describe("host capability advertisements", () => {
         ...requiredRegister,
         maxConcurrentAssignments: 8,
       }),
-    ).toMatchObject({ maxConcurrentAssignments: 8 });
+    ).toBeNull();
     expect(
       parseHostMessage({
         type: "host:register",
