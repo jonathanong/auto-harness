@@ -4,7 +4,7 @@ import type { SessionStatus } from "@auto-harness/shared";
 import {
   compareSessionsForQueue,
   SESSIONS_QUEUE_ORDER_INDEX,
-  SESSIONS_STATUS_CREATED_INDEX,
+  SESSIONS_CREATED_ORDER_INDEX,
 } from "../control-plane-ordering.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import { itemToSession, type PlaneStorageCtx } from "./plane-storage-types.ts";
@@ -37,7 +37,7 @@ export async function listSessionsByStatusPage(
   limit: number,
 ): Promise<SessionRecord[]> {
   if (status !== "queued") {
-    return (await queryStatusPage(ctx, SESSIONS_STATUS_CREATED_INDEX, status, shard, limit)).map(
+    return (await queryStatusPage(ctx, SESSIONS_CREATED_ORDER_INDEX, status, shard, limit)).map(
       itemToSession,
     );
   }

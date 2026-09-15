@@ -172,9 +172,6 @@ export async function assignQueuedDurable(
     return assignQueued(state, sessionId);
   }
   if (!options?.readModelLoaded) {
-    if (typeof state.storage.backfillQueuedSessionQueueOrder === "function") {
-      await state.storage.backfillQueuedSessionQueueOrder(state.shardCount);
-    }
     await refreshSchedulerReadModel(state);
     await listQueuedSessionsDurable(state, "prompt");
   }

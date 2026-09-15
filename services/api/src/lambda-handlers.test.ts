@@ -181,10 +181,6 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async markHostDraining(hostId: string, connectionId: string) {
       return hostLocks.get(hostId) === connectionId;
     },
-    async migrateSessionDrainActivityLedgerPage() {
-      recordSchedulerCall("migration");
-      return true;
-    },
     async putConnection(connection: Record<string, unknown>) {
       connections.set(String(connection.connectionId), connection);
     },

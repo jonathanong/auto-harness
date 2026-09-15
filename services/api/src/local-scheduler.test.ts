@@ -18,7 +18,6 @@ function makePlane(steps: Partial<Record<string, Step>> = {}): {
   return {
     calls,
     plane: {
-      migrateSessionDrainActivityLedgerPage: step("migration"),
       evaluateCronDurable: step("cron"),
       enforceAckDeadlinesDurable: step("ack"),
       enforceRunningTimeoutsDurable: step("timeout"),

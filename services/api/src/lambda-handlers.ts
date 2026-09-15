@@ -538,8 +538,6 @@ export async function createLambdaRuntime(
       const context =
         lambdaContext ?? (isLambdaCronContext(eventOrContext) ? eventOrContext : undefined);
       return runInvocation(async () => {
-        // Bounded and resumable: never make Lambda initialization scan history.
-        await created.plane.migrateSessionDrainActivityLedgerPage();
         await created.plane.migrateArchiveRetryIndexPage();
         const schedulesFired = await created.plane.evaluateCronDurable();
         const ackDeadlinesEnforced = await created.plane.enforceAckDeadlinesDurable();

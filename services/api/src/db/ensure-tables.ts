@@ -10,7 +10,6 @@ import {
   ResourceInUseException,
   ScalarAttributeType,
 } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { tableNames, type DynamoTableNames } from "./dynamo.ts";
@@ -23,10 +22,7 @@ import {
 } from "./ensure-rate-limit-table.ts";
 import { sessionCancelRedeliveriesTableDefinition } from "./ensure-session-cancel-redeliveries-table.ts";
 import { viewerTicketsTableDefinition } from "./ensure-viewer-tickets-table.ts";
-import {
-  backfillQueuedSessionQueueOrder,
-  ensureSessionsQueueOrderIndex,
-} from "./ensure-queue-order-index.ts";
+import { ensureSessionsQueueOrderIndex } from "./ensure-queue-order-index.ts";
 import { ensureSessionsPriorityIndexes } from "./ensure-session-priority-index.ts";
 import {
   ensureSchedulesRepositoryIndex,
@@ -199,7 +195,6 @@ export async function ensureControlPlaneTables(opts: {
   await ensureSessionsQueueOrderIndex(ddb, names.sessions);
   await ensureSessionsPriorityIndexes(ddb, names.sessions);
   await ensureSessionsActiveHostIndex(ddb, names.sessions);
-  await backfillQueuedSessionQueueOrder(DynamoDBDocumentClient.from(ddb), names.sessions);
 
   await createIfMissing(ddb, {
     TableName: names.sessionDrains,

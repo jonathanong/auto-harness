@@ -47,9 +47,6 @@ export async function assignQueuedAndScheduledDurable(
   // Both session types share one priority/FIFO queue. Process one queue head
   // at a time so a prompt backlog cannot starve a higher-priority schedule.
   if (state.storage) {
-    if (fullScan && typeof state.storage.backfillQueuedSessionQueueOrder === "function") {
-      await state.storage.backfillQueuedSessionQueueOrder(state.shardCount);
-    }
     const queueOptions = fullScan ? {} : { limit: maxSessions };
     const [promptQueued, scheduledQueued, workspaceQueued] = await Promise.all([
       listQueuedSessionsDurable(state, "prompt", queueOptions),

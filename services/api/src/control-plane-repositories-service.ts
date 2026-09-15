@@ -117,11 +117,6 @@ export class ControlPlaneRepositoriesService {
     return sessionDrains.reconcileSessionDrainsDurable(this.state);
   }
 
-  /** Scheduler-owned, bounded bootstrap. REST/WS cold starts never scan Sessions. */
-  migrateSessionDrainActivityLedgerPage(): Promise<boolean> {
-    return this.state.storage?.migrateSessionDrainActivityLedgerPage() ?? Promise.resolve(false);
-  }
-
   releaseSessionDrainDurable(
     repositoryId: string,
     principalId: string,
