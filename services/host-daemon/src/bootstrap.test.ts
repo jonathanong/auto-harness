@@ -17,6 +17,10 @@ describe("httpBaseFromApiUrl", () => {
     expect(() => httpBaseFromApiUrl("ws://127.0.0.1:7420/ws")).toThrow(/HTTP\(S\)/);
     expect(() => httpBaseFromApiUrl("wss://api.example/ws/")).toThrow(/HTTP\(S\)/);
   });
+
+  it("rejects a value that isn't a parseable URL at all", () => {
+    expect(() => httpBaseFromApiUrl("not a url")).toThrow(/invalid control-plane URL/);
+  });
 });
 
 describe("fetchHostInventory", () => {

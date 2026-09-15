@@ -94,6 +94,19 @@ describe("CustomWebhookSettings", () => {
     view.unmount();
   });
 
+  it("refuses to save a loaded configuration with no generation stamped", async () => {
+    const { generation: _generation, ...withoutGeneration } = existing;
+    const fake = createApiFake(json(withoutGeneration));
+    const view = mountForm(<CustomWebhookSettings />);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "deploy");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    submit(view.container.querySelector("form")!);
+    await settle();
+    expect(document.body.textContent).toContain("Unable to save custom webhook configuration.");
+    expect(fake.requests).toHaveLength(1);
+  });
+
   it("requires a secret for a new configuration and does not update after unmount", async () => {
     let resolve!: (response: Response) => void;
     createApiFake(() => new Promise<Response>((done) => (resolve = done)));
