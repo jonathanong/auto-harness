@@ -103,6 +103,15 @@ describe("session state-machine residual coverage", () => {
 
   it("rejects unresolved create targets in both preparation paths", () => {
     const state = createControlPlaneState();
+    state.repositories.set("repo", {
+      id: "repo",
+      name: "repository",
+      url: "https://example.test/repository",
+      defaultBranch: "main",
+      admissionState: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
     const body = {
       repositoryId: "repo",
       prompt: "run",
@@ -117,8 +126,18 @@ describe("session state-machine residual coverage", () => {
   });
 
   it("keeps trusted schedule provenance during durable preparation", () => {
+    const state = commandState();
+    state.repositories.set("repo", {
+      id: "repo",
+      name: "repository",
+      url: "https://example.test/repository",
+      defaultBranch: "main",
+      admissionState: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
     const prepared = validateSessionCreate(
-      commandState(),
+      state,
       {
         repositoryId: "repo",
         prompt: "run",
@@ -184,6 +203,15 @@ describe("session state-machine residual coverage", () => {
     });
 
     const missing = commandState();
+    missing.repositories.set("repo", {
+      id: "repo",
+      name: "repository",
+      url: "https://example.test/repository",
+      defaultBranch: "main",
+      admissionState: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
     setDurableReadStorage(missing, {
       getGitHubIngressConfig: async () => null,
       getActiveSessionByConcurrencyId: async () => null,
@@ -288,6 +316,15 @@ describe("session state-machine residual coverage", () => {
 
   it("maps a durable clone id collision to a public conflict", async () => {
     const state = commandState();
+    state.repositories.set("repo", {
+      id: "repo",
+      name: "repository",
+      url: "https://example.test/repository",
+      defaultBranch: "main",
+      admissionState: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
     state.providers.set("provider", {
       id: "provider",
       name: "provider",

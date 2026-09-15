@@ -579,7 +579,7 @@ describe("agent registration branch boundaries", () => {
     ]);
   });
 
-  it("accepts the legacy unreported runtime sentinel and rejects a host without a durable owner", async () => {
+  it("rejects the legacy unreported runtime sentinel and rejects a host without a durable owner", async () => {
     const plane = new ControlPlane();
     expect(
       await plane.registerHostDurable({
@@ -593,7 +593,7 @@ describe("agent registration branch boundaries", () => {
           gitReadinessReason: "git_readiness_unreported",
         },
       }),
-    ).toMatchObject({ ok: true });
+    ).toEqual({ ok: false, error: "runtime report is invalid" });
     plane.state.storage = {
       getHostLock: async () => null,
     } as never;
