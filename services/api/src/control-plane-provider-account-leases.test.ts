@@ -48,6 +48,13 @@ function seedAccountPlane(opts?: { maxConcurrentSessions?: number; ready?: boole
     shardCount: 1,
     heartbeatStaleMs: 1,
   });
+  expect(
+    plane.createRepository({
+      id: "repo-1",
+      name: "repo-1",
+      url: "https://example.test/repo-1.git",
+    }).ok,
+  ).toBe(true);
   expect(plane.createProvider({ id: "prov-1", name: "claude" }).ok).toBe(true);
   expect(
     plane.createCommand({
