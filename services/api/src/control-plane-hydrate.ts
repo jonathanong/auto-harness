@@ -1,4 +1,8 @@
-import { DEFAULT_MAX_CONCURRENT_SESSIONS, normalizeHostCapabilities } from "@auto-harness/shared";
+import {
+  DEFAULT_MAX_CONCURRENT_SESSIONS,
+  HOST_PROTOCOL_VERSION,
+  normalizeHostCapabilities,
+} from "@auto-harness/shared";
 
 import type {
   CommandRecord,
@@ -11,7 +15,6 @@ import type {
 } from "./db/plane-storage.ts";
 import type { SessionRecord, WorkspaceSlotRecord, WorktreeRecord } from "./db/types.ts";
 import { hydrateScheduledState } from "./control-plane-hydrate-scheduled.ts";
-import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import type {
   ArchiveMetadata,
   ConnectionRecord,
@@ -179,9 +182,10 @@ export async function hydrateFromStorage(
   for (const worktree of worktrees) state.worktrees.set(worktree.id, worktree);
   for (const record of connections) {
     if (record.registered === false || record.type !== "host") continue;
+    if (record.negotiatedProtocolVersion !== HOST_PROTOCOL_VERSION) continue;
     const connection = {
       ...record,
-      negotiatedProtocolVersion: connectionProtocolVersion(record),
+      negotiatedProtocolVersion: record.negotiatedProtocolVersion,
       capabilities: normalizeHostCapabilities(record.capabilities),
       ...(record.runtime ? { runtime: record.runtime } : {}),
     };

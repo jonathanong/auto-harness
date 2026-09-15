@@ -23,6 +23,15 @@ function scheduledState(capabilities: string[] = ["scheduled-main-checkout"]) {
     appendPrompt: true,
     providerId: null,
   });
+  state.repositories.set("repo", {
+    id: "repo",
+    name: "repo",
+    url: "https://example.test/repo.git",
+    defaultBranch: "main",
+    admissionState: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
   state.hostInventories.set("host", {
     hostId: "host",
     repositories: [{ id: "repo", path: "/repo", defaultBranch: "main", worktrees: [] }],

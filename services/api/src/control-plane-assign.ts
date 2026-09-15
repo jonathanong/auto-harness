@@ -5,7 +5,7 @@ import {
   type HostWireMessage,
 } from "@auto-harness/shared";
 
-import type { WorktreeRecord } from "./db/types.ts";
+import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { sessionForPersistence, toPublic } from "./control-plane-state.ts";
@@ -301,7 +301,7 @@ export async function assignQueuedDurable(
       }
       if (won !== true) continue;
       const resumeSpec = session.resumeSpec ?? route.resumeSpec;
-      const nextSession = {
+      const nextSession: SessionRecord = {
         ...session,
         status: "running" as const,
         worktreeId: candidate.id,

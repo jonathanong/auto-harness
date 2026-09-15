@@ -13,7 +13,10 @@ export function isCompleteStoredArchive(
 }
 
 export function archiveGeneration(metadata: ArchiveMetadata): ArchiveGeneration {
-  return { versionId: metadata.versionId, updatedAt: metadata.updatedAt };
+  return {
+    ...(metadata.versionId ? { versionId: metadata.versionId } : {}),
+    updatedAt: metadata.updatedAt,
+  };
 }
 
 function matchesArchiveGeneration(

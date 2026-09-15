@@ -4,7 +4,7 @@ import { hydrateFromStorage } from "./control-plane-hydrate.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 
 describe("durable hydration boundary records", () => {
-  it("retains eligible leases while normalizing legacy connection and catalog defaults", async () => {
+  it("retains eligible leases while discarding an incomplete host connection", async () => {
     const running = {
       id: "running",
       repositoryId: "repo",
@@ -73,9 +73,7 @@ describe("durable hydration boundary records", () => {
       hostId: "",
     });
     expect(state.providerAccountLeases.has("account:1")).toBe(false);
-    expect(state.connections.get("legacy")?.runtime).toMatchObject({
-      daemonVersion: "legacy/unknown",
-    });
+    expect(state.connections.has("legacy")).toBe(false);
     expect(state.hostConnection.has("ignored")).toBe(false);
     expect(state.connections.has("viewer-conn")).toBe(false);
     expect(state.hostConnection.has("user:alice")).toBe(false);
