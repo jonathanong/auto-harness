@@ -1,4 +1,4 @@
-import type { HostWireMessage } from "@auto-harness/shared";
+import { HOST_PROTOCOL_VERSION, type HostWireMessage } from "@auto-harness/shared";
 import { expect } from "vitest";
 
 import { ControlPlane } from "../src/control-plane.ts";
@@ -65,6 +65,7 @@ function newRollbackPlane() {
     connectionIdFactory: () => `c${++connectionSeq}`,
   });
   seedBaseCommand(plane);
+  plane.createRepository({ id: "r", name: "r", url: "https://example.test/r.git" });
   return plane;
 }
 
@@ -126,7 +127,7 @@ export function installUnpublishedWinner(
     lastHeartbeatAt: ROLLBACK_NOW,
     repositoryIds: ["r"],
     capabilities: [],
-    negotiatedProtocolVersion: 1,
+    negotiatedProtocolVersion: HOST_PROTOCOL_VERSION,
     runtime: { daemonVersion: "test/seeded", gitVersion: "2.36.0", gitReady: true },
   });
   plane.state.hostConnection.set("h", connectionId);

@@ -332,6 +332,7 @@ describe("durable runtime read-through", () => {
 
   it("exposes every cache-backed session and schedule read facade", async () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
+    plane.createRepository({ id: "repository", name: "repository", url: "https://example.test/repository.git" });
     plane.createCommand({ id: "command", name: "command", argv: ["echo"] });
     const created = plane.createSession({
       repositoryId: "repository",
