@@ -465,34 +465,6 @@ describe("control-plane terminal message coverage", () => {
     expect(state.sessions.get(session.id)).toEqual(session);
   });
 
-  it("does not persist a deferred terminal-hook handoff for a pre-v7 peer", async () => {
-    const idFactory = vi.fn(() => "handoff");
-    const state = createControlPlaneState({ now: () => NOW, idFactory });
-    const session = running({ infrastructureRetryCount: 1 });
-    const finishSession = vi.fn(async () => true);
-    const putArchive = vi.fn(async () => undefined);
-    setDurableReadStorage(state, {
-      getSession: async () => session,
-      finishSession,
-      listLogs: async () => [],
-      putArchive,
-    });
-    state.sessions.set(session.id, session);
-
-    await expect(
-      handleHostMessageDurable(state, failedCheckoutStatus(), undefined, false, false, 6),
-    ).resolves.toMatchObject({
-      ok: true,
-      sessionStatusAcknowledged: { sessionId: "session", attemptId: "attempt" },
-    });
-    expect(idFactory).not.toHaveBeenCalled();
-    expect(finishSession).toHaveBeenCalledWith(
-      expect.not.objectContaining({ terminalHookHandoff: expect.anything() }),
-    );
-    expect(state.sessions.get(session.id)).not.toHaveProperty("terminalHookHandoff");
-    expect(putArchive).toHaveBeenCalledOnce();
-  });
-
   it("finishes a hostless deferred failure without fabricating a terminal hook handoff", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     const session = running({ hostId: null, infrastructureRetryCount: 1 });
@@ -505,8 +477,8 @@ describe("control-plane terminal message coverage", () => {
     });
 
     await expect(
-      handleHostMessageDurable(state, failedCheckoutStatus(), undefined, false, false, 6),
-    ).resolves.toMatchObject({ ok: true, sessionStatusAcknowledged: { sessionId: "session" } });
+      handleHostMessageDurable(state, failedCheckoutStatus(), undefined, false, false, 7),
+    ).resolves.toMatchObject({ ok: true });
     expect(finishSession).toHaveBeenCalledWith(
       expect.not.objectContaining({ terminalHookHandoff: expect.anything() }),
     );
@@ -711,7 +683,7 @@ describe("control-plane terminal message coverage", () => {
         errorCode: "checkout_fetch_failed",
         deferTerminalHookResult: true,
       }),
-    ).resolves.toMatchObject({ ok: true, sessionStatusAcknowledged: { sessionId: "session" } });
+    ).resolves.toMatchObject({ ok: true });
     expect(releaseMainCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({ status: "failed", errorCode: "checkout_fetch_failed" }),
     );
@@ -856,7 +828,7 @@ describe("control-plane terminal message coverage", () => {
     );
   });
 
-  it("does not expose a local reconciliation handoff to a legacy keepalive", async () => {
+  it("exposes a local reconciliation handoff to keepalive", async () => {
     const state = createControlPlaneState({ now: () => NOW, idFactory: () => "handoff" });
     state.hostConnection.set("host", "connection");
     state.connections.set("connection", {
@@ -889,13 +861,16 @@ describe("control-plane terminal message coverage", () => {
         at: NOW,
         runningSessions: [],
       }),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toMatchObject({
+      ok: true,
+      terminalHookHandoffs: [expect.objectContaining({ handoffId: "handoff" })],
+    });
     expect(state.sessions.get("session")?.terminalHookHandoff).toMatchObject({
       handoffId: "handoff",
     });
   });
 
-  it("does not expose a durable reconciliation handoff to a legacy keepalive", async () => {
+  it("exposes a durable reconciliation handoff to keepalive", async () => {
     const state = createControlPlaneState({ now: () => NOW, idFactory: () => "handoff" });
     const session = running({
       ackReceivedAt: NOW,
@@ -920,9 +895,12 @@ describe("control-plane terminal message coverage", () => {
         "connection",
         false,
         false,
-        4,
+        7,
       ),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toMatchObject({
+      ok: true,
+      terminalHookHandoffs: [expect.objectContaining({ handoffId: "handoff" })],
+    });
     expect(finishSession).toHaveBeenCalledWith(
       expect.objectContaining({
         terminalHookHandoff: expect.objectContaining({ handoffId: "handoff" }),
