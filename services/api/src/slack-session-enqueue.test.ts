@@ -99,6 +99,8 @@ class SessionOutbox implements SlackOutboxStore {
 
   async putCommand() {}
 
+  async putRepository() {}
+
   async getSlackIntegration() {
     return this.slack ? { ...this.slack } : null;
   }
