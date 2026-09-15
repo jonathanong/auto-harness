@@ -490,10 +490,14 @@ async function acceptingServer(): Promise<{
   const state = { registrations: 0 };
   wss.on("connection", (socket) => {
     socket.on("message", (raw) => {
-      const message = JSON.parse(String(raw)) as { type?: string; hostId?: string };
+      const message = JSON.parse(String(raw)) as { type?: string; hostId?: string; at?: string };
       if (message.type === "host:register") {
         state.registrations++;
         socket.send(JSON.stringify({ type: "host:registered", hostId: message.hostId }));
+      } else if (message.type === "host:keepalive") {
+        socket.send(
+          JSON.stringify({ type: "host:keepalive-ack", hostId: message.hostId, at: message.at }),
+        );
       } else if (message.type === "host:status") {
         socket.send(JSON.stringify({ type: "host:draining", hostId: message.hostId }));
       }
