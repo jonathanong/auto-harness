@@ -59,6 +59,7 @@ export function triggerSchedule(
     return { ok: false, error: result.error };
   }
   if (result.created) {
+    state.sessions.get(result.session.id)!.principalId = schedule.principalId!;
     schedule.nextRunAt = newNextRunAt;
     schedule.lastRunAt = nowIso;
     if (state.storage) {
@@ -112,9 +113,6 @@ export async function triggerScheduleDurable(
   }
   if (!schedule.enabled) {
     return { ok: false, error: "schedule is disabled" };
-  }
-  if (!schedule.principalId) {
-    return { ok: false, error: "schedule must be claimed by an authenticated principal" };
   }
   if (
     schedule.workspacePoolId &&
@@ -232,9 +230,6 @@ export function tryClaimScheduleFire(
   if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
     return null;
   }
-  if (!schedule.principalId) {
-    return null;
-  }
   const activationCutoffAt = schedule.repositoryId
     ? state.repositories.get(schedule.repositoryId)?.activationCutoffAt
     : undefined;
@@ -257,6 +252,7 @@ export function tryClaimScheduleFire(
   if (!result.created) {
     return null;
   }
+  state.sessions.get(result.session.id)!.principalId = schedule.principalId!;
   schedule.lastRunAt = nowIso;
   return result.session;
 }
@@ -340,9 +336,6 @@ export async function tryClaimScheduleFireDurable(
       });
     }
     if (skipped) state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
-    return null;
-  }
-  if (!schedule.principalId) {
     return null;
   }
   if (
@@ -557,7 +550,7 @@ function createScheduledSession(state: ControlPlaneState, schedule: ScheduleReco
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
     concurrencyId: schedule.concurrencyId ?? `schedule-${schedule.id}`,
     scheduleId: schedule.id,
-    ...(schedule.principalId ? { principalId: schedule.principalId } : {}),
+    principalId: schedule.principalId!,
   };
 }
 
@@ -619,6 +612,6 @@ function scheduledSessionInput(
             false,
         }
       : {}),
-    ...(schedule.principalId ? { metadata: { createdBy: schedule.principalId } } : {}),
+    metadata: { createdBy: schedule.principalId! },
   };
 }

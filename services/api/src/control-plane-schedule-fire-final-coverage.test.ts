@@ -103,6 +103,7 @@ describe("schedule fire final branch coverage", () => {
       destroyWorkspaceAfter: false,
     });
     expect(created).not.toHaveProperty("principalId");
+    expect(current.sessions.get("run")).toMatchObject({ principalId: "principal" });
   });
 
   it("uses false when a durable workspace schedule and its pool omit cleanup policy", async () => {

@@ -1,6 +1,7 @@
 /* eslint-disable max-lines */
 import { hasHostCapability, type HostWireMessage } from "@auto-harness/shared";
 
+import type { SessionRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { toPublic } from "./control-plane-state.ts";
@@ -15,7 +16,6 @@ import {
   hostEnvironmentReady,
 } from "./control-plane-host-environment.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
-import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import { assignLogSettings, getSessionLogSettings } from "./control-plane-session-log-settings.ts";
 import { planScheduledPlacement } from "./queue-placement-planner.ts";
 import {
@@ -144,11 +144,7 @@ export async function assignScheduledQueuedDurable(
       continue;
     }
     if (plan.action !== "assign") continue;
-    const principalId = sessionPrincipalId(session);
-    if (!principalId) {
-      await cancelSessionDurable(state, session.id);
-      continue;
-    }
+    const principalId = session.principalId!;
     let placed:
       | {
           hostId: string;
@@ -245,7 +241,7 @@ export async function assignScheduledQueuedDurable(
     }
     if (!placed) continue;
     const { hostId, connectionId, target, attemptId, lease, sessionApiKey } = placed;
-    const next = {
+    const next: SessionRecord = {
       ...session,
       status: "running" as const,
       worktreeId: null,

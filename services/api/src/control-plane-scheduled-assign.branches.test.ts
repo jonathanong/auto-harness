@@ -279,26 +279,6 @@ describe("scheduled assignment branch coverage", () => {
     expect(await assignScheduledQueuedDurable(current)).toEqual([]);
   });
 
-  it("cancels when ownership disappears after placement chooses a host", async () => {
-    const current = state();
-    current.connections.set("c1", connection("h1", "c1"));
-    current.hostConnection.set("h1", "c1");
-    const row = session({ principalId: undefined });
-    let reads = 0;
-    Object.defineProperty(row, "principalId", {
-      configurable: true,
-      enumerable: true,
-      get() {
-        reads += 1;
-        return reads === 1 ? "principal" : undefined;
-      },
-    });
-    current.sessions.set("s", row);
-    await expect(assignScheduledQueuedDurable(current)).resolves.toEqual([]);
-    expect(reads).toBeGreaterThanOrEqual(2);
-    expect(current.sessions.get("s")?.status).toBe("cancelled");
-  });
-
   it("claims with a missing or unversioned host inventory fence", async () => {
     const versions: Array<number | null> = [];
     for (const inventory of [

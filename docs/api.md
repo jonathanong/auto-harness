@@ -184,9 +184,8 @@ requests fail closed until the marker exists. Roll upgrades must retire all olde
 writers before enabling the scheduler bootstrap, since an old binary could otherwise admit an
 untracked session during the migration.
 
-Durable schedules have an authenticated owner. A schedule without `principalId` is invalid:
-durable manual trigger returns an error, and cron skips the occurrence without a special
-ownerless path. The owner is derived from authentication and cannot be supplied in schedule JSON.
+Every durable schedule stores an authenticated `principalId`. The owner is derived from
+authentication and cannot be supplied in schedule JSON.
 
 It requires `sessions:write`; repository scope and principal ownership are always derived from
 authentication and cannot be supplied in the request.
