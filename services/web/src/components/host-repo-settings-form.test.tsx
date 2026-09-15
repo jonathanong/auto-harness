@@ -111,7 +111,7 @@ describe("HostRepoSettingsForm", () => {
     view.unmount();
   });
 
-  it("allows an unchanged legacy relative hook while saving ordinary settings", async () => {
+  it("rejects a legacy relative hook before saving ordinary settings", () => {
     const legacyRepo = { ...repo, terminalHookScript: "./hook.sh" };
     const persistence = inMemoryInventory({
       ...inventory,
@@ -128,11 +128,10 @@ describe("HostRepoSettingsForm", () => {
     press(field(view.container, "repo-settings-open-repo-1"));
     setValue(field(document, "repo-settings-path-repo-1"), "/new/repo");
     submit(field(document, "form-repo-settings-repo-1"));
-    await act(async () => Promise.resolve());
-    expect(document.querySelector('[data-pw="repo-settings-error-repo-1"]')).toBeNull();
-    expect(persistence.current()).toMatchObject({
-      repositories: [{ id: "repo-1", path: "/new/repo", terminalHookScript: "./hook.sh" }],
-    });
+    expect(field(document, "repo-settings-error-repo-1").textContent).toBe(
+      "repository.repo-1.terminalHookScript must be an absolute path",
+    );
+    expect(persistence.mutate).not.toHaveBeenCalled();
     view.unmount();
   });
 
