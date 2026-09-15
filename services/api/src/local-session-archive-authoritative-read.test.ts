@@ -17,6 +17,15 @@ describe("durable session archive reads", () => {
     expect((await writer.createCommandDurable({ name: "command", argv: ["echo"] })).ok).toBe(true);
     expect(
       (
+        await writer.createRepositoryDurable({
+          id: "repository",
+          name: "repository",
+          url: "https://example.test/repository.git",
+        })
+      ).ok,
+    ).toBe(true);
+    expect(
+      (
         await writer.createSessionDurable({
           repositoryId: "repository",
           prompt: "work",

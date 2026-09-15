@@ -244,6 +244,15 @@ describe("host capability advertisements", () => {
           lastHeartbeatAt: "then",
           commandProfiles: [],
         },
+        {
+          connectionId: "current-connection",
+          type: "host",
+          hostId: "current-connection-host",
+          connectedAt: "then",
+          lastHeartbeatAt: "then",
+          protocolVersion: HOST_PROTOCOL_VERSION,
+          negotiatedProtocolVersion: HOST_PROTOCOL_VERSION,
+        },
       ],
       listSchedules: async () => [],
       listRepositories: async () => [],
@@ -262,9 +271,21 @@ describe("host capability advertisements", () => {
       listArchives: async () => [],
     } as never;
     await plane.hydrateFromStorage();
+    // The stored connection row predates `negotiatedProtocolVersion`, so it can
+    // never be verified against HOST_PROTOCOL_VERSION. Hydration fails closed:
+    // the host is dropped entirely rather than resurrected with an assumed
+    // (empty) capability set.
     expect(
-      plane.listHosts().find((host) => host.hostId === "legacy-connection-host")?.capabilities,
+      plane.listHosts().find((host) => host.hostId === "legacy-connection-host"),
+    ).toBeUndefined();
+    // A row that actually carries a negotiated version matching the current
+    // protocol hydrates normally (proving the guard discriminates), and a
+    // legacy row missing `capabilities` normalizes to an empty list.
+    expect(
+      plane.listHosts().find((host) => host.hostId === "current-connection-host")?.capabilities,
     ).toEqual([]);
+    // Host inventory rows are not gated by protocol negotiation; a legacy row
+    // missing `capabilities` is normalized to an empty (unsupported) list.
     expect(plane.getHostInventory("legacy-inventory-host")?.capabilities).toEqual([]);
   });
 });

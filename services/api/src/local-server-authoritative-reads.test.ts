@@ -20,16 +20,19 @@ describe("durable session routes", () => {
       now: () => "2026-01-01T00:00:00.000Z",
     });
     expect((await writer.createCommandDurable({ name: "command", argv: ["echo"] })).ok).toBe(true);
-    expect(
-      (
-        await writer.createSessionDurable({
-          repositoryId: "repository",
-          prompt: "work",
-          target: { commandId: "command" },
-          timeout: 1,
-        })
-      ).ok,
-    ).toBe(true);
+    const repo = {
+      id: "repository",
+      name: "repository",
+      url: "https://example.test/repository.git",
+    };
+    expect((await writer.createRepositoryDurable(repo)).ok).toBe(true);
+    const sessionBody = {
+      repositoryId: "repository",
+      prompt: "work",
+      target: { commandId: "command" },
+      timeout: 1,
+    };
+    expect((await writer.createSessionDurable(sessionBody)).ok).toBe(true);
     for (const [seq, stream, content] of [
       [2, "stdout", "command output"],
       [1, "system", "Session started at 2026-01-01T00:00:00.000Z"],

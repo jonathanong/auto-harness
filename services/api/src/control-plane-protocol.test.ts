@@ -37,6 +37,13 @@ describe("host connection protocol negotiation", () => {
         listAllWorktrees: async () => [],
         listConnections: async () => [
           { connectionId: "old", type: "host", hostId: "host", protocolVersion: 7 },
+          {
+            connectionId: "current",
+            type: "host",
+            hostId: "host-current",
+            protocolVersion: HOST_PROTOCOL_VERSION,
+            negotiatedProtocolVersion: HOST_PROTOCOL_VERSION,
+          },
         ],
         listSchedules: async () => [],
         listRepositories: async () => [],
@@ -52,7 +59,17 @@ describe("host connection protocol negotiation", () => {
 
     await hydrateFromStorage(state);
 
-    expect(connectionProtocolVersion(state.connections.get("old"))).toBe(7);
-    expect(state.connections.get("old")?.negotiatedProtocolVersion).toBe(7);
+    // The stored row predates the negotiated-version field: it carries only the
+    // legacy `protocolVersion` advertisement, never a value this control plane
+    // actually negotiated. Hydration must not invent a negotiated version from
+    // that advertisement (even though it numerically matches HOST_PROTOCOL_VERSION) —
+    // it fails closed and drops the connection instead of treating it as live.
+    expect(state.connections.has("old")).toBe(false);
+    expect(connectionProtocolVersion(state.connections.get("old"))).toBeUndefined();
+    // A row that actually carries a negotiated version matching the current
+    // protocol hydrates normally, proving the guard discriminates rather than
+    // dropping every row unconditionally.
+    expect(state.connections.get("current")?.negotiatedProtocolVersion).toBe(HOST_PROTOCOL_VERSION);
+    expect(state.hostConnection.get("host-current")).toBe("current");
   });
 });
