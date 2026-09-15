@@ -831,19 +831,11 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
     }
   });
 
-  it("permits an unchanged legacy relative hook but rejects a new or changed one", () => {
+  it("rejects a relative hook preserved from an earlier inventory", () => {
     const legacy = inventory();
     legacy.repositories[0]!.terminalHookScript = "./hook.sh";
     expect(
       reconcileInventoryWrite({ existing: legacy, incoming: legacy, allowExecConfig: false }),
-    ).toMatchObject({ ok: true, execEdits: [] });
-
-    const changed: HostInventory = {
-      ...legacy,
-      repositories: [{ ...legacy.repositories[0]!, terminalHookScript: "./replacement.sh" }],
-    };
-    expect(
-      reconcileInventoryWrite({ existing: legacy, incoming: changed, allowExecConfig: true }),
     ).toMatchObject({
       ok: false,
       kind: "validation",
@@ -865,73 +857,6 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
       reconcileInventoryWrite({
         existing: emptyHostInventory(),
         incoming: attachedAbsolute,
-        allowExecConfig: true,
-      }),
-    ).toMatchObject({ ok: true });
-  });
-
-  it("fences unchanged legacy relative hooks when resolution paths move", () => {
-    const legacy = inventory();
-    legacy.repositories[0]!.terminalHookScript = "./hook.sh";
-    const movedRepository: HostInventory = {
-      ...legacy,
-      repositories: [
-        {
-          ...legacy.repositories[0]!,
-          path: "/opt/other/repo",
-          worktrees: [
-            { ...legacy.repositories[0]!.worktrees[0]!, path: "/opt/other/repo/.worktrees/wt-1" },
-          ],
-        },
-      ],
-    };
-    expect(
-      reconcileInventoryWrite({
-        existing: legacy,
-        incoming: movedRepository,
-        allowExecConfig: false,
-      }),
-    ).toMatchObject({
-      ok: false,
-      kind: "forbidden",
-      error: "fleet:exec-config is required to change setup scripts or executable paths",
-    });
-    expect(
-      reconcileInventoryWrite({
-        existing: legacy,
-        incoming: movedRepository,
-        allowExecConfig: true,
-      }),
-    ).toMatchObject({ ok: true });
-
-    const addedWorktree: HostInventory = {
-      ...legacy,
-      repositories: [
-        {
-          ...legacy.repositories[0]!,
-          worktrees: [
-            ...legacy.repositories[0]!.worktrees,
-            { id: "wt-2", name: "wt-2", path: "/opt/harness/repo/.worktrees/wt-2", labels: [] },
-          ],
-        },
-      ],
-    };
-    expect(
-      reconcileInventoryWrite({
-        existing: legacy,
-        incoming: addedWorktree,
-        allowExecConfig: false,
-      }),
-    ).toMatchObject({ ok: false, kind: "forbidden" });
-
-    const absoluteReplacement: HostInventory = {
-      ...legacy,
-      repositories: [{ ...legacy.repositories[0]!, terminalHookScript: "/opt/new-hook.sh" }],
-    };
-    expect(
-      reconcileInventoryWrite({
-        existing: legacy,
-        incoming: absoluteReplacement,
         allowExecConfig: true,
       }),
     ).toMatchObject({ ok: true });

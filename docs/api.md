@@ -1713,10 +1713,8 @@ POSIX, Windows-drive, and UNC absolute paths so mixed fleets can share inventory
 rejects foreign-platform spellings when applying that list, matching terminal-hook path checks. Omitted keys are left unchanged. Empty strings / empty
 `allowedRoots`, empty `setupCacheInputs`, and empty `setupCacheHostInputs` clear the stored value. A host with no inventory yet is created empty, then the
 patch is applied. Unknown repository or worktree ids return `400 VALIDATION_ERROR`. Non-empty
-new or changed `terminalHookScript` values must be absolute paths on both this route and
-`PUT /inventory`. A relative hook persisted by an earlier release may be carried through an
-otherwise unrelated write only when it is exactly unchanged; replacing or clearing it migrates
-the document to the current rule.
+non-empty `terminalHookScript` values must be absolute paths on both this route and
+`PUT /inventory`, including values preserved from an earlier inventory document.
 The success audit is recorded **before** the durable write; if that audit cannot be persisted the
 document is left unchanged (HTTP 500). If the following write fails, a failed
 `host-exec-config:update` is also recorded. Successful writes include the changed field paths
