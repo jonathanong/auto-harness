@@ -535,6 +535,7 @@ export class DaemonLoop {
     inventoryPolicyBlocked = this.inventoryPolicyBlocked,
     config = this.config,
   }: { inventoryPolicyBlocked?: boolean; config?: DaemonConfig } = {}): Promise<void> {
+    this.runtime ??= await probeGitReadiness(this.processRunner);
     const readiness = providerAccountReadiness(this.executionProfiles);
     const runningAttempts = this.confirmableOwnedAttempts();
     await registerDaemon(
