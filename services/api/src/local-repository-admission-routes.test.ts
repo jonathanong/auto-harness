@@ -45,6 +45,7 @@ function seededPlane(): ControlPlane {
     lastRunAt: null,
     createdAt: NOW,
     concurrencyId: "schedule-schedule",
+    principalId: "principal-1",
   });
   return plane;
 }

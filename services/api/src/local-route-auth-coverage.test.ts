@@ -183,6 +183,11 @@ describe("local route authorization and outcomes", () => {
 
   it("hides foreign resumes and maps a scheduled resume failure to conflict", async () => {
     const plane = new ControlPlane();
+    plane.createRepository({
+      id: "repo-a",
+      name: "repo-a",
+      url: "https://example.test/repo-a.git",
+    });
     plane.state.sessions.set("scheduled", scheduledSession());
     plane.state.sessions.set(
       "foreign",
