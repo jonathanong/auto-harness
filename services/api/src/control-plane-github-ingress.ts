@@ -106,17 +106,16 @@ export async function updateGitHubIngressConfig(
     if (!catalog.ok) return catalog;
     const current = await getGitHubIngressConfigRecord(state);
     if (!current) return { ok: false, error: "GitHub ingress integration not found" };
+    if (!current.generation) return conflict();
     if (
       (expectedVersion !== undefined && current.version !== expectedVersion) ||
-      (expectedGeneration === null
-        ? current.generation !== undefined
-        : expectedGeneration !== undefined && current.generation !== expectedGeneration)
+      (expectedGeneration !== undefined && current.generation !== expectedGeneration)
     )
       return conflict();
     const record = await makeRecord(
       state,
       input,
-      current.generation ?? randomUUID(),
+      current.generation,
       current.version + 1,
       current.createdAt,
       state.now(),
@@ -143,7 +142,7 @@ export async function updateGitHubIngressConfig(
         record,
         current.version,
         markers,
-        current.generation ?? null,
+        current.generation,
       ))
     ) {
       return conflict();
@@ -160,16 +159,15 @@ export async function deleteGitHubIngressConfig(
 ): Promise<{ ok: true } | Failure> {
   const current = await getGitHubIngressConfigRecord(state);
   if (!current) return { ok: false, error: "GitHub ingress integration not found" };
+  if (!current.generation) return conflict();
   if (
     (expectedVersion !== undefined && current.version !== expectedVersion) ||
-    (expectedGeneration === null
-      ? current.generation !== undefined
-      : expectedGeneration !== undefined && current.generation !== expectedGeneration)
+    (expectedGeneration !== undefined && current.generation !== expectedGeneration)
   )
     return conflict();
   if (
     state.storage &&
-    !(await state.storage.deleteGitHubIngressConfig(current.version, current.generation ?? null))
+    !(await state.storage.deleteGitHubIngressConfig(current.version, current.generation))
   )
     return conflict();
   if (!state.storage && state.githubIngressConfig !== current) return conflict();

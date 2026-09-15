@@ -102,32 +102,14 @@ export async function listSessionsByStatus(
   status: SessionStatus,
   shard: number,
 ): Promise<SessionRecord[]> {
-  // Running/terminal listings keep createdAt so pre-index rows remain visible.
-  // Queued listings union both indexes until queueOrder backfill is complete —
-  // a live sparse GSI omits items missing the sort key without throwing.
   if (status !== "queued") {
     return (
       await querySessionsByStatusIndex(ctx, SESSIONS_STATUS_CREATED_INDEX, status, shard)
     ).map(itemToSession);
   }
-  let ordered: Record<string, unknown>[] = [];
-  try {
-    ordered = await querySessionsByStatusIndex(ctx, SESSIONS_QUEUE_ORDER_INDEX, status, shard);
-  } catch (error) {
-    if (!indexUnavailable(error)) throw error;
-  }
-  const legacy = await querySessionsByStatusIndex(
-    ctx,
-    SESSIONS_STATUS_CREATED_INDEX,
-    status,
-    shard,
-  );
-  for (const item of legacy) await repairQueuedQueueOrder(ctx, item);
-  const byId = new Map<string, Record<string, unknown>>();
-  for (const item of [...legacy, ...ordered]) {
-    if (typeof item.id === "string") byId.set(item.id, item);
-  }
-  return [...byId.values()].map(itemToSession).toSorted(compareSessionsForQueue);
+  return (await querySessionsByStatusIndex(ctx, SESSIONS_QUEUE_ORDER_INDEX, status, shard))
+    .map(itemToSession)
+    .toSorted(compareSessionsForQueue);
 }
 
 export async function queueOrderForSession(

@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 
 import { API_BASE, CONTROL_PORT, HOST_PANE_PORT } from "../harness-endpoints.ts";
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 
 /**
  * Screenshot specs run standalone (see docs/e2e.md — "Design-review screenshots"), not through
@@ -70,7 +71,10 @@ export async function connectHost(
       socket.send(
         JSON.stringify({
           type: "host:register",
-          protocolVersion: 1,
+          protocolVersion: HOST_PROTOCOL_VERSION,
+          daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+          daemonStartedAt: "2026-08-11T00:00:00.000Z",
+          runningAttempts: [],
           hostId,
           worktrees: [
             {

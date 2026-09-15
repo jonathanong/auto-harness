@@ -26,8 +26,8 @@ export async function registerDaemon(
   transport: Pick<DaemonTransport, "send">,
   runningSessions: readonly string[],
   draining = false,
-  identity?: DaemonRuntimeIdentity,
-  runtime?: HostRuntimeReport,
+  identity: DaemonRuntimeIdentity,
+  runtime: HostRuntimeReport,
   runningAttempts: readonly HostRunningAttempt[] = [],
   executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
 ): Promise<void> {
@@ -69,10 +69,9 @@ export async function registerDaemon(
         left.sessionId.localeCompare(right.sessionId) ||
         left.attemptId.localeCompare(right.attemptId),
     ),
-    ...(identity
-      ? { daemonInstanceId: identity.instanceId, daemonStartedAt: identity.startedAt }
-      : {}),
-    ...(runtime ? { runtime } : {}),
+    daemonInstanceId: identity.instanceId,
+    daemonStartedAt: identity.startedAt,
+    runtime,
     ...(draining ? { draining: true } : {}),
   };
   if (Buffer.byteLength(JSON.stringify(registration), "utf8") > MAX_HOST_REGISTRATION_BYTES) {

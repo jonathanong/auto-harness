@@ -149,6 +149,7 @@ describe("session state-machine residual coverage", () => {
       name: "repository",
       url: "https://example.test/repository",
       defaultBranch: "main",
+      admissionState: "active",
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -201,6 +202,7 @@ describe("session state-machine residual coverage", () => {
       name: "repository",
       url: "https://example.test/repository",
       defaultBranch: "main",
+      admissionState: "active",
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -227,6 +229,7 @@ describe("session state-machine residual coverage", () => {
       name: "repository",
       url: "https://example.test/repository",
       defaultBranch: "main",
+      admissionState: "active",
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -360,6 +363,7 @@ describe("session state-machine residual coverage", () => {
       name: "repo",
       url: "https://example.test/repo.git",
       defaultBranch: "main",
+      admissionState: "active",
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -443,6 +447,7 @@ describe("session state-machine residual coverage", () => {
       name: "repo",
       url: "https://example.test/repo.git",
       defaultBranch: "main",
+      admissionState: "active",
       createdAt: NOW,
       updatedAt: NOW,
     });

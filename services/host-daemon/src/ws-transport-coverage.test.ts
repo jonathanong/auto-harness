@@ -71,9 +71,9 @@ describe("WebSocket transport residual runtime branches", () => {
     socket.open();
     await transport.send(register());
     socket.server({ type: "host:keepalive-ack", hostId: "host-1", at: "now" });
-    socket.server({ type: "host:registered", hostId: "host-1", protocolVersion: 2 });
+    socket.server({ type: "host:registered", hostId: "host-1", protocolVersion: 7 });
     await transport.registered;
-    expect(negotiated).toBe(2);
+    expect(negotiated).toBe(7);
     socket.emit("message", Buffer.from("{"));
     for (const message of [
       { type: "session:acknowledged", sessionId: "", attemptId: "a" },

@@ -130,8 +130,6 @@ export type SessionRecord = {
   hostAssignmentLease?: {
     hostId: string;
   };
-  /** Idempotency marker for post-transition repair of a pre-lease host slot. */
-  legacyHostAssignmentReleased?: boolean;
   /**
    * A host-loss terminal outcome whose repository hook must be run by the
    * replacement daemon on the same host. It is retained on the active-host

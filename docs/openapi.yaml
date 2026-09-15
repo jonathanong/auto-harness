@@ -104,7 +104,7 @@ paths:
         - name: If-Match-Generation
           in: header
           required: true
-          description: Opaque generation observed in the latest configuration response (or `legacy` for an old record).
+          description: Opaque generation observed in the latest configuration response.
           schema: { type: string, minLength: 1 }
       responses:
         "204": { description: Deleted }
@@ -856,12 +856,7 @@ components:
             description: At most 64 UTF-8 bytes.
         enabled: { type: boolean }
         version: { type: integer, minimum: 1 }
-        generation:
-          {
-            type: string,
-            minLength: 1,
-            description: Opaque observed-generation fence; use `legacy` only for records without one.,
-          }
+        generation: { type: string, minLength: 1, description: Opaque observed-generation fence. }
     CustomWebhookIntegration:
       type: object
       required:
@@ -908,7 +903,7 @@ components:
           {
             type: string,
             minLength: 1,
-            description: Opaque generation for compare-and-swap writes. Always present; `legacy` for rows stored without one.,
+            description: Opaque generation for compare-and-swap writes. Always present.,
           }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -1017,7 +1012,7 @@ components:
         generation:
           type: string
           minLength: 1
-          description: Opaque observed-generation fence; use `legacy` only for records without one.
+          description: Opaque observed-generation fence.
     GitHubIngressConfig:
       type: object
       required: [id, type, enabled, bindings, secretConfigured, version, createdAt, updatedAt]

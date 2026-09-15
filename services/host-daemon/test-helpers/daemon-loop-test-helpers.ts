@@ -58,6 +58,13 @@ export function createAcknowledgingLoopbackTransport(opts: {
           attemptId: message.attemptId,
         });
       }
+      if (message.type === "session:command-start") {
+        transport.deliver({
+          type: "session:command-start-acknowledged",
+          sessionId: message.sessionId,
+          attemptId: message.attemptId,
+        });
+      }
     },
   });
   return transport;

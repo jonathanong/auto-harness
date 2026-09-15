@@ -21,7 +21,7 @@ function markHostReady(
     capabilities: [],
     repositoryIds: [repositoryId],
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-    protocolVersion: 1,
+    protocolVersion: 7,
     providerAccountReadiness: [{ providerAccountId, ready: true, fingerprint: "a".repeat(64) }],
   });
   state.hostConnection.set(hostId, connectionId);

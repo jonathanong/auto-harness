@@ -833,59 +833,6 @@ export async function tryClaimSchedule(
 }
 
 /**
- * Consume an ownerless legacy occurrence only while it remains ownerless, and
- * durably record why it was skipped in the same transaction.  The ownership
- * condition is essential: a concurrent authenticated claim must leave the
- * due occurrence available to run under that new owner.
- */
-export async function skipOwnerlessScheduleAndAudit(
-  ctx: PlaneStorageCtx,
-  opts: {
-    scheduleId: string;
-    expectedNextRunAt: string;
-    newNextRunAt: string;
-    lastRunAt: string;
-    audit: AuditLogRecord;
-  },
-): Promise<boolean> {
-  try {
-    await ctx.doc.send(
-      new TransactWriteCommand({
-        TransactItems: [
-          {
-            Update: {
-              TableName: ctx.tables.schedules,
-              Key: { id: opts.scheduleId },
-              UpdateExpression: "SET nextRunAt = :nextRunAt, lastRunAt = :lastRunAt",
-              ConditionExpression:
-                "nextRunAt = :expectedNextRunAt AND enabled = :true AND attribute_not_exists(principalId)",
-              ExpressionAttributeValues: {
-                ":nextRunAt": opts.newNextRunAt,
-                ":lastRunAt": opts.lastRunAt,
-                ":expectedNextRunAt": opts.expectedNextRunAt,
-                ":true": true,
-              },
-            },
-          },
-          {
-            Put: {
-              TableName: ctx.tables.auditLogs,
-              Item: auditLogItem(opts.audit),
-              ConditionExpression:
-                "attribute_not_exists(#scope) AND attribute_not_exists(timestampId)",
-              ExpressionAttributeNames: { "#scope": "scope" },
-            },
-          },
-        ],
-      }),
-    );
-    return true;
-  } catch (error) {
-    return conditionalCatalogWriteOrThrow(error);
-  }
-}
-
-/**
  * Claim a due schedule and insert its session in one DynamoDB transaction.
  * This is deliberately separate from `tryClaimSchedule`: advancing the cron
  * cursor without the corresponding session creates a silent missed run.

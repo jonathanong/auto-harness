@@ -83,7 +83,7 @@ export async function handleGitHubIngressRoute(ctx: RouteCtx): Promise<boolean> 
           id: "github-ingress",
           type: "github-ingress",
           storageId: "github-ingress",
-          ...(record.generation ? { generation: record.generation } : {}),
+          generation: record.generation,
           version: record.version,
           enabled: record.enabled,
         },

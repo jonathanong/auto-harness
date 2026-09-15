@@ -129,11 +129,10 @@ export async function updateCustomWebhookIntegration(
         ? await state.storage.getCustomWebhookIntegration(normalizedInput.id)
         : state.customWebhookIntegrations.get(normalizedInput.id);
       if (!current) return { ok: false, error: "custom webhook integration not found" };
+      if (!current.generation) return conflict();
       if (
         (expectedVersion !== undefined && current.version !== expectedVersion) ||
-        (expectedGeneration === null
-          ? current.generation !== undefined
-          : expectedGeneration !== undefined && current.generation !== expectedGeneration)
+        (expectedGeneration !== undefined && current.generation !== expectedGeneration)
       )
         return conflict();
       const record = await makeRecord(
@@ -142,7 +141,7 @@ export async function updateCustomWebhookIntegration(
         current.createdAt,
         current.version + 1,
         state.now(),
-        current.generation ?? randomUUID(),
+        current.generation,
         normalizedInput.secret === undefined ? current.encryptedSecret : undefined,
       );
       if (
@@ -151,7 +150,7 @@ export async function updateCustomWebhookIntegration(
           record,
           current.version,
           markers,
-          current.generation ?? null,
+          current.generation,
         ))
       ) {
         return conflict();
@@ -173,20 +172,15 @@ export async function deleteCustomWebhookIntegration(
       ? await state.storage.getCustomWebhookIntegration(id)
       : state.customWebhookIntegrations.get(id);
     if (!current) return { ok: false, error: "custom webhook integration not found" };
+    if (!current.generation) return conflict();
     if (
       (expectedVersion !== undefined && current.version !== expectedVersion) ||
-      (expectedGeneration === null
-        ? current.generation !== undefined
-        : expectedGeneration !== undefined && current.generation !== expectedGeneration)
+      (expectedGeneration !== undefined && current.generation !== expectedGeneration)
     )
       return conflict();
     if (
       state.storage &&
-      !(await state.storage.deleteCustomWebhookIntegration(
-        id,
-        current.version,
-        current.generation ?? null,
-      ))
+      !(await state.storage.deleteCustomWebhookIntegration(id, current.version, current.generation))
     ) {
       return conflict();
     }

@@ -344,16 +344,13 @@ and waits for the function's configured invocation timeout before updating. It r
 concurrency setting only after the update succeeds; failures leave both scheduler gates closed for
 fail-closed recovery.
 
-The first revision containing the principal session-drain activity ledger has a
-one-time mixed-version constraint. Before running `update`, stop external session
+The first revision containing the principal session-drain activity ledger
+requires a writer fence. Before running `update`, stop external session
 admission and disable the environment's EventBridge cron rule. Wait for in-flight
 REST, WebSocket, and cron Lambda invocations to finish, then keep that gate in
 place while `update` replaces every runtime writer. After `update` completes, the
-deployment process itself performs the strongly-consistent backfill in durable,
-fenced 100-session pages and publishes the ledger readiness marker only after its
-final checkpoint. The driver is bounded at 100,000 page attempts and retains its
-durable checkpoint if it fails, so a rerun resumes instead of rescanning prior
-pages. REST and WebSocket cold starts never scan session history. REST also skips
+deployment process writes the ledger readiness marker directly for an empty
+Sessions table. REST and WebSocket cold starts never scan session history. REST also skips
 catalog/worktree/connection/archive Scans (`HARNESS_HYDRATE_CATALOGS=false`) so a
 host-inventory GET is a `GetItem` and cannot 500 behind init hydrate; drain admission
 fails closed while the marker is absent. The wrapper verifies the `SessionDrains`
@@ -375,10 +372,9 @@ The priority-list revision uses the same maintenance fence. It adds
 again. It then adds `statusShard-createdOrder`, whose `createdAt#id` range key
 matches the REST creation-time tie-breaker. DynamoDB permits only one GSI create
 per update of an existing table. Only after all three indexes are queryable does
-the wrapper deploy the runtime and run the strongly-consistent, lease-fenced
-100-session-page backfill. Its durable readiness marker is `SessionDrains`
-`scopeKey=__session-priority-order__`, `recordKey=READY-V2`; it is not published
-until the final checkpoint succeeds.
+the wrapper deploy the runtime and write the readiness marker directly for an
+empty Sessions table. Its durable readiness marker is `SessionDrains`
+`scopeKey=__session-priority-order__`, `recordKey=READY-V2`.
 
 For non-interactive deployment, keep external session admission disabled and
 provide the explicit maintenance acknowledgement:
@@ -388,11 +384,6 @@ pnpm deploy:aws -- --yes-priority-order
 ```
 
 The wrapper refuses to restore scheduler admission if the marker is absent.
-This prevents an old warm writer (which can replace a Session item without the
-new GSI attributes) from racing the historical repair. The standalone driver
-`node scripts/migrate-session-priority-order.mts` is resumable and bounded to
-100,000 page attempts; use it only while that same writer fence remains in
-place.
 
 ### Fresh environment cutover for breaking coordination schemas
 

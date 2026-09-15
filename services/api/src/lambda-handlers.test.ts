@@ -412,7 +412,11 @@ async function registerGatewayHost(
       hostId: "host-1",
       worktrees: [],
       commandProfiles: [],
-      ...(protocolVersion === undefined ? {} : { protocolVersion }),
+      protocolVersion: protocolVersion ?? 7,
+      daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+      daemonStartedAt: "2026-08-11T00:00:00.000Z",
+      runningAttempts: [],
+      runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
     }),
     requestContext: { connectionId, routeKey: "$default" },
   });
@@ -504,7 +508,7 @@ function seedSchedulerSweep(fixture: ReturnType<typeof runtimeFixture>) {
     capabilities: ["scheduled-main-checkout"],
     repositoryIds: ["repo-active", "repo-ack", "repo-timeout"],
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-    protocolVersion: 1,
+    protocolVersion: 7,
   });
   fixture.connections.set("stale-connection", {
     hostId: "stale-host",
@@ -687,6 +691,11 @@ describe("Lambda runtime adapters", () => {
           hostId: "host-1",
           worktrees: [],
           commandProfiles: [],
+          protocolVersion: 7,
+          daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+          daemonStartedAt: "2026-08-11T00:00:00.000Z",
+          runningAttempts: [],
+          runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
         }),
         requestContext: { connectionId: "gateway-1", routeKey: "$default" },
       }),
@@ -776,7 +785,11 @@ describe("Lambda runtime adapters", () => {
           hostId: "host-1",
           worktrees: [],
           commandProfiles: [],
-          protocolVersion: HOST_PROTOCOL_VERSION,
+          protocolVersion: 7,
+          daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+          daemonStartedAt: "2026-08-11T00:00:00.000Z",
+          runningAttempts: [],
+          runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
         }),
         requestContext: { connectionId: "gateway-1", routeKey: "$default" },
       }),
@@ -822,7 +835,7 @@ describe("Lambda runtime adapters", () => {
         expiresAt: "2026-08-13T00:00:00.000Z",
       },
     });
-    const runtime = await registerGatewayHost(fixture, "gateway-1", 5);
+    const runtime = await registerGatewayHost(fixture, "gateway-1", 7);
     fixture.management.send.mockClear();
     await expect(
       runtime.websocket({
@@ -1547,7 +1560,7 @@ describe("Lambda runtime adapters", () => {
 
   it("uses the authenticated durable protocol on a cold process cache", async () => {
     const fixture = runtimeFixture();
-    const runtime = await registerGatewayHost(fixture, "gateway-1", 3);
+    const runtime = await registerGatewayHost(fixture, "gateway-1", 7);
     fixture.plane.state.connections.clear();
     fixture.plane.state.hostConnection.clear();
     fixture.mainCheckoutLeases.set("host-1#repository-1", "session-2");
@@ -2199,6 +2212,11 @@ describe("Lambda runtime adapters", () => {
         hostId: "host-1",
         worktrees: [],
         commandProfiles: [],
+        protocolVersion: 7,
+        daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+        daemonStartedAt: "2026-08-11T00:00:00.000Z",
+        runningAttempts: [],
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
       }),
       requestContext: { connectionId: "gateway-2", routeKey: "$default" },
     });

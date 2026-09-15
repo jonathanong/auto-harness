@@ -79,9 +79,7 @@ function awsDeploymentFakes(fixture: ReturnType<typeof fakeEnvironment>): void {
     "node",
     `
 printf "node %s\\n" "$*" >> "$FAKE_LOG"
-if [[ "$*" == *"migrate-session-drain-ledger.mts"* && "\${FAKE_MIGRATION_FAILURE:-0}" == 1 ]]; then
-  exit 1
-fi`,
+`,
   );
   executable(
     fixture.bin,
@@ -107,6 +105,12 @@ fi`,
     `
 printf "aws %s\\n" "$*" >> "$FAKE_LOG"
 case "$1 $2" in
+  "dynamodb put-item")
+    if [[ "\${FAKE_MIGRATION_FAILURE:-0}" == 1 ]]; then
+      echo put-item failed >&2
+      exit 1
+    fi
+    exit 0 ;;
   "dynamodb get-item")
     if [[ "$*" == *"__session-priority-order__"* ]]; then
       if [[ "\${FAKE_PRIORITY_MISSING:-0}" == 1 && ! -f "$FAKE_DIRECTORY/update-complete" ]]; then
@@ -191,7 +195,8 @@ describe("deployment wrapper contracts", () => {
     expect(position(calls, "aws dynamodb scan")).toBeLessThan(
       position(calls, "pnpm --filter @auto-harness/cdk run update"),
     );
-    expect(calls).toContain("node scripts/migrate-session-drain-ledger.mts");
+    expect(calls).toContain("aws dynamodb put-item");
+    expect(calls).not.toContain("node scripts/migrate-session-drain-ledger.mts");
     expect(calls).not.toContain("aws events enable-rule");
     expect(
       calls.trimEnd().endsWith("aws events disable-rule --region us-west-2 --name cron-rule"),
@@ -266,7 +271,8 @@ describe("deployment wrapper contracts", () => {
     expect(calls).toContain("statusShard-priorityOrder");
     expect(calls).toContain("statusShard-repositoryPriorityOrder");
     expect(calls).toContain("statusShard-createdOrder");
-    expect(calls).toContain("node scripts/migrate-session-priority-order.mts");
+    expect(calls).toContain("aws dynamodb put-item");
+    expect(calls).not.toContain("node scripts/migrate-session-priority-order.mts");
   });
 
   it("blocks an in-place active-host index rollout but allows a missing fresh table", () => {

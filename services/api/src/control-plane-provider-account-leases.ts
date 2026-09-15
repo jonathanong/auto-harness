@@ -11,7 +11,6 @@ import {
 import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
-import { releaseLegacyHostAssignment } from "./control-plane-legacy-host-assignment.ts";
 import { maxConcurrentSessionsFor } from "./control-plane-provider-account-capacity.ts";
 
 type ProviderAccountLease = {
@@ -586,19 +585,6 @@ export async function releaseTimedOutProviderAccountLease(
   result?: SessionResult,
 ): Promise<boolean> {
   const lease = session.providerAccountLease;
-  const attemptId = session.attemptId ?? lease?.attemptId;
-  const legacyHostAssignment =
-    !session.hostAssignmentLease &&
-    session.timedOutHostId &&
-    session.timedOutAssignmentConnectionId &&
-    attemptId
-      ? {
-          sessionId: session.id,
-          attemptId,
-          hostId: session.timedOutHostId,
-          connectionId: session.timedOutAssignmentConnectionId,
-        }
-      : undefined;
   if (!lease) {
     if (
       state.storage &&
@@ -617,7 +603,6 @@ export async function releaseTimedOutProviderAccountLease(
       });
       if (!released) return false;
     }
-    if (legacyHostAssignment) await releaseLegacyHostAssignment(state, legacyHostAssignment);
     delete session.hostAssignmentLease;
     delete session.timedOutHostId;
     delete session.timedOutAssignmentConnectionId;
@@ -643,7 +628,6 @@ export async function releaseTimedOutProviderAccountLease(
     ...(result ? { result } : {}),
   });
   if (!released) return false;
-  if (legacyHostAssignment) await releaseLegacyHostAssignment(state, legacyHostAssignment);
   releaseProviderAccountLeaseLocal(state, session);
   delete session.providerAccountLease;
   delete session.hostAssignmentLease;

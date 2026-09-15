@@ -29,6 +29,7 @@ const existing = {
   enabled: true,
   secretConfigured: true,
   version: 2,
+  generation: "11111111-1111-4111-8111-111111111111",
 };
 
 async function settle() {
@@ -78,7 +79,10 @@ describe("CustomWebhookSettings", () => {
     const save = fake.requests[1]?.[1];
     expect(save?.method).toBe("PUT");
     expect(JSON.parse(String(save?.body))).not.toHaveProperty("secret");
-    expect(JSON.parse(String(save?.body))).toMatchObject({ version: 2, generation: "legacy" });
+    expect(JSON.parse(String(save?.body))).toMatchObject({
+      version: 2,
+      generation: "11111111-1111-4111-8111-111111111111",
+    });
     expect(field(view.container, "custom-webhook-delete")).toBeInstanceOf(HTMLButtonElement);
     press(field(view.container, "custom-webhook-delete"));
     expect(document.body.textContent).toContain("Delete custom webhook configuration?");

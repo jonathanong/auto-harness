@@ -61,10 +61,16 @@ describe("terminal hook handoff coverage", () => {
       },
     });
 
-    await expect(pendingTerminalHookHandoffs(state, "host")).resolves.toEqual([]);
+    await expect(pendingTerminalHookHandoffs(state, "host")).resolves.toEqual([
+      expect.objectContaining({
+        handoffId: "handoff",
+        expiresAt: "2026-01-02T00:00:00.000Z",
+        ref: "refs/heads/main",
+        metadata: { source: "test" },
+      }),
+    ]);
     await expect(
       pendingTerminalHookHandoffs(state, "host", {
-        protocolVersion: 7,
         sessionIds: ["missing", "session"],
       }),
     ).resolves.toEqual([
@@ -86,14 +92,11 @@ describe("terminal hook handoff coverage", () => {
 
     await expect(
       pendingTerminalHookHandoffs(state, "host", {
-        protocolVersion: 7,
         sessionIds: ["missing", session.id],
       }),
     ).resolves.toHaveLength(1);
     expect(getSession).toHaveBeenCalledTimes(2);
-    await expect(
-      pendingTerminalHookHandoffs(state, "host", { protocolVersion: 7 }),
-    ).resolves.toHaveLength(1);
+    await expect(pendingTerminalHookHandoffs(state, "host")).resolves.toHaveLength(1);
     expect(listActiveSessionsByHost).toHaveBeenCalledWith("host");
   });
 
@@ -102,9 +105,7 @@ describe("terminal hook handoff coverage", () => {
     const session = finished();
     delete session.terminalHookHandoff!.errorCode;
     state.sessions.set(session.id, session);
-    await expect(
-      pendingTerminalHookHandoffs(state, "host", { protocolVersion: 7 }),
-    ).resolves.toEqual([]);
+    await expect(pendingTerminalHookHandoffs(state, "host")).resolves.toEqual([]);
     expect(state.sessions.get(session.id)?.terminalHookHandoffExpiredAt).toBe(
       "2026-01-02T00:00:00.000Z",
     );
@@ -116,9 +117,9 @@ describe("terminal hook handoff coverage", () => {
     const deliverable = finished();
     delete deliverable.terminalHookHandoff!.errorCode;
     current.sessions.set(deliverable.id, deliverable);
-    await expect(
-      pendingTerminalHookHandoffs(current, "host", { protocolVersion: 7 }),
-    ).resolves.toEqual([expect.not.objectContaining({ errorCode: expect.anything() })]);
+    await expect(pendingTerminalHookHandoffs(current, "host")).resolves.toEqual([
+      expect.not.objectContaining({ errorCode: expect.anything() }),
+    ]);
   });
 
   it("expires a reserved main checkout and a durable cached worktree", async () => {

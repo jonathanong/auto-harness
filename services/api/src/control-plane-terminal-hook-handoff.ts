@@ -1,16 +1,11 @@
 /* eslint-disable max-lines -- handoff delivery, settlement, and expiry share one lifecycle boundary. */
-import {
-  resolveTerminalHookCompletionResult,
-  TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION,
-  type HostWireMessage,
-} from "@auto-harness/shared";
+import { resolveTerminalHookCompletionResult, type HostWireMessage } from "@auto-harness/shared";
 
 import { queueSessionArchive } from "./control-plane-archive.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { ArchiveMetadata } from "./db/plane-storage-types.ts";
 import type { SessionRecord } from "./db/types.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
-import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import { enqueueSlackSessionLifecycle } from "./slack-session-runtime.ts";
 import { inMemorySessionsForPendingHandoffs } from "./control-plane-terminal-hook-handoff-index.ts";
 
@@ -59,20 +54,10 @@ export async function pendingTerminalHookHandoffs(
   hostId: string,
   options: {
     connectionId?: string;
-    protocolVersion?: number;
     sessionIds?: readonly string[];
   } = {},
 ): Promise<Array<Extract<HostWireMessage, { type: "session:terminal-hook" }>>> {
   const connectionId = options.connectionId ?? state.hostConnection.get(hostId);
-  if (
-    (options.protocolVersion ??
-      (connectionId === undefined
-        ? 0
-        : connectionProtocolVersion(state.connections.get(connectionId)))) <
-    TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
-  ) {
-    return [];
-  }
   const sessions =
     options.sessionIds && state.storage
       ? (
@@ -126,7 +111,6 @@ export async function settleTerminalHookHandoff(
     handoffId: string;
     hostId: string;
     connectionId?: string;
-    protocolVersion?: number;
     result?: import("@auto-harness/shared").SessionResult;
   },
 ): Promise<boolean> {
@@ -150,17 +134,8 @@ export async function settleTerminalHookHandoff(
     return duplicate;
   }
   const archive = pendingArchiveIntent(state, input.sessionId);
-  // Durable AWS invocations pass the authenticated socket protocol via
-  // `input.protocolVersion`. The process connection cache is not a fallback
-  // on that path: a warm Lambda may not have seen the original register.
-  const protocolVersion =
-    input.protocolVersion ??
-    (input.connectionId === undefined
-      ? 0
-      : connectionProtocolVersion(state.connections.get(input.connectionId)));
   const result =
-    session.result ??
-    resolveTerminalHookCompletionResult(protocolVersion, handoff.status, input.result);
+    session.result ?? resolveTerminalHookCompletionResult(handoff.status, input.result);
   const settled = state.storage
     ? input.connectionId !== undefined &&
       (await state.storage.settleTerminalHookHandoff({

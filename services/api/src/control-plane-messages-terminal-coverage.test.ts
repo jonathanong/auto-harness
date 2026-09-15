@@ -868,7 +868,7 @@ describe("control-plane terminal message coverage", () => {
       repositoryIds: ["repo"],
       commandProfiles: [],
       capabilities: [],
-      protocolVersion: 4,
+      protocolVersion: 7,
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
     });
     state.sessions.set(

@@ -9,7 +9,6 @@ import {
   archiveGeneration,
   isCompleteStoredArchive,
   publishCompleteArchiveReplacement,
-  queueLegacyArchiveRetry,
   readArchiveMetadata,
 } from "./control-plane-archive-replace.ts";
 
@@ -96,8 +95,8 @@ export async function archiveSessionLogs(
     contentType: "application/x-ndjson",
   };
   const current = retryClaim ? null : await readArchiveMetadata(state, key);
-  const replacement = isCompleteStoredArchive(current) ? archiveGeneration(current) : null;
-  const legacyUnversioned = isCompleteStoredArchive(current) && !current.versionId;
+  const replacement =
+    isCompleteStoredArchive(current) && current.versionId ? archiveGeneration(current) : null;
   const retryOrder = retryClaim?.retryOrder ?? `${state.now()}#${key}`;
   const pending: ArchiveMetadata = {
     key,
@@ -125,15 +124,6 @@ export async function archiveSessionLogs(
     if (state.storage) await state.storage.putArchive(complete);
     state.archives.set(object.key, complete);
     return object;
-  }
-  if (legacyUnversioned && replacement && !ownedRetry) {
-    const retryPending: ArchiveMetadata = { ...pending, retryState: "processing" };
-    const queued = await queueLegacyArchiveRetry(state, retryPending, replacement);
-    if (!queued) return object;
-    ownedRetry = {
-      retryState: "processing",
-      retryOrder,
-    };
   }
   if (ownedRetry && pending.bodyBytes === 0) {
     const claimed = state.archives.get(object.key);

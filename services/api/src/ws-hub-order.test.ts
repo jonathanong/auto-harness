@@ -30,9 +30,13 @@ async function registeredSocket(
         JSON.stringify({
           type: "host:register",
           hostId,
+          protocolVersion: protocolVersion ?? 7,
+          daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+          daemonStartedAt: "2026-08-11T00:00:00.000Z",
+          runningAttempts: [],
           worktrees: [],
           commandProfiles: [],
-          ...(protocolVersion !== undefined ? { protocolVersion } : {}),
+          runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
         }),
       ),
     );
@@ -63,6 +67,7 @@ const wireLog = (sessionId: string, seq = 1) =>
   JSON.stringify({
     type: "session:log",
     sessionId,
+    attemptId: "attempt-1",
     stream: "stdout",
     content: "line",
     timestamp: "2026-01-01T00:00:00.000Z",
@@ -111,9 +116,13 @@ describe("createPlaneWsBridge message ordering", () => {
       JSON.stringify({
         type: "host:register",
         hostId: "different-host",
+        protocolVersion: 7,
+        daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+        daemonStartedAt: "2026-08-11T00:00:00.000Z",
+        runningAttempts: [],
         worktrees: [],
         commandProfiles: [],
-        protocolVersion: 7,
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
       }),
     );
     await registered;
@@ -298,8 +307,13 @@ describe("createPlaneWsBridge message ordering", () => {
           JSON.stringify({
             type: "host:register",
             hostId: "batched-host",
+            protocolVersion: 7,
+            daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+            daemonStartedAt: "2026-08-11T00:00:00.000Z",
+            runningAttempts: [],
             worktrees: [],
             commandProfiles: [],
+            runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
           }),
         ),
       );
@@ -414,8 +428,13 @@ describe("createPlaneWsBridge message ordering", () => {
           JSON.stringify({
             type: "host:register",
             hostId: "reconnect-host",
+            protocolVersion: 7,
+            daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+            daemonStartedAt: "2026-08-11T00:00:00.000Z",
+            runningAttempts: [],
             worktrees: [],
             commandProfiles: [],
+            runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
           }),
         ),
       );
@@ -481,8 +500,13 @@ describe("createPlaneWsBridge message ordering", () => {
           JSON.stringify({
             type: "host:register",
             hostId: "ordered-host",
+            protocolVersion: 7,
+            daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+            daemonStartedAt: "2026-08-11T00:00:00.000Z",
+            runningAttempts: [],
             worktrees: [],
             commandProfiles: [],
+            runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
           }),
         );
         ws.send(
@@ -565,6 +589,10 @@ describe("createPlaneWsBridge message ordering", () => {
       JSON.stringify({
         type: "host:register",
         hostId: "closed-during-register",
+        protocolVersion: 7,
+        daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+        daemonStartedAt: "2026-08-11T00:00:00.000Z",
+        runningAttempts: [],
         worktrees: [
           {
             id: "closed-during-register-wt",
@@ -575,6 +603,7 @@ describe("createPlaneWsBridge message ordering", () => {
           },
         ],
         commandProfiles: [],
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
       }),
     );
     await registrationStartedPromise;
@@ -645,6 +674,10 @@ describe("createPlaneWsBridge message ordering", () => {
       JSON.stringify({
         type: "host:register",
         hostId: "replaced-after-close",
+        protocolVersion: 7,
+        daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+        daemonStartedAt: "2026-08-11T00:00:00.000Z",
+        runningAttempts: [],
         worktrees: [
           {
             id: "replaced-after-close-wt",
@@ -655,6 +688,7 @@ describe("createPlaneWsBridge message ordering", () => {
           },
         ],
         commandProfiles: [],
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
       }),
     );
     await firstRegistrationFinishedPromise;

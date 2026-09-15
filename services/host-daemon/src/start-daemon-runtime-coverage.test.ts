@@ -71,7 +71,7 @@ describe("startDaemon runtime wiring", () => {
             JSON.stringify({
               type: "host:registered",
               hostId: message.hostId,
-              protocolVersion: 4,
+              protocolVersion: 7,
             }),
           );
         } else if (message.type === "host:status") {

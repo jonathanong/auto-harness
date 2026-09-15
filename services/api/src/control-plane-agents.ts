@@ -54,9 +54,7 @@ function listedHostRuntime(runtime?: HostRuntimeReport): ListedHostRuntime {
     daemonVersion: runtime?.daemonVersion ?? null,
     gitVersion: runtime?.gitVersion ?? null,
     gitReady: runtime?.gitReady ?? false,
-    gitReadinessReason: runtime?.gitReady
-      ? null
-      : (runtime?.gitReadinessReason ?? "git_readiness_unreported"),
+    gitReadinessReason: runtime?.gitReady ? null : (runtime?.gitReadinessReason ?? null),
   };
 }
 
@@ -259,7 +257,7 @@ function reportedRunningSessionIds(opts: {
   runningSessions?: readonly string[];
   runningAttempts?: readonly HostRunningAttempt[];
 }): string[] {
-  if (opts.runningAttempts && opts.runningAttempts.length > 0) {
+  if (opts.runningAttempts) {
     return opts.runningAttempts.map((attempt) => attempt.sessionId);
   }
   return [...(opts.runningSessions ?? [])];
@@ -450,7 +448,7 @@ function ownedReportedRunningSessionIds(
     runningAttempts?: readonly HostRunningAttempt[];
   },
 ): string[] {
-  if (opts.runningAttempts && opts.runningAttempts.length > 0) {
+  if (opts.runningAttempts) {
     return opts.runningAttempts
       .filter(
         (attempt) =>
@@ -472,7 +470,7 @@ async function ownedReportedRunningSessionIdsDurable(
     runningAttempts?: readonly HostRunningAttempt[];
   },
 ): Promise<string[]> {
-  if (opts.runningAttempts && opts.runningAttempts.length > 0) {
+  if (opts.runningAttempts) {
     const sessionIds: string[] = [];
     for (const attempt of opts.runningAttempts) {
       const session = await state.storage!.getSession(attempt.sessionId);
@@ -786,11 +784,7 @@ export function registerHost(
     deferRunningSessionReconcile?: boolean;
   },
 ): { ok: true; connectionId: string } | { ok: false; error: string } {
-  if (
-    opts.runtime !== undefined &&
-    opts.runtime.gitReadinessReason !== "git_readiness_unreported" &&
-    !isHostRuntimeReport(opts.runtime)
-  ) {
+  if (opts.runtime !== undefined && !isHostRuntimeReport(opts.runtime)) {
     return { ok: false, error: "runtime report is invalid" };
   }
   const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);
@@ -806,6 +800,10 @@ export function registerHost(
   );
   if (runningError) return { ok: false, error: runningError };
 
+  const negotiatedProtocolVersion = negotiateHostProtocolVersion(opts.protocolVersion);
+  if (negotiatedProtocolVersion === null) {
+    return { ok: false, error: "unsupported host protocol" };
+  }
   const existing = state.hostConnection.get(opts.hostId);
   if (existing && !opts.replaceExisting) {
     return {
@@ -858,8 +856,8 @@ export function registerHost(
         }
       : {}),
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
-    ...(opts.protocolVersion !== undefined ? { protocolVersion: opts.protocolVersion } : {}),
-    negotiatedProtocolVersion: negotiateHostProtocolVersion(opts.protocolVersion),
+    protocolVersion: negotiatedProtocolVersion,
+    negotiatedProtocolVersion,
   };
   state.connections.set(connectionId, conn);
   if (state.storage) {
@@ -956,11 +954,11 @@ export async function registerHostDurable(
     consumePendingConnection?: boolean;
   },
 ): Promise<{ ok: true; connectionId: string } | { ok: false; error: string }> {
-  if (
-    opts.runtime !== undefined &&
-    opts.runtime.gitReadinessReason !== "git_readiness_unreported" &&
-    !isHostRuntimeReport(opts.runtime)
-  ) {
+  const negotiatedProtocolVersion = negotiateHostProtocolVersion(opts.protocolVersion);
+  if (negotiatedProtocolVersion === null) {
+    return { ok: false, error: "unsupported host protocol" };
+  }
+  if (opts.runtime !== undefined && !isHostRuntimeReport(opts.runtime)) {
     return { ok: false, error: "runtime report is invalid" };
   }
   if (!state.storage) {
@@ -1049,8 +1047,8 @@ export async function registerHostDurable(
         }
       : {}),
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
-    ...(opts.protocolVersion !== undefined ? { protocolVersion: opts.protocolVersion } : {}),
-    negotiatedProtocolVersion: negotiateHostProtocolVersion(opts.protocolVersion),
+    protocolVersion: negotiatedProtocolVersion,
+    negotiatedProtocolVersion,
   };
   const won = await state.storage.tryRegisterHost({
     hostId: opts.hostId,
@@ -1399,8 +1397,7 @@ export async function heartbeatDurable(
    */
   sourceConnectionId?: string,
   /** Sessions the daemon currently owns (still running or awaiting a status
-   * ack). Undefined means a pre-reconciliation daemon; omit reconciliation
-   * rather than requeue every session on this host on legacy silence. */
+   * ack). Omitted means an empty list and still reconciles. */
   reportedRunningSessions?: readonly string[],
   /** Filled with terminal-hook handoffs created by this reconciliation pass. */
   terminalHookHandoffSessionIds?: string[],
@@ -1437,23 +1434,22 @@ export async function heartbeatDurable(
   if (conn) {
     state.connections.set(connectionId, { ...conn, lastHeartbeatAt: nextAt });
   }
-  if (reportedRunningSessions !== undefined) {
-    // Bounds the blast radius of a lost terminal status: instead of waiting up to the
-    // absolute session timeout, a session this host silently stopped reporting is
-    // requeued within one keepalive interval. The daemon keeps reporting a session
-    // whose terminal status it is still retrying, so this never races that retry.
-    const requeued = await reconcileHostOwnedSessions(
-      state,
-      hostId,
-      connectionId,
-      new Set(reportedRunningSessions),
-      "daemon no longer reports session as running; requeued",
-      terminalHookHandoffSessionIds,
-    );
-    // Otherwise a recovered session sits queued until the next cron sweep or
-    // an unrelated scheduling event, defeating the point of a fast recovery.
-    if (requeued.length > 0) await requestAssignment(state);
-  }
+  // Bounds the blast radius of a lost terminal status: instead of waiting up to the
+  // absolute session timeout, a session this host silently stopped reporting is
+  // requeued within one keepalive interval. The daemon keeps reporting a session
+  // whose terminal status it is still retrying, so this never races that retry.
+  // An omitted list is an empty claim, not a skip.
+  const requeued = await reconcileHostOwnedSessions(
+    state,
+    hostId,
+    connectionId,
+    new Set(reportedRunningSessions ?? []),
+    "daemon no longer reports session as running; requeued",
+    terminalHookHandoffSessionIds,
+  );
+  // Otherwise a recovered session sits queued until the next cron sweep or
+  // an unrelated scheduling event, defeating the point of a fast recovery.
+  if (requeued.length > 0) await requestAssignment(state);
   return true;
 }
 

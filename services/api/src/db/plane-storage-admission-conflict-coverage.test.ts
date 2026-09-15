@@ -83,46 +83,36 @@ describe("concurrent session admission conflicts", () => {
     });
   });
 
-  it("includes legacy and generation integration fences in the transaction", async () => {
-    for (const generation of [undefined, "generation"]) {
-      const send = async (command: unknown) => {
-        expect(command).toBeInstanceOf(TransactWriteCommand);
-        const items = (command as TransactWriteCommand).input.TransactItems ?? [];
-        const integration = items.find(
-          (item) => "ConditionCheck" in item && item.ConditionCheck?.TableName === "Integrations",
-        );
-        expect(integration).toMatchObject({
-          ConditionCheck: {
-            Key: { id: "custom-webhook:deploy" },
-            ExpressionAttributeValues: {
-              ":type": "custom-webhook",
-              ":version": 2,
-              ":enabled": true,
-            },
+  it("includes the generation integration fence in the transaction", async () => {
+    const send = async (command: unknown) => {
+      expect(command).toBeInstanceOf(TransactWriteCommand);
+      const items = (command as TransactWriteCommand).input.TransactItems ?? [];
+      const integration = items.find(
+        (item) => "ConditionCheck" in item && item.ConditionCheck?.TableName === "Integrations",
+      );
+      expect(integration).toMatchObject({
+        ConditionCheck: {
+          Key: { id: "custom-webhook:deploy" },
+          ExpressionAttributeValues: {
+            ":type": "custom-webhook",
+            ":version": 2,
+            ":enabled": true,
+            ":generation": "generation",
           },
-        });
-        if (generation === undefined) {
-          expect(integration?.ConditionCheck?.ExpressionAttributeValues).not.toHaveProperty(
-            ":generation",
-          );
-        } else {
-          expect(integration).toMatchObject({
-            ConditionCheck: { ExpressionAttributeValues: { ":generation": generation } },
-          });
-        }
-        return {};
-      };
-      await expect(
-        createSession(ctx(send), { ...session, concurrencyId: undefined }, [], undefined, {
-          id: "deploy",
-          type: "custom-webhook",
-          storageId: "custom-webhook:deploy",
-          ...(generation === undefined ? {} : { generation }),
-          version: 2,
-          enabled: true,
-        }),
-      ).resolves.toMatchObject({ created: true });
-    }
+        },
+      });
+      return {};
+    };
+    await expect(
+      createSession(ctx(send), { ...session, concurrencyId: undefined }, [], undefined, {
+        id: "deploy",
+        type: "custom-webhook",
+        storageId: "custom-webhook:deploy",
+        generation: "generation",
+        version: 2,
+        enabled: true,
+      }),
+    ).resolves.toMatchObject({ created: true });
   });
 
   it("maps integration fence loss before lock resolution", async () => {

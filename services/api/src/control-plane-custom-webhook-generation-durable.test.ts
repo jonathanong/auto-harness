@@ -91,49 +91,4 @@ describe("durable custom webhook generation fences", () => {
       expect.objectContaining({ id: "generation-session" }),
     );
   });
-
-  it("admits a legacy row only while its generation remains absent", async () => {
-    if (!ctx.available || !ctx.storage) return;
-    await putCatalog(ctx.storage, "repo-legacy-generation", "cmd-legacy-generation");
-    for (const id of ["legacy-concurrent", "legacy-plain"]) {
-      await ctx.storage.putCustomWebhookIntegration(
-        integration(id, "repo-legacy-generation", "cmd-legacy-generation"),
-        null,
-      );
-    }
-    let sequence = 0;
-    const { plane } = await createControlPlane({
-      tablePrefix: ctx.prefix,
-      skipEnsureTables: true,
-      idFactory: () => `legacy-generation-session-${++sequence}`,
-      now: () => now,
-      shardCount: 1,
-    });
-    for (const [id, concurrencyId] of [
-      ["legacy-concurrent", "webhook:legacy-concurrent:delivery"],
-      ["legacy-plain", undefined],
-    ] as const) {
-      await expect(plane.getCustomWebhookIntegrationRecord(id)).resolves.not.toBeNull();
-      await expect(
-        plane.createCustomWebhookSessionDurable(
-          {
-            repositoryId: "repo-legacy-generation",
-            prompt: "legacy delivery",
-            target: { commandId: "cmd-legacy-generation" },
-            timeout: 30,
-            concurrencyId,
-          },
-          {
-            integrationFence: {
-              id,
-              type: "custom-webhook",
-              storageId: `custom-webhook:${id}`,
-              version: 1,
-              enabled: true,
-            },
-          },
-        ),
-      ).resolves.toMatchObject({ ok: true, created: true });
-    }
-  });
 });

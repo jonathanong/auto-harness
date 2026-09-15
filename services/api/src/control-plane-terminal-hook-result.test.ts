@@ -42,7 +42,7 @@ function connectedState() {
     lastHeartbeatAt: NOW,
     repositoryIds: ["repo"],
     capabilities: [],
-    protocolVersion: 6,
+    protocolVersion: 7,
   });
   return state;
 }

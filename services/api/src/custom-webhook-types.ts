@@ -33,5 +33,8 @@ export function toPublicCustomWebhookIntegration(
   record: CustomWebhookIntegrationRecord,
 ): PublicCustomWebhookIntegration {
   const { encryptedSecret: _encryptedSecret, generation, ...publicRecord } = record;
-  return { ...publicRecord, generation: generation ?? "legacy", secretConfigured: true };
+  if (typeof generation !== "string" || generation.length === 0) {
+    throw new TypeError("custom webhook generation is required");
+  }
+  return { ...publicRecord, generation, secretConfigured: true };
 }

@@ -184,15 +184,6 @@ describe("DynamoPlaneStorageBase", () => {
       metadata: {},
     };
     expect(
-      await storage.skipOwnerlessScheduleAndAudit({
-        scheduleId: "missing-ownerless",
-        expectedNextRunAt: "t",
-        newNextRunAt: "later",
-        lastRunAt: "t",
-        audit,
-      }),
-    ).toBe(false);
-    expect(
       await storage.disableLegacyFallbackScheduleAndAudit({
         scheduleId: "missing-legacy",
         expectedNextRunAt: "t",

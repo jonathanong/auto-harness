@@ -15,8 +15,6 @@ import {
   hostEnvironmentReady,
 } from "./control-plane-host-environment.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
-import { commandStartStateForProtocol } from "./control-plane-command-start.ts";
-import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import { assignLogSettings, getSessionLogSettings } from "./control-plane-session-log-settings.ts";
 import { planScheduledPlacement } from "./queue-placement-planner.ts";
@@ -225,9 +223,7 @@ export async function assignScheduledQueuedDurable(
                 : {}),
               queueShard: session.queueShard,
               attemptId,
-              primaryCommandStartState: commandStartStateForProtocol(
-                connectionProtocolVersion(connection),
-              ),
+              primaryCommandStartState: "pending",
               ...(apiKey ? { sessionApiKeyHash: apiKey.hash } : {}),
             }))
           : !state.mainCheckoutLeases.has(leaseKey(hostId, session.repositoryId));
@@ -272,9 +268,7 @@ export async function assignScheduledQueuedDurable(
       assignmentConnectionId: connectionId,
       mainCheckoutLease: true,
       attemptId,
-      primaryCommandStartState: commandStartStateForProtocol(
-        connectionProtocolVersion(state.connections.get(connectionId)),
-      ),
+      primaryCommandStartState: "pending",
       ...(sessionApiKey ? { sessionApiKeyHash: sessionApiKey.hash } : {}),
       ...(lease ? { providerAccountLease: lease } : {}),
       hostAssignmentLease: { hostId },

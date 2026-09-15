@@ -438,16 +438,7 @@ export function createFileUpdateInstaller(options: {
       const kind = currentKind(current);
       if (kind === "symlink") {
         oldTarget = readlinkSync(current);
-      } else if (kind === "directory") {
-        const oldVersion =
-          readInstalledVersion(options.rootDir) ?? options.currentVersion ?? "0.0.0";
-        requireVersion(oldVersion);
-        oldTarget = linkTarget(oldVersion);
-        const legacyTarget = join(options.rootDir, oldTarget);
-        rmSync(legacyTarget, { recursive: true, force: true });
-        writeFileSync(join(current, VERSION_FILE), `${oldVersion}\n`, "utf8");
-        renameSync(current, legacyTarget);
-      } else if (kind === "other") {
+      } else if (kind === "directory" || kind === "other") {
         throw new Error("current update path is not a directory pointer");
       }
       atomicWrite(previous, oldTarget);

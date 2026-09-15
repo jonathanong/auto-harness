@@ -233,7 +233,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
     expect(plane.getSession("sess-1")?.attemptId).toBe(second.session.attemptId);
   });
 
-  it("withholds new assignments from daemons below the fenced protocol", () => {
+  it("rejects registration that does not advertise the current host protocol", () => {
     const plane = new ControlPlane({ shardCount: 1, idFactory: () => "sess-legacy" });
     seedBaseCommand(plane);
     expect(
@@ -243,12 +243,10 @@ describe("ControlPlane assignment-attempt fencing", () => {
         worktrees: [
           { id: "wt-legacy", name: "legacy", repositoryId: "repo-1", path: "/legacy", labels: [] },
         ],
+        protocolVersion: 1,
         runtime: { daemonVersion: "0.0.0", gitVersion: "2.36.0", gitReady: true },
-      }).ok,
-    ).toBe(true);
-    expect(plane.createSession(baseSessionBody()).ok).toBe(true);
-    expect(plane.assignQueued()).toEqual([]);
-
+      }),
+    ).toEqual({ ok: false, error: "unsupported host protocol" });
     expect(
       plane.handleHostMessage({
         type: "host:register",
@@ -260,6 +258,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
         runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
       }).ok,
     ).toBe(true);
+    expect(plane.createSession(baseSessionBody()).ok).toBe(true);
     expect(plane.assignQueued()).toHaveLength(1);
     expect(plane.getSession("sess-legacy")?.hostId).toBe("modern");
   });
@@ -646,7 +645,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
     expect(plane.getLogs("missing").map((record) => record.content)).toEqual(["missing"]);
   });
 
-  it("still validates legacy runningSessions when runningAttempts is empty", async () => {
+  it("uses runningAttempts even when empty instead of falling back to runningSessions", async () => {
     const { plane } = assignedPlane();
     expect(
       plane.registerHost({
@@ -656,18 +655,8 @@ describe("ControlPlane assignment-attempt fencing", () => {
         runningSessions: ["missing"],
         runningAttempts: [],
         runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
-      }),
-    ).toEqual({ ok: false, error: "running session missing is not owned by host host-1" });
-    plane.state.storage = { getSession: async () => null } as never;
-    await expect(
-      plane.registerHostDurable({
-        hostId: "host-4",
-        worktrees: [{ id: "wt-4", name: "wt-4", repositoryId: "repo-1", path: "/w4", labels: [] }],
-        runningSessions: ["missing"],
-        runningAttempts: [],
-        runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
-      }),
-    ).resolves.toEqual({ ok: false, error: "running session missing is not owned by host host-4" });
+      }).ok,
+    ).toBe(true);
   });
 
   it("writes an unfenced durable log when the session has no attempt id", async () => {

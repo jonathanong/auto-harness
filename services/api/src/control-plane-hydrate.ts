@@ -11,7 +11,6 @@ import type {
 } from "./db/plane-storage.ts";
 import type { SessionRecord, WorkspaceSlotRecord, WorktreeRecord } from "./db/types.ts";
 import { hydrateScheduledState } from "./control-plane-hydrate-scheduled.ts";
-import { backfillLegacyProviderAccountLeases } from "./control-plane-hydrate-provider-leases.ts";
 import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import type {
   ArchiveMetadata,
@@ -150,15 +149,12 @@ export async function hydrateFromStorage(
   state.drainingHosts.clear();
   state.disconnectedHosts.clear();
   state.providerAccountLeases.clear();
-  // Populate accounts before backfill so its slot-assignment loop can bound itself by
-  // each account's real maxConcurrentSessions instead of an unbounded sessions.length walk.
   for (const record of accounts) {
     state.providerAccounts.set(record.id, {
       ...record,
       maxConcurrentSessions: record.maxConcurrentSessions ?? DEFAULT_MAX_CONCURRENT_SESSIONS,
     });
   }
-  await backfillLegacyProviderAccountLeases(state, sessions);
   hydrateScheduledState(state, sessions);
   for (const session of sessions) {
     const lease = session.providerAccountLease;
@@ -185,18 +181,9 @@ export async function hydrateFromStorage(
     if (record.registered === false || record.type !== "host") continue;
     const connection = {
       ...record,
-      // Old control planes persisted only the daemon advertisement. On a
-      // rolling upgrade that value might exceed what the old peer negotiated;
-      // keep the connection in the legacy lane until it registers again.
-      negotiatedProtocolVersion:
-        record.negotiatedProtocolVersion === undefined ? 0 : connectionProtocolVersion(record),
+      negotiatedProtocolVersion: connectionProtocolVersion(record),
       capabilities: normalizeHostCapabilities(record.capabilities),
-      runtime: record.runtime ?? {
-        daemonVersion: "legacy/unknown",
-        gitVersion: null,
-        gitReady: false,
-        gitReadinessReason: "git_readiness_unreported" as const,
-      },
+      ...(record.runtime ? { runtime: record.runtime } : {}),
     };
     state.connections.set(connection.connectionId, connection);
     state.hostConnection.set(connection.hostId, connection.connectionId);

@@ -1,10 +1,18 @@
 /* eslint-disable max-lines -- advertisement, durable register, and hydrate cases share fixtures. */
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { parseHostMessage } from "./ws-hub.ts";
 
 const worktrees = [{ id: "wt", name: "wt", repositoryId: "repo", path: "/repo/wt", labels: [] }];
+const requiredRegister = {
+  protocolVersion: HOST_PROTOCOL_VERSION,
+  daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+  daemonStartedAt: "2026-08-11T00:00:00.000Z",
+  runningAttempts: [] as { sessionId: string; attemptId: string }[],
+  runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+};
 
 describe("host capability advertisements", () => {
   it("accepts only known wire capabilities", () => {
@@ -14,7 +22,8 @@ describe("host capability advertisements", () => {
         hostId: "host",
         worktrees,
         commandProfiles: [],
-        capabilities: ["scheduled-main-checkout"],
+        capabilities: { features: ["scheduled-main-checkout"] },
+        ...requiredRegister,
       }),
     ).toMatchObject({
       capabilities: ["scheduled-main-checkout"],
@@ -25,6 +34,7 @@ describe("host capability advertisements", () => {
         type: "host:register",
         hostId: "host",
         worktrees,
+        ...requiredRegister,
         capabilities: { features: ["scheduled-main-checkout"], maxConcurrentAssignments: 4 },
         providerAccountReadiness: [
           {
@@ -47,7 +57,8 @@ describe("host capability advertisements", () => {
         type: "host:register",
         hostId: "host",
         worktrees,
-        capabilities: ["scheduled-main-checkout"],
+        ...requiredRegister,
+        capabilities: { features: ["scheduled-main-checkout"] },
         maxConcurrentAssignments: 4,
       }),
     ).toMatchObject({
@@ -59,6 +70,7 @@ describe("host capability advertisements", () => {
         type: "host:register",
         hostId: "host",
         worktrees,
+        ...requiredRegister,
         providerAccountReadiness: [
           {
             providerAccountId: "acct",
@@ -75,6 +87,7 @@ describe("host capability advertisements", () => {
         hostId: "host",
         worktrees,
         commandProfiles: [],
+        ...requiredRegister,
         maxConcurrentAssignments: 8,
       }),
     ).toMatchObject({ maxConcurrentAssignments: 8 });
@@ -84,6 +97,7 @@ describe("host capability advertisements", () => {
         hostId: "host",
         worktrees,
         commandProfiles: [],
+        ...requiredRegister,
         capabilities: ["not-real"],
       }),
     ).toBeNull();
@@ -93,6 +107,7 @@ describe("host capability advertisements", () => {
         hostId: "host",
         worktrees,
         commandProfiles: [],
+        ...requiredRegister,
         capabilities: ["scheduled-main-checkout", "scheduled-main-checkout"],
       }),
     ).toBeNull();
@@ -136,6 +151,7 @@ describe("host capability advertisements", () => {
           worktrees: [
             { id: "wt-d", name: "wt-d", repositoryId: "repo", path: "/repo/wt", labels: [] },
           ],
+          ...requiredRegister,
           maxConcurrentAssignments: 3,
           providerAccountReadiness: [
             { providerAccountId: "acct", ready: true, fingerprint: "a".repeat(64) },
@@ -155,6 +171,7 @@ describe("host capability advertisements", () => {
           worktrees: [
             { id: "wt-f", name: "wt-f", repositoryId: "repo", path: "/repo/wt", labels: [] },
           ],
+          ...requiredRegister,
           capabilities: { features: ["scheduled-main-checkout"], maxConcurrentAssignments: 5 },
         } as never)
       ).ok,

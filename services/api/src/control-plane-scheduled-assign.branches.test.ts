@@ -51,12 +51,21 @@ function connection(
     capabilities: ["scheduled-main-checkout"],
     repositoryIds,
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-    protocolVersion: 1,
+    protocolVersion: 7,
   };
 }
 
 function state() {
   const current = createControlPlaneState({ now: () => NOW, shardCount: 1 });
+  current.repositories.set("repo", {
+    id: "repo",
+    name: "repo",
+    url: "url",
+    defaultBranch: "main",
+    admissionState: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
   current.commands.set("cmd", {
     id: "cmd",
     name: "cmd",

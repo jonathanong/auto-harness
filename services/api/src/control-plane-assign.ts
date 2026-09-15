@@ -22,8 +22,6 @@ import {
 } from "./control-plane-durable-read-runtime.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import { planPromptPlacement } from "./queue-placement-planner.ts";
-import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
-import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import { assignLogSettings, getSessionLogSettings } from "./control-plane-session-log-settings.ts";
 import {
   accountHasLeaseCapacity,
@@ -37,7 +35,6 @@ import {
   clearAbandonedUsageLimitRetryFields,
   type AssignmentWriteResult,
 } from "./db/plane-storage-types.ts";
-import { commandStartStateForProtocol } from "./control-plane-command-start.ts";
 import { createSessionApiKey } from "./control-plane-session-api-key.ts";
 
 /**
@@ -111,11 +108,7 @@ export function assignQueued(
         attemptId,
       };
       session.attemptId = attemptId;
-      session.primaryCommandStartState = commandStartStateForProtocol(
-        connectionProtocolVersion(
-          state.connections.get(state.hostConnection.get(candidate.hostId) ?? ""),
-        ),
-      );
+      session.primaryCommandStartState = "pending";
       if (apiKey) session.sessionApiKeyHash = apiKey.hash;
       else delete session.sessionApiKeyHash;
       if (lease) session.providerAccountLease = lease;
@@ -298,9 +291,7 @@ export async function assignQueuedDurable(
               }
             : {}),
           queueShard: session.queueShard,
-          primaryCommandStartState: commandStartStateForProtocol(
-            connectionProtocolVersion(state.connections.get(connectionId)),
-          ),
+          primaryCommandStartState: "pending",
           ...(apiKey ? { sessionApiKeyHash: apiKey.hash } : {}),
         });
         if (won === true || !lease) break;
@@ -328,9 +319,7 @@ export async function assignQueuedDurable(
           attemptId,
         },
         attemptId,
-        primaryCommandStartState: commandStartStateForProtocol(
-          connectionProtocolVersion(state.connections.get(connectionId)),
-        ),
+        primaryCommandStartState: "pending",
         ...(apiKey ? { sessionApiKeyHash: apiKey.hash } : {}),
         ...(lease ? { providerAccountLease: lease } : {}),
         hostAssignmentLease: { hostId: candidate.hostId },
@@ -603,7 +592,6 @@ export async function enforceAckDeadlinesDurable(
       state.pendingAcks.delete(sessionId);
       continue;
     }
-    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     const wt = pending.worktreeId ? state.worktrees.get(pending.worktreeId) : undefined;
     if (wt && pending.worktreeId) {
       state.worktrees.set(pending.worktreeId, {

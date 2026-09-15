@@ -180,10 +180,15 @@ function register(hostId: string, worktreeId?: string) {
   return {
     type: "host:register" as const,
     hostId,
+    protocolVersion: 7,
+    daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+    daemonStartedAt: "2026-08-11T00:00:00.000Z",
+    runningAttempts: [],
     worktrees: worktreeId
       ? [{ id: worktreeId, name: worktreeId, repositoryId: "repo", path: "/worktree", labels: [] }]
       : [],
     commandProfiles: [],
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
   };
 }
 

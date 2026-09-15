@@ -171,7 +171,7 @@ describe("assignment protocol and optional-field coverage", () => {
       capabilities: [],
       repositoryIds: ["repo"],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-      protocolVersion: 1,
+      protocolVersion: 7,
     });
     state.hostConnection.set("host", "connection");
     const originalGet = state.hostConnection.get.bind(state.hostConnection);

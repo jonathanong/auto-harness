@@ -8,11 +8,11 @@ describe("parseDaemonConfig", () => {
     const config = parseDaemonConfig({
       ...valid,
       setupScript: "source ~/.zshrc",
-      apiUrl: "wss://example/ws",
+      apiUrl: "https://example.test",
       apiKey: "hns_x",
     });
     expect(config.hostId).toBe("local-1");
-    expect(config.apiUrl).toBe("wss://example/ws");
+    expect(config.apiUrl).toBe("https://example.test");
     expect(config.apiKey).toBe("hns_x");
     expect(config.setupScript).toBe("source ~/.zshrc");
     expect(config.repositories[0]?.worktrees[0]?.labels).toEqual(["codex"]);

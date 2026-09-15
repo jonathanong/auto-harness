@@ -253,53 +253,12 @@ describe("DaemonLoop command-start authorization", () => {
     }
   });
 
-  it("rejects pending v4 authorization when reconnect downgrades the protocol", async () => {
+  it("authorizes immediately without a cancellation signal and refuses an already-aborted launch", async () => {
     const transport = new ProtocolTransport();
     const loop = await startedLoop(transport);
     try {
       transport.negotiate(HOST_PROTOCOL_VERSION);
-      const pending = authorize(loop);
-      expect(
-        transport.sent.filter((message) => message.type === "session:command-start"),
-      ).toHaveLength(1);
-
-      transport.negotiate(2);
-      await expect(pending).resolves.toBe(false);
-
-      // An ACK from the superseded v4 connection must not reopen the gate.
-      transport.deliver({
-        type: "session:command-start-acknowledged",
-        sessionId: assign.sessionId,
-        attemptId: assign.attemptId,
-      });
-      expect(
-        transport.sent.filter((message) => message.type === "session:command-start"),
-      ).toHaveLength(1);
-    } finally {
-      loop.stop();
-    }
-  });
-
-  it.each([2, 3])("bypasses command-start authorization for protocol %s", async (version) => {
-    const transport = new ProtocolTransport();
-    const loop = await startedLoop(transport);
-    try {
-      transport.negotiate(version);
       await expect(authorizeWithoutSignal(loop)).resolves.toBe(true);
-      expect(transport.sent.some((message) => message.type === "session:command-start")).toBe(
-        false,
-      );
-    } finally {
-      loop.stop();
-    }
-  });
-
-  it("allows legacy callers without a cancellation signal and refuses an already-aborted v4 launch", async () => {
-    const transport = new ProtocolTransport();
-    const loop = await startedLoop(transport);
-    try {
-      await expect(authorize(loop)).resolves.toBe(true);
-      transport.negotiate(HOST_PROTOCOL_VERSION);
       await expect(authorize(loop, AbortSignal.abort())).resolves.toBe(false);
       expect(transport.sent.some((message) => message.type === "session:command-start")).toBe(
         false,

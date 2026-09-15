@@ -79,11 +79,10 @@ describe("schedule fire final branch coverage", () => {
     expect(current.schedules.get("nightly")?.nextRunAt).toBe("2026-01-01T00:04:00.000Z");
   });
 
-  it("creates an ownerless workspace run with the persisted false cleanup default", () => {
+  it("creates a workspace run with the persisted false cleanup default", () => {
     const current = state(
       schedule({
         repositoryId: "",
-        principalId: undefined,
         workspacePoolId: "pool",
         destroyWorkspaceAfter: undefined,
       }),

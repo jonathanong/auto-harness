@@ -295,14 +295,13 @@ export function putHostInventory(
   state: ControlPlaneState,
   hostId: string,
   body: unknown,
-  options: { allowLegacyRelativeTerminalHooks?: boolean } = {},
 ): InventoryWriteResult {
   const expectedVersion =
     expectedVersionFrom(body) ?? state.hostInventories.get(hostId)?.version ?? 0;
   if ((state.hostInventories.get(hostId)?.version ?? 0) !== expectedVersion) {
     return inventoryVersionConflict();
   }
-  const result = prepareHostInventory(state, hostId, body, options);
+  const result = prepareHostInventory(state, hostId, body);
   if (!result.ok) return result;
   const rec = result.config;
   state.hostInventories.set(hostId, rec);
@@ -361,10 +360,9 @@ function prepareHostInventory(
   state: ControlPlaneState,
   hostId: string,
   body: unknown,
-  options: { allowLegacyRelativeTerminalHooks?: boolean } = {},
 ): { ok: true; config: HostInventoryRecord } | { ok: false; error: string } {
   try {
-    const parsed = parseHostBody(hostId, body, options);
+    const parsed = parseHostBody(hostId, body);
     const unknownAccount = parsed.providerAccounts.find(
       (account) => !state.providerAccounts.has(account.providerAccountId),
     );
@@ -448,12 +446,11 @@ export async function putHostInventoryDurable(
   hostId: string,
   body: unknown,
   options: {
-    allowLegacyRelativeTerminalHooks?: boolean;
     /** Exec-config routes preserve their committed-result contract on projection failure. */
     awaitProjection?: boolean;
   } = {},
 ): Promise<InventoryWriteResult> {
-  if (!state.storage) return putHostInventory(state, hostId, body, options);
+  if (!state.storage) return putHostInventory(state, hostId, body);
   await Promise.all([
     listHostInventoriesDurable(state),
     listWorktreesDurable(state),
@@ -469,7 +466,7 @@ export async function putHostInventoryDurable(
   ]);
   const expectedVersion =
     expectedVersionFrom(body) ?? state.hostInventories.get(hostId)?.version ?? 0;
-  const result = prepareHostInventory(state, hostId, body, options);
+  const result = prepareHostInventory(state, hostId, body);
   if (!result.ok) return result;
   const markers = inventoryReferenceMarkers(state.now(), result.config);
   if (markers.length > 99) {

@@ -130,6 +130,7 @@ async function slackPlane(sessionId: string) {
     name: "auto-harness",
     url: "git@example.test:auto-harness.git",
     defaultBranch: "main",
+    admissionState: "active",
     createdAt: now,
     updatedAt: now,
   });

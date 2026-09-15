@@ -331,13 +331,12 @@ describe("GitHub App webhook ingress", () => {
     });
   });
 
-  it("omits optional fallbacks and generation from the durable delivery intent", async () => {
+  it("omits optional fallbacks from the durable delivery intent", async () => {
     const { plane, handler } = await fixture(false);
     const config = configBody();
     await expect(plane.createGitHubIngressConfig(config)).resolves.toMatchObject({ ok: true });
     const record = await plane.getGitHubIngressConfigRecord();
     delete record!.bindings[0]!.fallbacks;
-    delete record!.generation;
     const create = vi.spyOn(plane, "createGitHubIngressSessionDurable");
     const payload = body({ comment: { ...body().comment, id: 16 } });
     expect(
@@ -345,9 +344,13 @@ describe("GitHub App webhook ingress", () => {
     ).toMatchObject({ status: 202, json: { accepted: true } });
     expect(create).toHaveBeenCalledWith(
       expect.not.objectContaining({ fallbacks: expect.anything() }),
-      expect.objectContaining({ integrationFence: expect.objectContaining({ version: 1 }) }),
+      expect.objectContaining({
+        integrationFence: expect.objectContaining({
+          version: 1,
+          generation: record!.generation,
+        }),
+      }),
     );
-    expect(create.mock.calls[0]?.[1]).not.toHaveProperty("integrationFence.generation");
   });
 
   it("tracks assignment enqueue through the webhook response lifecycle", async () => {
@@ -643,7 +646,7 @@ describe("GitHub App ingress configuration routes", () => {
         empty.handler,
         "PUT",
         "/api/v1/integrations/github-ingress",
-        configBody({ version: 1, generation: "legacy" }),
+        configBody({ version: 1, generation: "11111111-1111-4111-8111-111111111111" }),
       ),
     ).toMatchObject({ status: 404, json: { error: { code: "NOT_FOUND" } } });
     expect(
@@ -655,7 +658,7 @@ describe("GitHub App ingress configuration routes", () => {
         "DELETE",
         "/api/v1/integrations/github-ingress",
         undefined,
-        { "if-match": "1", "if-match-generation": "legacy" },
+        { "if-match": "1", "if-match-generation": "11111111-1111-4111-8111-111111111111" },
       ),
     ).toMatchObject({ status: 404, json: { error: { code: "NOT_FOUND" } } });
     expect(
@@ -827,7 +830,7 @@ describe("GitHub App ingress configuration routes", () => {
     expect(
       await invokeHandler(handler, "DELETE", "/api/v1/integrations/github-ingress", undefined, {
         "if-match": String(current!.version),
-        "if-match-generation": current!.generation ?? "legacy",
+        "if-match-generation": current!.generation,
       }),
     ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
   });

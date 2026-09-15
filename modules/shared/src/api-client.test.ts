@@ -45,13 +45,13 @@ describe("resolveServerApiBase", () => {
     expect(resolveServerApiBase()).toBe("http://example.test:9001");
   });
 
-  it("rewrites ws:// to http:// and strips a trailing /ws", () => {
-    process.env.HARNESS_API_URL = "ws://example.test:9002/ws";
+  it("uses HARNESS_API_URL as an HTTP origin", () => {
+    process.env.HARNESS_API_URL = "http://example.test:9002";
     expect(resolveServerApiBase()).toBe("http://example.test:9002");
   });
 
-  it("rewrites wss:// to https:// and strips a trailing /ws/", () => {
-    process.env.HARNESS_API_URL = "wss://example.test:9003/ws/";
+  it("uses an HTTPS HARNESS_API_URL origin", () => {
+    process.env.HARNESS_API_URL = "https://example.test:9003/";
     expect(resolveServerApiBase()).toBe("https://example.test:9003");
   });
 });

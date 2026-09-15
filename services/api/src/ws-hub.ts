@@ -3,10 +3,7 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 
 import {
-  ATTEMPT_FENCED_PROTOCOL_VERSION,
-  DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
   HOST_PROTOCOL_VERSION,
-  SESSION_RESULT_PROTOCOL_VERSION,
   MAX_SESSION_LOG_DROPPED,
   isHostRuntimeReport,
   isHostRunningAttempt,
@@ -32,7 +29,6 @@ import {
   markHostSocketPendingPublish,
 } from "./control-plane-host-socket-publish.ts";
 import { handleHostLogBatchDurable, MAX_DURABLE_LOG_BATCH_SIZE } from "./control-plane-messages.ts";
-import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import { emitWsMessagesDiscarded } from "./operational-metrics.ts";
 import type { RateLimitEvent } from "./rate-limit.ts";
 import { validateUsage } from "./usage.ts";
@@ -424,11 +420,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             socket.close(1008, "message rate exceeded");
             return;
           }
-          const protocolVersion =
-            boundConnectionId !== null
-              ? connectionProtocolVersion(plane.state.connections.get(boundConnectionId))
-              : ATTEMPT_FENCED_PROTOCOL_VERSION;
-          const msg = parseHostMessage(raw, { protocolVersion });
+          const msg = parseHostMessage(raw);
           if (!msg) {
             flushLogBatch();
             accepting = false;
@@ -522,10 +514,7 @@ async function authenticateSocket(
   return token ? await auth.authenticateApiKey(token) : null;
 }
 
-export function parseHostMessage(
-  raw: unknown,
-  options?: { protocolVersion?: number },
-): HostToServerMessage | null {
+export function parseHostMessage(raw: unknown): HostToServerMessage | null {
   if (typeof raw !== "string" && !Buffer.isBuffer(raw) && (!raw || typeof raw !== "object"))
     return null;
   try {
@@ -569,31 +558,27 @@ export function parseHostMessage(
           (!Array.isArray(message.runningSessions) ||
             message.runningSessions.length > 1_000 ||
             !message.runningSessions.every((sessionId) => boundedText(sessionId)))) ||
-        (message.runningAttempts !== undefined &&
-          (!Array.isArray(message.runningAttempts) ||
-            message.runningAttempts.length > 1_000 ||
-            !message.runningAttempts.every(
-              (attempt) =>
-                isHostRunningAttempt(attempt) &&
-                boundedText(attempt.sessionId) &&
-                boundedText(attempt.attemptId),
-            ) ||
-            new Set(
-              message.runningAttempts.map((attempt) =>
-                isHostRunningAttempt(attempt) ? attempt.sessionId : "",
-              ),
-            ).size !== message.runningAttempts.length)) ||
-        (message.protocolVersion !== undefined &&
-          (typeof message.protocolVersion !== "number" ||
-            !Number.isSafeInteger(message.protocolVersion) ||
-            message.protocolVersion < 0 ||
-            message.protocolVersion > 1_024)) ||
-        (message.daemonInstanceId === undefined) !== (message.daemonStartedAt === undefined) ||
-        (message.daemonInstanceId !== undefined && !isUuid(message.daemonInstanceId)) ||
-        (message.daemonStartedAt !== undefined &&
-          (!boundedText(message.daemonStartedAt, 128) ||
-            !Number.isFinite(Date.parse(message.daemonStartedAt)))) ||
-        (message.runtime !== undefined && !validRuntimeReport(message.runtime)) ||
+        !Array.isArray(message.runningAttempts) ||
+        message.runningAttempts.length > 1_000 ||
+        !message.runningAttempts.every(
+          (attempt) =>
+            isHostRunningAttempt(attempt) &&
+            boundedText(attempt.sessionId) &&
+            boundedText(attempt.attemptId),
+        ) ||
+        new Set(
+          message.runningAttempts.map((attempt) =>
+            isHostRunningAttempt(attempt) ? attempt.sessionId : "",
+          ),
+        ).size !== message.runningAttempts.length ||
+        typeof message.protocolVersion !== "number" ||
+        !Number.isSafeInteger(message.protocolVersion) ||
+        message.protocolVersion < 0 ||
+        message.protocolVersion > 1_024 ||
+        !isUuid(message.daemonInstanceId) ||
+        !boundedText(message.daemonStartedAt, 128) ||
+        !Number.isFinite(Date.parse(message.daemonStartedAt)) ||
+        !validRuntimeReport(message.runtime) ||
         (message.draining !== undefined && message.draining !== true)
       ) {
         return null;
@@ -654,21 +639,14 @@ export function parseHostMessage(
         (message.cliResumeRef === undefined || isValidCliResumeRef(message.cliResumeRef)) &&
         (message.result === undefined ||
           (isTerminalSessionStatus(message.status) &&
-            (options?.protocolVersion ?? 0) >= SESSION_RESULT_PROTOCOL_VERSION &&
             normalizeSessionResult(message.result) !== undefined)) &&
-        (message.deferTerminalHookResult === undefined ||
-          ((options?.protocolVersion ?? 0) >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
-            message.deferTerminalHookResult === true))
+        (message.deferTerminalHookResult === undefined || message.deferTerminalHookResult === true)
         ? (message as HostToServerMessage)
         : null;
     }
     if (message.type === "session:log") {
       const timestamp = message.timestamp;
       const stream = message.stream;
-      const protocolVersion = options?.protocolVersion ?? ATTEMPT_FENCED_PROTOCOL_VERSION;
-      const attemptIdOk =
-        boundedText(message.attemptId) ||
-        (protocolVersion < ATTEMPT_FENCED_PROTOCOL_VERSION && message.attemptId === undefined);
       const dropped = message.dropped;
       const droppedOk =
         dropped === undefined ||
@@ -677,7 +655,7 @@ export function parseHostMessage(
           dropped >= 0 &&
           dropped <= MAX_SESSION_LOG_DROPPED);
       return boundedText(message.sessionId) &&
-        attemptIdOk &&
+        boundedText(message.attemptId) &&
         (stream === "stdout" || stream === "stderr" || stream === "system") &&
         typeof message.content === "string" &&
         Buffer.byteLength(message.content) <= MAX_LOG_CHUNK_BYTES &&
@@ -705,9 +683,7 @@ export function parseHostMessage(
     if (message.type === "session:terminal-hook-complete") {
       return boundedText(message.sessionId) &&
         boundedText(message.handoffId) &&
-        (message.result === undefined ||
-          ((options?.protocolVersion ?? 0) >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
-            normalizeSessionResult(message.result) !== undefined))
+        (message.result === undefined || normalizeSessionResult(message.result) !== undefined)
         ? (message as HostToServerMessage)
         : null;
     }

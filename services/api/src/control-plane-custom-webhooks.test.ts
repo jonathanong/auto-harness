@@ -227,18 +227,6 @@ describe("custom webhook integration lifecycle", () => {
     });
   });
 
-  it("returns a public legacy generation sentinel for rows stored without one", async () => {
-    const value = plane();
-    await value.createCustomWebhookIntegration(config());
-    const record = await value.getCustomWebhookIntegrationRecord("deploy");
-    if (!record) throw new Error("expected record");
-    delete record.generation;
-    value.state.customWebhookIntegrations.set("deploy", record);
-    await expect(value.getCustomWebhookIntegration("deploy")).resolves.toMatchObject({
-      generation: "legacy",
-    });
-  });
-
   it("accepts an explicitly empty fallback list", async () => {
     await expect(
       plane().createCustomWebhookIntegration(config({ fallbacks: [] })),
@@ -381,26 +369,6 @@ describe("custom webhook integration lifecycle", () => {
     });
   });
 
-  it("accepts legacy delete fences and rejects them for generated records", async () => {
-    const value = plane();
-    await value.createCustomWebhookIntegration(config());
-    const legacy = await value.getCustomWebhookIntegrationRecord("deploy");
-    expect(legacy).not.toBeNull();
-    delete legacy!.generation;
-    await expect(value.deleteCustomWebhookIntegration("deploy", 1, null)).resolves.toEqual({
-      ok: true,
-    });
-
-    await value.createCustomWebhookIntegration(config());
-    await expect(value.deleteCustomWebhookIntegration("deploy", 1, null)).resolves.toMatchObject({
-      ok: false,
-      conflict: true,
-    });
-    await expect(
-      value.updateCustomWebhookIntegration(config({ timeout: 90 }), 1, null),
-    ).resolves.toMatchObject({ ok: false, conflict: true });
-  });
-
   it("uses the durable integration record for reads and rejects lifecycle writes with missing references", async () => {
     const source = plane();
     await expect(source.createCustomWebhookIntegration(config())).resolves.toMatchObject({
@@ -455,50 +423,5 @@ describe("custom webhook integration lifecycle", () => {
       ok: false,
       conflict: true,
     });
-  });
-
-  it("passes a null generation fence for legacy durable records", async () => {
-    const source = plane();
-    await source.createCustomWebhookIntegration(config());
-    const stored = await source.getCustomWebhookIntegrationRecord("deploy");
-    expect(stored).not.toBeNull();
-    delete stored!.generation;
-    let putGeneration: string | null | undefined;
-    let deleteGeneration: string | null | undefined;
-    const storage = {
-      getRepository: async () => ({ id: "repo" }),
-      listProviders: async () => [{ id: "provider" }],
-      listCommands: async () => [{ id: "command" }],
-      getCustomWebhookIntegration: async () => stored,
-      putCustomWebhookIntegration: async (
-        _record: unknown,
-        _version: number | null,
-        _markers: unknown,
-        generation: string | null,
-      ) => {
-        putGeneration = generation;
-        return false;
-      },
-      deleteCustomWebhookIntegration: async (
-        _id: string,
-        _version: number,
-        generation: string | null,
-      ) => {
-        deleteGeneration = generation;
-        return false;
-      },
-      acquireDeletionMarker: async () => true,
-      releaseDeletionMarker: async () => undefined,
-    };
-    const durable = new ControlPlane({ secretEncryptor: encryptor(), storage: storage as never });
-    await expect(
-      durable.updateCustomWebhookIntegration(config({ secret: undefined })),
-    ).resolves.toMatchObject({ ok: false, conflict: true });
-    await expect(durable.deleteCustomWebhookIntegration("deploy")).resolves.toMatchObject({
-      ok: false,
-      conflict: true,
-    });
-    expect(putGeneration).toBeNull();
-    expect(deleteGeneration).toBeNull();
   });
 });

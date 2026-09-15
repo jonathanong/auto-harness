@@ -535,65 +535,6 @@ describe("custom webhook receiver", () => {
     expect(failure.status()).toBe(500);
   });
 
-  it("accepts legacy generation fences during update and delete parsing", async () => {
-    const { handler } = await fixture();
-    const body = {
-      repositoryId: "repo",
-      target: { providerId: "provider" },
-      timeout: 60,
-      version: 1,
-      generation: "legacy",
-    };
-    expect(
-      await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/deploy", body),
-    ).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
-    expect(
-      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy", undefined, {
-        "if-match": "1",
-        "if-match-generation": "legacy",
-      }),
-    ).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
-    expect(
-      await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/deploy", {
-        ...body,
-        generation: "",
-      }),
-    ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
-    expect(
-      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy", undefined, {
-        "if-match": "1",
-        "if-match-generation": "",
-      }),
-    ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
-  });
-
-  it("round-trips GET, update, and delete for a stored row without generation", async () => {
-    const { plane, handler } = await fixture();
-    const record = await plane.getCustomWebhookIntegrationRecord("deploy");
-    if (!record) throw new Error("expected record");
-    delete record.generation;
-    plane.state.customWebhookIntegrations.set("deploy", record);
-    expect(await invokeHandler(handler, "GET", "/api/v1/integrations/custom/deploy")).toMatchObject(
-      { status: 200, json: { generation: "legacy" } },
-    );
-    expect(
-      await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/deploy", {
-        repositoryId: "repo",
-        target: { providerId: "provider" },
-        timeout: 60,
-        version: 1,
-        generation: "legacy",
-      }),
-    ).toMatchObject({ status: 200, json: { version: 2 } });
-    const updated = await plane.getCustomWebhookIntegrationRecord("deploy");
-    expect(
-      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy", undefined, {
-        "if-match": "2",
-        "if-match-generation": updated?.generation ?? "legacy",
-      }),
-    ).toMatchObject({ status: 204 });
-  });
-
   it("verifies the raw body, applies operator routing, and asynchronously acknowledges", async () => {
     const { plane, handler } = await fixture();
     const body = { prompt: "run deploy", idempotencyKey: "delivery-1", ref: "main" };
@@ -783,20 +724,13 @@ describe("custom webhook receiver", () => {
     await expect(response).resolves.toMatchObject({ status: 202 });
   });
 
-  it("handles legacy generation rows and unmatched receiver paths", async () => {
+  it("handles unmatched receiver paths and generation-scoped deliveries", async () => {
     const { plane } = await fixture();
     const unmatched = directRoute(plane, "/api/v1/webhooks/other", "POST");
     await expect(handleCustomWebhookRoute(unmatched.ctx as never)).resolves.toBe(false);
     const record = await plane.getCustomWebhookIntegrationRecord("deploy");
     expect(record).not.toBeNull();
-    const legacyRecord = { ...record, generation: undefined };
-    plane.state.customWebhookIntegrations.set("deploy", legacyRecord);
-    (
-      plane as unknown as {
-        getCustomWebhookIntegrationRecord: () => Promise<unknown>;
-      }
-    ).getCustomWebhookIntegrationRecord = async () => legacyRecord;
-    const body = { prompt: "legacy", idempotencyKey: "legacy-generation" };
+    const body = { prompt: "run", idempotencyKey: "delivery-generation" };
     const route = directRoute(
       plane,
       "/api/v1/webhooks/custom/deploy",
@@ -806,7 +740,9 @@ describe("custom webhook receiver", () => {
     );
     await expect(handleCustomWebhookRoute(route.ctx as never)).resolves.toBe(true);
     expect(route.status()).toBe(202);
-    expect(plane.listSessions()[0]?.concurrencyId).toBe("webhook:deploy:legacy:legacy-generation");
+    expect(plane.listSessions()[0]?.concurrencyId).toBe(
+      `webhook:deploy:${record!.generation}:delivery-generation`,
+    );
   });
 
   it("fails closed when an ingress exception cannot be audited", async () => {
@@ -896,7 +832,7 @@ describe("custom webhook receiver", () => {
 
   it("scopes malformed DELETE version and generation audits to the stored repository", async () => {
     const { plane, handler } = await fixture();
-    const generation = (await plane.getCustomWebhookIntegration("deploy"))!.generation ?? "legacy";
+    const generation = (await plane.getCustomWebhookIntegration("deploy"))!.generation;
     for (const headers of [
       { "if-match": "0", "if-match-generation": generation },
       { "if-match": "1", "if-match-generation": "" },

@@ -468,15 +468,6 @@ export class DynamoPlaneStorageBase {
     return hostAssignment.releaseTimedOutHostAssignment(this.ctx, opts);
   }
 
-  releaseLegacyHostAssignment(opts: {
-    sessionId: string;
-    attemptId: string;
-    hostId: string;
-    connectionId: string;
-  }): Promise<boolean> {
-    return hostAssignment.releaseLegacyHostAssignment(this.ctx, opts);
-  }
-
   backfillProviderAccountLease(
     opts: Parameters<typeof providerAccountLeases.backfillProviderAccountLease>[1],
   ): ReturnType<typeof providerAccountLeases.backfillProviderAccountLease> {
@@ -1167,16 +1158,6 @@ export class DynamoPlaneStorageBase {
       newNextRunAt,
       lastRunAt,
     );
-  }
-
-  skipOwnerlessScheduleAndAudit(opts: {
-    scheduleId: string;
-    expectedNextRunAt: string;
-    newNextRunAt: string;
-    lastRunAt: string;
-    audit: import("../audit-types.ts").AuditLogRecord;
-  }): Promise<boolean> {
-    return catalog.skipOwnerlessScheduleAndAudit(this.ctx, opts);
   }
 
   disableLegacyFallbackScheduleAndAudit(opts: {

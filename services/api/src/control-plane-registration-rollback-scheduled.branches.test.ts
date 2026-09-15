@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { protectScheduledRunsForFailedRegistration } from "./control-plane-registration-rollback-scheduled.ts";
@@ -109,24 +109,16 @@ describe("scheduled registration rollback branch coverage", () => {
   });
 
   it("falls back to release when marking fails, queues the run, and clears its ACK", async () => {
-    const releaseLegacyHostAssignment = vi.fn(async () => false);
     const state = stateWithStorage({
       listActiveSessionsByHost: async () => [session()],
       markMainCheckoutReconnectPending: async () => false,
       releaseMainCheckoutSession: async () => true,
       getSession: async () => null,
-      releaseLegacyHostAssignment,
     });
     state.pendingAcks.set("s", { sessionId: "s", worktreeId: null, assignedAtMs: 0 });
     await protectScheduledRunsForFailedRegistration(state, "host");
     expect(state.sessions.get("s")).toMatchObject({ status: "queued", hostId: null });
     expect(state.pendingAcks.has("s")).toBe(false);
-    expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
-      sessionId: "s",
-      attemptId: "attempt",
-      hostId: "host",
-      connectionId: "old",
-    });
   });
 
   it("does nothing when release loses the lease, but throws if the lease is still current", async () => {

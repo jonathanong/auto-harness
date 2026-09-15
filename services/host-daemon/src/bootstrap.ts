@@ -4,19 +4,22 @@ import { assertDaemonPathsAllowed } from "./allowed-roots.ts";
 import { parseDaemonConfig } from "./config-parse.ts";
 import { WorkspaceManager } from "./workspace-manager.ts";
 
-/** Normalize control-plane base to HTTP origin (strip trailing slash and /ws). */
+/** Normalize control-plane base to HTTP origin (strip trailing slash). */
 export function httpBaseFromApiUrl(apiUrl: string): string {
-  let base = apiUrl.trim();
-  if (base.startsWith("ws://")) {
-    base = `http://${base.slice("ws://".length)}`;
-  } else if (base.startsWith("wss://")) {
-    base = `https://${base.slice("wss://".length)}`;
+  const base = apiUrl.trim();
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    throw new Error(`invalid control-plane URL: ${base}`);
   }
-  base = base.replace(/\/$/, "");
-  if (base.endsWith("/ws")) {
-    base = base.slice(0, -"/ws".length);
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`HARNESS_API_URL must be an HTTP(S) origin, got ${url.protocol}`);
   }
-  return base.replace(/\/$/, "");
+  if (url.pathname === "/ws" || url.pathname.startsWith("/ws/")) {
+    throw new Error("HARNESS_API_URL must not include the /ws path");
+  }
+  return `${url.origin}${url.pathname}`.replace(/\/$/, "") || url.origin;
 }
 
 export type FetchHostInventoryDeps = {

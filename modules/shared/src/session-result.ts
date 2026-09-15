@@ -18,7 +18,6 @@ export function harnessSessionResult(
   return { summary: `Session ${status}`, summarySource: "harness" };
 }
 
-export const SESSION_RESULT_PROTOCOL_VERSION = 3;
 export const MAX_SESSION_RESULT_BYTES = 32 * 1024;
 export const MAX_SESSION_RESULT_SUMMARY_BYTES = 4 * 1024;
 export const MAX_SESSION_RESULT_BRANCH_BYTES = 1024;

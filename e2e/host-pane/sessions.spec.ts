@@ -3,6 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
 import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 
 const API = API_BASE;
 
@@ -75,7 +76,7 @@ test.describe("host pane sessions", () => {
         await detailPage.goto(`/sessions/${encodeURIComponent(id)}`);
         await expect(detailPage.getByTestId("session-detail-queue-deadline")).toBeVisible();
         await page.evaluate(
-          ({ repositoryId, worktreeId, wsBase }) =>
+          ({ repositoryId, worktreeId, wsBase, protocolVersion }) =>
             new Promise<void>((resolve, reject) => {
               const socket = new WebSocket(wsBase);
               const timeout = setTimeout(() => reject(new Error("registration timed out")), 10_000);
@@ -98,7 +99,10 @@ test.describe("host pane sessions", () => {
                 socket.send(
                   JSON.stringify({
                     type: "host:register",
-                    protocolVersion: 1,
+                    protocolVersion,
+                    daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+                    daemonStartedAt: "2026-08-11T00:00:00.000Z",
+                    runningAttempts: [],
                     hostId: "local-1",
                     worktrees: [
                       {
@@ -115,7 +119,12 @@ test.describe("host pane sessions", () => {
                 );
               });
             }),
-          { repositoryId: repoId, worktreeId: wtId, wsBase: WS_BASE },
+          {
+            repositoryId: repoId,
+            worktreeId: wtId,
+            wsBase: WS_BASE,
+            protocolVersion: HOST_PROTOCOL_VERSION,
+          },
         );
         await request.post(`${API}/api/v1/scheduler/assign`);
         const assigned = await request.get(`${API}/api/v1/sessions/${id}`);

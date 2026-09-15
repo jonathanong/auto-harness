@@ -232,6 +232,9 @@ export function tryClaimScheduleFire(
   if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
     return null;
   }
+  if (!schedule.principalId) {
+    return null;
+  }
   const activationCutoffAt = schedule.repositoryId
     ? state.repositories.get(schedule.repositoryId)?.activationCutoffAt
     : undefined;
@@ -340,25 +343,6 @@ export async function tryClaimScheduleFireDurable(
     return null;
   }
   if (!schedule.principalId) {
-    // Legacy rows without an authenticated owner cannot safely author a
-    // session. Consume this occurrence with the same cursor CAS used by a
-    // normal claim so cron does not hot-loop until an operator claims it.
-    const audit = ownerlessSkipAudit(state, schedule);
-    const skipped = await state.storage.skipOwnerlessScheduleAndAudit({
-      scheduleId,
-      expectedNextRunAt,
-      newNextRunAt,
-      lastRunAt: nowIso,
-      audit,
-    });
-    if (skipped) {
-      state.schedules.set(scheduleId, {
-        ...schedule,
-        nextRunAt: newNextRunAt,
-        lastRunAt: nowIso,
-      });
-      state.auditLogs.set(audit.id, audit);
-    }
     return null;
   }
   if (
@@ -461,22 +445,6 @@ export async function tryClaimScheduleFireDurable(
   state.sessions.set(session.id, session);
   noteSlackSessionLifecycle(state, session);
   return toPublic(state, session);
-}
-
-function ownerlessSkipAudit(state: ControlPlaneState, schedule: ScheduleRecord): AuditLogRecord {
-  return newAuditRecord(
-    {
-      actor: SYSTEM_AUDIT_ACTOR,
-      action: "schedule:ownerless-occurrence-skipped",
-      resourceType: "schedule",
-      resourceId: schedule.id,
-      repositoryId: schedule.repositoryId,
-      outcome: "failed",
-      metadata: { reason: "schedule must be claimed by an authenticated principal" },
-    },
-    state.now(),
-    state.auditIdFactory(),
-  );
 }
 
 function principalDrainSkipAudit(

@@ -505,7 +505,7 @@ describe("DaemonLoop coverage guards", () => {
       });
       const loop = new DaemonLoop({ config, transport });
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       const internals = loop as unknown as {
         handleServerMessage(message: HostWireMessage): Promise<void>;
         serverProtocolVersion: number;

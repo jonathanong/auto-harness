@@ -17,6 +17,7 @@ function seededPlane(): ControlPlane {
     name: "repository",
     url: "/repository",
     defaultBranch: "main",
+    admissionState: "active",
     createdAt: NOW,
     updatedAt: NOW,
   });
@@ -67,6 +68,7 @@ describe("repository admission routes", () => {
       name: "repository",
       url: "/repository",
       defaultBranch: "main",
+      admissionState: "active",
       createdAt: NOW,
       updatedAt: NOW,
     });

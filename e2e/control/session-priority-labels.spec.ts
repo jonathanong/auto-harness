@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 
 const API = `http://127.0.0.1:${7430 + Number(process.env.HARNESS_E2E_PORT_OFFSET ?? 0)}`;
 
@@ -104,7 +105,10 @@ async function connectHost(hostId: string, repositoryId: string, worktreeId: str
       socket.send(
         JSON.stringify({
           type: "host:register",
-          protocolVersion: 1,
+          protocolVersion: HOST_PROTOCOL_VERSION,
+          daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+          daemonStartedAt: "2026-08-11T00:00:00.000Z",
+          runningAttempts: [],
           hostId,
           worktrees: [
             {

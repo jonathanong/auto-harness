@@ -49,7 +49,7 @@ function markHostReady(plane: ControlPlane, hostId: string, repositoryId = "repo
     capabilities: ["scheduled-main-checkout"],
     repositoryIds: [repositoryId],
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-    protocolVersion: 1,
+    protocolVersion: 7,
   });
   plane.state.hostConnection.set(hostId, connectionId);
   plane.state.hostInventories.set(hostId, {
@@ -151,7 +151,7 @@ describe("queue placement planner", () => {
     seedBaseCommand(plane);
     markHostReady(plane, "host");
     const connection = plane.state.connections.get("host-connection")!;
-    plane.state.connections.set("host-connection", { ...connection, protocolVersion: 0 });
+    plane.state.connections.set("host-connection", { ...connection, protocolVersion: 1 });
     plane.seedWorktree({
       id: "wt",
       name: "wt",
@@ -169,7 +169,7 @@ describe("queue placement planner", () => {
     expect(
       targetIsAvailable(plane.state, catalog, { commandId: BASE_COMMAND_ID }, Date.parse(NOW)),
     ).toBe(false);
-    plane.state.connections.set("host-connection", { ...connection, protocolVersion: 1 });
+    plane.state.connections.set("host-connection", { ...connection, protocolVersion: 7 });
     expect(explainPromptPlacement(plane.state, catalog, session(), Date.parse(NOW))).toBe(
       "assignable",
     );

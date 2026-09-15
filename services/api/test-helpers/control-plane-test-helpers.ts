@@ -16,6 +16,11 @@ export function putScheduleOrThrow(
 
 /** Seed the standalone command baseSessionBody() targets by default. */
 export function seedBaseCommand(plane: ControlPlane): void {
+  plane.createRepository({
+    id: "repo-1",
+    name: "repo-1",
+    url: "https://example.test/repo-1.git",
+  });
   plane.createCommand({
     id: BASE_COMMAND_ID,
     name: "echo-prompt",

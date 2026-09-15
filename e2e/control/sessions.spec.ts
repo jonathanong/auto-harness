@@ -8,6 +8,7 @@ import {
   withLocalHostLock,
 } from "../local-1-host.ts";
 import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 
 test.describe("control plane sessions", () => {
   test("sessions list page and filters", async ({ page, request }) => {
@@ -382,7 +383,7 @@ test.describe("control plane sessions", () => {
 
     await page.goto("/sessions");
     await page.evaluate(
-      ({ hostId, repoId, worktreeId, wsBase }) =>
+      ({ hostId, repoId, worktreeId, wsBase, protocolVersion }) =>
         new Promise<void>((resolve, reject) => {
           const socket = new WebSocket(wsBase);
           const timeout = setTimeout(
@@ -407,7 +408,10 @@ test.describe("control plane sessions", () => {
             socket.send(
               JSON.stringify({
                 type: "host:register",
-                protocolVersion: 1,
+                protocolVersion,
+                daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+                daemonStartedAt: "2026-08-11T00:00:00.000Z",
+                runningAttempts: [],
                 hostId,
                 worktrees: [
                   {
@@ -424,7 +428,7 @@ test.describe("control plane sessions", () => {
             );
           });
         }),
-      { hostId, repoId, worktreeId, wsBase: WS_BASE },
+      { hostId, repoId, worktreeId, wsBase: WS_BASE, protocolVersion: HOST_PROTOCOL_VERSION },
     );
 
     const created = await request.post(`${API_BASE}/api/v1/sessions`, {
@@ -558,7 +562,7 @@ test.describe("control plane sessions", () => {
       // origin) to exercise the same browser WebSocket policy as the real UI.
       await page.goto("/sessions");
       await page.evaluate(
-        ({ hostId, repoId, worktreeId, accountId, wsBase }) =>
+        ({ hostId, repoId, worktreeId, accountId, wsBase, protocolVersion }) =>
           new Promise<void>((resolve, reject) => {
             const socket = new WebSocket(wsBase);
             const timeout = setTimeout(
@@ -586,7 +590,10 @@ test.describe("control plane sessions", () => {
               socket.send(
                 JSON.stringify({
                   type: "host:register",
-                  protocolVersion: 1,
+                  protocolVersion,
+                  daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+                  daemonStartedAt: "2026-08-11T00:00:00.000Z",
+                  runningAttempts: [],
                   hostId,
                   worktrees: [
                     {
@@ -610,7 +617,14 @@ test.describe("control plane sessions", () => {
               );
             });
           }),
-        { hostId, repoId, worktreeId, accountId, wsBase: WS_BASE },
+        {
+          hostId,
+          repoId,
+          worktreeId,
+          accountId,
+          wsBase: WS_BASE,
+          protocolVersion: HOST_PROTOCOL_VERSION,
+        },
       );
 
       const created = await request.post(`${API_BASE}/api/v1/sessions`, {
@@ -775,7 +789,7 @@ test.describe("control plane sessions", () => {
 
       await page.goto("/sessions");
       await page.evaluate(
-        ({ hostId, repositoryId, worktreeId, wsBase }) =>
+        ({ hostId, repositoryId, worktreeId, wsBase, protocolVersion }) =>
           new Promise<void>((resolve, reject) => {
             const socket = new WebSocket(wsBase);
             const timeout = setTimeout(
@@ -804,7 +818,10 @@ test.describe("control plane sessions", () => {
               socket.send(
                 JSON.stringify({
                   type: "host:register",
-                  protocolVersion: 1,
+                  protocolVersion,
+                  daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+                  daemonStartedAt: "2026-08-11T00:00:00.000Z",
+                  runningAttempts: [],
                   hostId,
                   worktrees: [
                     {
@@ -821,7 +838,13 @@ test.describe("control plane sessions", () => {
               );
             });
           }),
-        { hostId, repositoryId, worktreeId, wsBase: WS_BASE },
+        {
+          hostId,
+          repositoryId,
+          worktreeId,
+          wsBase: WS_BASE,
+          protocolVersion: HOST_PROTOCOL_VERSION,
+        },
       );
 
       const created = await request.post(`${API_BASE}/api/v1/sessions`, {

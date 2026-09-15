@@ -80,7 +80,7 @@ export async function handleCustomWebhookRoute(ctx: RouteCtx): Promise<boolean> 
         ...(parsed.ref !== undefined ? { ref: parsed.ref } : {}),
         // Generation scopes delivery identity across delete/recreate. A stale sender can never
         // collide with, or deduplicate against, the newly-created integration of the same ID.
-        concurrencyId: `webhook:${integrationId}:${record.generation ?? "legacy"}:${parsed.idempotencyKey}`,
+        concurrencyId: `webhook:${integrationId}:${record.generation}:${parsed.idempotencyKey}`,
         source: "webhook",
         type: "prompt",
         metadata: { integrationId },
@@ -90,7 +90,7 @@ export async function handleCustomWebhookRoute(ctx: RouteCtx): Promise<boolean> 
           id: integrationId,
           type: "custom-webhook",
           storageId: `custom-webhook:${integrationId}`,
-          ...(record.generation === undefined ? {} : { generation: record.generation }),
+          generation: record.generation,
           version: record.version,
           enabled: record.enabled,
         },

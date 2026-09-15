@@ -83,6 +83,7 @@ describe("GitHub ingress config", () => {
       type: "github-ingress",
       encryptedSecret: "cipher:{}",
       enabled: true,
+      generation: "11111111-1111-4111-8111-111111111111",
       bindings: [
         {
           ...binding,
@@ -373,16 +374,6 @@ describe("GitHub ingress config", () => {
     await expect(
       plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] }),
     ).resolves.toMatchObject({ ok: false, conflict: true });
-  });
-
-  it("assigns a creation generation when updating a legacy in-memory config", async () => {
-    const plane = createPlane();
-    await plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
-    delete plane.state.githubIngressConfig!.generation;
-    const updated = await plane.updateGitHubIngressConfig({ bindings: [binding] });
-    expect(updated).toMatchObject({ ok: true });
-    if (!updated.ok) throw new Error("expected update to succeed");
-    expect(updated.integration.generation).toEqual(expect.any(String));
   });
 
   it("allows only one concurrent in-memory create after delayed encryption", async () => {
@@ -703,23 +694,6 @@ describe("GitHub ingress config", () => {
     ).resolves.toMatchObject({
       ok: false,
       error: expect.stringContaining(`at most ${MAX_GITHUB_INGRESS_CONFIG_BYTES} bytes`),
-    });
-  });
-
-  it("accepts a legacy generation fence and rejects legacy deletion of current config", async () => {
-    const legacy = createPlane();
-    await legacy.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
-    const record = await legacy.getGitHubIngressConfigRecord();
-    delete record!.generation;
-    await expect(
-      legacy.updateGitHubIngressConfig({ bindings: [binding] }, 1, null),
-    ).resolves.toMatchObject({ ok: true });
-
-    const current = createPlane();
-    await current.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
-    await expect(current.deleteGitHubIngressConfig(1, null)).resolves.toMatchObject({
-      ok: false,
-      conflict: true,
     });
   });
 
