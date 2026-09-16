@@ -264,6 +264,10 @@ describe("child session route", () => {
       [],
       { prompt: "child", spawnKey: "key", repositoryId: "repo" },
       { spawnKey: "key" },
+      // Whitespace-only must fail the same way as a missing prompt (shared with
+      // the top-level create validator via validateSessionCreate).
+      { prompt: "   ", spawnKey: "key" },
+      { prompt: "\t\n", spawnKey: "key" },
       { prompt: "child", spawnKey: 1 },
       { prompt: "child", spawnKey: "" },
       { prompt: "child", spawnKey: "x".repeat(257) },

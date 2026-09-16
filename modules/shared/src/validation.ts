@@ -260,8 +260,12 @@ export function validateCreateSessionInput(
   if (typeof input.prompt !== "string") {
     return { ok: false, error: "prompt is required" };
   }
-  // Scheduled fires use the stored schedule prompt, which may be blank.
-  if (!input.prompt && type !== "scheduled" && input.source !== "schedule") {
+  // Scheduled fires use the stored schedule prompt, which may be blank. A
+  // whitespace-only prompt is exactly as useless as an empty one (it still reaches
+  // the CLI as a meaningless argument), so reject it the same way rather than
+  // trimming: surrounding whitespace can be meaningful to some CLIs, so the stored
+  // prompt is validated, never silently mutated.
+  if (!input.prompt.trim() && type !== "scheduled" && input.source !== "schedule") {
     return { ok: false, error: "prompt is required" };
   }
   const promptBytes = promptByteLengthError(input.prompt);

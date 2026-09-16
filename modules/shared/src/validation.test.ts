@@ -356,9 +356,34 @@ describe("validateCreateSessionInput", () => {
     });
   });
 
+  it("rejects a whitespace-only prompt the same way as an empty one", () => {
+    expect(validateCreateSessionInput({ ...base, prompt: "   " })).toEqual({
+      ok: false,
+      error: "prompt is required",
+    });
+    expect(validateCreateSessionInput({ ...base, prompt: "\t\n  \n" })).toEqual({
+      ok: false,
+      error: "prompt is required",
+    });
+  });
+
+  it("accepts a prompt with meaningful internal whitespace unmodified", () => {
+    const result = validateCreateSessionInput({ ...base, prompt: "  fix   the   bug  " });
+    expect(result).toMatchObject({ ok: true, value: { prompt: "  fix   the   bug  " } });
+  });
+
   it("allows an empty prompt for scheduled sessions", () => {
     const result = validateCreateSessionInput({ ...base, prompt: "", type: "scheduled" });
     expect(result).toMatchObject({ ok: true, value: { prompt: "", type: "scheduled" } });
+  });
+
+  it("allows a whitespace-only prompt for scheduled sessions and schedule-sourced fires", () => {
+    expect(validateCreateSessionInput({ ...base, prompt: "   ", type: "scheduled" })).toMatchObject(
+      { ok: true, value: { prompt: "   ", type: "scheduled" } },
+    );
+    expect(
+      validateCreateSessionInput({ ...base, prompt: "   ", source: "schedule" }),
+    ).toMatchObject({ ok: true, value: { prompt: "   " } });
   });
 
   it("requires one tagged target", () => {

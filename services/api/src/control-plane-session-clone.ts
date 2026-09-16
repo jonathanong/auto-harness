@@ -27,7 +27,11 @@ function validateCloneOverrides(opts: CloneOptions): string | null {
   if (Object.keys(opts as Record<string, unknown>).some((key) => !allowed.has(key))) {
     return "invalid clone overrides";
   }
-  if (opts.prompt !== undefined && (typeof opts.prompt !== "string" || opts.prompt.length === 0)) {
+  // Whitespace-only is exactly as useless as empty — same rejection either way.
+  if (
+    opts.prompt !== undefined &&
+    (typeof opts.prompt !== "string" || opts.prompt.trim().length === 0)
+  ) {
     return "prompt must be a non-empty string";
   }
   if (opts.prompt !== undefined) {

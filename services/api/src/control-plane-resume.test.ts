@@ -584,6 +584,11 @@ describe("control-plane native resume", () => {
         ok: false,
         error: "prompt must be a non-empty string",
       });
+      // Whitespace-only must fail the same way as empty, not slip through as a "real" prompt.
+      expect(overrides.resumeSession(source.session.id, { prompt: "\t\n  \n" })).toEqual({
+        ok: false,
+        error: "prompt must be a non-empty string",
+      });
       expect(overrides.resumeSession(source.session.id, { prompt: "x".repeat(65_536) }).ok).toBe(
         true,
       );

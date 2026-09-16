@@ -972,6 +972,9 @@ describe("custom webhook receiver", () => {
       { idempotencyKey: "missing-prompt" },
       { prompt: "x" },
       { prompt: "x", idempotencyKey: "one", ref: 1 },
+      // Whitespace-only clears this route's own gate (non-empty) but is still caught by
+      // the shared control-plane prompt validator further down the create path.
+      { prompt: "   ", idempotencyKey: "whitespace-prompt" },
     ]) {
       const raw = Buffer.from(JSON.stringify(body));
       const route = directRoute(plane, "/api/v1/webhooks/custom/deploy", "POST", raw, {
