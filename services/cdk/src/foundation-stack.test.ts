@@ -105,6 +105,20 @@ describe("AutoHarnessFoundationStack", () => {
       ]),
     });
     template.hasResourceProperties("AWS::DynamoDB::Table", {
+      TableName: "AutoHarness-HostLocks",
+      KeySchema: [{ AttributeName: "hostId", KeyType: "HASH" }],
+      GlobalSecondaryIndexes: [
+        {
+          IndexName: "offlineAlertPending-hostId",
+          KeySchema: [
+            { AttributeName: "offlineAlertPending", KeyType: "HASH" },
+            { AttributeName: "hostId", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "ALL" },
+        },
+      ],
+    });
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
       TableName: "AutoHarness-AuditLogs",
       KeySchema: [
         { AttributeName: "scope", KeyType: "HASH" },
@@ -276,6 +290,7 @@ describe("AutoHarnessFoundationStack", () => {
     expect(JSON.stringify(scanStatement)).toContain("Integrations");
     expect(JSON.stringify(scanStatement)).not.toContain("SessionLogs");
     expect(JSON.stringify(scanStatement)).not.toContain("AuditLogs");
+    expect(JSON.stringify(scanStatement)).not.toContain("HostLocks");
     template.hasResourceProperties("AWS::IAM::ManagedPolicy", {
       PolicyDocument: {
         Statement: [

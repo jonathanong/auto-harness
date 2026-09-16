@@ -19,6 +19,11 @@ describe("createFoundationDataAccess", () => {
     expect(SCAN_TABLE_NAMES).not.toContain("SessionLogs");
     expect(SCAN_TABLE_NAMES).not.toContain("AuditLogs");
     expect(SCAN_TABLE_NAMES).not.toContain("RateLimits");
+    // HostLocks is a lock table: listHostOfflineAlertCandidates queries the sparse
+    // offlineAlertPending GSI (services/api/src/db/plane-storage-locks.ts) instead of
+    // scanning. Do not add it here without a deliberate decision to do so.
+    expect(SCAN_TABLE_NAMES).not.toContain("HostLocks");
+    expect(SCAN_TABLE_NAMES).not.toContain("ConcurrencyLocks");
   });
 
   it("fails closed when a catalog table is missing", () => {

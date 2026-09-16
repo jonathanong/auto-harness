@@ -34,6 +34,10 @@ import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-le
 import { migrateSessionPriorityOrderPage } from "./ensure-session-priority-order.ts";
 import { ensureArchivesRetryIndex } from "./ensure-archive-retry-index.ts";
 import { ensureSessionsActiveHostIndex } from "./ensure-active-host-index.ts";
+import {
+  ensureHostLocksOfflineAlertIndex,
+  HOST_LOCKS_OFFLINE_ALERT_INDEX,
+} from "./ensure-host-locks-offline-alert-index.ts";
 import { webhookDeliveriesTableDefinition } from "./ensure-webhook-deliveries-table.ts";
 
 const LOCAL_SESSION_LIST_MIGRATION_MAX_ATTEMPTS = 100_000;
@@ -281,9 +285,25 @@ export async function ensureControlPlaneTables(opts: {
   await createIfMissing(ddb, {
     TableName: names.hostLocks,
     BillingMode: BillingMode.PAY_PER_REQUEST,
-    AttributeDefinitions: [{ AttributeName: "hostId", AttributeType: ScalarAttributeType.S }],
+    AttributeDefinitions: [
+      { AttributeName: "hostId", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "offlineAlertPending", AttributeType: ScalarAttributeType.S },
+    ],
     KeySchema: [{ AttributeName: "hostId", KeyType: KeyType.HASH }],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: HOST_LOCKS_OFFLINE_ALERT_INDEX,
+        KeySchema: [
+          { AttributeName: "offlineAlertPending", KeyType: KeyType.HASH },
+          { AttributeName: "hostId", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      },
+    ],
   });
+  // Retrofit a HostLocks table that already existed before this GSI did (local dev DBs
+  // persisted across restarts; createIfMissing above is a no-op against them).
+  await ensureHostLocksOfflineAlertIndex(ddb, names.hostLocks);
 
   await createIfMissing(ddb, {
     TableName: names.concurrencyLocks,

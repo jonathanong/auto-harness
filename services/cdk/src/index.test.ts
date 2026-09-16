@@ -63,6 +63,18 @@ describe("CDK table catalog", () => {
       partitionKey: { name: "scopeKey" },
       sortKey: { name: "recordKey" },
     });
+    // Sparse: only hosts with a pending offline alert are indexed (Invariant 13 / the
+    // SCAN_TABLE_NAMES contract) — HostLocks must stay Query/Get/Put only, never Scan.
+    expect(DYNAMO_TABLES.find((table) => table.name === "HostLocks")).toMatchObject({
+      partitionKey: { name: "hostId" },
+      gsis: [
+        {
+          name: "offlineAlertPending-hostId",
+          partitionKey: { name: "offlineAlertPending", type: "S" },
+          sortKey: { name: "hostId", type: "S" },
+        },
+      ],
+    });
     expect(DYNAMO_TABLES.find((table) => table.name === "AuditLogs")).toMatchObject({
       partitionKey: { name: "scope" },
       sortKey: { name: "timestampId" },
