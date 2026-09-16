@@ -55,6 +55,16 @@ export function dependencies(stackStates: boolean[]): DeploymentDependencies & {
       if (args.includes("get-caller-identity")) {
         return { status: 0, stderr: "", stdout: "123456789012\n" };
       }
+      if (args.includes("describe-table")) {
+        // Default: a stable, current-schema table with no GSIs at all — the purge
+        // pre-flight (inspectLiveTables) finds nothing to restrict and nothing mid-transition.
+        // Tests exercising actual GSI drift override this branch directly.
+        return {
+          status: 0,
+          stderr: "",
+          stdout: JSON.stringify({ Table: { TableStatus: "ACTIVE", GlobalSecondaryIndexes: [] } }),
+        };
+      }
       if (
         args.includes("list-object-versions") ||
         args.includes("delete-objects") ||

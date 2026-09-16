@@ -4,6 +4,7 @@ import {
   emptyArchiveBucket,
   retargetFoundationForDeletion,
 } from "./deployment-purge.ts";
+import { inspectLiveTables } from "./deployment-purge-schema.ts";
 import {
   applyDeployment,
   bootstrapEnvironment,
@@ -118,6 +119,16 @@ async function purge(
     throw new Error("purge found no application stacks");
   }
 
+  // Inspect the foundation's live tables before destroying anything: DynamoDB refuses any
+  // UpdateTable — even one that only flips DeletionProtectionEnabled — while a table or GSI
+  // isn't ACTIVE, so checking that up front turns a doomed retarget into a clean refusal
+  // instead of a torn-down environment (web and runtime already destroyed) stuck on a
+  // foundation that can't be retargeted. The returned per-table GSI names also let the
+  // retarget synthesize each table's exact live index set below.
+  const existingGsiNamesByTable = state.foundation
+    ? await inspectLiveTables(config, dependencies)
+    : {};
+
   const runtimeAndWeb = [
     ...(state.web ? [config.webStackName] : []),
     ...(state.runtime ? [config.runtimeStackName] : []),
@@ -125,7 +136,7 @@ async function purge(
   if (runtimeAndWeb.length > 0) await destroyStacks(config, dependencies, runtimeAndWeb);
 
   if (state.foundation) {
-    await retargetFoundationForDeletion(config, dependencies);
+    await retargetFoundationForDeletion(config, dependencies, existingGsiNamesByTable);
     const bucketName = await stackOutput(
       config,
       dependencies,
