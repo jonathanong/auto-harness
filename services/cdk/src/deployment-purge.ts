@@ -25,10 +25,17 @@ type S3DeleteObjectsResponse = {
  * DeletionPolicy: Retain would otherwise orphan the tables, archive bucket, and KMS key
  * rather than remove them when the stack is later destroyed. Needs no --parameters: nothing
  * in the foundation stack depends on runtime's SSM parameter values.
+ *
+ * existingGsiNamesByTable (from inspectLiveTables) pins each table's synthesized GSIs to
+ * exactly what's already live, so this retarget makes no index changes at all — a full `cdk
+ * deploy` would otherwise synthesize the complete current catalog (all eight Sessions GSIs)
+ * and collide with DynamoDB's one-GSI-change-per-update limit on a table that has drifted
+ * behind it, which is the failure this purge is trying to recover from in the first place.
  */
 export async function retargetFoundationForDeletion(
   config: DeploymentConfig,
   dependencies: DeploymentDependencies,
+  existingGsiNamesByTable: Readonly<Record<string, readonly string[]>>,
 ): Promise<void> {
   dependencies.log(`Retargeting ${config.foundationStackName} for deletion...`);
   await dependencies.run("pnpm", [
@@ -37,6 +44,8 @@ export async function retargetFoundationForDeletion(
     "deploy",
     config.foundationStackName,
     ...cdkContext({ ...config, removalPolicy: "destroy" }),
+    "-c",
+    `existingGsiNamesByTable=${JSON.stringify(existingGsiNamesByTable)}`,
     "--require-approval",
     "never",
   ]);

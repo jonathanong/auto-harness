@@ -38,16 +38,31 @@ function sessionCreatedOrderIndexStage(value: string | undefined): SessionCreate
   throw new Error("sessionCreatedOrderIndexStage context must be none or status");
 }
 
+/** Purge-only. See FoundationStackProps.existingGsiNamesByTable in foundation-stack.ts. */
+function existingGsiNamesByTable(
+  app: App,
+): Readonly<Record<string, readonly string[]>> | undefined {
+  const raw = contextString(app, "existingGsiNamesByTable");
+  if (raw === undefined) return undefined;
+  const parsed: unknown = JSON.parse(raw);
+  if (typeof parsed !== "object" || parsed === null) {
+    throw new Error("existingGsiNamesByTable context must be a JSON object");
+  }
+  return parsed as Record<string, readonly string[]>;
+}
+
 const app = new App();
 const tablePrefix = contextString(app, "tablePrefix") ?? "AutoHarness";
 const dataRemovalPolicy = removalPolicy(contextString(app, "removalPolicy"));
 const archiveBucketName = contextString(app, "archiveBucketName");
+const gsiAllowlist = existingGsiNamesByTable(app);
 const stack = new AutoHarnessFoundationStack(
   app,
   contextString(app, "stackName") ?? "AutoHarnessFoundation",
   {
     ...(archiveBucketName !== undefined ? { archiveBucketName } : {}),
     dataRemovalPolicy,
+    ...(gsiAllowlist !== undefined ? { existingGsiNamesByTable: gsiAllowlist } : {}),
     sessionPriorityIndexStage: sessionPriorityIndexStage(
       contextString(app, "sessionPriorityIndexStage"),
     ),

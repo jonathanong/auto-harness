@@ -466,46 +466,45 @@ enough for a versioned bucket, and `cdk destroy` fails with `BucketNotEmpty`
 otherwise), then destroys the foundation stack. It verifies afterward that no
 application stack survives.
 
-### Purge fails on a Sessions table more than one GSI behind
+### Purge and a Sessions table behind on indexes
 
-That retarget step is a full `cdk deploy` of the foundation, so it synthesizes the
-**complete** current table template — including all eight Sessions GSIs. It passes
-`sessionPriorityIndexStage=both` and `sessionCreatedOrderIndexStage=status`, which
-defer nothing, so no staging applies. Against a Sessions table missing more than one
-of those indexes, CloudFormation rejects the update:
+Originally, the retarget step was a full `cdk deploy` of the foundation that synthesized the
+**complete** current table template — including all eight Sessions GSIs — passing
+`sessionPriorityIndexStage=both` and `sessionCreatedOrderIndexStage=status`, which defer
+nothing. Against `AutoHarness-production-Foundation` on 2026-09-16, whose Sessions table had
+3 of 8 indexes, CloudFormation rejected that update with the same limit that caused the
+2026-09-08 outage this command was supposed to remedy:
 
 ```
 UPDATE_FAILED  Sessions8896A56D
 "Cannot perform more than one GSI creation or deletion in a single update"
 ```
 
-This is the same limit that caused the 2026-09-08 outage, now blocking the documented
-remedy for it. **An environment whose schema has drifted that far cannot be purged
-with this command** — verified against `AutoHarness-production-Foundation` on
-2026-09-16, whose Sessions table had 3 of 8 indexes.
+Purge no longer synthesizes the retarget from the catalog. Before touching anything, it
+calls `inspectLiveTables` (`deployment-purge-schema.ts`), which `describe-table`s every
+catalog table and returns each existing table's **live** GSI names. The retarget
+(`retargetFoundationForDeletion`) passes that per-table allowlist to the foundation stack
+as `-c existingGsiNamesByTable=<json>`, and `stagedTables()` (`foundation-stack.ts`) filters
+each table's synthesized GSIs down to exactly that live set. A table this drifted therefore
+synthesizes with only the indexes it already has, so the retarget changes no indexes at
+all — only the DeletionPolicy flip (and, for a retain-policy environment,
+`DeletionProtectionEnabled: false`) — regardless of how many indexes it's missing or which
+table they're on. This is a true no-op for CloudFormation only insofar as its stored
+template already agrees with the live table's GSI set (true of the reproduced production
+case: CloudFormation was rejecting the same 3-of-8 update DynamoDB itself was enforcing); a
+stack template that has independently drifted from the table it describes is not something
+this inspects.
 
-No data is lost: the foundation rolls back to `UPDATE_ROLLBACK_COMPLETE` retaining every
-table, the archive bucket, and the KMS key, and resources created during the failed
-attempt (tables new since the environment last deployed) are cleaned up by the rollback.
+`inspectLiveTables` also fails closed as a pre-flight check, before web and runtime are
+destroyed: DynamoDB refuses **any** `UpdateTable` — even one that only flips
+`DeletionProtectionEnabled` — while a table or any of its GSIs isn't `ACTIVE` (exactly the
+state an interrupted staged index rollout leaves behind). Purge now refuses up front in that
+case, converting what used to be a torn-down-but-undeletable environment (web and runtime
+already destroyed, foundation retarget doomed to fail) into a clean refusal that leaves
+everything standing. This only proves the retarget isn't blocked by a resource in
+transition — it doesn't prove the retarget will otherwise succeed.
 
-**The environment is left torn down, though.** Purge destroys the web and runtime stacks
-_before_ it retargets the foundation, and a rollback of the foundation does not restore
-them — so a failed purge leaves an environment with its data intact but no API, no
-WebSocket, and no UI, and purge exits non-zero. Recreate them with `update` if you need
-the environment serving again before you resolve the index drift.
-
-To purge such an environment, first bring its Sessions table up to the full index set
-**one index per `update-table` call**, waiting for each to reach `ACTIVE` before the
-next, then re-run purge.
-
-Purge itself has no staged path — it passes flags that defer nothing. `pnpm deploy:aws`
-does stage, adding `statusShard-priorityOrder`, then `statusShard-repositoryPriorityOrder`,
-then `statusShard-createdOrder` across three sequential foundation updates. But that
-sequence only helps a table that already carries `parentSessionId-createdOrder` and
-`activeHostId-activeHostOrder`: `stagedTables()` never excludes those two, so they appear
-in every synthesized template. A table predating them — which `deploy-aws.sh` detects and
-refuses up front, by design — needs every missing index added by hand before either path
-works. Check drift first:
+To check an environment's Sessions index drift by hand:
 
 ```bash
 aws dynamodb describe-table --table-name "AutoHarness-<environment>-Sessions" \

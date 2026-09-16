@@ -22,6 +22,14 @@ type FoundationStackProps = StackProps & {
   sessionPriorityIndexStage?: SessionPriorityIndexStage;
   /** Existing tables add the created-order GSI after the priority-index rollout. */
   sessionCreatedOrderIndexStage?: SessionCreatedOrderIndexStage;
+  /**
+   * Purge-only: pins a named table's synthesized GSIs to exactly this live set, so a
+   * deletion retarget makes no index changes regardless of how far that table has drifted
+   * from the catalog. A table absent here keeps its full (possibly staged) definition — it
+   * either isn't restricted or doesn't exist yet, and a fresh CREATE can add every GSI in
+   * one call.
+   */
+  existingGsiNamesByTable?: Readonly<Record<string, readonly string[]>>;
 };
 
 export type FoundationResources = {
@@ -56,17 +64,29 @@ function tableName(prefix: string, definition: TableDef): string {
 function stagedTables(
   priorityStage: SessionPriorityIndexStage,
   createdOrderStage: SessionCreatedOrderIndexStage,
+  existingGsiNamesByTable?: Readonly<Record<string, readonly string[]>>,
 ): readonly TableDef[] {
   return DYNAMO_TABLES.map((definition) => {
-    if (definition.name !== "Sessions" || !definition.gsis) return definition;
-    return {
-      ...definition,
-      gsis: definition.gsis.filter(
+    // Narrowing on the early return (rather than `let gsis = definition.gsis` unconditionally)
+    // keeps `gsis` typed as a concrete array below, not `Array | undefined` — required under
+    // exactOptionalPropertyTypes for the `{ ...definition, gsis }` spread further down.
+    if (!definition.gsis) return definition;
+    let gsis = definition.gsis;
+    if (definition.name === "Sessions") {
+      gsis = gsis.filter(
         (index) =>
           (priorityStage !== "status" || index.name !== "statusShard-repositoryPriorityOrder") &&
           (createdOrderStage !== "none" || index.name !== "statusShard-createdOrder"),
-      ),
-    };
+      );
+    }
+    // Purge's deletion retarget passes this so every restricted table's synthesized GSIs
+    // match what's already live exactly — no create/delete, only the DeletionPolicy flip.
+    const liveNames = existingGsiNamesByTable?.[definition.name];
+    if (liveNames) {
+      const live = new Set(liveNames);
+      gsis = gsis.filter((index) => live.has(index.name));
+    }
+    return gsis === definition.gsis ? definition : { ...definition, gsis };
   });
 }
 
@@ -111,6 +131,7 @@ export class AutoHarnessFoundationStack extends Stack {
     const definitions = stagedTables(
       props.sessionPriorityIndexStage ?? "both",
       props.sessionCreatedOrderIndexStage ?? "status",
+      props.existingGsiNamesByTable,
     );
     const tables: Record<string, dynamodb.Table> = {};
 

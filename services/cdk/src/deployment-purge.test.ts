@@ -47,7 +47,7 @@ function dependencies(
 describe("retargetFoundationForDeletion", () => {
   it("deploys only the foundation stack, forcing removalPolicy=destroy", async () => {
     const deps = dependencies(vi.fn());
-    await retargetFoundationForDeletion(config, deps);
+    await retargetFoundationForDeletion(config, deps, { Sessions: ["statusShard-createdAt"] });
     expect(deps.runs).toHaveLength(1);
     const [command, ...args] = deps.runs[0]!;
     expect(command).toBe("pnpm");
@@ -58,6 +58,21 @@ describe("retargetFoundationForDeletion", () => {
     expect(args).not.toContain("AutoHarness-review-Web");
     expect(args).not.toContain("--parameters");
     expect(args).toEqual(expect.arrayContaining(["-c", "removalPolicy=destroy"]));
+  });
+
+  it("passes the live GSI allowlist as CDK context so the retarget makes no index changes", async () => {
+    const deps = dependencies(vi.fn());
+    await retargetFoundationForDeletion(config, deps, {
+      HostLocks: [],
+      Sessions: ["statusShard-createdAt", "statusShard-queueOrder", "repositoryId-createdAt"],
+    });
+    const [, ...args] = deps.runs[0]!;
+    const flag = args.find((arg) => arg.startsWith("existingGsiNamesByTable="));
+    expect(flag).toBeDefined();
+    expect(JSON.parse(flag!.slice("existingGsiNamesByTable=".length))).toEqual({
+      HostLocks: [],
+      Sessions: ["statusShard-createdAt", "statusShard-queueOrder", "repositoryId-createdAt"],
+    });
   });
 });
 

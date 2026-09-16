@@ -32,6 +32,40 @@ describe("AutoHarnessFoundationStack", () => {
     expect(indexes?.map((index) => index.IndexName)).not.toContain("statusShard-createdOrder");
   });
 
+  it("restricts a table's synthesized GSIs to exactly its live set for the deletion retarget", () => {
+    const liveSessionsGsis = [
+      "statusShard-createdAt",
+      "statusShard-queueOrder",
+      "repositoryId-createdAt",
+    ];
+    const template = foundationTemplate({
+      existingGsiNamesByTable: { Sessions: liveSessionsGsis },
+    });
+    const sessions = template.findResources("AWS::DynamoDB::Table", {
+      Properties: { TableName: "AutoHarness-Sessions" },
+    });
+    const indexes = Object.values(sessions)[0]?.Properties?.GlobalSecondaryIndexes as
+      | Array<{ IndexName?: string }>
+      | undefined;
+    expect(indexes?.map((index) => index.IndexName)).toEqual(liveSessionsGsis);
+  });
+
+  it("keeps a table's full definition when it is absent from existingGsiNamesByTable", () => {
+    const template = foundationTemplate({ existingGsiNamesByTable: { Sessions: [] } });
+    const hostLocks = template.findResources("AWS::DynamoDB::Table", {
+      Properties: { TableName: "AutoHarness-HostLocks" },
+    });
+    const indexes = Object.values(hostLocks)[0]?.Properties?.GlobalSecondaryIndexes as
+      | Array<{ IndexName?: string }>
+      | undefined;
+    expect(indexes?.map((index) => index.IndexName)).toEqual(["offlineAlertPending-hostId"]);
+    // The restricted table really did drop to zero GSIs, proving the filter isn't a no-op.
+    const sessions = template.findResources("AWS::DynamoDB::Table", {
+      Properties: { TableName: "AutoHarness-Sessions" },
+    });
+    expect(Object.values(sessions)[0]?.Properties?.GlobalSecondaryIndexes).toBeUndefined();
+  });
+
   it("synthesizes every current durable table, archive bucket, outputs, and only foundation resources", () => {
     const template = foundationTemplate();
 
