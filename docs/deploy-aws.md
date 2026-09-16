@@ -466,6 +466,57 @@ enough for a versioned bucket, and `cdk destroy` fails with `BucketNotEmpty`
 otherwise), then destroys the foundation stack. It verifies afterward that no
 application stack survives.
 
+### Purge fails on a Sessions table more than one GSI behind
+
+That retarget step is a full `cdk deploy` of the foundation, so it synthesizes the
+**complete** current table template — including all eight Sessions GSIs. It passes
+`sessionPriorityIndexStage=both` and `sessionCreatedOrderIndexStage=status`, which
+defer nothing, so no staging applies. Against a Sessions table missing more than one
+of those indexes, CloudFormation rejects the update:
+
+```
+UPDATE_FAILED  Sessions8896A56D
+"Cannot perform more than one GSI creation or deletion in a single update"
+```
+
+This is the same limit that caused the 2026-09-08 outage, now blocking the documented
+remedy for it. **An environment whose schema has drifted that far cannot be purged
+with this command** — verified against `AutoHarness-production-Foundation` on
+2026-09-16, whose Sessions table had 3 of 8 indexes.
+
+No data is lost: the foundation rolls back to `UPDATE_ROLLBACK_COMPLETE` retaining every
+table, the archive bucket, and the KMS key, and resources created during the failed
+attempt (tables new since the environment last deployed) are cleaned up by the rollback.
+
+**The environment is left torn down, though.** Purge destroys the web and runtime stacks
+_before_ it retargets the foundation, and a rollback of the foundation does not restore
+them — so a failed purge leaves an environment with its data intact but no API, no
+WebSocket, and no UI, and purge exits non-zero. Recreate them with `update` if you need
+the environment serving again before you resolve the index drift.
+
+To purge such an environment, first bring its Sessions table up to the full index set
+**one index per `update-table` call**, waiting for each to reach `ACTIVE` before the
+next, then re-run purge.
+
+Purge itself has no staged path — it passes flags that defer nothing. `pnpm deploy:aws`
+does stage, adding `statusShard-priorityOrder`, then `statusShard-repositoryPriorityOrder`,
+then `statusShard-createdOrder` across three sequential foundation updates. But that
+sequence only helps a table that already carries `parentSessionId-createdOrder` and
+`activeHostId-activeHostOrder`: `stagedTables()` never excludes those two, so they appear
+in every synthesized template. A table predating them — which `deploy-aws.sh` detects and
+refuses up front, by design — needs every missing index added by hand before either path
+works. Check drift first:
+
+```bash
+aws dynamodb describe-table --table-name "AutoHarness-<environment>-Sessions" \
+  --query "Table.GlobalSecondaryIndexes[].[IndexName,IndexStatus]" --output text
+```
+
+The alternative — `aws cloudformation delete-stack` — does not help on its own: the
+live template still carries `DeletionPolicy: Retain`, so it orphans the tables, archive
+bucket, and KMS key under their existing names, which then collide with the next
+`deploy` of the same environment name.
+
 Two things purge deliberately does **not** finish immediately:
 
 - **The integration KMS key** enters AWS's seven-day pending-deletion window —
