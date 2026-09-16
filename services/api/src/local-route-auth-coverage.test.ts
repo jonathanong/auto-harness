@@ -62,7 +62,11 @@ describe("local route authorization and outcomes", () => {
     try {
       plane.registerHost({ hostId: "host-a", worktrees: [], commandProfiles: [] });
       expect(plane.drainHost("host-a")).toEqual({ ok: true, runningSessionIds: [] });
-      expect(messages).toEqual([{ hostId: "host-a", message: { type: "host:drain" } }]);
+      expect(plane.resumeHost("host-a")).toEqual({ ok: true });
+      expect(messages).toEqual([
+        { hostId: "host-a", message: { type: "host:drain" } },
+        { hostId: "host-a", message: { type: "host:resume" } },
+      ]);
     } finally {
       await server.close();
     }
