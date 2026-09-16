@@ -120,6 +120,9 @@ describe("session clone", () => {
     expect(plane.cloneSession("missing")).toMatchObject({ ok: false, code: "NOT_FOUND" });
     for (const options of [
       { prompt: "" },
+      // Whitespace-only must fail the same way as empty, not slip through as real content.
+      { prompt: "   " },
+      { prompt: "\t\n" },
       { prompt: 1 },
       { timeout: Number.NaN },
       { timeout: "30" },

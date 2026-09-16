@@ -27,7 +27,11 @@ function parseCloneBody(body: unknown):
   if (Object.keys(record).some((key) => !CLONE_BODY_FIELDS.has(key))) {
     return { ok: false, error: "invalid clone overrides" };
   }
-  if (record.prompt !== undefined && (typeof record.prompt !== "string" || !record.prompt)) {
+  // Whitespace-only is exactly as useless as empty — same rejection either way.
+  if (
+    record.prompt !== undefined &&
+    (typeof record.prompt !== "string" || record.prompt.trim().length === 0)
+  ) {
     return { ok: false, error: "prompt must be a non-empty string" };
   }
   if (

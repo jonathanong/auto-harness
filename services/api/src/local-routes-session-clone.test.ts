@@ -30,6 +30,9 @@ describe("session clone route", () => {
       [],
       { extra: true },
       { prompt: "" },
+      // Whitespace-only must fail the same way as empty, not slip through as real content.
+      { prompt: "   " },
+      { prompt: "\t\n" },
       { prompt: 1 },
       { timeout: 0 },
       { timeout: "30" },
