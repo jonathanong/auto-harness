@@ -131,6 +131,16 @@ describe("schedule fire residual coverage", () => {
       error: "repository not found",
     });
 
+    // An existing but paused repository trips the in-memory admission gate. That is a
+    // different branch from the storage transaction's admission_closed below, and it only
+    // became separately reachable once a missing repository started returning early above.
+    const paused = state(schedule({ principalId: "principal" }));
+    paused.repositories.get("repo")!.admissionState = "paused";
+    await expect(triggerScheduleDurable(paused, "nightly")).resolves.toEqual({
+      ok: false,
+      error: "repository admission is closed",
+    });
+
     const closed = state(schedule({ principalId: "principal" }), {
       tryClaimScheduleAndCreateSession: async () => ({ kind: "admission_closed" }),
     });
