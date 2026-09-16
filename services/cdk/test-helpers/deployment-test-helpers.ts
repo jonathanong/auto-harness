@@ -2,6 +2,28 @@ import { vi } from "vitest";
 
 import type { DeploymentConfig } from "../src/deployment-config.ts";
 import type { DeploymentDependencies } from "../src/deployment-support.ts";
+import { DYNAMO_TABLES } from "../src/tables.ts";
+
+/**
+ * A foundation stack template exactly matching the current catalog under the default
+ * config()'s "AutoHarness-review" tablePrefix — the shared default so purge tests that
+ * don't care about orphan detection see zero orphans and no new AWS calls. Tests that do
+ * care override the "get-template" branch directly, the same way GSI-drift tests override
+ * "describe-table" below.
+ */
+const CURRENT_CATALOG_TEMPLATE_STDOUT = JSON.stringify({
+  TemplateBody: {
+    Resources: Object.fromEntries(
+      DYNAMO_TABLES.map((table, index) => [
+        `Table${String(index)}`,
+        {
+          Properties: { TableName: `AutoHarness-review-${table.name}` },
+          Type: "AWS::DynamoDB::Table",
+        },
+      ]),
+    ),
+  },
+});
 
 export const config = (overrides: Partial<DeploymentConfig> = {}): DeploymentConfig => ({
   accessLogsEnabled: false,
@@ -54,6 +76,9 @@ export function dependencies(stackStates: boolean[]): DeploymentDependencies & {
       }
       if (args.includes("get-caller-identity")) {
         return { status: 0, stderr: "", stdout: "123456789012\n" };
+      }
+      if (args.includes("get-template")) {
+        return { status: 0, stderr: "", stdout: CURRENT_CATALOG_TEMPLATE_STDOUT };
       }
       if (args.includes("describe-table")) {
         // Default: a stable, current-schema table with no GSIs at all — the purge

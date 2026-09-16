@@ -4,6 +4,7 @@ import {
   emptyArchiveBucket,
   retargetFoundationForDeletion,
 } from "./deployment-purge.ts";
+import { deleteOrphanedTables, findOrphanedTableNames } from "./deployment-purge-orphans.ts";
 import { inspectLiveTables } from "./deployment-purge-schema.ts";
 import {
   applyDeployment,
@@ -128,6 +129,11 @@ async function purge(
   const existingGsiNamesByTable = state.foundation
     ? await inspectLiveTables(config, dependencies)
     : {};
+  // Captured from the foundation stack's own *currently deployed* template, before the
+  // retarget below rewrites it — see findOrphanedTableNames for why the ordering matters.
+  const orphanedTableNames = state.foundation
+    ? await findOrphanedTableNames(config, dependencies)
+    : [];
 
   const runtimeAndWeb = [
     ...(state.web ? [config.webStackName] : []),
@@ -145,6 +151,9 @@ async function purge(
     );
     await emptyArchiveBucket(config, dependencies, bucketName);
     await destroyStacks(config, dependencies, [config.foundationStackName]);
+    // Only after the foundation stack itself is gone: a failure partway through deleting an
+    // orphan table must never leave the stack un-destroyable.
+    await deleteOrphanedTables(config, dependencies, orphanedTableNames);
   }
 
   if (config.purgeSsmParameters) await deleteSecretParameters(config, dependencies);

@@ -516,6 +516,56 @@ live template still carries `DeletionPolicy: Retain`, so it orphans the tables, 
 bucket, and KMS key under their existing names, which then collide with the next
 `deploy` of the same environment name.
 
+### Purge and a table retired from the catalog
+
+This is a `retain`-removal-policy problem in general, not a one-off about any single
+table: any environment deployed with `HARNESS_DEPLOY_REMOVAL_POLICY=retain` (the
+default, and what production uses) keeps `DeletionPolicy: Retain` on every table in its
+live CloudFormation template regardless of what the _current_ `services/cdk/src/tables.ts`
+catalog says. If a table is later retired from that catalog — `SessionLogs` was, once log
+bodies moved to S3 (see [aws.md](aws.md), "There is no SessionLogs table") — the
+foundation stack's own template still has it. Retiring a table from any `retain`-policy
+environment's catalog will reproduce this.
+
+Against `AutoHarness-production-Foundation` on 2026-09-16, purge's retarget step
+(`retargetFoundationForDeletion`) synthesized the current catalog, which no longer
+included `SessionLogs`, so its `cdk deploy` removed that resource from the stack.
+Because `DeletionPolicy` was still `Retain` at that moment, CloudFormation emitted:
+
+```
+AutoHarness-production-Foundation | 33/35 | DELETE_SKIPPED | AWS::DynamoDB::Table | SessionLogsABAF303F
+```
+
+— which orphaned the live table (954 items, deletion protection enabled) outside
+CloudFormation's management entirely. The later `cdk destroy` of the stack never saw it,
+because it was no longer stack-managed, so purge exited 0 and reported success with the
+table still live.
+
+Purge now detects this before it happens: before the retarget runs, it calls
+`findOrphanedTableNames` (`deployment-purge-orphans.ts`), which reads the foundation
+stack's **own stored template** — `aws cloudformation get-template --template-stage
+Original` — and diffs its `AWS::DynamoDB::Table` resources against the current catalog.
+Anything present in the stack's own template but absent from the catalog is captured in
+memory as an orphan-to-be. This deliberately does **not** list every table matching
+`${config.tablePrefix}-` and filter by prefix: table prefixes are
+`AutoHarness-${environment}`, so environment `prod` prefix-matches
+`AutoHarness-prod-extra-Sessions`, a table belonging to a _different_ environment
+(`prod-extra`). A prefix scan could misidentify and delete another environment's live
+data; reading only the one stack's own stored template makes that misattribution
+structurally impossible.
+
+The captured list is carried through in memory — not re-derived — across the retarget and
+the foundation stack's destroy, because `get-template` stops working for a stack once it
+no longer exists, and because the retarget's own `cdk deploy` rewrites the stack's stored
+template to no longer mention the dropped resource at all (`--template-stage Original`
+always reflects the _currently deployed_ template). After the foundation stack is
+destroyed, purge disables deletion protection on each captured orphan
+(`update-table --no-deletion-protection-enabled`, tolerating the table already having
+been deleted by the retarget itself if its `DeletionPolicy` happened to be `Delete`),
+waits for it to settle back to `ACTIVE`, and deletes it, reporting each one by name. If
+any orphan survives, purge throws naming exactly which ones — it never reports success
+while one is still live.
+
 Two things purge deliberately does **not** finish immediately:
 
 - **The integration KMS key** enters AWS's seven-day pending-deletion window —
