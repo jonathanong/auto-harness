@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 
+import { expectNoLeakedNextDigest } from "../no-redirect-leak.ts";
+
 test.describe("control plane dashboard", () => {
   test("loads shell and dashboard stats", async ({ page }) => {
     await page.goto("/");
@@ -17,6 +19,7 @@ test.describe("control plane dashboard", () => {
     await expect(page.getByTestId("live-updates-active")).toBeVisible();
     await expect(page.getByTestId("dashboard-no-online-hosts")).toBeVisible();
     await expect(page.getByTestId("dashboard-recent-sessions")).toBeVisible();
+    await expectNoLeakedNextDigest(page);
   });
 
   test("refreshes dashboard and session list from bounded production polling", async ({ page }) => {

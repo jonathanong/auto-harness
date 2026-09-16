@@ -5,6 +5,7 @@ import { SessionFilters } from "@auto-harness/ui";
 import { SessionsLive } from "../../components/sessions-live.tsx";
 import { ListApiError } from "../../components/list-page-states.tsx";
 import { apiGet, apiGetAllPages } from "../../lib/api.ts";
+import { pageErrorMessage, rethrowControlFlowError } from "../../lib/page-error.ts";
 import { parseSessionListState } from "../../lib/url-state.ts";
 
 export const dynamic = "force-dynamic";
@@ -57,7 +58,7 @@ export default async function SessionsPage({
   if (sessionsResult.status === "fulfilled") {
     items = sessionsResult.value.items ?? [];
     nextCursor = sessionsResult.value.nextCursor ?? null;
-  } else error = String(sessionsResult.reason);
+  } else error = pageErrorMessage(sessionsResult.reason);
   if (repositoriesResult.status === "fulfilled") {
     repositories = repositoriesResult.value
       .map(({ id, name }) => ({ id, label: name }))
@@ -65,11 +66,17 @@ export default async function SessionsPage({
     repositoryNames = Object.fromEntries(
       repositoriesResult.value.map((repository) => [repository.id, repository.name]),
     );
+  } else {
+    // Promise.allSettled never rejects, so a redirect() thrown inside apiGetAllPages here
+    // would otherwise be captured as an ordinary "reason" and silently dropped.
+    rethrowControlFlowError(repositoriesResult.reason);
   }
   if (hostsResult.status === "fulfilled") {
     hosts = (hostsResult.value.items ?? [])
       .map(({ hostId }) => ({ id: hostId, label: hostId }))
       .toSorted((a, b) => a.label.localeCompare(b.label));
+  } else {
+    rethrowControlFlowError(hostsResult.reason);
   }
 
   return (

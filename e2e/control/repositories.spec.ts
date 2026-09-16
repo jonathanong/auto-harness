@@ -1,6 +1,8 @@
 /* eslint-disable max-lines -- repository pagination and retry coverage share this fixture. */
 import { test, expect } from "@playwright/test";
 
+import { expectNoLeakedNextDigest } from "../no-redirect-leak.ts";
+
 test.describe("control plane repositories", () => {
   test("repository hierarchy shows the branch and copies the exact Git URL", async ({
     page,
@@ -59,6 +61,7 @@ test.describe("control plane repositories", () => {
     await expect(
       page.getByTestId("worktrees-hierarchy").or(page.getByTestId("worktrees-empty")),
     ).toBeVisible();
+    await expectNoLeakedNextDigest(page);
   });
 
   test("loads the next repository page, keeps the URL stable, and retries a failed continuation", async ({

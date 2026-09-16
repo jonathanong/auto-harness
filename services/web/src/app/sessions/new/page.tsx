@@ -3,6 +3,7 @@ import {
   type WorkspacePoolOption,
 } from "../../../components/create-session-form.tsx";
 import { apiGet, apiGetAllPages } from "../../../lib/api.ts";
+import { pageErrorMessage, rethrowControlFlowError } from "../../../lib/page-error.ts";
 import { can, isRepositoryScoped, loadPrincipal } from "../../../lib/principal.ts";
 import type { SessionTarget } from "../../../session-target.ts";
 import {
@@ -44,11 +45,13 @@ export default async function NewSessionPage({
         ? apiGet<SessionCloneSource>(`/api/v1/sessions/${encodeURIComponent(requestedCloneId)}`)
         : Promise.resolve(null),
     ]);
+  // Promise.allSettled never rejects, so a redirect()/notFound() thrown inside one of
+  // these apiGet calls would otherwise be captured as an ordinary "reason" string below.
   if (targetResult.status === "fulfilled") targets = targetResult.value;
-  else errors.push(`targets: ${String(targetResult.reason)}`);
+  else errors.push(`targets: ${pageErrorMessage(targetResult.reason)}`);
   if (repositoryResult.status === "fulfilled") {
     repositories = repositoryResult.value.toSorted((a, b) => a.name.localeCompare(b.name));
-  } else errors.push(`repositories: ${String(repositoryResult.reason)}`);
+  } else errors.push(`repositories: ${pageErrorMessage(repositoryResult.reason)}`);
   if (worktreeResult.status === "fulfilled") {
     availableLabels = [
       ...new Set(
@@ -58,16 +61,17 @@ export default async function NewSessionPage({
           .filter(Boolean),
       ),
     ].toSorted();
-  } else errors.push(`labels: ${String(worktreeResult.reason)}`);
+  } else errors.push(`labels: ${pageErrorMessage(worktreeResult.reason)}`);
   if (workspacePoolResult.status === "fulfilled") {
     workspacePools = workspacePoolResult.value.items ?? [];
   } else {
-    errors.push(`workspace pools: ${String(workspacePoolResult.reason)}`);
+    errors.push(`workspace pools: ${pageErrorMessage(workspacePoolResult.reason)}`);
   }
   if (sourceResult.status === "fulfilled" && sourceResult.value) {
     draft = sessionCloneDraft(sourceResult.value);
     if (!draft) errors.push("clone source: session inputs are unavailable");
   } else if (sourceResult.status === "rejected") {
+    rethrowControlFlowError(sourceResult.reason);
     errors.push("clone source: session could not be loaded");
   }
   targets = includeDraftTargets(targets, draft);

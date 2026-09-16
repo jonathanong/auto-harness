@@ -1,4 +1,3 @@
-import { thrownMessage } from "@auto-harness/shared";
 import { Suspense } from "react";
 import { Alert, CursorPagination } from "@auto-harness/ui";
 
@@ -11,6 +10,7 @@ import {
   type HostInventorySummary,
 } from "../../components/hosts-fleet-table.tsx";
 import { apiGet } from "../../lib/api.ts";
+import { pageErrorMessage, rethrowControlFlowError } from "../../lib/page-error.ts";
 import { can, loadPrincipal } from "../../lib/principal.ts";
 import { parseHostListState } from "../../lib/url-state.ts";
 
@@ -51,13 +51,14 @@ export default async function HostsPage({
     hostsNextCursor = h.nextCursor ?? null;
     inventories = inv.items ?? [];
   } catch (e) {
-    error = thrownMessage(e);
+    error = pageErrorMessage(e);
   }
   try {
     const response = await apiGet<{ items: FleetWorktree[] }>("/api/v1/worktrees?limit=100");
     worktrees = response.items ?? [];
-  } catch {
+  } catch (e) {
     // Worktree details are auxiliary; keep host management available if this read fails.
+    rethrowControlFlowError(e);
   }
 
   const inventoryById = new Map(inventories.map((inv) => [inv.hostId, inv]));

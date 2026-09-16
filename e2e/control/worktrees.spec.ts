@@ -2,12 +2,14 @@ import { test, expect } from "@playwright/test";
 
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
 import { API_BASE } from "../harness-endpoints.ts";
+import { expectNoLeakedNextDigest } from "../no-redirect-leak.ts";
 
 test.describe("control plane worktrees", () => {
   test("worktrees page loads", async ({ page }) => {
     await page.goto("/worktrees");
     await expect(page.getByTestId("page-worktrees")).toBeVisible();
     await expect(page.getByTestId("worktrees-heading")).toHaveText("Worktrees");
+    await expectNoLeakedNextDigest(page);
   });
 
   test("unknown worktree id shows a not-found state", async ({ page }) => {

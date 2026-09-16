@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- worktree detail composes sessions, provider scope, and settings tabs. */
 import Link from "next/link";
 import { resolveProviderAccountsForScope, type HostInventory } from "@auto-harness/shared";
 import {
@@ -12,6 +13,7 @@ import {
 import { EditWorktreeForm } from "../../../components/edit-worktree-form.tsx";
 import { ProviderScopeTable } from "../../../components/provider-scope-table.tsx";
 import { apiGet, apiGetAllPages, apiGetFirstPageWithItems } from "../../../lib/api.ts";
+import { rethrowControlFlowError } from "../../../lib/page-error.ts";
 import { fetchProviderCatalogLookups } from "../../../lib/provider-catalog-fetch.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 
@@ -52,8 +54,9 @@ export default async function WorktreeDetailPage({
   let worktree: Wt | undefined;
   try {
     worktree = await apiGet<Wt>(`/api/v1/worktrees/${encodeURIComponent(worktreeId)}`);
-  } catch {
+  } catch (e) {
     /* ignore — treated as not found below */
+    rethrowControlFlowError(e);
   }
 
   if (!worktree?.id) {
@@ -78,8 +81,9 @@ export default async function WorktreeDetailPage({
     const repo = repos.find((r) => r.id === worktree!.repositoryId);
     repoPath = repo?.url;
     repoName = repo?.name;
-  } catch {
+  } catch (e) {
     /* ignore — repo path/name stay unknown */
+    rethrowControlFlowError(e);
   }
   try {
     // No server-side worktreeId filter yet — scan bounded pages until this worktree appears.
@@ -88,8 +92,9 @@ export default async function WorktreeDetailPage({
       (session) => session.worktreeId === worktreeId,
     );
     sessions = data.items.filter((s) => s.worktreeId === worktreeId);
-  } catch {
+  } catch (e) {
     /* ignore — sessions section stays empty */
+    rethrowControlFlowError(e);
   }
 
   let inventory: HostInventory | null = null;
@@ -98,8 +103,9 @@ export default async function WorktreeDetailPage({
       inventory = await apiGet<HostInventory>(
         `/api/v1/hosts/${encodeURIComponent(worktree.hostId)}/inventory`,
       );
-    } catch {
+    } catch (e) {
       /* ignore — edit/remove actions stay hidden below */
+      rethrowControlFlowError(e);
     }
   }
   const hostRepository = inventory?.repositories.find((r) => r.id === worktree.repositoryId);

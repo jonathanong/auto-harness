@@ -151,6 +151,18 @@ describe("host detail route", () => {
     expect(html).not.toContain('data-pw="attach-provider-account-select"');
   });
 
+  it("keeps workspace pool slot controls usable when the pool catalog is unavailable", async () => {
+    stubApi({ ...catalogOk, "/api/v1/workspace-pools": jsonResponse({}, 503) });
+    const html = await renderPage(
+      HostDetailPage({
+        params: Promise.resolve({ hostId: "host-a" }),
+        searchParams: Promise.resolve({ tab: "workspace-pools" }),
+      }),
+    );
+    expect(html).toContain('data-pw="page-host-detail"');
+    expect(html).not.toContain('data-pw="host-detail-lookup-error"');
+  });
+
   it("never fabricates an empty inventory when the agent is known but the fetch really failed", async () => {
     // A fabricated empty inventory could be submitted on the next save and wipe real config.
     stubApi({

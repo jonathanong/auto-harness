@@ -1,9 +1,10 @@
 import { CursorPagination, WorktreesHierarchy, groupWorktreesByRepo } from "@auto-harness/ui";
-import { thrownMessage, type HostRepository } from "@auto-harness/shared";
+import type { HostRepository } from "@auto-harness/shared";
 
 import { attachmentsForRepo } from "../../components/add-worktree-attachments.ts";
 import { AddWorktreeForRepo } from "../../components/add-worktree-for-repo.tsx";
 import { apiGet, apiGetAllPages } from "../../lib/api.ts";
+import { pageErrorMessage } from "../../lib/page-error.ts";
 import { can, loadPrincipal } from "../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +49,7 @@ export default async function WorktreesPage({
     nextCursor = wts.nextCursor ?? null;
     namesById = Object.fromEntries(repos.map((r) => [r.id, r.name]));
   } catch (e) {
-    error = thrownMessage(e);
+    error = pageErrorMessage(e);
   }
   try {
     inventories =
@@ -58,7 +59,7 @@ export default async function WorktreesPage({
         }>("/api/v1/host-inventories?limit=100")
       ).items ?? [];
   } catch (e) {
-    inventoryError = thrownMessage(e);
+    inventoryError = pageErrorMessage(e);
   }
 
   const groups = groupWorktreesByRepo(
