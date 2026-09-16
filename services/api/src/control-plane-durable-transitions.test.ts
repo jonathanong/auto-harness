@@ -1189,6 +1189,38 @@ describe("durable control-plane transitions", () => {
     expect((await ctx.storage.getSession("session-review-drain"))?.status).toBe("queued");
     expect((await ctx.storage.getWorktree("worktree-review-durable"))?.online).toBe(false);
 
+    // Resume is drain's exact inverse: same lease-owner fence, clears the durable
+    // flag, and brings the idle worktree drain took offline back online.
+    expect((await freshDrainer.resumeHostDurable("host-review-durable")).ok).toBe(true);
+    expect((await ctx.storage.getWorktree("worktree-review-durable"))?.online).toBe(true);
+    expect((await ctx.storage.getHostLockState("host-review-durable")).draining).toBe(false);
+    // Resuming an already-resumed host is a safe no-op, not an error — an
+    // operator retry (or a race with the daemon's own reconnect) must not fail.
+    expect((await freshDrainer.resumeHostDurable("host-review-durable")).ok).toBe(true);
+
+    // A resume that loses the durable clear (a replacement connection took the
+    // lease mid-request) must fail rather than believe it resumed — and must
+    // leave `draining: true` so a retry re-runs instead of taking the no-op
+    // path. Worktrees commit online *before* the flag clears (the opposite
+    // order from drain, which commits its restrictive flag first): a failure
+    // here still leaves the worktree durably online, proving that half of the
+    // resume already landed and only the flag clear needs a retry.
+    expect((await freshDrainer.drainHostDurable("host-review-durable")).ok).toBe(true);
+    expect((await ctx.storage.getWorktree("worktree-review-durable"))?.online).toBe(false);
+    const losingResumeStorage = Object.create(ctx.storage) as DynamoPlaneStorage;
+    losingResumeStorage.clearHostDraining = async () => false;
+    const losingResumer = new ControlPlane({ storage: losingResumeStorage });
+    losingResumer.state.hostConnection.set("host-review-durable", "connection-review-durable");
+    expect(await losingResumer.resumeHostDurable("host-review-durable")).toEqual({ ok: false });
+    expect((await ctx.storage.getWorktree("worktree-review-durable"))?.online).toBe(true);
+    expect((await ctx.storage.getHostLockState("host-review-durable")).draining).toBe(true);
+    // Retrying with the real storage (not the stub) picks up right where the
+    // failed attempt left off: the worktree is already online (nothing left
+    // to write there, so the loop no-ops on it) and only the flag clear the
+    // failed attempt above could not commit still needs to happen.
+    expect((await freshDrainer.resumeHostDurable("host-review-durable")).ok).toBe(true);
+    expect((await ctx.storage.getHostLockState("host-review-durable")).draining).toBe(false);
+
     await ctx.storage.putSchedule({
       id: "schedule-review-missing-target",
       repositoryId: "repo-review-target",

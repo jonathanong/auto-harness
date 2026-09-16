@@ -1547,3 +1547,102 @@ export async function drainHostDurable(
 export function isDraining(state: ControlPlaneState, hostId: string): boolean {
   return state.drainingHosts.has(hostId);
 }
+
+/**
+ * Inverse of drainHost: clear draining so new assigns resume without waiting
+ * for re-register. A no-op (not an error) when the host is not draining —
+ * an operator retrying an undrain, or racing a daemon that already cleared
+ * it via its own reconnect, should not see a spurious failure.
+ */
+export function resumeHost(
+  state: ControlPlaneState,
+  hostId: string,
+  connectionId?: string,
+): { ok: boolean } {
+  if (connectionId && state.hostConnection.get(hostId) !== connectionId) {
+    return { ok: false };
+  }
+  if (!state.drainingHosts.has(hostId)) return { ok: true };
+  state.drainingHosts.delete(hostId);
+  state.onHostMessage?.(hostId, { type: "host:resume" });
+  for (const wt of state.worktrees.values()) {
+    // Drain only ever offlines idle worktrees for this host (a busy one stays
+    // online until release, which itself re-checks drainingHosts). Bringing
+    // those idle worktrees back is the exact inverse.
+    if (wt.hostId === hostId && wt.status === "idle") {
+      wt.online = true;
+    }
+  }
+  return { ok: true };
+}
+
+/**
+ * Storage-backed resume — the inverse of drainHostDurable, but the two
+ * intentionally commit in opposite order. Drain commits its *restrictive*
+ * lock flag first, so a crash mid-worktree-loop still leaves the host
+ * excluded. Resume commits its *permissive* flag last: worktrees come back
+ * online first, and `draining` clears only once every one of them has
+ * committed. A failure partway through the worktree loop (e.g. a replacement
+ * connection took the lease) then leaves `draining: true` — a retried resume
+ * re-reads that same `true` and reruns the whole loop, instead of a resume
+ * that half-recovers, clears the flag anyway, and then can never be retried
+ * because the next call sees `draining: false` and takes the no-op path.
+ */
+export async function resumeHostDurable(
+  state: ControlPlaneState,
+  hostId: string,
+  connectionId?: string,
+): Promise<{ ok: boolean }> {
+  if (!state.storage) {
+    return resumeHost(state, hostId, connectionId);
+  }
+  // A single read gives both the current owner and the durable flag, so a
+  // no-op resume (already not draining) costs one GetItem and touches nothing.
+  const lockState = await state.storage.getHostLockState(hostId);
+  const ownerConnectionId =
+    connectionId ?? state.hostConnection.get(hostId) ?? lockState.connectionId;
+  if (!ownerConnectionId) {
+    return { ok: false };
+  }
+  if (!lockState.draining) {
+    // Already resolved: an operator retry, or a race with the daemon's own
+    // reconnect clearing it. Reconcile a possibly-stale local cache and stop
+    // — nothing durable to clear, no worktrees to touch, no message to send.
+    state.drainingHosts.delete(hostId);
+    return { ok: true };
+  }
+
+  // Same rationale as drainHostDurable: a cold-started REST process may have
+  // neither the socket map nor this host's worktrees cached.
+  state.hostConnection.set(hostId, ownerConnectionId);
+  if (typeof state.storage.listWorktreesByHost === "function") {
+    for (const worktree of await state.storage.listWorktreesByHost(hostId)) {
+      state.worktrees.set(worktree.id, { ...worktree });
+    }
+  }
+
+  for (const wt of state.worktrees.values()) {
+    if (wt.hostId !== hostId || wt.status !== "idle" || wt.online) {
+      continue;
+    }
+    // Keep the durable inventory truthful, same as drainHostDurable's
+    // matching offline write. `draining` stays true on this failure, so a
+    // retry re-lists worktrees and resumes exactly where this one stopped.
+    if (
+      !(await state.storage.setWorktreeOnlineFenced(wt.id, ownerConnectionId, true, {
+        hostId,
+        connectionId: ownerConnectionId,
+      }))
+    ) {
+      return { ok: false };
+    }
+    state.worktrees.set(wt.id, { ...wt, online: true });
+  }
+  const cleared = await state.storage.clearHostDraining(hostId, ownerConnectionId);
+  if (!cleared) {
+    return { ok: false };
+  }
+  state.drainingHosts.delete(hostId);
+  state.onHostMessage?.(hostId, { type: "host:resume" });
+  return { ok: true };
+}

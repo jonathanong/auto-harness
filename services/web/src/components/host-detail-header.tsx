@@ -1,12 +1,14 @@
 import Link from "next/link";
-import { DrainButton } from "@auto-harness/ui";
+import { DrainButton, ResumeButton } from "@auto-harness/ui";
 
 export function HostDetailHeader({
   hostId,
   canDrain = true,
+  draining = false,
 }: {
   hostId: string;
   canDrain?: boolean;
+  draining?: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -22,7 +24,14 @@ export function HostDetailHeader({
           {hostId}
         </h2>
       </div>
-      {canDrain ? <DrainButton hostId={hostId} pw="host-detail-drain" /> : null}
+      {canDrain ? (
+        // Same fleet:drain gate for both; only the one that applies is shown.
+        draining ? (
+          <ResumeButton hostId={hostId} pw="host-detail-resume" />
+        ) : (
+          <DrainButton hostId={hostId} pw="host-detail-drain" />
+        )
+      ) : null}
     </div>
   );
 }

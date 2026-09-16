@@ -42,7 +42,10 @@ export function requiredCapability(
   if (pathname === "/api/v1/audit-logs") return "audit:read";
   if (pathname === "/api/v1/host/messages") return "agent:protocol";
   if (matchesRoutePrefix(pathname, "/api/v1/scheduler")) return "scheduler:run";
-  if (pathname === "/api/v1/hosts/drain") return write ? "fleet:drain" : "authenticated";
+  // Resume is drain's inverse operator action — same capability gates both.
+  if (pathname === "/api/v1/hosts/drain" || pathname === "/api/v1/hosts/resume") {
+    return write ? "fleet:drain" : "authenticated";
+  }
   if (/^\/api\/v1\/repositories\/[^/]+\/(pause|drain|activate)$/.test(pathname)) {
     return write ? "repositories:operate" : "authenticated";
   }

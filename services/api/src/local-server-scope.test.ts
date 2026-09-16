@@ -254,6 +254,13 @@ describe("scoped control-plane REST resources", () => {
     expect(
       (await invoke("POST", "/api/v1/hosts/drain", { hostId: "host-a" }, authoringKey)).status,
     ).toBe(404);
+    // Resume uses the exact same scope guard as drain above: the same principals
+    // that may drain may undrain, and out-of-scope callers get 404, not 403.
+    const resume = await invoke("POST", "/api/v1/hosts/resume", { hostId: "host-b" });
+    expect(resume.status).toBe(404);
+    expect(
+      (await invoke("POST", "/api/v1/hosts/resume", { hostId: "host-a" }, authoringKey)).status,
+    ).toBe(404);
     expect(
       (await invoke("DELETE", "/api/v1/hosts/host-a/inventory", undefined, adminKey)).status,
     ).toBe(404);

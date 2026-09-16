@@ -383,6 +383,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
               boundedWireText(message.sessionId)) ||
             message.type === "host:draining" ||
             message.type === "host:drain" ||
+            message.type === "host:resume" ||
             message.type === "host:keepalive-ack")
         ) {
           messageHandler?.(message as HostWireMessage);

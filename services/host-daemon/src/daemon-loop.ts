@@ -776,6 +776,14 @@ export class DaemonLoop {
       case "host:draining":
         if (msg.hostId === this.config.hostId) this.confirmDrain();
         return;
+      case "host:resume":
+        // Operator-initiated resume: unconditional, unlike the self-update
+        // lifecycle's own resume() call (agent-updater.ts only invokes that
+        // from a drain it confirmed itself owned). Calling it again while
+        // already resumed is a harmless re-register, the same tolerance
+        // `host:drain` already gets from a repeated confirmDrain().
+        await this.resumeFromDrain();
+        return;
       case "host:keepalive-ack":
         if (msg.hostId === this.config.hostId) this.armKeepaliveStallTimer();
         return;

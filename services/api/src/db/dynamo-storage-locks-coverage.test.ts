@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import {
+  clearHostDraining,
   clearHostOfflineAlertCandidate,
   conditionalHostWriteOrThrow,
   connectionPageItems,
@@ -111,6 +112,11 @@ describe("DynamoDB Local host lock adapters", () => {
     );
     expect(await markHostDraining(ctx, { hostId: "host", connectionId: "one" })).toBe(true);
     expect(await markHostDraining(ctx, { hostId: "host", connectionId: "wrong" })).toBe(false);
+    // clearHostDraining is markHostDraining's inverse: same connection fence, opposite value.
+    expect(await clearHostDraining(ctx, { hostId: "host", connectionId: "wrong" })).toBe(false);
+    expect(await clearHostDraining(ctx, { hostId: "host", connectionId: "one" })).toBe(true);
+    expect(await getHostLockState(ctx, "host")).toEqual({ connectionId: "one", draining: false });
+    expect(await markHostDraining(ctx, { hostId: "host", connectionId: "one" })).toBe(true);
     expect(await getHostLockState(ctx, "host")).toEqual({
       connectionId: "one",
       draining: true,
@@ -407,6 +413,9 @@ describe("DynamoDB Local host lock adapters", () => {
     ).rejects.toThrow();
     await expect(
       markHostDraining(unavailableCtx, { hostId: "host", connectionId: "connection" }),
+    ).rejects.toThrow();
+    await expect(
+      clearHostDraining(unavailableCtx, { hostId: "host", connectionId: "connection" }),
     ).rejects.toThrow();
     await expect(releaseHostLock(unavailableCtx, "host", "connection")).rejects.toThrow();
     unavailable.client.destroy();

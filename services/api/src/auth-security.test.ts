@@ -378,6 +378,8 @@ describe("control-plane authentication security", () => {
     expect(authorize(readOnly, "POST", "/api/v1/sessions")).toBe(false);
     expect(authorize(operator, "POST", "/api/v1/sessions")).toBe(true);
     expect(authorize(operator, "POST", "/api/v1/hosts/drain")).toBe(true);
+    // Resume shares drain's exact capability gate — same principals, same verdicts.
+    expect(authorize(operator, "POST", "/api/v1/hosts/resume")).toBe(true);
     expect(authorize(operator, "PUT", "/api/v1/hosts/host-a/inventory")).toBe(false);
     expect(authorize(admin, "POST", "/api/v1/auth/users")).toBe(true);
     expect(authorize(operator, "POST", "/api/v1/auth/users")).toBe(false);
@@ -406,6 +408,7 @@ describe("control-plane authentication security", () => {
     expect(authorize(author, "POST", "/api/v1/sessions")).toBe(true);
     expect(authorize(author, "POST", "/api/v1/schedules")).toBe(false);
     expect(authorize(author, "POST", "/api/v1/hosts/drain")).toBe(false);
+    expect(authorize(author, "POST", "/api/v1/hosts/resume")).toBe(false);
     expect(authorize(maintainer, "PUT", "/api/v1/hosts/host-a/inventory")).toBe(true);
     expect(authorize(maintainer, "POST", "/api/v1/commands")).toBe(false);
     expect(authorize(maintainer, "POST", "/api/v1/provider-accounts")).toBe(true);
@@ -441,6 +444,8 @@ describe("control-plane authentication security", () => {
     expect(requiredCapability("GET", "/api/v1/audit-logs")).toBe("audit:read");
     expect(requiredCapability("POST", "/api/v1/scheduler/assign")).toBe("scheduler:run");
     expect(requiredCapability("GET", "/api/v1/hosts/drain")).toBe("authenticated");
+    expect(requiredCapability("GET", "/api/v1/hosts/resume")).toBe("authenticated");
+    expect(requiredCapability("POST", "/api/v1/hosts/resume")).toBe("fleet:drain");
     expect(requiredCapability("GET", "/api/v1/repositories/repo/pause")).toBe("authenticated");
     expect(requiredCapability("POST", "/api/v1/repositories/repo/pause")).toBe(
       "repositories:operate",

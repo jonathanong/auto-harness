@@ -82,6 +82,15 @@ describe("local route error semantics", () => {
     expect(drain.status).toBe(500);
     expect(errorCode(drain)).toBe("INTERNAL_ERROR");
 
+    expect(await invokeBadJson(handler, "POST", "/api/v1/hosts/resume")).toBe(400);
+    expect((await invokeHandler(handler, "POST", "/api/v1/hosts/resume", null)).status).toBe(400);
+    plane.resumeHostDurable = async () => {
+      throw new Error("storage unavailable");
+    };
+    const resume = await invokeHandler(handler, "POST", "/api/v1/hosts/resume", { hostId: "host" });
+    expect(resume.status).toBe(500);
+    expect(errorCode(resume)).toBe("INTERNAL_ERROR");
+
     plane.handleHostMessageDurable = async () => ({ ok: false, error: "session not found" });
     const missing = await invokeHandler(handler, "POST", "/api/v1/host/messages", {
       type: "host:keepalive",

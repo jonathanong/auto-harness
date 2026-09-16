@@ -60,8 +60,15 @@ describe("scheduler and session route residual coverage", () => {
     });
   });
 
-  it("fails closed for host-message and drain outcome audits", async () => {
-    for (const outcome of ["message-failure", "message-success", "drain-failure"] as const) {
+  it("fails closed for host-message, drain, and resume outcome audits", async () => {
+    for (const outcome of [
+      "message-failure",
+      "message-success",
+      "drain-failure",
+      "drain-success",
+      "resume-failure",
+      "resume-success",
+    ] as const) {
       const { plane } = app();
       plane.appendAuditLog = async () => {
         throw new Error("audit unavailable");
@@ -70,12 +77,22 @@ describe("scheduler and session route residual coverage", () => {
         plane.handleHostMessageDurable = async () => ({ ok: false, error: "invalid" });
       } else if (outcome === "message-success") {
         plane.handleHostMessageDurable = async () => ({ ok: true });
-      } else {
+      } else if (outcome === "drain-failure") {
         plane.drainHostDurable = async () => ({ ok: false, runningSessionIds: [] });
+      } else if (outcome === "drain-success") {
+        plane.drainHostDurable = async () => ({ ok: true, runningSessionIds: [] });
+      } else if (outcome === "resume-failure") {
+        plane.resumeHostDurable = async () => ({ ok: false });
+      } else {
+        plane.resumeHostDurable = async () => ({ ok: true });
       }
-      const path = outcome === "drain-failure" ? "/api/v1/hosts/drain" : "/api/v1/host/messages";
+      const path = outcome.startsWith("drain")
+        ? "/api/v1/hosts/drain"
+        : outcome.startsWith("resume")
+          ? "/api/v1/hosts/resume"
+          : "/api/v1/host/messages";
       const body =
-        outcome === "drain-failure"
+        outcome.startsWith("drain") || outcome.startsWith("resume")
           ? { hostId: "host" }
           : { type: "host:keepalive", hostId: "host", at: "2026-01-01T00:00:00.000Z" };
       const response = await invokeHostRoute(plane, path, body);

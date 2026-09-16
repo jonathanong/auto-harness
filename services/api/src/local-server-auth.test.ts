@@ -181,6 +181,7 @@ describe("createLocalApp authentication routes", () => {
     expect((await invoke("POST", "/api/v1/scheduler/reclaim-stale")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/scheduler/cron")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/hosts/drain", {})).status).toBe(400);
+    expect((await invoke("POST", "/api/v1/hosts/resume", {})).status).toBe(400);
     expect((await invoke("GET", "/api/v1/worktrees")).status).toBe(200);
 
     const throwingLogin = new AuthService({ mode: "disabled", secret: "secret", admins: admins() });

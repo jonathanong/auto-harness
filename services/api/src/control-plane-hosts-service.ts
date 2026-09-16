@@ -195,6 +195,14 @@ export class ControlPlaneHostsService {
     return agents.drainHostDurable(this.state, hostId);
   }
 
+  resumeHost(hostId: string): { ok: boolean } {
+    return agents.resumeHost(this.state, hostId);
+  }
+
+  resumeHostDurable(hostId: string): Promise<{ ok: boolean }> {
+    return agents.resumeHostDurable(this.state, hostId);
+  }
+
   isDraining(hostId: string): boolean {
     return agents.isDraining(this.state, hostId);
   }

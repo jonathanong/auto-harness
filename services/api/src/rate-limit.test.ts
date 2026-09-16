@@ -48,6 +48,7 @@ describe("rate limit policy", () => {
     expect(classifyRateLimitBucket("POST", "/api/v1/scheduler/assign")).toBe("scheduler");
     expect(classifyRateLimitBucket("GET", "/api/v1/hosts")).toBe("host");
     expect(classifyRateLimitBucket("POST", "/api/v1/hosts/drain")).toBe("host");
+    expect(classifyRateLimitBucket("POST", "/api/v1/hosts/resume")).toBe("host");
     expect(classifyRateLimitBucket("POST", "/api/v1/sessions")).toBe("mutation");
     expect(classifyRateLimitBucket("GET", "/health")).toBeNull();
   });
