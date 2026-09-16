@@ -157,9 +157,14 @@ trap it warned about is not: see
 [Traps found on 2026-09-15](#traps-found-on-2026-09-15) before running a plain
 `update` that adds more than one GSI to any one table.
 
-Either way, the three bootstrap SSM parameters still exist. Running the
-cold-account block below against this account would silently overwrite
-production's real admin password and secrets with fresh throwaway ones.
+Either way, the three bootstrap SSM parameters still exist. `aws
+ssm put-parameter` defaults to `--overwrite false`, so running the
+cold-account block below against this account does not overwrite
+production's real admin password or secrets — each `put-parameter` call
+fails with `ParameterAlreadyExists` instead. The block has no `set -e`,
+though, so it keeps going past those failures and still prints an
+`admin_password` that was never stored anywhere. Only run it on a cold
+account.
 
 **If the account is cold** (no `AutoHarness-production-*` stacks at all):
 create the three bootstrap SSM `SecureString`s first
@@ -168,6 +173,7 @@ Save the printed admin password — it is the only way to sign in until a user
 account exists:
 
 ```bash
+set -e
 admin_password=$(openssl rand -base64 24)
 admins_b64=$(echo '[{"username":"admin","password":"'"$admin_password"'"}]' | base64)
 aws ssm put-parameter --type SecureString \
@@ -821,7 +827,10 @@ aws dynamodb list-tables --output text --query 'TableNames[]' \
 Do not delete survivors by prefix match alone — table prefixes are
 `AutoHarness-${environment}`, so an environment named `prod` prefix-matches
 tables belonging to one named `prod-extra`. The stack's stored template is the
-safe source of truth for what a given stack actually owned.
+safe source of truth for what a given stack actually owned — capture it
+(as above) _before_ running `purge`. `purge` also destroys the Foundation
+stack itself, and `get-template` on an already-deleted stack needs its
+unique stack ID, not just its name, so there is no fetching it afterward.
 
 ### Findings
 
