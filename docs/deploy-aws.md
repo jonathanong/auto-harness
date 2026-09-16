@@ -521,7 +521,7 @@ bucket, and KMS key under their existing names, which then collide with the next
 This is a `retain`-removal-policy problem in general, not a one-off about any single
 table: any environment deployed with `HARNESS_DEPLOY_REMOVAL_POLICY=retain` (the
 default, and what production uses) keeps `DeletionPolicy: Retain` on every table in its
-live CloudFormation template regardless of what the *current* `services/cdk/src/tables.ts`
+live CloudFormation template regardless of what the _current_ `services/cdk/src/tables.ts`
 catalog says. If a table is later retired from that catalog — `SessionLogs` was, once log
 bodies moved to S3 (see [aws.md](aws.md), "There is no SessionLogs table") — the
 foundation stack's own template still has it. Retiring a table from any `retain`-policy
@@ -549,7 +549,7 @@ Anything present in the stack's own template but absent from the catalog is capt
 memory as an orphan-to-be. This deliberately does **not** list every table matching
 `${config.tablePrefix}-` and filter by prefix: table prefixes are
 `AutoHarness-${environment}`, so environment `prod` prefix-matches
-`AutoHarness-prod-extra-Sessions`, a table belonging to a *different* environment
+`AutoHarness-prod-extra-Sessions`, a table belonging to a _different_ environment
 (`prod-extra`). A prefix scan could misidentify and delete another environment's live
 data; reading only the one stack's own stored template makes that misattribution
 structurally impossible.
@@ -558,7 +558,7 @@ The captured list is carried through in memory — not re-derived — across the
 the foundation stack's destroy, because `get-template` stops working for a stack once it
 no longer exists, and because the retarget's own `cdk deploy` rewrites the stack's stored
 template to no longer mention the dropped resource at all (`--template-stage Original`
-always reflects the *currently deployed* template). After the foundation stack is
+always reflects the _currently deployed_ template). After the foundation stack is
 destroyed, purge disables deletion protection on each captured orphan
 (`update-table --no-deletion-protection-enabled`, tolerating the table already having
 been deleted by the retarget itself if its `DeletionPolicy` happened to be `Delete`),
