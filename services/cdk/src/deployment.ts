@@ -5,6 +5,7 @@ import {
   retargetFoundationForDeletion,
 } from "./deployment-purge.ts";
 import { deleteOrphanedTables, findOrphanedTableNames } from "./deployment-purge-orphans.ts";
+import { reportOrphanedTablesAfterUpdate } from "./deployment-orphan-report.ts";
 import { inspectLiveTables } from "./deployment-purge-schema.ts";
 import {
   applyDeployment,
@@ -56,8 +57,13 @@ async function update(
     );
   }
   await verifySecretParameters(config, dependencies);
+  // Captured before applyDeployment rewrites the stored template: a table this update is
+  // about to drop is only identifiable while the template still lists it. See
+  // reportOrphanedTablesAfterUpdate for why an update reports instead of deleting.
+  const orphanCandidates = await findOrphanedTableNames(config, dependencies);
   await applyDeployment(config, dependencies);
   await requireCompleteDeployment(config, dependencies, "update");
+  await reportOrphanedTablesAfterUpdate(config, dependencies, orphanCandidates);
   await smokeDeployment(config, dependencies);
 }
 
