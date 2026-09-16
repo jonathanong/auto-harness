@@ -1,4 +1,3 @@
-import { thrownMessage } from "@auto-harness/shared";
 import { TipText } from "@auto-harness/ui";
 
 import {
@@ -10,6 +9,7 @@ import {
   type SessionCount,
 } from "../components/dashboard-live.tsx";
 import { apiGet, apiGetFirstPageWithItems } from "../lib/api.ts";
+import { pageErrorMessage } from "../lib/page-error.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +49,7 @@ export default async function DashboardPage() {
     initial.running = running;
     initial.queued = queued;
   } catch (reason) {
-    error = thrownMessage(reason);
+    error = pageErrorMessage(reason);
   }
 
   return (

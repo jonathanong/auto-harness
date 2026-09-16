@@ -1,5 +1,4 @@
 /* eslint-disable max-lines -- list, empty state, and capability-gated write controls. */
-import { thrownMessage } from "@auto-harness/shared";
 import Link from "next/link";
 import {
   CursorPagination,
@@ -17,6 +16,7 @@ import { ScheduleCreateForm } from "../../components/schedule-create-form.tsx";
 import { ScheduleEnabledToggle } from "../../components/schedule-enabled-toggle.tsx";
 import { ScheduleTriggerButton } from "../../components/schedule-trigger-button.tsx";
 import { apiGet, apiGetAllPages } from "../../lib/api.ts";
+import { pageErrorMessage, rethrowControlFlowError } from "../../lib/page-error.ts";
 import { can, loadPrincipal } from "../../lib/principal.ts";
 import { describeCron, routeLabel } from "../../lib/schedule-cron-label.ts";
 import type { SessionTarget } from "../../session-target.ts";
@@ -77,12 +77,13 @@ export default async function SchedulesPage({
       (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
     );
   } catch (e) {
-    error = thrownMessage(e);
+    error = pageErrorMessage(e);
   }
   try {
     workspacePools =
       (await apiGet<{ items?: WorkspacePoolOption[] }>("/api/v1/workspace-pools")).items ?? [];
-  } catch {
+  } catch (e) {
+    rethrowControlFlowError(e);
     workspacePools = [];
   }
 
@@ -96,7 +97,8 @@ export default async function SchedulesPage({
   if (!editing && requestedEditId) {
     try {
       editing = await apiGet<Schedule>(`/api/v1/schedules/${encodeURIComponent(requestedEditId)}`);
-    } catch {
+    } catch (e) {
+      rethrowControlFlowError(e);
       editing = undefined;
     }
   }

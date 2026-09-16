@@ -8,10 +8,11 @@ import {
   TableHeader,
   TableRow,
 } from "@auto-harness/ui";
-import { thrownMessage, type Command, type Provider } from "@auto-harness/shared";
+import type { Command, Provider } from "@auto-harness/shared";
 
 import { AddCommandDialog } from "../../components/add-command-dialog.tsx";
 import { apiGet, apiGetAllPages } from "../../lib/api.ts";
+import { pageErrorMessage } from "../../lib/page-error.ts";
 import { can, loadPrincipal } from "../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,7 @@ export default async function CommandsPage({
     nextCursor = c.nextCursor ?? null;
     providers = p;
   } catch (e) {
-    error = thrownMessage(e);
+    error = pageErrorMessage(e);
   }
 
   const providerById = new Map(providers.map((p) => [p.id, p]));

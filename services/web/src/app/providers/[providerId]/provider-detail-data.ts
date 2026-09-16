@@ -1,6 +1,7 @@
 import type { Command, ProviderAccount, ProviderAccountLeaseState } from "@auto-harness/shared";
 
 import { apiGet } from "../../../lib/api.ts";
+import { rethrowControlFlowError } from "../../../lib/page-error.ts";
 
 type AgentHost = { hostId: string; providerAccounts?: Array<{ providerAccountId: string }> };
 
@@ -18,8 +19,9 @@ export async function loadProviderDetailData(providerId: string, includeLeases: 
     accounts = (accountResponse.items ?? []).filter((account) => account.providerId === providerId);
     commands = (commandResponse.items ?? []).filter((command) => command.providerId === providerId);
     agentHosts = hostResponse.items ?? [];
-  } catch {
+  } catch (e) {
     /* Empty tabs communicate an unavailable catalog without hiding the provider. */
+    rethrowControlFlowError(e);
   }
   if (includeLeases) {
     const leaseReads = await Promise.allSettled(
@@ -31,6 +33,7 @@ export async function loadProviderDetailData(providerId: string, includeLeases: 
     );
     for (const [index, account] of accounts.entries()) {
       const result = leaseReads[index]!;
+      if (result.status === "rejected") rethrowControlFlowError(result.reason);
       leasesByAccount.set(account.id, result.status === "fulfilled" ? result.value.items : null);
     }
   }

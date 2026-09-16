@@ -6,6 +6,7 @@ import {
   type WorkspacePoolConfig,
 } from "../../../components/workspace-pool-form.tsx";
 import { apiGet } from "../../../lib/api.ts";
+import { rethrowControlFlowError } from "../../../lib/page-error.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
@@ -19,8 +20,9 @@ export default async function WorkspacePoolPage({ params }: { params: Promise<{ 
       pool = await apiGet<WorkspacePoolConfig>(
         `/api/v1/workspace-pools/${encodeURIComponent(id)}/exec-config`,
       );
-    } catch {
+    } catch (e) {
       /* shown below */
+      rethrowControlFlowError(e);
     }
   }
   if (!pool)

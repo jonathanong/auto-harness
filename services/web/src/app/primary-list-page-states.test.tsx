@@ -91,6 +91,19 @@ describe("primary list page states", () => {
     expect(html).not.toContain('data-pw="sessions-api-error"');
   });
 
+  it("keeps session filters usable when the hosts catalog is unavailable", async () => {
+    stubApi({
+      "/api/v1/sessions?limit=50": {
+        items: [{ id: "session-1", status: "queued", repositoryId: "repo-1" }],
+      },
+      "/api/v1/repositories": { items: [{ id: "repo-1", name: "Alpha" }] },
+      "/api/v1/hosts?limit=100": jsonResponse({}, 503),
+    });
+    const html = await renderPage(SessionsPage({ searchParams: Promise.resolve({}) }));
+    expect(html).toContain('data-pw="session-row-session-1"');
+    expect(html).not.toContain('data-pw="sessions-api-error"');
+  });
+
   it("replaces repository content and its dependent form after an API failure", async () => {
     stubApi({
       "/api/v1/repositories": jsonResponse({}, 503),

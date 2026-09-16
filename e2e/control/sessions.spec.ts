@@ -9,6 +9,7 @@ import {
 } from "../local-1-host.ts";
 import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
 import { HOST_PROTOCOL_VERSION } from "../../modules/shared/src/constants.ts";
+import { expectNoLeakedNextDigest } from "../no-redirect-leak.ts";
 
 test.describe("control plane sessions", () => {
   test("sessions list page and filters", async ({ page, request }) => {
@@ -114,6 +115,7 @@ test.describe("control plane sessions", () => {
     await expect(page).toHaveURL(/source=api/);
     await expect(page).toHaveURL(/sort=priority_asc/);
     await expect(page).toHaveURL(/q=debounced\+prompt/);
+    await expectNoLeakedNextDigest(page);
   });
 
   test("sessions list exposes a retryable API error without an empty table", async ({ page }) => {

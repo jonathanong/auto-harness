@@ -5,6 +5,7 @@ import type { Command, Provider } from "@auto-harness/shared";
 import { DeleteCommandButton } from "../../../components/delete-command-button.tsx";
 import { EditCommandForm } from "../../../components/edit-command-form.tsx";
 import { apiGet, apiGetAllPages } from "../../../lib/api.ts";
+import { rethrowControlFlowError } from "../../../lib/page-error.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -18,8 +19,9 @@ export default async function CommandDetailPage({
   let command: Command | undefined;
   try {
     command = await apiGet<Command>(`/api/v1/commands/${encodeURIComponent(commandId)}`);
-  } catch {
+  } catch (e) {
     /* treated as not found below */
+    rethrowControlFlowError(e);
   }
 
   if (!command) {
@@ -39,8 +41,9 @@ export default async function CommandDetailPage({
   let providers: Provider[] = [];
   try {
     providers = await apiGetAllPages<Provider>("/api/v1/providers?limit=100");
-  } catch {
+  } catch (e) {
     /* ignore — provider select stays empty */
+    rethrowControlFlowError(e);
   }
 
   const owner = command.providerId

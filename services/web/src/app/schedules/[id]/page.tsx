@@ -16,6 +16,7 @@ import {
 } from "@auto-harness/ui";
 
 import { ApiError, apiGet, apiGetAllPages, apiGetFirstPageWithItems } from "../../../lib/api.ts";
+import { rethrowControlFlowError } from "../../../lib/page-error.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 import type { SessionTarget } from "../../../session-target.ts";
 import type { WorkspacePoolOption } from "../../../components/workspace-session-fields.tsx";
@@ -64,13 +65,15 @@ export default async function ScheduleDetailPage({ params }: { params: Promise<{
 
   try {
     targets = await apiGetAllPages<SessionTarget>("/api/v1/session-targets?limit=100");
-  } catch {
+  } catch (e) {
+    rethrowControlFlowError(e);
     targets = [];
   }
   try {
     workspacePools =
       (await apiGet<{ items?: WorkspacePoolOption[] }>("/api/v1/workspace-pools")).items ?? [];
-  } catch {
+  } catch (e) {
+    rethrowControlFlowError(e);
     workspacePools = [];
   }
   try {
@@ -79,7 +82,8 @@ export default async function ScheduleDetailPage({ params }: { params: Promise<{
       `/api/v1/sessions?${query.toString()}`,
     );
     history = data.items;
-  } catch {
+  } catch (e) {
+    rethrowControlFlowError(e);
     history = [];
   }
 

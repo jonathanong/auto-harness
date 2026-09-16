@@ -1,5 +1,4 @@
 /* eslint-disable max-lines -- host detail composes inventory and exec-config write gates. */
-import { thrownMessage } from "@auto-harness/shared";
 import type { Command, HostInventory, Provider, ProviderAccount } from "@auto-harness/shared";
 import { SectionError, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
 import { HostAdvancedTab } from "../../../components/host-advanced-tab.tsx";
@@ -11,10 +10,8 @@ import { HostRepositoriesSection } from "../../../components/host-repositories-s
 import { HostWorkspacePoolsSection } from "../../../components/host-workspace-pools-section.tsx";
 import { ApiError, apiGet, apiGetAllPages } from "../../../lib/api.ts";
 import { decodeRouteParam } from "../../../lib/decode-route-param.ts";
+import { pageErrorMessage, rethrowControlFlowError } from "../../../lib/page-error.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
-function errorMessage(error: unknown): string {
-  return thrownMessage(error);
-}
 export const dynamic = "force-dynamic";
 type Agent = {
   hostId: string;
@@ -49,14 +46,14 @@ export default async function HostDetailPage({
       (error: unknown) =>
         error instanceof ApiError && error.status === 404
           ? { value: null, error: null }
-          : { value: null, error: errorMessage(error) },
+          : { value: null, error: pageErrorMessage(error) },
     ),
     apiGet<Agent>(`/api/v1/hosts/${encodeURIComponent(hostId)}`).then(
       (value) => ({ value, error: null as string | null }),
       (error: unknown) =>
         error instanceof ApiError && error.status === 404
           ? { value: null, error: null }
-          : { value: null, error: errorMessage(error) },
+          : { value: null, error: pageErrorMessage(error) },
     ),
   ]);
   const canDrain = can(principal, "fleet:drain");
@@ -102,13 +99,13 @@ export default async function HostDetailPage({
         catalog: items.toSorted((a, b) => a.name.localeCompare(b.name)),
         error: null as string | null,
       }),
-      (error: unknown) => ({ catalog: [] as RepoCatalogEntry[], error: errorMessage(error) }),
+      (error: unknown) => ({ catalog: [] as RepoCatalogEntry[], error: pageErrorMessage(error) }),
     ),
     apiGetAllPages<LiveWorktree>(
       `/api/v1/worktrees?hostId=${encodeURIComponent(hostId)}&limit=100`,
     ).then(
       (items) => ({ items, error: null as string | null }),
-      (error: unknown) => ({ items: [] as LiveWorktree[], error: errorMessage(error) }),
+      (error: unknown) => ({ items: [] as LiveWorktree[], error: pageErrorMessage(error) }),
     ),
     Promise.all([
       apiGetAllPages<Provider>("/api/v1/providers?limit=100"),
@@ -125,7 +122,7 @@ export default async function HostDetailPage({
         providers: [] as Provider[],
         providerAccounts: [] as ProviderAccount[],
         commands: [] as Command[],
-        error: errorMessage(error),
+        error: pageErrorMessage(error),
       }),
     ),
   ]);
@@ -134,8 +131,9 @@ export default async function HostDetailPage({
     workspacePools =
       (await apiGet<{ items?: Array<{ id: string; name: string }> }>("/api/v1/workspace-pools"))
         .items ?? [];
-  } catch {
+  } catch (e) {
     /* slot controls remain usable only when a pool list is available */
+    rethrowControlFlowError(e);
   }
   const catalog = catalogResult.catalog;
   const catalogError = catalogResult.error;
