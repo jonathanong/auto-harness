@@ -10,6 +10,12 @@ describe("createFoundationDataAccess", () => {
   it("lists production Scan tables and excludes SessionLogs", () => {
     expect(SCAN_TABLE_NAMES).toContain("Sessions");
     expect(SCAN_TABLE_NAMES).toContain("Users");
+    // WorkspacePools/WorkspaceSlots back listHostsDurable's scheduler read model;
+    // Integrations backs delete-guard reference scans (control-plane-delete-guards.ts).
+    // Both were missing grants that 500'd GET /hosts and GET /workspace-pools.
+    expect(SCAN_TABLE_NAMES).toContain("WorkspacePools");
+    expect(SCAN_TABLE_NAMES).toContain("WorkspaceSlots");
+    expect(SCAN_TABLE_NAMES).toContain("Integrations");
     expect(SCAN_TABLE_NAMES).not.toContain("SessionLogs");
     expect(SCAN_TABLE_NAMES).not.toContain("AuditLogs");
     expect(SCAN_TABLE_NAMES).not.toContain("RateLimits");

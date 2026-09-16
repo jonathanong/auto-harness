@@ -271,6 +271,9 @@ describe("AutoHarnessFoundationStack", () => {
       .flatMap((policy) => policy.Properties?.PolicyDocument?.Statement ?? [])
       .find((statement) => statement.Action === "dynamodb:Scan");
     expect(JSON.stringify(scanStatement)).toContain("Sessions");
+    expect(JSON.stringify(scanStatement)).toContain("WorkspacePools");
+    expect(JSON.stringify(scanStatement)).toContain("WorkspaceSlots");
+    expect(JSON.stringify(scanStatement)).toContain("Integrations");
     expect(JSON.stringify(scanStatement)).not.toContain("SessionLogs");
     expect(JSON.stringify(scanStatement)).not.toContain("AuditLogs");
     template.hasResourceProperties("AWS::IAM::ManagedPolicy", {

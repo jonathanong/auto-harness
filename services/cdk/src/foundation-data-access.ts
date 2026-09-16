@@ -7,13 +7,16 @@ import { DYNAMO_TABLES } from "./tables.ts";
 
 /**
  * Production Scan paths: catalog hydrate/list, auth hydrate, session/worktree/connection
- * snapshots, and webhook outbox listing. SessionLogs, AuditLogs, and lock/TTL tables are
- * Query/Get/Put only — do not grant Scan there.
+ * snapshots, workspace pool/slot hydrate (listHostsDurable's scheduler read model), custom
+ * webhook integration lookups (delete-guard reference scans), and webhook outbox listing.
+ * SessionLogs, AuditLogs, and lock/TTL tables are Query/Get/Put only — do not grant Scan there.
  */
 export const SCAN_TABLE_NAMES = [
   "Users",
   "Repositories",
   "Worktrees",
+  "WorkspacePools",
+  "WorkspaceSlots",
   "Sessions",
   "SessionDrains",
   "Schedules",
@@ -24,6 +27,7 @@ export const SCAN_TABLE_NAMES = [
   "ProviderAccounts",
   "Commands",
   "SessionUsage",
+  "Integrations",
   "WebhookDeliveries",
 ] as const;
 
