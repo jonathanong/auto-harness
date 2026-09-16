@@ -17,6 +17,7 @@ import { withDeletionMarkers } from "./control-plane-deletion-markers.ts";
 import type { ControlPlane } from "./control-plane.ts";
 import { readJson, send } from "./local-http.ts";
 import { sendListPage } from "./local-list-page.ts";
+import { reportRouteError } from "./route-errors.ts";
 
 type AccountRouteCtx = {
   auth: AuthService;
@@ -44,7 +45,13 @@ async function audit(
       outcome,
     });
     return true;
-  } catch {
+  } catch (error) {
+    reportRouteError({
+      error,
+      method: ctx.method,
+      url: ctx.url,
+      msg: "auth accounts route failure",
+    });
     send(ctx.res, 500, {
       error: { code: "INTERNAL_ERROR", message: "unable to persist control-plane state" },
     });
@@ -155,6 +162,7 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
       } catch (error) {
         if (!(await audit(ctx, "user:create", "user", "new", "failed"))) return true;
         const conflict = error instanceof Error && error.message === "username already exists";
+        if (!conflict) reportRouteError({ error, method, url, msg: "auth accounts route failure" });
         send(res, conflict ? 409 : 500, {
           error: {
             code: conflict ? "CONFLICT" : "INTERNAL_ERROR",
@@ -254,9 +262,10 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
         )
           return true;
         send(res, 201, result);
-      } catch {
+      } catch (error) {
         if (!(await audit(ctx, "service-account:create", "service-account", "new", "failed")))
           return true;
+        reportRouteError({ error, method, url, msg: "auth accounts route failure" });
         send(res, 500, {
           error: {
             code: "INTERNAL_ERROR",

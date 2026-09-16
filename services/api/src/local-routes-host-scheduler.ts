@@ -9,6 +9,7 @@ import { handleSchedulerRoutes } from "./local-routes-scheduler.ts";
 import { handleHostReadRoutes } from "./local-routes-hosts.ts";
 import { handleWorktreeReadRoutes } from "./local-routes-worktrees.ts";
 import { sendListPage } from "./local-list-page.ts";
+import { reportRouteError } from "./route-errors.ts";
 
 /**
  * The only three variants carrying `hostId` instead of `sessionId` — kept as one predicate
@@ -40,7 +41,8 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         filterUserSessionsForPrincipal(await plane.listUserSessionsDurable(), ctx.principal),
         (session) => session.id,
       );
-    } catch {
+    } catch (error) {
+      reportRouteError({ error, method, url, msg: "host-scheduler route failure" });
       send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
     }
     return true;
@@ -125,8 +127,8 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
       if (body.type === "host:register") await plane.enqueueAssignment();
       send(res, 200, { ok: true });
       return true;
-    } catch {
-      sendInternalError(res);
+    } catch (error) {
+      sendInternalError(res, { error, method, url, msg: "host-scheduler route failure" });
       return true;
     }
   }
@@ -184,8 +186,8 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         return true;
       send(res, 200, drained);
       return true;
-    } catch {
-      sendInternalError(res);
+    } catch (error) {
+      sendInternalError(res, { error, method, url, msg: "host-scheduler route failure" });
       return true;
     }
   }

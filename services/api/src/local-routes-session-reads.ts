@@ -120,7 +120,7 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
       ) {
         send(res, 400, { error: { code: "VALIDATION_ERROR", message: error.message } });
       } else {
-        sendInternalError(res);
+        sendInternalError(res, { error, method, url });
       }
     }
     return true;

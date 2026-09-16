@@ -1,8 +1,22 @@
-import { describe, expect, it } from "vitest";
+/* eslint-disable max-lines -- table-driven route coverage plus the new Sentry/audit cases. */
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
+import { initApiSentry, resetApiSentryForTests, type SentryClient } from "./sentry.ts";
 import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
+
+function fakeSentry(): SentryClient & { captured: unknown[] } {
+  const captured: unknown[] = [];
+  return {
+    captured,
+    captureException: (error, hint) => {
+      captured.push({ error, hint });
+    },
+    flush: vi.fn(async () => true),
+    init: vi.fn(),
+  };
+}
 
 const unavailable = async () => {
   throw new Error("storage unavailable");
@@ -63,6 +77,110 @@ const terminalSession = {
 };
 
 describe("durable route storage errors", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("logs the underlying storage failure to CloudWatch instead of swallowing it", async () => {
+    // Regression coverage for a bare `catch { send(res, 500, ...) }` on the hosts and
+    // session-target routes: a missing IAM Scan grant (or any storage failure) 500'd with
+    // nothing in CloudWatch, which is what made this class of bug hard to diagnose live.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { handler } = createLocalApp({ plane: unavailablePlane() });
+
+    for (const [method, path] of [
+      ["GET", "/api/v1/hosts"],
+      ["GET", "/api/v1/hosts/host"],
+      ["GET", "/api/v1/session-targets"],
+      ["GET", "/api/v1/user-sessions"],
+      // Newly wired in this change: these previously fell through sendInternalError's
+      // no-context call and produced a 500 with zero CloudWatch output.
+      ["GET", "/api/v1/commands"],
+      ["GET", "/api/v1/providers"],
+      ["GET", "/api/v1/worktrees"],
+      ["GET", "/api/v1/worktrees/wt-1"],
+    ] as const) {
+      errorSpy.mockClear();
+      const response = await invokeHandler(handler, method, path);
+      expect(response.status).toBe(500);
+      expect(response.raw).not.toContain("storage unavailable");
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      const [logged] = errorSpy.mock.calls[0] as [string];
+      const parsed = JSON.parse(logged) as { msg: string; method: string; path: string };
+      expect(parsed.msg).toMatch(/route failure/);
+      expect(parsed.method).toBe(method);
+      expect(parsed.path).toBe(path);
+    }
+  });
+
+  it("reports newly-wired route failures to Sentry without changing the response body", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const sentry = fakeSentry();
+    initApiSentry({ HARNESS_API_SENTRY_DSN: "https://abc123@o1.ingest.sentry.io/450" }, sentry);
+    try {
+      const { handler } = createLocalApp({ plane: unavailablePlane() });
+
+      const commands = await invokeHandler(handler, "GET", "/api/v1/commands");
+      expect(commands.status).toBe(500);
+      expect(commands.json).toEqual({
+        error: { code: "INTERNAL_ERROR", message: "unable to persist control-plane state" },
+      });
+
+      const worktrees = await invokeHandler(handler, "GET", "/api/v1/worktrees");
+      expect(worktrees.status).toBe(500);
+      expect(worktrees.json).toEqual({
+        error: { code: "INTERNAL_ERROR", message: "internal server error" },
+      });
+
+      expect(sentry.captured).toEqual([
+        { error: expect.any(Error), hint: { tags: { runtime: "rest" } } },
+        { error: expect.any(Error), hint: { tags: { runtime: "rest" } } },
+      ]);
+      // route-errors.ts never flushes (see its WHY comment) -- that is lambda-handlers.ts's
+      // REST wrapper's job, once per invocation, not this in-process local-server path.
+      expect(sentry.flush).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+      resetApiSentryForTests();
+    }
+  });
+
+  it("reports an audit-write failure through the central module without double logging", async () => {
+    // local-audit.ts's writeRouteAudit/writeSystemAudit gate nearly every mutation route:
+    // before this change, an audit-storage failure there 500'd via a bare `catch {}` with
+    // no log line at all -- the same class of bug as the route-level ones above.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const plane = new ControlPlane({
+      storage: {
+        ...auditStorage,
+        putAuditLog: async () => {
+          throw new Error("audit storage unavailable");
+        },
+        listCommands: async () => [],
+        putCommand: async () => undefined,
+      } as never,
+    });
+    const { handler } = createLocalApp({ plane });
+
+    const response = await invokeHandler(handler, "POST", "/api/v1/commands", {
+      name: "echo",
+      argv: ["echo"],
+    });
+
+    expect(response.status).toBe(500);
+    expect(response.json).toEqual({
+      error: { code: "INTERNAL_ERROR", message: "unable to persist control-plane state" },
+    });
+    // Exactly one log line: the create itself succeeded, so only writeRouteAudit's own
+    // catch reports -- the route's outer catch (a different failure path) never fires.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [logged] = errorSpy.mock.calls[0] as [string];
+    const parsed = JSON.parse(logged) as { msg: string; method: string; path: string };
+    expect(parsed.msg).toBe("audit route failure");
+    expect(parsed.method).toBe("POST");
+    expect(parsed.path).toBe("/api/v1/commands");
+  });
+
   it("returns structured errors for every authoritative collection and detail read", async () => {
     const { handler } = createLocalApp({ plane: unavailablePlane() });
     const requests = [

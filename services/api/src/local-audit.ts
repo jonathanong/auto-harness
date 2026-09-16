@@ -17,8 +17,15 @@ export async function writeRouteAudit(ctx: RouteCtx, event: RouteAudit): Promise
       outcome: event.outcome ?? "success",
     });
     return true;
-  } catch {
-    sendInternalError(ctx.res);
+  } catch (error) {
+    // An audit-write failure 500s nearly every mutation route (every caller checks this
+    // return value before responding), so this is one of the highest-value report sites.
+    sendInternalError(ctx.res, {
+      error,
+      method: ctx.method,
+      url: ctx.url,
+      msg: "audit route failure",
+    });
     return false;
   }
 }
@@ -35,8 +42,13 @@ export async function writeSystemAudit(
       outcome: event.outcome ?? "success",
     });
     return true;
-  } catch {
-    sendInternalError(ctx.res);
+  } catch (error) {
+    sendInternalError(ctx.res, {
+      error,
+      method: ctx.method,
+      url: ctx.url,
+      msg: "audit route failure",
+    });
     return false;
   }
 }

@@ -15,7 +15,7 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
       if (error instanceof InvalidListPageQueryError) {
         send(res, 400, { error: { code: "VALIDATION_ERROR", message: error.message } });
       } else {
-        sendInternalError(res);
+        sendInternalError(res, { error, method, url });
       }
     }
     return true;

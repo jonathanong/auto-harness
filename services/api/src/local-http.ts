@@ -19,6 +19,7 @@ import type {
   SlackIdentityClient,
   SlackOAuthClient,
 } from "./slack-oauth-types.ts";
+import { reportRouteError, type RouteErrorContext } from "./route-errors.ts";
 
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
 const OVERSIZED_DRAIN_TIMEOUT_MS = 5_000;
@@ -181,8 +182,14 @@ export function send(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
-/** Do not expose storage-provider details while returning the documented error envelope. */
-export function sendInternalError(res: ServerResponse): void {
+/**
+ * Do not expose storage-provider details while returning the documented error envelope.
+ * `context` is optional so the ~69 existing call sites keep compiling; pass it whenever
+ * the caught error is in scope so the failure reaches CloudWatch/Sentry instead of only
+ * a bare 500 (see route-errors.ts).
+ */
+export function sendInternalError(res: ServerResponse, context?: RouteErrorContext): void {
+  if (context) reportRouteError(context);
   send(res, 500, {
     error: { code: "INTERNAL_ERROR", message: "unable to persist control-plane state" },
   });
