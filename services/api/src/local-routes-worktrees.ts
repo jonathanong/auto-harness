@@ -5,6 +5,7 @@ import {
   parseListPageQuery,
   readSingleQueryParam,
 } from "./control-plane-id-page.ts";
+import { reportRouteError } from "./route-errors.ts";
 
 /** Bounded worktree list and detail GET routes. */
 export async function handleWorktreeReadRoutes(ctx: RouteCtx): Promise<boolean> {
@@ -22,7 +23,8 @@ export async function handleWorktreeReadRoutes(ctx: RouteCtx): Promise<boolean> 
       } else {
         send(res, 200, worktree);
       }
-    } catch {
+    } catch (error) {
+      reportRouteError({ error, method, url, msg: "worktrees route failure" });
       send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
     }
     return true;
@@ -64,6 +66,7 @@ export async function handleWorktreeReadRoutes(ctx: RouteCtx): Promise<boolean> 
       if (error instanceof InvalidListPageQueryError) {
         send(res, 400, { error: { code: "VALIDATION_ERROR", message: error.message } });
       } else {
+        reportRouteError({ error, method, url, msg: "worktrees route failure" });
         send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
       }
     }

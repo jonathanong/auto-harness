@@ -594,6 +594,12 @@ export async function createLambdaRuntime(
           },
           { drainDeliveries: false },
         );
+        // Route handlers report failures they caught via route-errors.ts (console.error +
+        // captureSentryException) but never flush -- flushing per call site would add
+        // Sentry's network round trip to every failing request. flushSentryIfCaptured
+        // no-ops when nothing was captured, so this costs nothing on the (overwhelmingly
+        // common) success path and only pays the flush once, here, for a request that failed.
+        await flushSentryIfCaptured();
         return result;
       } catch (error) {
         return await restUnhandledError(event, error, startedAt);

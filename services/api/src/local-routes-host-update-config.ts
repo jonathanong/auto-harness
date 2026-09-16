@@ -162,6 +162,6 @@ async function sendUpdateError(
   if (error instanceof TypeError) {
     send(res, 400, { error: { code: "VALIDATION_ERROR", message: error.message } });
   } else {
-    sendInternalError(res);
+    sendInternalError(res, { error, method: ctx.method, url: ctx.url });
   }
 }
