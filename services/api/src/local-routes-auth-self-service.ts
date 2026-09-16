@@ -5,6 +5,7 @@ import { effectiveRole, principalCapabilities } from "@auto-harness/shared";
 import { type AuthService, type Principal } from "./auth.ts";
 import type { ControlPlane } from "./control-plane.ts";
 import { readJson, send, sendInternalError } from "./local-http.ts";
+import { reportRouteError } from "./route-errors.ts";
 
 export type SelfServiceAuthRouteContext = {
   auth: AuthService;
@@ -111,7 +112,8 @@ export async function handleSelfServiceAuthRoutes(
     } else {
       send(res, 500, { error: { code: "INTERNAL_ERROR", message: "password change failed" } });
     }
-  } catch {
+  } catch (error) {
+    reportRouteError({ error, method, url, msg: "self-service auth route failure" });
     send(res, 500, { error: { code: "INTERNAL_ERROR", message: "password change failed" } });
   }
   return true;

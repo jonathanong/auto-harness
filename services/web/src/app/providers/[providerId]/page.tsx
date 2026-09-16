@@ -21,6 +21,7 @@ import { ProviderAccountCooldownForm } from "../../../components/provider-accoun
 import { ProviderAccountConcurrencyForm } from "../../../components/provider-account-concurrency-form.tsx";
 import { ProviderAccountLeases } from "../../../components/provider-account-leases.tsx";
 import { apiGet } from "../../../lib/api.ts";
+import { rethrowControlFlowError } from "../../../lib/page-error.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 import { loadProviderDetailData } from "./provider-detail-data.ts";
 
@@ -40,8 +41,9 @@ export default async function ProviderDetailPage({
   let provider: Provider | undefined;
   try {
     provider = await apiGet<Provider>(`/api/v1/providers/${encodeURIComponent(providerId)}`);
-  } catch {
+  } catch (e) {
     /* treated as not found below */
+    rethrowControlFlowError(e);
   }
 
   if (!provider) {

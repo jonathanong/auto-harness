@@ -1,4 +1,4 @@
-import { thrownMessage, type HostToServerMessage } from "@auto-harness/shared";
+import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { mayAccessHost } from "./auth-policy.ts";
@@ -9,6 +9,7 @@ import { handleSchedulerRoutes } from "./local-routes-scheduler.ts";
 import { handleHostReadRoutes } from "./local-routes-hosts.ts";
 import { handleWorktreeReadRoutes } from "./local-routes-worktrees.ts";
 import { sendListPage } from "./local-list-page.ts";
+import { reportRouteError } from "./route-errors.ts";
 
 /**
  * The only three variants carrying `hostId` instead of `sessionId` — kept as one predicate
@@ -22,18 +23,6 @@ function isHostScopedMessage(
 ): msg is Extract<HostToServerMessage, { hostId: string }> {
   return (
     msg.type === "host:register" || msg.type === "host:status" || msg.type === "host:keepalive"
-  );
-}
-
-/** Structured 500 log so a storage/IAM failure reaches CloudWatch instead of a bare 500. */
-function logHostSchedulerRouteFailure(method: string, path: string, error: unknown): void {
-  console.error(
-    JSON.stringify({
-      msg: "host-scheduler route failure",
-      method,
-      path,
-      error: thrownMessage(error),
-    }),
   );
 }
 
@@ -53,7 +42,7 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         (session) => session.id,
       );
     } catch (error) {
-      logHostSchedulerRouteFailure(method, url.pathname, error);
+      reportRouteError({ error, method, url, msg: "host-scheduler route failure" });
       send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
     }
     return true;
@@ -139,8 +128,7 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
       send(res, 200, { ok: true });
       return true;
     } catch (error) {
-      logHostSchedulerRouteFailure(method, url.pathname, error);
-      sendInternalError(res);
+      sendInternalError(res, { error, method, url, msg: "host-scheduler route failure" });
       return true;
     }
   }
@@ -199,8 +187,7 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
       send(res, 200, drained);
       return true;
     } catch (error) {
-      logHostSchedulerRouteFailure(method, url.pathname, error);
-      sendInternalError(res);
+      sendInternalError(res, { error, method, url, msg: "host-scheduler route failure" });
       return true;
     }
   }

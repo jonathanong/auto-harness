@@ -121,6 +121,16 @@ export const DYNAMO_TABLES: TableDef[] = [
   {
     name: "HostLocks",
     partitionKey: { name: "hostId", type: "S" },
+    gsis: [
+      {
+        // Sparse: only hosts with a pending offline alert are indexed. Written and
+        // removed in lockstep with offlineAlertReason (plane-storage-locks.ts) so a
+        // cleared/delivered alert falls out of the index entirely.
+        name: "offlineAlertPending-hostId",
+        partitionKey: { name: "offlineAlertPending", type: "S" },
+        sortKey: { name: "hostId", type: "S" },
+      },
+    ],
   },
   {
     name: "ConcurrencyLocks",

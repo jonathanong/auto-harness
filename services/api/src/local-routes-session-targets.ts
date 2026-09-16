@@ -1,7 +1,6 @@
-import { thrownMessage } from "@auto-harness/shared";
-
 import { send, type RouteCtx } from "./local-http.ts";
 import { sendListPage } from "./local-list-page.ts";
+import { reportRouteError } from "./route-errors.ts";
 
 export function sessionTargetListKey(target: { kind: string; id: string }): string {
   return `${target.kind}:${target.id}`;
@@ -15,16 +14,7 @@ export async function handleSessionTargetRoutes(ctx: RouteCtx): Promise<boolean>
     try {
       sendListPage(ctx, await plane.listSessionTargetsDurable(), sessionTargetListKey);
     } catch (error) {
-      // Log the cause before the generic 500 — a silent catch here previously hid the same
-      // class of storage/IAM failure that made GET /hosts and /workspace-pools unreadable.
-      console.error(
-        JSON.stringify({
-          msg: "session-targets route failure",
-          method,
-          path: url.pathname,
-          error: thrownMessage(error),
-        }),
-      );
+      reportRouteError({ error, method, url, msg: "session-targets route failure" });
       send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
     }
     return true;

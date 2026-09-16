@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@auto-harness/ui";
-import { thrownMessage } from "@auto-harness/shared";
 
 import {
   WorkspacePoolForm,
   type WorkspacePoolConfig,
 } from "../../components/workspace-pool-form.tsx";
 import { apiGet } from "../../lib/api.ts";
+import { pageErrorMessage } from "../../lib/page-error.ts";
 import { can, loadPrincipal } from "../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ export default async function WorkspacePoolsPage() {
     pools =
       (await apiGet<{ items?: WorkspacePoolSummary[] }>("/api/v1/workspace-pools")).items ?? [];
   } catch (cause) {
-    error = thrownMessage(cause);
+    error = pageErrorMessage(cause);
   }
 
   return (

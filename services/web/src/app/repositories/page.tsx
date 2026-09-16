@@ -1,8 +1,8 @@
-import { thrownMessage } from "@auto-harness/shared";
 import { AddRepoDialog } from "../../components/add-repo-dialog.tsx";
 import { ListApiError } from "../../components/list-page-states.tsx";
 import { RepositoryPageClient } from "../../components/repository-page-client.tsx";
 import { apiGet } from "../../lib/api.ts";
+import { pageErrorMessage, rethrowControlFlowError } from "../../lib/page-error.ts";
 import {
   loadAllRepositoryPages,
   repositoryPagePath,
@@ -81,16 +81,17 @@ export default async function RepositoriesPage({
             repositoryPath,
           ),
         );
-      } catch {
+      } catch (preloadError) {
         // Keep the first page and its continuation cursor usable. A transient preload failure
         // must not turn a successful catalog response into a blank/error repository page.
+        rethrowControlFlowError(preloadError);
         attachRepositories = items;
       }
     }
     hostIds = (hosts.items ?? []).map((h) => h.hostId);
     worktrees = wts.items ?? [];
   } catch (e) {
-    error = thrownMessage(e);
+    error = pageErrorMessage(e);
   }
 
   return (

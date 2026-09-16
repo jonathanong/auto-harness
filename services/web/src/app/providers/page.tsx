@@ -1,14 +1,10 @@
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@auto-harness/ui";
-import {
-  thrownMessage,
-  type Command,
-  type Provider,
-  type ProviderAccount,
-} from "@auto-harness/shared";
+import type { Command, Provider, ProviderAccount } from "@auto-harness/shared";
 
 import { AddProviderDialog } from "../../components/add-provider-dialog.tsx";
 import { apiGetAllPages } from "../../lib/api.ts";
+import { pageErrorMessage } from "../../lib/page-error.ts";
 import { can, loadPrincipal } from "../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +25,7 @@ export default async function ProvidersPage() {
     accounts = a;
     commands = c;
   } catch (e) {
-    error = thrownMessage(e);
+    error = pageErrorMessage(e);
   }
 
   const commandById = new Map(commands.map((c) => [c.id, c]));

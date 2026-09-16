@@ -5,6 +5,7 @@ import { SessionLiveDetail } from "../../../components/session-live-detail.tsx";
 import { SessionLiveLogs } from "../../../components/session-live-logs.tsx";
 import { SessionChildrenLive } from "../../../components/session-children-live.tsx";
 import { apiGet } from "../../../lib/api.ts";
+import { pageErrorMessage, rethrowControlFlowError } from "../../../lib/page-error.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 import { MAX_LIVE_LOG_ENTRIES } from "../../../lib/live-session-logs.ts";
 import { configuredCost, hasReportedUsage, type UsageAggregate } from "./session-usage-summary.ts";
@@ -31,8 +32,9 @@ export default async function SessionDetailPage({
   let session: SessionSummary | undefined;
   try {
     session = await apiGet<SessionSummary>(`/api/v1/sessions/${encodeURIComponent(id)}`);
-  } catch {
+  } catch (e) {
     /* treated as not found below */
+    rethrowControlFlowError(e);
   }
 
   if (!session) {
@@ -54,8 +56,9 @@ export default async function SessionDetailPage({
       `/api/v1/sessions/${encodeURIComponent(id)}/logs?limit=${MAX_LIVE_LOG_ENTRIES}&order=desc`,
     );
     logs = data.items ?? [];
-  } catch {
+  } catch (e) {
     /* ignore — logs section stays empty */
+    rethrowControlFlowError(e);
   }
   let usage: UsageAggregate | null = null;
   try {
@@ -64,8 +67,9 @@ export default async function SessionDetailPage({
         `/api/v1/sessions/${encodeURIComponent(id)}/usage`,
       )
     ).aggregate;
-  } catch {
+  } catch (e) {
     /* usage is optional for older hosts and sessions */
+    rethrowControlFlowError(e);
   }
   let children: SessionRow[] = [];
   let childrenNextCursor: string | null = null;
@@ -77,7 +81,7 @@ export default async function SessionDetailPage({
     children = page.items ?? [];
     childrenNextCursor = page.nextCursor ?? null;
   } catch (error) {
-    childrenError = String(error);
+    childrenError = pageErrorMessage(error);
   }
   let hosts: Array<{ hostId: string; online: boolean }> = [];
   if (session.status === "running" && session.hostId) {
@@ -87,8 +91,9 @@ export default async function SessionDetailPage({
           `/api/v1/hosts/${encodeURIComponent(session.hostId)}`,
         ),
       ];
-    } catch {
+    } catch (e) {
       /* live client refresh retries host state */
+      rethrowControlFlowError(e);
     }
   }
 

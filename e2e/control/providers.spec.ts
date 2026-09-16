@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- provider catalog e2e covers create, pause, and concurrency. */
 import { test, expect } from "@playwright/test";
 import { API_BASE } from "../harness-endpoints.ts";
+import { expectNoLeakedNextDigest } from "../no-redirect-leak.ts";
 
 async function pauseProviderAccount(accountId: string): Promise<void> {
   const response = await fetch("http://127.0.0.1:7433", {
@@ -29,6 +30,7 @@ test.describe("control plane providers", () => {
     await expect(page.getByTestId("providers-heading")).toHaveText("Providers");
     await expect(page.getByTestId("add-provider-open")).toBeVisible();
     await expect(page.getByTestId("add-provider-dialog")).toBeHidden();
+    await expectNoLeakedNextDigest(page);
   });
 
   test("create provider with its default command, then manage accounts/settings", async ({

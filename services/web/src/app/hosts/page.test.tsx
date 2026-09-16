@@ -284,4 +284,29 @@ describe("hosts fleet route", () => {
     const html = await renderPage(HostsPage({ searchParams: Promise.resolve({}) }));
     expect(html).not.toContain('data-pw="form-add-host"');
   });
+
+  it("propagates apiGet's login redirect instead of rendering the NEXT_REDIRECT digest", async () => {
+    // Regression for the live bug: apiGet() calls redirect("/login") on a 401 in
+    // HARNESS_AUTH_MODE=required, and this page's try/catch used to swallow that thrown
+    // control-flow error, turning it into rendered text ("NEXT_REDIRECT" in red) instead
+    // of letting Next perform the redirect. It must now come out of the page unhandled.
+    process.env.HARNESS_AUTH_MODE = "required";
+    stubApi({
+      "/api/v1/auth/me": { username: "op", role: "operator", kind: "user" },
+      "/api/v1/hosts?limit=50": new Response(null, { status: 401 }),
+      "/api/v1/host-inventories": { items: [] },
+      "/api/v1/worktrees": { items: [] },
+    });
+    let caught: unknown;
+    let html: string | undefined;
+    try {
+      html = await renderPage(HostsPage({ searchParams: Promise.resolve({}) }));
+    } catch (error) {
+      caught = error;
+    }
+    expect(html).toBeUndefined();
+    expect(caught).toMatchObject({
+      digest: expect.stringMatching(/^NEXT_REDIRECT;replace;\/login;/),
+    });
+  });
 });

@@ -1,6 +1,6 @@
-import { thrownMessage } from "@auto-harness/shared";
 import { UserSessionsLive, type UserSession } from "../../components/user-sessions-live.tsx";
 import { apiGet } from "../../lib/api.ts";
+import { pageErrorMessage } from "../../lib/page-error.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ export default async function UserSessionsPage() {
     const response = await apiGet<{ items: UserSession[] }>("/api/v1/user-sessions?limit=100");
     items = response.items ?? [];
   } catch (reason) {
-    error = thrownMessage(reason);
+    error = pageErrorMessage(reason);
   }
 
   return (

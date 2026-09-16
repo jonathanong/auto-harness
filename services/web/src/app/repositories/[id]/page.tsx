@@ -16,6 +16,7 @@ import { EditRepoForm } from "../../../components/edit-repo-form.tsx";
 import { RepositoryProviderAccountsTab } from "../../../components/repository-provider-accounts-tab.tsx";
 import { RepositoryAdmissionControls } from "../../../components/repository-admission-controls.tsx";
 import { apiGet, apiGetAllPages, apiGetFirstPageWithItems } from "../../../lib/api.ts";
+import { rethrowControlFlowError } from "../../../lib/page-error.ts";
 import { fetchProviderCatalogLookups } from "../../../lib/provider-catalog-fetch.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 
@@ -59,8 +60,9 @@ export default async function RepositoryDetailPage({
     repository = await apiGet<RepositorySummary>(
       `/api/v1/repositories/${encodeURIComponent(repositoryId)}`,
     );
-  } catch {
+  } catch (e) {
     /* treated as not found below */
+    rethrowControlFlowError(e);
   }
 
   if (!repository) return <RepositoryDetailNotFound repositoryId={repositoryId} />;
@@ -71,8 +73,9 @@ export default async function RepositoryDetailPage({
       `/api/v1/worktrees?repositoryId=${encodeURIComponent(repositoryId)}&limit=100`,
     );
     worktrees = data.items ?? [];
-  } catch {
+  } catch (e) {
     /* ignore — worktrees section stays empty */
+    rethrowControlFlowError(e);
   }
   const group: WorktreeRepoGroup = {
     repositoryId,
@@ -86,8 +89,9 @@ export default async function RepositoryDetailPage({
       `/api/v1/sessions?repositoryId=${encodeURIComponent(repositoryId)}&limit=100`,
     );
     sessions = data.items.filter((s) => s.repositoryId === repositoryId);
-  } catch {
+  } catch (e) {
     /* ignore — sessions section stays empty */
+    rethrowControlFlowError(e);
   }
 
   let attachedHosts: AgentHost[] = [];
@@ -95,8 +99,9 @@ export default async function RepositoryDetailPage({
     attachedHosts = (await apiGetAllPages<AgentHost>("/api/v1/host-inventories?limit=100")).filter(
       (h) => h.repositories.some((r) => r.id === repositoryId),
     );
-  } catch {
+  } catch (e) {
     /* ignore — attached-hosts list stays empty */
+    rethrowControlFlowError(e);
   }
 
   const { providersById, providerAccountsById, commandsById, catalog } =
@@ -108,7 +113,8 @@ export default async function RepositoryDetailPage({
         return await apiGet<HostInventory>(
           `/api/v1/hosts/${encodeURIComponent(h.hostId)}/inventory`,
         );
-      } catch {
+      } catch (e) {
+        rethrowControlFlowError(e);
         return null;
       }
     }),

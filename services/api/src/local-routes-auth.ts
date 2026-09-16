@@ -1,6 +1,7 @@
 import { type Principal } from "./auth.ts";
 import { auditActor } from "./audit.ts";
 import { readJson, send, sendInternalError } from "./local-http.ts";
+import { reportRouteError } from "./route-errors.ts";
 import {
   handleSelfServiceAuthRoutes,
   type SelfServiceAuthRouteContext,
@@ -26,7 +27,8 @@ async function audit(
       outcome,
     });
     return true;
-  } catch {
+  } catch (error) {
+    reportRouteError({ error, method: ctx.method, url: ctx.url, msg: "auth route failure" });
     send(ctx.res, 500, {
       error: { code: "INTERNAL_ERROR", message: "unable to persist control-plane state" },
     });

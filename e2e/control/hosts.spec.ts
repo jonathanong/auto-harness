@@ -4,6 +4,7 @@ import { test, expect } from "@playwright/test";
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
 import { API_BASE } from "../harness-endpoints.ts";
 import { closeSocket, registerObservedHost } from "../host-websocket-helpers.ts";
+import { expectNoLeakedNextDigest } from "../no-redirect-leak.ts";
 
 test.describe("control plane hosts", () => {
   test("hosts page loads with filters and add form", async ({ page }) => {
@@ -14,6 +15,7 @@ test.describe("control plane hosts", () => {
     await expect(page.getByTestId("host-filters")).toBeVisible();
     await page.getByTestId("host-filter-online").selectOption("online");
     await expect(page).toHaveURL(/online=online/);
+    await expectNoLeakedNextDigest(page);
   });
 
   test("add host creates empty host inventory slot", async ({ page, context }) => {

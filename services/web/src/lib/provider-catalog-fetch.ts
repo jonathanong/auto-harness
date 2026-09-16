@@ -1,6 +1,7 @@
 import type { Command, Provider, ProviderAccount, ProviderCatalog } from "@auto-harness/shared";
 
 import { apiGetAllPages } from "./api.ts";
+import { rethrowControlFlowError } from "./page-error.ts";
 
 type ProviderCatalogLookups = {
   providersById: Record<string, Provider>;
@@ -23,8 +24,9 @@ export async function fetchProviderCatalogLookups(): Promise<ProviderCatalogLook
     providers = p;
     providerAccounts = a;
     commands = c;
-  } catch {
+  } catch (e) {
     /* ignore — callers render empty provider-scope tables */
+    rethrowControlFlowError(e);
   }
   const providersById = Object.fromEntries(providers.map((p) => [p.id, p]));
   const providerAccountsById = Object.fromEntries(providerAccounts.map((a) => [a.id, a]));
