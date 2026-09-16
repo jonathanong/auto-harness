@@ -139,6 +139,17 @@ export class ControlPlaneHostsService {
         if (previousConnectionId && previousConnectionId !== nextConnectionId) {
           this.state.connections.delete(previousConnectionId);
         }
+        // Mirror refreshSchedulerReadModel's per-connection drain reconciliation (below):
+        // a re-register clears the durable lock's `draining` flag, and a warm container
+        // that served POST /hosts/drain must forget it too, not just remember new drains.
+        if (typeof storage.getHostLockState === "function") {
+          const lock = await storage.getHostLockState(hostId);
+          if (lock.connectionId === nextConnectionId && lock.draining) {
+            this.state.drainingHosts.add(hostId);
+          } else {
+            this.state.drainingHosts.delete(hostId);
+          }
+        }
       }
     }
     return this.listHosts().find((host) => host.hostId === hostId) ?? null;
