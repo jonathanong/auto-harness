@@ -24,7 +24,9 @@ function validResumeBody(
 ): boolean {
   return (
     Object.keys(body).every((key) => RESUME_BODY_FIELDS.has(key)) &&
-    (body.prompt === undefined || (typeof body.prompt === "string" && body.prompt.length > 0)) &&
+    // Whitespace-only is exactly as useless as empty — same rejection either way.
+    (body.prompt === undefined ||
+      (typeof body.prompt === "string" && body.prompt.trim().length > 0)) &&
     (body.timeout === undefined ||
       (typeof body.timeout === "number" &&
         Number.isFinite(body.timeout) &&

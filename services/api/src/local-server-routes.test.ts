@@ -226,6 +226,10 @@ describe("createLocalApp agent and scheduler routes", () => {
     expect((await invoke("POST", "/api/v1/sessions/sess-1/resume", { prompt: "" })).status).toBe(
       400,
     );
+    // Whitespace-only must fail the resume route the same way as empty.
+    expect(
+      (await invoke("POST", "/api/v1/sessions/sess-1/resume", { prompt: "\t\n  \n" })).status,
+    ).toBe(400);
     expect(
       (await invoke("POST", "/api/v1/sessions/sess-1/resume", { priority: "high" })).status,
     ).toBe(400);

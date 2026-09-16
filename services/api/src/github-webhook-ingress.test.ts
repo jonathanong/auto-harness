@@ -265,4 +265,15 @@ describe("parseGitHubWebhookIngress", () => {
       ),
     ).toEqual({ kind: "ignored", reason: "missing_mention", repositoryId: "auto-harness" });
   });
+
+  // A mention with nothing but whitespace after it must not queue a blank-prompt session
+  // (the same defect class as an empty/whitespace-only prompt on the direct create route).
+  it("ignores a mention followed by only whitespace as a missing mention", () => {
+    expect(
+      ingress(
+        "issue_comment",
+        issueComment({ comment: { ...issueComment().comment, body: "@auto-harness   \t " } }),
+      ),
+    ).toEqual({ kind: "ignored", reason: "missing_mention", repositoryId: "auto-harness" });
+  });
 });

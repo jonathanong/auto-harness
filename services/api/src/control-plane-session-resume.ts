@@ -35,7 +35,8 @@ type ResumeRouting = { target: TargetRef; fallbacks: TargetRef[] };
 
 function validatePromptOverride(opts: ResumeOptions): string | undefined {
   if (opts.prompt === undefined) return undefined;
-  if (typeof opts.prompt !== "string" || opts.prompt.length === 0) {
+  // Whitespace-only is exactly as useless as empty — same rejection either way.
+  if (typeof opts.prompt !== "string" || opts.prompt.trim().length === 0) {
     return "prompt must be a non-empty string";
   }
   return promptByteLengthError(opts.prompt) ?? undefined;
