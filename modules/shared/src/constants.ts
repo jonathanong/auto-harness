@@ -7,6 +7,11 @@ import type {
   WorktreeStatus,
 } from "./types.ts";
 
+// Shared by services/cdk (sets it as a CloudFront custom origin header) and
+// services/api (the REQUEST authorizer's identitySource) so CloudFront-only
+// traffic can be distinguished from a direct call to the origin.
+export const CLOUDFRONT_INGRESS_TOKEN_HEADER = "x-auto-harness-ingress-token";
+
 export const SESSION_STATUSES = [
   "queued",
   "running",
