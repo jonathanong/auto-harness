@@ -23,6 +23,10 @@ EOF
 
 confirm_first_ledger=0
 confirm_priority_order=0
+# The loop below consumes every argument with `shift`, so "$@" is empty by the time the
+# post-fast-forward re-exec runs. Keep the original list, or that re-exec silently drops
+# --yes-first-ledger / --yes-priority-order and a non-interactive run stops at a prompt.
+original_args=("$@")
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --yes-first-ledger) confirm_first_ledger=1 ;;
@@ -62,7 +66,8 @@ if [[ "$previous_head" != "$synced_head" ]]; then
     exit 1
   fi
   export HARNESS_DEPLOY_REEXEC_COUNT="$((reexec_count + 1))"
-  exec bash "$repo_root/scripts/deploy-aws.sh" "$@"
+  # `${a[@]+"${a[@]}"}` so an empty list stays empty under `set -u` on bash 3.2.
+  exec bash "$repo_root/scripts/deploy-aws.sh" ${original_args[@]+"${original_args[@]}"}
 fi
 pnpm install --frozen-lockfile --ignore-scripts
 

@@ -309,4 +309,22 @@ describe("deployment wrapper contracts", () => {
     expect(aws).toContain("trap restore_original_rule_on_exit EXIT");
     expect(aws.match(/finish_rule_restoration/g)).toHaveLength(2);
   });
+
+  it("re-execs after a fast-forward with the arguments the parse loop consumed", () => {
+    // The parse loop shifts every argument away, so "$@" is empty by the time the
+    // post-fast-forward re-exec runs. Re-execing with it silently dropped
+    // --yes-first-ledger whenever the checkout was not already current -- which is the
+    // normal case, since you deploy after merging -- and a non-interactive run then
+    // stopped at the confirmation prompt with the scheduler already fenced.
+    expect(aws).toContain('original_args=("$@")');
+    expect(aws).toContain(
+      'exec bash "$repo_root/scripts/deploy-aws.sh" ${original_args[@]+"${original_args[@]}"}',
+    );
+    // Captured before the loop, or it captures an already-emptied list.
+    expect(position(aws, 'original_args=("$@")')).toBeLessThan(
+      position(aws, "--yes-first-ledger) confirm_first_ledger=1"),
+    );
+    // The re-exec must not fall back to "$@" anywhere.
+    expect(aws).not.toContain('exec bash "$repo_root/scripts/deploy-aws.sh" "$@"');
+  });
 });
