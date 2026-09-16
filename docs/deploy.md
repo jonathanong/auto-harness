@@ -11,6 +11,9 @@ Ops is split by **surface**. Pick the doc for what you are running.
 
 AWS releases use the account-backed gate in [deploy-aws.md](deploy-aws.md#gates).
 
+Deployment is always manual and operator-run — no CI workflow deploys to AWS or a host on merge
+or release.
+
 Pre-deploy E2E (prove the stack before any cloud claim): [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).  
 Day-to-day local commands: [local-development.md](local-development.md).  
 Install overview: [setup.md](setup.md).  
@@ -30,13 +33,23 @@ Architecture: [aws.md](aws.md). Auth: [auth.md](auth.md).
 
 1. Create the three environment-scoped SecureStrings — Parameter Store UI or CLI, see
    [deploy-aws.md#secrets-and-config-never-commit](deploy-aws.md#secrets-and-config-never-commit)
-2. [deploy-aws.md](deploy-aws.md#deploy-a-new-environment) — deploy and health-check the control plane
+2. First environment: [deploy-aws.md#deploy-a-new-environment](deploy-aws.md#deploy-a-new-environment) —
+   `cdk run deploy` deploys and health-checks the control plane. `pnpm deploy:aws` is update-only
+   (see [Updates](#updates))
 3. Connect hosts through the product UI
 4. [qa-production.md](qa-production.md) — copy-pasteable production QA (host connect, real
    `grok`/`claude` sessions, schedule, purge) before trusting a new deployment. Laptop-only:
    [qa-local.md](qa-local.md)
 
 ### Updates
+
+`pnpm deploy:aws` and `pnpm deploy:host` are **update** commands for an already-deployed
+environment — every path through `scripts/deploy-aws.sh` ends in
+`pnpm --filter @auto-harness/cdk run update`, never `deploy`. Standing up a first environment
+instead runs [deploy-aws.md#deploy-a-new-environment](deploy-aws.md#deploy-a-new-environment)'s
+`pnpm --filter @auto-harness/cdk run deploy` directly. Mind the `run` —
+`pnpm --filter @auto-harness/cdk deploy` without it invokes pnpm's own built-in `deploy` command
+instead of the package script (see [setup.md](setup.md)).
 
 From a clean `main` checkout, the supported update path is two commands, in order:
 
@@ -45,8 +58,18 @@ pnpm deploy:aws
 pnpm deploy:host
 ```
 
-The AWS command fast-forwards `main`, installs the lockfile, updates and health-checks the control
-plane, and handles the one-time session-drain ledger scheduler gate. On Linux, the host command runs
+Both scripts require the `main` branch and a clean working tree. `deploy:aws` fetches and
+fast-forwards to `origin/main` (refusing a local `main` that is ahead of or diverged from it) and
+re-execs itself up to 3 times if `origin/main` moves mid-run; `deploy:host` instead requires
+`main` to already match `origin/main`, erroring with instructions to run `deploy:aws` first
+otherwise. Neither can update from a feature branch or a worktree; the lower-level
+`pnpm --filter @auto-harness/cdk run update` is the escape hatch for that (see
+[deploy-aws.md#update-an-environment](deploy-aws.md#update-an-environment)). `deploy:aws` also defaults to
+`AWS_REGION=us-west-2` and `HARNESS_DEPLOY_ENVIRONMENT=production` when unset, so running it bare
+updates **production** in **us-west-2**; set both explicitly for any other target.
+
+The AWS command installs the lockfile, updates and health-checks the control plane, and handles
+the one-time session-drain ledger scheduler gate. On Linux, the host command runs
 from the writable `HARNESS_UPDATE_INSTALL_DIR/staging` checkout, gracefully restarts the persisted
 daemon service, and verifies its production identity; the immutable active release changes only after
 the signed updater and root-owned promotion helper validate it. Environment and first-rollout details
