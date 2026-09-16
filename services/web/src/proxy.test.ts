@@ -13,6 +13,7 @@ describe("web authentication proxy", () => {
     delete process.env.HARNESS_SESSION_SECRET;
     delete process.env.HARNESS_WEB_REMOTE_AUTH;
     delete process.env.HARNESS_API_HTTP;
+    delete process.env.HARNESS_CLOUDFRONT_INGRESS_TOKEN;
     delete process.env.HARNESS_WEB_SENTRY_DSN_CLIENT;
     vi.unstubAllGlobals();
   });
@@ -101,6 +102,35 @@ describe("web authentication proxy", () => {
     expect((await proxy(request)).headers.get("location")).toContain("/login?");
     delete process.env.HARNESS_API_HTTP;
     expect((await proxy(request)).headers.get("location")).toContain("/login?");
+  });
+
+  it("sends the CloudFront ingress token header only when configured", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    process.env.HARNESS_WEB_REMOTE_AUTH = "1";
+    process.env.HARNESS_API_HTTP = "https://api.example.test/";
+    const fetch = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fetch);
+    const request = new NextRequest("https://web.example.test/sessions", {
+      headers: { cookie: "auto_harness_session=opaque" },
+    });
+
+    // restApiUrl bypasses CloudFront, so without the token the request must
+    // still reach the API without it (local dev, host-pane never set it).
+    await proxy(request);
+    expect(fetch).toHaveBeenCalledWith(new URL("https://api.example.test/api/v1/auth/me"), {
+      headers: { cookie: "auto_harness_session=opaque" },
+      signal: expect.any(AbortSignal),
+    });
+
+    process.env.HARNESS_CLOUDFRONT_INGRESS_TOKEN = "shh-secret";
+    await proxy(request);
+    expect(fetch).toHaveBeenLastCalledWith(new URL("https://api.example.test/api/v1/auth/me"), {
+      headers: {
+        cookie: "auto_harness_session=opaque",
+        "x-auto-harness-ingress-token": "shh-secret",
+      },
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it("fails closed when remote authentication times out", async () => {

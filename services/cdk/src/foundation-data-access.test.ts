@@ -10,9 +10,20 @@ describe("createFoundationDataAccess", () => {
   it("lists production Scan tables and excludes SessionLogs", () => {
     expect(SCAN_TABLE_NAMES).toContain("Sessions");
     expect(SCAN_TABLE_NAMES).toContain("Users");
+    // WorkspacePools/WorkspaceSlots back listHostsDurable's scheduler read model;
+    // Integrations backs delete-guard reference scans (control-plane-delete-guards.ts).
+    // Both were missing grants that 500'd GET /hosts and GET /workspace-pools.
+    expect(SCAN_TABLE_NAMES).toContain("WorkspacePools");
+    expect(SCAN_TABLE_NAMES).toContain("WorkspaceSlots");
+    expect(SCAN_TABLE_NAMES).toContain("Integrations");
     expect(SCAN_TABLE_NAMES).not.toContain("SessionLogs");
     expect(SCAN_TABLE_NAMES).not.toContain("AuditLogs");
     expect(SCAN_TABLE_NAMES).not.toContain("RateLimits");
+    // HostLocks is scanned in application code (listHostOfflineAlertCandidates) despite being
+    // a lock table — that is a least-privilege contract violation in the app, not a reason to
+    // widen this policy. Do not add it here without a deliberate decision to do so.
+    expect(SCAN_TABLE_NAMES).not.toContain("HostLocks");
+    expect(SCAN_TABLE_NAMES).not.toContain("ConcurrencyLocks");
   });
 
   it("fails closed when a catalog table is missing", () => {

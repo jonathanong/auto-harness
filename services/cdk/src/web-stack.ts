@@ -44,6 +44,10 @@ export class AutoHarnessWebStack extends Stack {
       environment: {
         HARNESS_API_HTTP: props.restApiUrl,
         HARNESS_AUTH_MODE: "required",
+        // Sent back to the API on the remote-session check below: the API's
+        // REQUEST authorizer only admits calls carrying this header, and
+        // restApiUrl bypasses CloudFront (which is what normally adds it).
+        HARNESS_CLOUDFRONT_INGRESS_TOKEN: props.cloudFrontIngressSecret.unsafeUnwrap(),
         HARNESS_WEB_REMOTE_AUTH: "1",
         ...(props.sentryDsnClient ? { HARNESS_WEB_SENTRY_DSN_CLIENT: props.sentryDsnClient } : {}),
         ...(props.sentryDsnServer ? { HARNESS_WEB_SENTRY_DSN_SERVER: props.sentryDsnServer } : {}),

@@ -1,13 +1,24 @@
-import { forwardSentryTunnel, isSentryTunnelPath } from "@auto-harness/shared";
+import {
+  CLOUDFRONT_INGRESS_TOKEN_HEADER,
+  forwardSentryTunnel,
+  isSentryTunnelPath,
+} from "@auto-harness/shared";
 import { NextResponse, type NextRequest } from "next/server";
 import { hasValidSession, loginPath, SESSION_COOKIE } from "./lib/auth-session.ts";
 
 async function hasRemoteSession(request: NextRequest): Promise<boolean> {
   const api = process.env.HARNESS_API_HTTP;
   if (!api) return false;
+  const ingressToken = process.env.HARNESS_CLOUDFRONT_INGRESS_TOKEN;
   try {
     const response = await fetch(new URL("api/v1/auth/me", `${api.replace(/\/$/u, "")}/`), {
-      headers: { cookie: request.headers.get("cookie") ?? "" },
+      headers: {
+        cookie: request.headers.get("cookie") ?? "",
+        // HARNESS_API_HTTP is the raw API Gateway URL, which bypasses
+        // CloudFront and its REQUEST authorizer needs this header to admit
+        // the call. Unset locally (host-pane/dev), so no header is sent.
+        ...(ingressToken ? { [CLOUDFRONT_INGRESS_TOKEN_HEADER]: ingressToken } : {}),
+      },
       signal: AbortSignal.timeout(5_000),
     });
     return response.ok;

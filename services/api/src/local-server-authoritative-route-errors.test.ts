@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
@@ -63,6 +63,36 @@ const terminalSession = {
 };
 
 describe("durable route storage errors", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("logs the underlying storage failure to CloudWatch instead of swallowing it", async () => {
+    // Regression coverage for a bare `catch { send(res, 500, ...) }` on the hosts and
+    // session-target routes: a missing IAM Scan grant (or any storage failure) 500'd with
+    // nothing in CloudWatch, which is what made this class of bug hard to diagnose live.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { handler } = createLocalApp({ plane: unavailablePlane() });
+
+    for (const [method, path] of [
+      ["GET", "/api/v1/hosts"],
+      ["GET", "/api/v1/hosts/host"],
+      ["GET", "/api/v1/session-targets"],
+      ["GET", "/api/v1/user-sessions"],
+    ] as const) {
+      errorSpy.mockClear();
+      const response = await invokeHandler(handler, method, path);
+      expect(response.status).toBe(500);
+      expect(response.raw).not.toContain("storage unavailable");
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      const [logged] = errorSpy.mock.calls[0] as [string];
+      const parsed = JSON.parse(logged) as { msg: string; method: string; path: string };
+      expect(parsed.msg).toMatch(/route failure/);
+      expect(parsed.method).toBe(method);
+      expect(parsed.path).toBe(path);
+    }
+  });
+
   it("returns structured errors for every authoritative collection and detail read", async () => {
     const { handler } = createLocalApp({ plane: unavailablePlane() });
     const requests = [

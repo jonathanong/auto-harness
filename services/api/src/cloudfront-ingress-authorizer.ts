@@ -1,12 +1,17 @@
 import { timingSafeEqual } from "node:crypto";
 
+import { CLOUDFRONT_INGRESS_TOKEN_HEADER } from "@auto-harness/shared";
 import {
   GetSecretValueCommand,
   SecretsManagerClient,
   type GetSecretValueCommandOutput,
 } from "@aws-sdk/client-secrets-manager";
 
-export const CLOUDFRONT_INGRESS_TOKEN_HEADER = "x-auto-harness-ingress-token";
+// Re-exported: services/web's proxy needs this header name too, but
+// services/web must not import services/api (no-cross-service). The
+// canonical value lives in modules/shared; this keeps the name importable
+// from its original home for existing callers.
+export { CLOUDFRONT_INGRESS_TOKEN_HEADER };
 
 type SecretsManagerClientLike = {
   send(command: GetSecretValueCommand): Promise<GetSecretValueCommandOutput>;

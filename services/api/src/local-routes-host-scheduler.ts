@@ -1,4 +1,4 @@
-import type { HostToServerMessage } from "@auto-harness/shared";
+import { thrownMessage, type HostToServerMessage } from "@auto-harness/shared";
 
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { mayAccessHost } from "./auth-policy.ts";
@@ -25,6 +25,18 @@ function isHostScopedMessage(
   );
 }
 
+/** Structured 500 log so a storage/IAM failure reaches CloudWatch instead of a bare 500. */
+function logHostSchedulerRouteFailure(method: string, path: string, error: unknown): void {
+  console.error(
+    JSON.stringify({
+      msg: "host-scheduler route failure",
+      method,
+      path,
+      error: thrownMessage(error),
+    }),
+  );
+}
+
 /** Hosts, worktrees, profiles, host messages, and scheduler routes. */
 export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
@@ -40,7 +52,8 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         filterUserSessionsForPrincipal(await plane.listUserSessionsDurable(), ctx.principal),
         (session) => session.id,
       );
-    } catch {
+    } catch (error) {
+      logHostSchedulerRouteFailure(method, url.pathname, error);
       send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
     }
     return true;
@@ -125,7 +138,8 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
       if (body.type === "host:register") await plane.enqueueAssignment();
       send(res, 200, { ok: true });
       return true;
-    } catch {
+    } catch (error) {
+      logHostSchedulerRouteFailure(method, url.pathname, error);
       sendInternalError(res);
       return true;
     }
@@ -184,7 +198,8 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         return true;
       send(res, 200, drained);
       return true;
-    } catch {
+    } catch (error) {
+      logHostSchedulerRouteFailure(method, url.pathname, error);
       sendInternalError(res);
       return true;
     }

@@ -1,7 +1,17 @@
+import { thrownMessage } from "@auto-harness/shared";
+
 import { send, type RouteCtx } from "./local-http.ts";
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 import { InvalidListPageQueryError, readSingleQueryParam } from "./control-plane-id-page.ts";
 import { sendListPage } from "./local-list-page.ts";
+
+/** Structured 500 log so a storage/IAM failure (e.g. a missing Scan grant) reaches CloudWatch
+ * instead of vanishing into a bare 500 — this route previously swallowed such errors silently. */
+function logHostsRouteFailure(method: string, path: string, error: unknown): void {
+  console.error(
+    JSON.stringify({ msg: "hosts route failure", method, path, error: thrownMessage(error) }),
+  );
+}
 
 type ListedHost = Awaited<ReturnType<RouteCtx["plane"]["listHostsDurable"]>>[number];
 
@@ -35,7 +45,8 @@ export async function handleHostReadRoutes(ctx: RouteCtx): Promise<boolean> {
       } else {
         send(res, 200, host);
       }
-    } catch {
+    } catch (error) {
+      logHostsRouteFailure(method, url.pathname, error);
       send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
     }
     return true;
@@ -58,6 +69,7 @@ export async function handleHostReadRoutes(ctx: RouteCtx): Promise<boolean> {
       if (error instanceof InvalidListPageQueryError) {
         send(res, 400, { error: { code: "VALIDATION_ERROR", message: error.message } });
       } else {
+        logHostsRouteFailure(method, url.pathname, error);
         send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
       }
     }
