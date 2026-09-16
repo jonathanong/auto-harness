@@ -37,6 +37,7 @@ describe("AutoHarnessWebStack", () => {
         Variables: {
           HARNESS_API_HTTP: "https://rest.execute-api.us-west-2.amazonaws.com",
           HARNESS_AUTH_MODE: "required",
+          HARNESS_CLOUDFRONT_INGRESS_TOKEN: Match.anyValue(),
           HARNESS_WEB_REMOTE_AUTH: "1",
         },
       },
