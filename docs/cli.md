@@ -260,4 +260,4 @@ command strings are never accepted. Provider Account cooldowns default to 5 hour
 sessions expire after 8 days unless `queueTtlSeconds` is set. A usage limit pauses the assigned
 account globally and immediately advances the route; ordinary failures remain terminal.
 
-Template: [examples/local/host-inventory.config.json](../examples/local/host-inventory.config.json). Or use the Hosts page in the local web UI.
+Template: [examples/local/host-inventory.config.json](../examples/local/host-inventory.config.json). Or use the Hosts page in the local web UI. A worktree `path` nested inside its repository (e.g. `<repo>/.worktrees/wt-1`) works — the daemon disregards its own registered worktree directories when checking whether the main checkout is clean — but a sibling path outside the repository keeps daemon-managed directories out of the repo's own working tree.

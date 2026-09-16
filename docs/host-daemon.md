@@ -827,13 +827,19 @@ content, and a symlink in that checkout may point elsewhere.
 ├── .env                          # HARNESS_HOST_ID, HARNESS_API_URL, HARNESS_API_KEY
 ├── .env.codex                    # chmod 600 — AI CLI credentials
 ├── repos/
-│   └── my-app/                   # main checkout (paths configured via API/UI)
-│       ├── .git/
-│       └── .worktrees/
-│           ├── wt-1/
-│           └── wt-2/
+│   ├── my-app/                   # main checkout (paths configured via API/UI)
+│   │   └── .git/
+│   └── my-app-worktrees/
+│       ├── wt-1/
+│       └── wt-2/
 └── harness/                      # cloned auto-harness monorepo (agent code)
 ```
+
+A worktree path nested inside its repo (e.g. `my-app/.worktrees/wt-1`) also works — the daemon
+disregards its own registered worktree directories (`git worktree list`) when checking whether the
+main checkout is clean before a **scheduled** session switches its branch — but a sibling
+directory, as above, keeps daemon-managed paths out of the repo's own working tree entirely (no
+`.gitignore` entry to remember, nothing for `git clean -fdx` or a backup tool to trip over).
 
 Host inventory (repo paths, worktrees, attached Provider Accounts) is **not** a local file — configure with `PUT /api/v1/hosts/:hostId/inventory` or the Agents UI. Setup scripts, terminal hooks, and `allowedRoots` use `PUT /api/v1/hosts/:hostId/exec-config`. Commands themselves live in the global Provider/Provider Account/Command catalog, not host inventory.
 

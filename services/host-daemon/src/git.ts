@@ -1,5 +1,4 @@
 /* eslint-disable max-lines -- checkout preparation, exact ref resolution, and verification share one client. */
-import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { createChildEnv } from "./child-env.ts";
@@ -9,6 +8,7 @@ import {
   gitFailure,
   refetchConfiguredRemotes,
   runGit,
+  sanitizeGitDiagnostic,
 } from "./git-commands.ts";
 import {
   deleteGitHubPullRequestRef,
@@ -19,6 +19,7 @@ import {
   nullGlobalGitConfigPath,
   type GitHubPullRequestFetch,
 } from "./git-github-pull-ref.ts";
+import { mainCheckoutDirtyEntries } from "./git-main-checkout-status.ts";
 import {
   claimedLinkedWorktree,
   checkoutDetached,
@@ -26,6 +27,7 @@ import {
   removeStaleIndexLock,
   resetClaimedWorktree,
 } from "./git-worktree-checkout.ts";
+import { canonicalPath, listedWorktreePaths } from "./git-worktree-paths.ts";
 import { resetInitializedSubmodules } from "./git-worktree-reset.ts";
 import { type GitHubPullRefConfigs } from "./github-pull-ref-config.ts";
 
@@ -41,30 +43,6 @@ export type GitClient = {
   prepareMainCheckout(opts: { cwd: string; ref: string; signal?: AbortSignal }): Promise<void>;
   revParse(cwd: string, rev: string, signal?: AbortSignal): Promise<string>;
 };
-
-async function canonicalPath(path: string): Promise<string> {
-  const absolutePath = resolve(path);
-  try {
-    return await realpath(absolutePath);
-  } catch {
-    // Keep lexical normalization for scripted or not-yet-created paths.
-    return absolutePath;
-  }
-}
-
-async function listedWorktreePaths(output: string, repoPath: string): Promise<Set<string>> {
-  const paths = new Set<string>();
-  for (const line of output.split(/\r?\n/)) {
-    if (!line.startsWith("worktree ")) {
-      continue;
-    }
-    const worktreePath = line.slice("worktree ".length);
-    if (worktreePath.length > 0) {
-      paths.add(await canonicalPath(resolve(repoPath, worktreePath)));
-    }
-  }
-  return paths;
-}
 
 function isolatedPullCheckoutEnvironment(): NodeJS.ProcessEnv {
   return {
@@ -353,12 +331,38 @@ export function createGitClient(
       if (format.exitCode !== 0) {
         throw new Error(`Invalid main checkout branch ref: ${ref}`);
       }
-      const status = await runGit(runner, cwd, ["status", "--porcelain"], signal);
+      // `-z` (raw NUL-separated, no core.quotepath escaping) and `--untracked-files=all`
+      // (no directory collapsing) together let the dirty check below tell "the daemon's
+      // own worktree directory" apart from an operator's untracked content: git only
+      // collapses an untracked directory into one line when it is *not* itself a linked
+      // worktree, so a registered worktree keeps its own line no matter what else sits
+      // next to it.
+      const status = await runGit(
+        runner,
+        cwd,
+        ["status", "--porcelain", "-z", "--untracked-files=all"],
+        signal,
+      );
       if (status.exitCode !== 0) {
         throw new Error(`Failed to inspect main checkout before switching to branch ${ref}`);
       }
       if (status.stdout.length > 0) {
-        throw new Error(`Main checkout has uncommitted changes; refusing to switch branch ${ref}`);
+        const dirty = await mainCheckoutDirtyEntries(runner, cwd, status.stdout, signal);
+        if (dirty.length > 0) {
+          // `sanitizeGitDiagnostic` below collapses runs of whitespace, so trim each
+          // code first -- otherwise a leading-space code like " M" would be
+          // indistinguishable from a trailing-space one like "M " once joined.
+          const shown = dirty.slice(0, 5).map((entry) => `${entry.code.trim()} ${entry.path}`);
+          const more = dirty.length > shown.length ? `, … (${dirty.length} total)` : "";
+          // Entry paths are session-controlled checkout content, not trusted git
+          // diagnostics, but this message still lands in `session.errorMessage`
+          // (DynamoDB, then the web UI) like every other failure here, so route it
+          // through the same scrub-and-cap `runGit`'s stderr already gets.
+          const detail = sanitizeGitDiagnostic(`${shown.join(", ")}${more}`);
+          throw new Error(
+            `Main checkout has uncommitted changes (${detail}); refusing to switch branch ${ref}`,
+          );
+        }
       }
       const localBranch = await runGit(
         runner,

@@ -206,6 +206,65 @@ describe("createGitClient real git", () => {
     expect(head).toBe(mainSha);
   });
 
+  it("switches a main checkout dirtied only by its own nested worktree directory", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-nested-wt-"));
+    roots.push(root);
+    const repo = join(root, "repo");
+    mkdirSync(repo);
+    await git(repo, ["init"]);
+    await git(repo, ["config", "user.email", "t@example.com"]);
+    await git(repo, ["config", "user.name", "t"]);
+    writeFileSync(join(repo, "f.txt"), "main\n");
+    await git(repo, ["add", "f.txt"]);
+    await git(repo, ["commit", "-m", "init"]);
+    await git(repo, ["branch", "-M", "main"]);
+    await git(repo, ["switch", "-c", "feature"]);
+    writeFileSync(join(repo, "f.txt"), "feature\n");
+    await git(repo, ["commit", "-am", "feature"]);
+    await git(repo, ["switch", "main"]);
+    // The documented example layout: the daemon's configured worktree path lives
+    // inside the repository it belongs to (`git worktree add` auto-creates `.worktrees/`).
+    await git(repo, ["worktree", "add", "--detach", join(repo, ".worktrees", "wt-1"), "main"]);
+    // Sanity: the nested worktree is the *only* source of dirt here.
+    expect((await git(repo, ["status", "--porcelain"])).trim()).toBe("?? .worktrees/");
+
+    const client = createGitClient(new SpawnProcessRunner());
+    await client.prepareMainCheckout({ cwd: repo, ref: "feature" });
+
+    expect((await git(repo, ["symbolic-ref", "--quiet", "--short", "HEAD"])).trim()).toBe(
+      "feature",
+    );
+    // The nested worktree itself is untouched by the main checkout's branch switch.
+    expect(existsSync(join(repo, ".worktrees", "wt-1", ".git"))).toBe(true);
+  });
+
+  it("still refuses a main checkout with genuine uncommitted changes next to a nested worktree", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-nested-wt-real-dirt-"));
+    roots.push(root);
+    const repo = join(root, "repo");
+    mkdirSync(repo);
+    await git(repo, ["init"]);
+    await git(repo, ["config", "user.email", "t@example.com"]);
+    await git(repo, ["config", "user.name", "t"]);
+    writeFileSync(join(repo, "f.txt"), "main\n");
+    await git(repo, ["add", "f.txt"]);
+    await git(repo, ["commit", "-m", "init"]);
+    await git(repo, ["branch", "-M", "main"]);
+    await git(repo, ["switch", "-c", "feature"]);
+    writeFileSync(join(repo, "f.txt"), "feature\n");
+    await git(repo, ["commit", "-am", "feature"]);
+    await git(repo, ["switch", "main"]);
+    await git(repo, ["worktree", "add", "--detach", join(repo, ".worktrees", "wt-1"), "main"]);
+    // Real, operator-caused dirt: an edited tracked file, unrelated to the worktree.
+    writeFileSync(join(repo, "f.txt"), "edited locally\n");
+
+    const client = createGitClient(new SpawnProcessRunner());
+    await expect(client.prepareMainCheckout({ cwd: repo, ref: "feature" })).rejects.toThrow(
+      /Main checkout has uncommitted changes \(.*f\.txt/,
+    );
+    expect((await git(repo, ["symbolic-ref", "--quiet", "--short", "HEAD"])).trim()).toBe("main");
+  });
+
   it("fetches a pinned pull head without applying a later local URL rewrite", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-pull-ref-"));
     roots.push(root);

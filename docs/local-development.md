@@ -154,6 +154,13 @@ curl -fsS -X PUT http://127.0.0.1:7420/api/v1/hosts/local-1/inventory \
 
 **Body fields:** `providerAccounts[]` (attached Provider Accounts, optionally with a host-level command override), `repositories[]` with `id`, `path`, `worktrees[]`.
 
+A worktree's `path` may sit inside the repository (e.g. `<repo>/.worktrees/wt-1`) — the daemon
+recognizes its own linked worktrees and does not treat them as uncommitted changes when switching
+the main checkout's branch for a scheduled session. The template above still places worktrees
+outside the repo (`<repo>-worktrees/wt-1`) because that keeps the repo's own working tree free of
+daemon-managed directories (no `.gitignore` entry to remember, nothing for `git clean -fdx` or a
+backup tool to trip over).
+
 3. `run-session --file` reads a `SessionAssign` JSON with an already-resolved `resolvedArgv` (see [examples/local/session.assign.json](../examples/local/session.assign.json)) — this bypasses the control plane's own Provider/Command resolution entirely (useful for testing `SessionRunner` in isolation), so there's no catalog setup needed for this specific path.
 
 4. Run with env identity (a leading `--` from pnpm is stripped):
