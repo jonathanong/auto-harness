@@ -491,10 +491,16 @@ rollback.
 
 To purge such an environment, first bring its Sessions table up to the full index set
 **one index per `update-table` call**, waiting for each to reach `ACTIVE` before the
-next, then re-run purge. The staged-rollout scripts do not cover this: `stagedTables()`
-in `foundation-stack.ts` can only defer `statusShard-repositoryPriorityOrder` and
-`statusShard-createdOrder`, so a table behind by more than those two needs the indexes
-added by hand. Check drift first:
+next, then re-run purge.
+
+Purge itself has no staged path — it passes flags that defer nothing. `pnpm deploy:aws`
+does stage, adding `statusShard-priorityOrder`, then `statusShard-repositoryPriorityOrder`,
+then `statusShard-createdOrder` across three sequential foundation updates. But that
+sequence only helps a table that already carries `parentSessionId-createdOrder` and
+`activeHostId-activeHostOrder`: `stagedTables()` never excludes those two, so they appear
+in every synthesized template. A table predating them — which `deploy-aws.sh` detects and
+refuses up front, by design — needs every missing index added by hand before either path
+works. Check drift first:
 
 ```bash
 aws dynamodb describe-table --table-name "AutoHarness-<environment>-Sessions" \
