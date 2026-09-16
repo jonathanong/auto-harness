@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 
 import { AuthService } from "./auth.ts";
 import { auditActor } from "./audit.ts";
-import { authorize } from "./auth-policy.ts";
+import { authorize, isUnroutedWrite } from "./auth-policy.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { applyLocalCors } from "./local-cors.ts";
 import { resolvePublicBaseUrl, type LocalServerOptions, send } from "./local-http.ts";
@@ -213,7 +213,11 @@ export function createLocalApp(options: LocalServerOptions = {}): {
           }))
         )
           return;
-        return auditAuthFailure(ctx, "auth:authorize", 403, "insufficient role for this operation");
+        // Still denied either way, and still audited as a denial — only the reported
+        // reason differs, so a mistyped URL stops masquerading as a permissions problem.
+        return isUnroutedWrite(method, url.pathname)
+          ? auditAuthFailure(ctx, "auth:authorize", 404, "not found")
+          : auditAuthFailure(ctx, "auth:authorize", 403, "insufficient role for this operation");
       }
     } else if (logoutRoute) {
       if (
@@ -306,7 +310,7 @@ function hasSessionCookie(cookieHeader: string | string[] | undefined): boolean 
 async function auditAuthFailure(
   ctx: import("./local-http.ts").RouteCtx,
   action: "auth:authenticate" | "auth:authorize",
-  status: 401 | 403,
+  status: 401 | 403 | 404,
   message: string,
 ): Promise<void> {
   try {
@@ -323,7 +327,7 @@ async function auditAuthFailure(
     });
     return;
   }
-  send(ctx.res, status, {
-    error: { code: status === 401 ? "UNAUTHENTICATED" : "FORBIDDEN", message },
-  });
+  const code =
+    status === 401 ? "UNAUTHENTICATED" : status === 404 ? "NOT_FOUND" : ("FORBIDDEN" as const);
+  send(ctx.res, status, { error: { code, message } });
 }

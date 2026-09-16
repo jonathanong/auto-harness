@@ -93,6 +93,21 @@ export function requiredCapability(
   return "authenticated";
 }
 
+/**
+ * True when a write matches no route at all, rather than a known route whose capability
+ * the principal lacks. `requiredCapability` deliberately fails closed on an unknown write
+ * (`null`), and that stays — but the denial is a *routing* fact, not an authorization one.
+ * Reporting it as 403 "insufficient role" sends an operator who mistyped a URL off to audit
+ * roles and capabilities instead of the path; `POST /hosts/:id/drain` is an easy wrong guess
+ * because `POST /repositories/:id/drain` really does take a path parameter. A safe read of
+ * the same bad path already 404s, so this also makes the two agree.
+ *
+ * 404 is the less disclosing answer too: a 403 confirms the path is gated and therefore real.
+ */
+export function isUnroutedWrite(method: string, pathname: string): boolean {
+  return requiredCapability(method, pathname) === null;
+}
+
 const BOUND_KEY_HANDLER_DENIALS = new Set<Capability>([
   "sessions:write",
   "sessions:spawn",
