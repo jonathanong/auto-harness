@@ -124,7 +124,19 @@ describe("schedule fire residual coverage", () => {
   it("distinguishes a missing durable repository from closed admission", async () => {
     const missing = state(schedule({ principalId: "principal" }));
     missing.repositories.clear();
+    // A repository deleted after the schedule was created is a lookup failure, not the
+    // closed-admission gate reserved for a repository that still exists.
     await expect(triggerScheduleDurable(missing, "nightly")).resolves.toEqual({
+      ok: false,
+      error: "repository not found",
+    });
+
+    // An existing but paused repository trips the in-memory admission gate. That is a
+    // different branch from the storage transaction's admission_closed below, and it only
+    // became separately reachable once a missing repository started returning early above.
+    const paused = state(schedule({ principalId: "principal" }));
+    paused.repositories.get("repo")!.admissionState = "paused";
+    await expect(triggerScheduleDurable(paused, "nightly")).resolves.toEqual({
       ok: false,
       error: "repository admission is closed",
     });

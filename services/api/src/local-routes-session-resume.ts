@@ -141,7 +141,9 @@ export async function handleSessionResumeRoute(ctx: RouteCtx): Promise<boolean> 
         }))
       )
         return true;
-      const missing = result.error === "session not found";
+      // A repository deleted after the source session was created now reports NOT_FOUND
+      // (see control-plane-repository-admission-state.ts), not a closed admission gate.
+      const missing = result.error === "session not found" || result.code === "NOT_FOUND";
       const admissionClosed = result.code === "REPOSITORY_ADMISSION_CLOSED";
       const draining = result.code === "DRAINING";
       const forbidden = result.code === "FORBIDDEN";

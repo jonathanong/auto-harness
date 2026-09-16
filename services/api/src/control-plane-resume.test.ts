@@ -541,6 +541,27 @@ describe("control-plane native resume", () => {
       });
     }
 
+    const deletedRepo = createPlane({ shardCount: 1 });
+    deletedRepo.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
+    const deletedRepoSource = deletedRepo.createSession({
+      repositoryId: "repo",
+      prompt: "deleted",
+      target: { commandId: "cmd" },
+      timeout: 30,
+    });
+    expect(deletedRepoSource.ok).toBe(true);
+    if (deletedRepoSource.ok) {
+      deletedRepo.forceStatus(deletedRepoSource.session.id, "completed");
+      // A repository removed after the source session finished must report not-found,
+      // not the closed-admission gate reserved for a repository that still exists.
+      deletedRepo.state.repositories.delete("repo");
+      expect(deletedRepo.resumeSession(deletedRepoSource.session.id)).toMatchObject({
+        ok: false,
+        code: "NOT_FOUND",
+        error: "repository not found",
+      });
+    }
+
     const overrides = createPlane({ shardCount: 1 });
     overrides.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
     overrides.registerHost({

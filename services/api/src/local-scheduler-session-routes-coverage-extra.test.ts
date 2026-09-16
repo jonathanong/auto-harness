@@ -307,6 +307,9 @@ describe("scheduler and session route residual coverage", () => {
       ],
       [{ ok: false, error: "forbidden", code: "FORBIDDEN" }, 403, "FORBIDDEN"],
       [{ ok: false, error: "session changed before resume" }, 409, "CONFLICT"],
+      // A repository deleted after the source session finished reports NOT_FOUND, not a
+      // closed admission gate — see control-plane-repository-admission-state.ts.
+      [{ ok: false, error: "repository not found", code: "NOT_FOUND" }, 404, "NOT_FOUND"],
     ] as const) {
       plane.resumeSessionDurable = async () => result as never;
       const response = await invoke("POST", "/api/v1/sessions/source/resume", {});

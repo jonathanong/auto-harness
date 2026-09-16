@@ -186,12 +186,25 @@ describe("session clone route", () => {
     conflictPlane.state.commands.set(concurrentCommand.id, concurrentCommand);
     conflictPlane.state.storage = {
       getSession: async () => source,
-      getRepository: async () => null,
+      // The repository must exist (and read as open) so the admission pre-check passes
+      // and this exercises the storage transaction's own race-detected conflict, not the
+      // separate not-found path for a repository that never existed.
+      getRepository: async () => ({
+        id: "repo-1",
+        name: "repo-1",
+        url: "https://example.test/repo-1.git",
+        defaultBranch: "main",
+        admissionState: "active" as const,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
       putAuditLog: async () => undefined,
       listCommands: async () => [command],
       listProviders: async () => [],
       listProviderAccounts: async () => [],
-      createSession: async (session: typeof source) => ({ created: false, session }),
+      createSession: async () => {
+        throw Object.assign(new Error("closed"), { name: "RepositoryAdmissionClosedError" });
+      },
     } as never;
     conflictPlane.state.sessions.clear();
     expect(

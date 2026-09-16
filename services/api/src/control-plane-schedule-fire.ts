@@ -126,11 +126,13 @@ export async function triggerScheduleDurable(
   const repository = schedule.repositoryId
     ? await getRepositoryDurable(state, schedule.repositoryId)
     : null;
-  if (
-    schedule.repositoryId &&
-    (!repository || repositoryAdmissionFailure(state, schedule.repositoryId))
-  ) {
-    return { ok: false, error: "repository admission is closed" };
+  if (schedule.repositoryId) {
+    // A repository deleted after the schedule was created is a lookup failure, not a
+    // closed admission gate — same distinction as the create/resume/clone paths.
+    if (!repository) return { ok: false, error: "repository not found" };
+    if (repositoryAdmissionFailure(state, schedule.repositoryId)) {
+      return { ok: false, error: "repository admission is closed" };
+    }
   }
   const newNextRunAt = nextRunAt(schedule, nowIso);
   if (!newNextRunAt) return { ok: false, error: "invalid schedule cron or timestamp" };

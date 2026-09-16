@@ -100,6 +100,18 @@ describe("session clone", () => {
     });
   });
 
+  it("reports a source repository deleted after cloning as not found, not paused", () => {
+    const plane = new ControlPlane({ idFactory: () => "session-1" });
+    seedBaseCommand(plane);
+    plane.createSession(baseSessionBody());
+    plane.state.repositories.delete("repo-1");
+    expect(plane.cloneSession("session-1")).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+      error: "repository not found",
+    });
+  });
+
   it("rejects missing inputs and invalid sources without mutating the source", () => {
     const plane = new ControlPlane({ idFactory: () => "clone" });
     seedBaseCommand(plane);
