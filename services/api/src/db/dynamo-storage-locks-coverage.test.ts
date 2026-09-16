@@ -194,6 +194,11 @@ describe("DynamoDB Local host lock adapters", () => {
       reason: "agent disconnected; requeued",
       lastHeartbeatAt: at,
     });
+    // The sparse GSI marker is written alongside the alert fields, not just the
+    // fields themselves — this is what listHostOfflineAlertCandidates now queries.
+    await expect(
+      ctx.doc.send(new GetCommand({ TableName: tables.hostLocks, Key: { hostId: "alert-host" } })),
+    ).resolves.toMatchObject({ Item: expect.objectContaining({ offlineAlertPending: "pending" }) });
     expect(
       await clearHostOfflineAlertCandidate(ctx, {
         hostId: "alert-host",
@@ -208,6 +213,12 @@ describe("DynamoDB Local host lock adapters", () => {
         lastHeartbeatAt: at,
       }),
     ).toBe(true);
+    // Cleared, not merely emptied: the marker attribute must be gone entirely so the
+    // row falls out of the sparse index instead of lingering as a stale entry.
+    const clearedAlertHost = await ctx.doc.send(
+      new GetCommand({ TableName: tables.hostLocks, Key: { hostId: "alert-host" } }),
+    );
+    expect(clearedAlertHost.Item?.offlineAlertPending).toBeUndefined();
     expect(
       await recordHostOfflineAlertCandidate(ctx, {
         hostId: "alert-host",
@@ -234,13 +245,14 @@ describe("DynamoDB Local host lock adapters", () => {
         lastHeartbeatAt: at,
       }),
     ).toBe(true);
-    // A partially-corrupt legacy row still satisfies the Dynamo filter, but
-    // must never become an alert payload.
+    // A partially-corrupt row still matches the sparse GSI (offlineAlertPending is
+    // correctly typed), but must never become an alert payload.
     await ctx.doc.send(
       new PutCommand({
         TableName: tables.hostLocks,
         Item: {
           hostId: "malformed-alert-host",
+          offlineAlertPending: "pending",
           offlineAlertReason: 1,
           offlineAlertLastHeartbeatAt: at,
         },
@@ -332,13 +344,13 @@ describe("DynamoDB Local host lock adapters", () => {
     );
   });
 
-  it("treats a sparse DynamoDB scan page with no Items as empty", async () => {
-    let scanCount = 0;
+  it("treats a sparse GSI query page with no Items as empty", async () => {
+    let queryCount = 0;
     const sparseCtx = {
       doc: {
         async send() {
-          scanCount += 1;
-          return scanCount === 1
+          queryCount += 1;
+          return queryCount === 1
             ? { LastEvaluatedKey: { hostId: "next" } }
             : {
                 Items: [
@@ -367,7 +379,7 @@ describe("DynamoDB Local host lock adapters", () => {
     await expect(listHostOfflineAlertCandidates(sparseCtx)).resolves.toEqual([
       { hostId: "candidate", reason: "offline", lastHeartbeatAt: at },
     ]);
-    expect(scanCount).toBe(2);
+    expect(queryCount).toBe(2);
   });
 
   it("propagates failures from a real unreachable DynamoDB endpoint", async () => {

@@ -1,4 +1,6 @@
 /* eslint-disable max-lines -- durable and in-memory stale reclaim share alert fencing. */
+import { thrownMessage } from "@auto-harness/shared";
+
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { enqueueFencedHostOfflineAlert, enqueueHostOfflineAlert } from "./slack-host-alert.ts";
 import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
@@ -192,9 +194,17 @@ export async function reclaimStaleHostsDurable(
       for (const candidate of await alertStore.listHostOfflineAlertCandidates()) {
         await enqueueOfflineAlertCandidate(state, candidate, alertStore);
       }
-    } catch {
-      // Candidate delivery is retried by the next cron run. A scan outage must
-      // not block stale leases and sessions from being reclaimed below.
+    } catch (error) {
+      // Candidate delivery is retried by the next cron run. A storage/IAM failure must
+      // not block stale leases and sessions from being reclaimed below — but it was
+      // previously swallowed with zero CloudWatch signal, so Slack offline-host alerts
+      // could silently never fire. Log it instead.
+      console.error(
+        JSON.stringify({
+          msg: "host offline alert candidate sweep failed",
+          error: thrownMessage(error),
+        }),
+      );
     }
   }
   const reclaimed = new Set<string>();
