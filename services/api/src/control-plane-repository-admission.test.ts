@@ -25,6 +25,28 @@ describe("repository admission", () => {
     });
   });
 
+  it("reports an unknown repository as not found, not a closed admission gate", () => {
+    const plane = new ControlPlane();
+    expect(repositoryAdmissionFailure(plane.state, "does-not-exist")).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+      error: "repository not found",
+    });
+  });
+
+  it("rejects session creation against an unknown repository as not found, not paused", () => {
+    const plane = new ControlPlane();
+    seedBaseCommand(plane);
+    expect(
+      plane.createSession({
+        repositoryId: "does-not-exist",
+        prompt: "run",
+        target: { commandId: "cmd-base" },
+        timeout: 30,
+      }),
+    ).toMatchObject({ ok: false, code: "NOT_FOUND", error: "repository not found" });
+  });
+
   it("pauses creation, activates again, and drains active sessions to paused", async () => {
     let tick = 0;
     const plane = new ControlPlane({

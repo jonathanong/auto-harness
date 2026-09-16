@@ -366,6 +366,18 @@ describe("session state-machine residual coverage", () => {
 
   it("maps a closed repository during durable clone admission", async () => {
     const state = commandState();
+    // The repository must exist (and read as open) so the admission pre-check passes and
+    // this exercises the storage transaction's own race-detected closed-admission error,
+    // not the separate not-found path for a repository that never existed.
+    state.repositories.set("repo", {
+      id: "repo",
+      name: "repository",
+      url: "https://example.test/repository",
+      defaultBranch: "main",
+      admissionState: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
     const source = row({ status: "completed", completedAt: NOW });
     const closed = Object.assign(new Error("closed"), {
       name: "RepositoryAdmissionClosedError",

@@ -124,9 +124,11 @@ describe("schedule fire residual coverage", () => {
   it("distinguishes a missing durable repository from closed admission", async () => {
     const missing = state(schedule({ principalId: "principal" }));
     missing.repositories.clear();
+    // A repository deleted after the schedule was created is a lookup failure, not the
+    // closed-admission gate reserved for a repository that still exists.
     await expect(triggerScheduleDurable(missing, "nightly")).resolves.toEqual({
       ok: false,
-      error: "repository admission is closed",
+      error: "repository not found",
     });
 
     const closed = state(schedule({ principalId: "principal" }), {
