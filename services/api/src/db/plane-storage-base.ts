@@ -984,6 +984,10 @@ export class DynamoPlaneStorageBase {
     return locks.markHostDraining(this.ctx, { hostId, connectionId });
   }
 
+  clearHostDraining(hostId: string, connectionId: string): Promise<boolean> {
+    return locks.clearHostDraining(this.ctx, { hostId, connectionId });
+  }
+
   getHostLock(hostId: string): Promise<string | null> {
     return locks.getHostLock(this.ctx, hostId);
   }

@@ -8,6 +8,7 @@ import { writeRouteAudit } from "./local-audit.ts";
 import { handleSchedulerRoutes } from "./local-routes-scheduler.ts";
 import { handleHostReadRoutes } from "./local-routes-hosts.ts";
 import { handleWorktreeReadRoutes } from "./local-routes-worktrees.ts";
+import { handleHostDrainRoutes } from "./local-routes-host-drain.ts";
 import { sendListPage } from "./local-list-page.ts";
 import { reportRouteError } from "./route-errors.ts";
 
@@ -33,6 +34,7 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
   if (await handleSchedulerRoutes(ctx)) return true;
   if (await handleWorktreeReadRoutes(ctx)) return true;
   if (await handleHostReadRoutes(ctx)) return true;
+  if (await handleHostDrainRoutes(ctx)) return true;
 
   if (method === "GET" && url.pathname === "/api/v1/user-sessions") {
     try {
@@ -126,65 +128,6 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         return true;
       if (body.type === "host:register") await plane.enqueueAssignment();
       send(res, 200, { ok: true });
-      return true;
-    } catch (error) {
-      sendInternalError(res, { error, method, url, msg: "host-scheduler route failure" });
-      return true;
-    }
-  }
-
-  if (method === "POST" && url.pathname === "/api/v1/hosts/drain") {
-    let body: { hostId?: string };
-    try {
-      body = (await readJson(req)) as { hostId?: string };
-    } catch {
-      send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
-      return true;
-    }
-    if (
-      !body ||
-      typeof body !== "object" ||
-      Array.isArray(body) ||
-      typeof body.hostId !== "string" ||
-      !body.hostId
-    ) {
-      send(res, 400, { error: { code: "VALIDATION_ERROR", message: "hostId required" } });
-      return true;
-    }
-    try {
-      if (
-        !mayAccessHost(ctx.principal, body.hostId) ||
-        (ctx.principal?.allowedRepositoryIds?.length && !ctx.principal.boundHostId)
-      ) {
-        send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
-        return true;
-      }
-      const drained = await plane.drainHostDurable(body.hostId);
-      if (!drained.ok) {
-        if (
-          !(await writeRouteAudit(ctx, {
-            action: "host:drain",
-            resourceType: "host",
-            resourceId: body.hostId,
-            outcome: "failed",
-          }))
-        )
-          return true;
-        send(res, 409, {
-          error: { code: "CONFLICT", message: "host connection changed while draining" },
-        });
-        return true;
-      }
-      if (
-        !(await writeRouteAudit(ctx, {
-          action: "host:drain",
-          resourceType: "host",
-          resourceId: body.hostId,
-          metadata: { runningSessions: drained.runningSessionIds.length },
-        }))
-      )
-        return true;
-      send(res, 200, drained);
       return true;
     } catch (error) {
       sendInternalError(res, { error, method, url, msg: "host-scheduler route failure" });

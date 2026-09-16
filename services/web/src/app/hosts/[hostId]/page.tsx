@@ -16,6 +16,7 @@ export const dynamic = "force-dynamic";
 type Agent = {
   hostId: string;
   online: boolean;
+  draining?: boolean;
   connectedAt?: string | null;
   daemonStartedAt?: string | null;
   restartCount?: number;
@@ -74,7 +75,7 @@ export default async function HostDetailPage({
     // empty inventory: that would mislead the UI and risk replacing the real host configuration.
     return (
       <div className="space-y-6">
-        <HostDetailHeader hostId={hostId} canDrain={canDrain} />
+        <HostDetailHeader hostId={hostId} canDrain={canDrain} draining={agent?.draining} />
         <SectionError
           resource={`host ${hostId}'s inventory`}
           message={inventoryError}
@@ -156,7 +157,7 @@ export default async function HostDetailPage({
 
   return (
     <div className="space-y-6" data-pw="page-host-detail">
-      <HostDetailHeader hostId={hostId} canDrain={canDrain} />
+      <HostDetailHeader hostId={hostId} canDrain={canDrain} draining={agent?.draining} />
 
       <Tabs
         basePath={`/hosts/${encodeURIComponent(hostId)}`}

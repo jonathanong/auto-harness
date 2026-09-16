@@ -470,6 +470,32 @@ export async function markHostDraining(
   }
 }
 
+/**
+ * Clear a host drain against the exact lease owner — the inverse of
+ * markHostDraining. The same connection fence applies: a resume request must
+ * not clear a replacement connection's independent drain (e.g. one the
+ * replacement itself started after taking over the lease).
+ */
+export async function clearHostDraining(
+  ctx: PlaneStorageCtx,
+  opts: { hostId: string; connectionId: string },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.hostLocks,
+        Key: { hostId: opts.hostId },
+        UpdateExpression: "REMOVE draining",
+        ConditionExpression: "connectionId = :connectionId",
+        ExpressionAttributeValues: { ":connectionId": opts.connectionId },
+      }),
+    );
+    return true;
+  } catch (err) {
+    return conditionalHostWriteOrThrow(err);
+  }
+}
+
 export async function releaseHostLock(
   ctx: PlaneStorageCtx,
   hostId: string,

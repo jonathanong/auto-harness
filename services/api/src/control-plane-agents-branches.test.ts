@@ -1,7 +1,13 @@
 /* eslint-disable max-lines */
 import { describe, expect, it, vi } from "vitest";
 
-import { disconnectHost, drainHost, drainHostDurable } from "./control-plane-agents.ts";
+import {
+  disconnectHost,
+  drainHost,
+  drainHostDurable,
+  resumeHost,
+  resumeHostDurable,
+} from "./control-plane-agents.ts";
 import { ControlPlane } from "./control-plane.ts";
 
 const inventory = [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }];
@@ -396,6 +402,84 @@ describe("agent registration branch boundaries", () => {
     expect(await drainHostDurable(plane.state, "h")).toEqual({ ok: false, runningSessionIds: [] });
     expect(plane.isDraining("h")).toBe(false);
     expect(plane.getWorktree("w")).toMatchObject({ online: true });
+  });
+
+  it("resumeHost rejects a stale connection fence but resumes for the current one", () => {
+    const plane = new ControlPlane();
+    plane.state.hostConnection.set("h", "current");
+    plane.state.drainingHosts.add("h");
+    expect(resumeHost(plane.state, "h", "stale")).toEqual({ ok: false });
+    expect(plane.isDraining("h")).toBe(true);
+    expect(resumeHost(plane.state, "h", "current")).toEqual({ ok: true });
+    expect(plane.isDraining("h")).toBe(false);
+  });
+
+  it("resumeHostDurable has nothing to resolve without a live lease owner", async () => {
+    const plane = new ControlPlane();
+    plane.state.storage = {
+      getHostLockState: async () => ({ connectionId: null, draining: false }),
+    } as never;
+    expect(await resumeHostDurable(plane.state, "h")).toEqual({ ok: false });
+  });
+
+  it("resumeHostDurable no-ops and reconciles a stale local drain cache", async () => {
+    const plane = new ControlPlane();
+    // A process-local cache can lag storage — e.g. this container never saw the
+    // daemon's own reconnect clear it. The durable read is authoritative.
+    plane.state.drainingHosts.add("h");
+    plane.state.storage = {
+      getHostLockState: async () => ({ connectionId: "owner", draining: false }),
+    } as never;
+    expect(await resumeHostDurable(plane.state, "h")).toEqual({ ok: true });
+    expect(plane.isDraining("h")).toBe(false);
+  });
+
+  it("resumeHostDurable brings idle worktrees online and clears draining last", async () => {
+    const plane = new ControlPlane();
+    plane.state.worktrees.set("w", {
+      ...worktree({ status: "idle", online: false, currentSessionId: null }),
+    });
+    plane.state.worktrees.set("busy", worktree({ id: "busy", online: true }));
+    const online: string[] = [];
+    let cleared = false;
+    const sent: unknown[] = [];
+    plane.setOnHostMessage((hostId, msg) => void sent.push([hostId, msg]));
+    plane.state.hostConnection.set("h", "owner");
+    // No listWorktreesByHost on this stub — the resume must not assume every
+    // storage implementation provides the optional refresh helper.
+    plane.state.storage = {
+      getHostLockState: async () => ({ connectionId: "owner", draining: true }),
+      setWorktreeOnlineFenced: async (id: string) => (online.push(id), true),
+      clearHostDraining: async () => ((cleared = true), true),
+    } as never;
+    expect(await resumeHostDurable(plane.state, "h")).toEqual({ ok: true });
+    expect(online).toEqual(["w"]);
+    expect(cleared).toBe(true);
+    expect(sent).toEqual([["h", { type: "host:resume" }]]);
+    expect(plane.isDraining("h")).toBe(false);
+  });
+
+  it("keeps the durable flag set when a worktree fence is lost mid-resume, so a retry can finish the job", async () => {
+    const plane = new ControlPlane();
+    plane.state.worktrees.set("w", {
+      ...worktree({ status: "idle", online: false, currentSessionId: null }),
+    });
+    plane.state.hostConnection.set("h", "owner");
+    let clearedCalled = false;
+    plane.state.storage = {
+      getHostLockState: async () => ({ connectionId: "owner", draining: true }),
+      setWorktreeOnlineFenced: async () => false,
+      clearHostDraining: async () => {
+        clearedCalled = true;
+        return true;
+      },
+    } as never;
+    expect(await resumeHostDurable(plane.state, "h")).toEqual({ ok: false });
+    // The flag clear must never even be attempted once a worktree fence is
+    // lost mid-loop — a retry needs the durable `draining` read to still be
+    // true, or it would wrongly take the no-op path instead of finishing.
+    expect(clearedCalled).toBe(false);
+    expect(plane.getWorktree("w")?.online).toBe(false);
   });
 
   it("keeps acknowledged workspace work reconnectable and clears unacknowledged or timed-out slots", () => {

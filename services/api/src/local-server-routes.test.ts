@@ -242,9 +242,16 @@ describe("createLocalApp agent and scheduler routes", () => {
     expect((await invoke("POST", "/api/v1/scheduler/reclaim-stale")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/scheduler/cron")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/hosts/drain", { hostId: "a1" })).status).toBe(200);
+    expect((await invoke("POST", "/api/v1/hosts/resume", { hostId: "a1" })).status).toBe(200);
+    // Undrain on a host that was never (or is no longer) draining is a safe
+    // no-op, not an error — an operator retry must not fail.
+    expect((await invoke("POST", "/api/v1/hosts/resume", { hostId: "a1" })).status).toBe(200);
     plane.drainHostDurable = async () => ({ ok: false, runningSessionIds: [] });
     expect((await invoke("POST", "/api/v1/hosts/drain", { hostId: "a1" })).status).toBe(409);
     expect((await invoke("POST", "/api/v1/hosts/drain", {})).status).toBe(400);
+    plane.resumeHostDurable = async () => ({ ok: false });
+    expect((await invoke("POST", "/api/v1/hosts/resume", { hostId: "a1" })).status).toBe(409);
+    expect((await invoke("POST", "/api/v1/hosts/resume", {})).status).toBe(400);
     const concurrencyFirst = await invoke("POST", "/api/v1/sessions", {
       repositoryId: "r1",
       prompt: "p",
@@ -311,6 +318,7 @@ describe("createLocalApp agent and scheduler routes", () => {
     };
     expect(await badJson("/api/v1/host/messages")).toBe(400);
     expect(await badJson("/api/v1/hosts/drain")).toBe(400);
+    expect(await badJson("/api/v1/hosts/resume")).toBe(400);
     expect(await badJson("/api/v1/sessions/sess-1/resume")).toBe(400);
 
     plane.createSessionDurable = async () => ({

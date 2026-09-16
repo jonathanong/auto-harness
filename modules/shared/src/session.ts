@@ -185,6 +185,15 @@ export type HostWireMessage =
   /** Durable acknowledgement of an agent-initiated drain request. */
   | { type: "host:draining"; hostId: string }
   | { type: "host:drain" }
+  /**
+   * Inverse of `host:drain` — an operator-initiated resume. Adding this variant
+   * needs no `HOST_PROTOCOL_VERSION` bump: that gate covers the `host:register`
+   * handshake, not per-message-type support, and an older daemon's
+   * `handleServerMessage` default case silently ignores an unrecognized type
+   * rather than erroring (it just misses the resume until it next restarts or
+   * auto-updates).
+   */
+  | { type: "host:resume" }
   /** Confirms a `host:register` was accepted; opens the daemon's registration barrier. */
   | {
       type: "host:registered";

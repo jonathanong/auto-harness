@@ -114,6 +114,7 @@ describe("WebSocket transport residual runtime branches", () => {
         sessionId: "session-3",
       },
       { type: "host:drain" },
+      { type: "host:resume" },
       { type: "host:keepalive-ack", hostId: "host-1", at: "now" },
     ])
       socket.server(message);
@@ -127,6 +128,7 @@ describe("WebSocket transport residual runtime branches", () => {
       "session:terminal-hook",
       "session:terminal-hook-acknowledged",
       "host:drain",
+      "host:resume",
       "host:keepalive-ack",
     ]);
     socket.emit("error", "primitive failure");

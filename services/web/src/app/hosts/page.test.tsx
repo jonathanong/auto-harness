@@ -154,10 +154,23 @@ describe("hosts fleet route", () => {
     });
     const html = await renderPage(HostsPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain('data-pw="host-row-still-visible"');
+    // Not draining: drain is offered, resume is not.
     expect(html).toContain('data-pw="host-drain-still-visible"');
+    expect(html).not.toContain('data-pw="host-resume-still-visible"');
     expect(html).toContain("No worktrees configured.");
     expect(html).not.toContain("worktrees unavailable");
     expect(html).not.toContain('data-pw="hosts-retained-data-notice"');
+  });
+
+  it("shows resume instead of drain for a draining host", async () => {
+    stubApi({
+      "/api/v1/hosts": { items: [{ hostId: "draining-host", online: true, draining: true }] },
+      "/api/v1/host-inventories": { items: [] },
+      "/api/v1/worktrees": { items: [] },
+    });
+    const html = await renderPage(HostsPage({ searchParams: Promise.resolve({}) }));
+    expect(html).toContain('data-pw="host-resume-draining-host"');
+    expect(html).not.toContain('data-pw="host-drain-draining-host"');
   });
 
   it("does not show leftover-data notice when every host is online", async () => {
@@ -266,6 +279,7 @@ describe("hosts fleet route", () => {
     const html = await renderPage(HostsPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain('data-pw="host-row-visible"');
     expect(html).not.toContain('data-pw="host-drain-visible"');
+    expect(html).not.toContain('data-pw="host-resume-visible"');
   });
 
   it("hides Add host for a host-bound admin (daemon identity)", async () => {

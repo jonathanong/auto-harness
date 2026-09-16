@@ -1470,6 +1470,7 @@ hide matching hosts on later unfiltered pages.
     {
       "hostId": "vps-prod-1",
       "online": true,
+      "draining": false,
       "connectedAt": "2026-08-01T08:00:00Z",
       "lastHeartbeatAt": "2026-08-01T08:00:30Z",
       "daemonStartedAt": "2026-08-01T07:00:00Z",
@@ -1493,12 +1494,64 @@ increments the durable count and stamps detection time using the control-plane c
 daemons remain compatible and report an unknown start time. These fields do not trigger a host
 restart or an external notification.
 
+`draining` reflects `POST /hosts/drain`/`POST /hosts/resume` below. `GET /hosts` always reconciles
+it against the durable lock before returning (`listHostsDurable` calls `refreshSchedulerReadModel`
+first); `GET /hosts/:hostId` historically did not do that same reconciliation for a warm process's
+cached copy, so the two endpoints could briefly disagree for the same host.
+
 #### `GET /api/v1/hosts/:hostId`
 
 One host's connection health and restart observability — the same record as a list item. Callers
 that already know the host id (host detail, host pane shell, daemon `status`, a running session's
 assigned host) must use this instead of paging `GET /hosts` until a match appears. `404` when the
 host is unknown or outside the caller's scope.
+
+#### `POST /api/v1/hosts/drain`
+
+Operator-initiated drain: excludes this host from new scheduling without touching sessions
+already running there. Requires `fleet:drain` (`operator` role and up, or a bound host-daemon
+service account). `mayAccessHost` scopes a host-bound credential to its own host; a
+repository-scoped principal without a `boundHostId` gets `404` rather than `403` so scoping hides
+the host's existence rather than merely denying the write.
+
+Marks the durable host lock `draining` (fenced to the current lease owner) and pushes a
+`host:drain` WebSocket message so a connected daemon stops accepting new `session:assign`
+immediately, without waiting for its next keepalive. Idle worktrees for this host go offline now;
+a busy one stays online until its session finishes, then stays offline (sticky) instead of
+becoming assignable again.
+
+**Request:**
+
+```json
+{ "hostId": "vps-prod-1" }
+```
+
+**Response:** `200 OK`
+
+```json
+{ "ok": true, "runningSessionIds": ["sess-abc"] }
+```
+
+`409 CONFLICT` when there is no live lease owner to fence against — either a replacement daemon
+already took the lease mid-request, or the host has no connection at all (never registered, or
+currently disconnected). `404` when the host is unknown or outside the caller's scope (same guard
+as above).
+
+#### `POST /api/v1/hosts/resume`
+
+Inverse of drain above — the only way to resume a host that was drained through that endpoint,
+short of restarting its daemon. Same request/response shape and the same `fleet:drain` auth guard.
+
+Brings idle worktrees this host owns back online first, then clears the durable `draining` flag
+(both fenced to the same lease owner drain used) and pushes a `host:resume` WebSocket message so
+the daemon calls its internal `resumeFromDrain()` and re-registers. That order is the opposite of
+drain's on purpose: drain commits its restrictive flag before touching worktrees, so a crash still
+leaves the host excluded; resume commits its permissive flag last, so a crash mid-request leaves
+`draining` set and a retry safely re-runs the worktree loop instead of silently half-recovering.
+`404`/`409` behave the same as drain's.
+
+A host that is not currently draining is a no-op: `200 { "ok": true }`, not an error — an
+operator retry, or a race with the daemon's own reconnect already clearing it, must not fail.
 
 #### `GET /api/v1/user-sessions`
 

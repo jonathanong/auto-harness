@@ -45,6 +45,21 @@ describe("host detail route", () => {
     expect(html).not.toContain("-error");
   });
 
+  it("shows resume instead of drain when the host reports draining", async () => {
+    stubApi({
+      ...catalogOk,
+      "/api/v1/hosts/host-a": { hostId: "host-a", online: true, draining: true },
+    });
+    const html = await renderPage(
+      HostDetailPage({
+        params: Promise.resolve({ hostId: "host-a" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(html).toContain('data-pw="host-detail-resume"');
+    expect(html).not.toContain('data-pw="host-detail-drain"');
+  });
+
   it("shows repository environment readiness and missing variable names", async () => {
     stubApi({
       ...catalogOk,

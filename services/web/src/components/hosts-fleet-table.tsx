@@ -3,6 +3,7 @@ import {
   DrainButton,
   OnlineStatusBadge,
   RelativeTime,
+  ResumeButton,
   Table,
   TableBody,
   TableCell,
@@ -16,6 +17,7 @@ import { HostWorktreeDetails, type FleetWorktree } from "./host-worktree-details
 export type FleetHost = {
   hostId: string;
   online: boolean;
+  draining?: boolean;
   connectedAt?: string | null;
   gitReady?: boolean;
 };
@@ -89,7 +91,11 @@ export function HostsFleetTable({
               </TableCell>
               <TableCell>
                 {canDrain ? (
-                  <DrainButton hostId={h.hostId} size="sm" pw={`host-drain-${h.hostId}`} />
+                  h.draining ? (
+                    <ResumeButton hostId={h.hostId} size="sm" pw={`host-resume-${h.hostId}`} />
+                  ) : (
+                    <DrainButton hostId={h.hostId} size="sm" pw={`host-drain-${h.hostId}`} />
+                  )
                 ) : null}
               </TableCell>
             </TableRow>
