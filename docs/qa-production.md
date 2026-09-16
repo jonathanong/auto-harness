@@ -144,17 +144,27 @@ call against a stack in any other status, `UPDATE_ROLLBACK_COMPLETE`
 included, succeeds and counts as present. Use `update` in Phase 1 to
 recreate missing Runtime/Web stacks on top of the Foundation.
 
-**As of 2026-09-15, `production` is exactly this case, and the cold-account
-branch below does not apply to it.** `AutoHarness-production-Foundation`
-exists (`UPDATE_ROLLBACK_COMPLETE`); Runtime and Web are both
-`DELETE_COMPLETE`. The three bootstrap SSM parameters already exist too —
-running the cold-account block below against this account would silently
-overwrite production's real admin password and secrets with fresh throwaway
-ones. Read [Account state (2026-09-15)](#account-state-2026-09-15) and
-[Traps found on 2026-09-15](#traps-found-on-2026-09-15) before touching
-Phase 1: the plain `update` command shown there is the unstaged path that
-took this account down on 2026-09-08, and this Foundation cannot be restored
-with one command.
+**As of 2026-09-16 this no longer describes `production`.** It was purged and
+redeployed that day and is now healthy: all three stacks `CREATE_COMPLETE`,
+all 8 Sessions GSIs `ACTIVE`. See
+[Account state (2026-09-16)](#account-state-2026-09-16--purged-and-redeployed-production-is-up).
+Treat it as a normal existing environment — `update`, not `deploy`.
+
+The paragraph that used to sit here described the 2026-09-08 outage state
+(`Foundation` stranded in `UPDATE_ROLLBACK_COMPLETE`, Runtime and Web
+`DELETE_COMPLETE`, Sessions holding 3 of 8 GSIs). That state is gone, but the
+trap it warned about is not: see
+[Traps found on 2026-09-15](#traps-found-on-2026-09-15) before running a plain
+`update` that adds more than one GSI to any one table.
+
+Either way, the three bootstrap SSM parameters still exist. `aws
+ssm put-parameter` defaults to `--overwrite false`, so running the
+cold-account block below against this account does not overwrite
+production's real admin password or secrets — each `put-parameter` call
+fails with `ParameterAlreadyExists` instead. The block has no `set -e`,
+though, so it keeps going past those failures and still prints an
+`admin_password` that was never stored anywhere. Only run it on a cold
+account.
 
 **If the account is cold** (no `AutoHarness-production-*` stacks at all):
 create the three bootstrap SSM `SecureString`s first
@@ -163,6 +173,7 @@ Save the printed admin password — it is the only way to sign in until a user
 account exists:
 
 ```bash
+set -e
 admin_password=$(openssl rand -base64 24)
 admins_b64=$(echo '[{"username":"admin","password":"'"$admin_password"'"}]' | base64)
 aws ssm put-parameter --type SecureString \
@@ -687,6 +698,12 @@ since been redeployed, updated, and gone down again._
 
 ### Account state (2026-09-15)
 
+_Superseded — see
+[Account state (2026-09-16)](#account-state-2026-09-16--purged-and-redeployed-production-is-up)
+below. This section records the outage state accurately; production has since
+been purged and redeployed, and none of the "missing GSI" rows below still
+hold._
+
 Verified against the live account (`010438466032`, `us-west-2`) — this
 supersedes the teardown line above, which was accurate only for that day.
 
@@ -727,6 +744,93 @@ supersedes the teardown line above, which was accurate only for that day.
 
 See [Traps found on 2026-09-15](#traps-found-on-2026-09-15) for why this
 happened and why it is not a one-command fix.
+
+### Account state (2026-09-16) — purged and redeployed, production is up
+
+Supersedes the 2026-09-15 section above. Production was purged and redeployed
+from merged `main` at `97b72997`, ending the outage that began 2026-09-08.
+
+The purge only became possible that morning: it had failed on 2026-09-16 on
+the _same_ multi-GSI limit that caused the outage, because its retarget step
+synthesized all 8 Sessions GSIs against a table holding 3. Fixed in #757, which
+restricts the retarget to each table's live index set.
+
+Sequence that worked, run from a clean `main` checkout:
+
+```bash
+export AWS_REGION=us-west-2 AWS_PAGER=""
+export HARNESS_DEPLOY_ENVIRONMENT=production
+export HARNESS_DEPLOY_CONFIRM=production
+export HARNESS_DEPLOY_PURGE_CONFIRM=destroy-all-data-in-production
+unset HARNESS_DEPLOY_PURGE_SSM
+pnpm --filter @auto-harness/cdk run purge
+
+unset HARNESS_DEPLOY_CONFIRM HARNESS_DEPLOY_PURGE_CONFIRM
+export HARNESS_DEPLOY_REMOVAL_POLICY=retain
+pnpm --filter @auto-harness/cdk run deploy   # note `run`: bare `pnpm deploy` is a pnpm builtin
+```
+
+**Check the stored template before purging, not just the live tables.** The
+#757 fix restricts the retarget toward the _live_ GSI set, but CloudFormation
+diffs against the _stored_ template. Had the stored template listed more
+indexes than the table really had, the retarget would have computed several GSI
+deletions in one update and failed the same way in the opposite direction. They
+agreed here, verified beforehand with:
+
+```bash
+aws cloudformation get-template --stack-name AutoHarness-production-Foundation \
+  --template-stage Original --output json   # then read Resources.*.Properties.GlobalSecondaryIndexes
+```
+
+Result, verified against the live account:
+
+| Check                      | Result                                                               |
+| -------------------------- | -------------------------------------------------------------------- |
+| Foundation / Runtime / Web | all `CREATE_COMPLETE`                                                |
+| Sessions GSIs              | **8 / 8 ACTIVE**, incl. `activeHostId-activeHostOrder`               |
+| Tables not `ACTIVE`        | 0                                                                    |
+| `public-base-url`          | the CloudFront domain, not `localhost:7421`                          |
+| `/health`, `/login`        | `200`; `/health` → `{"ok":true}`                                     |
+| Page-content QA            | **12 / 12** pages render real data, 0 digest leaks                   |
+| `claude -p` session        | `queued → running → completed`, `exitCode 0`, agent summary returned |
+| Bound-key `POST /sessions` | `404` (trap #1 still holds)                                          |
+
+Deploying fresh also resolved the GSI backlog outright: all 8 Sessions indexes
+were created in the initial `CREATE`, which has no one-GSI-per-update limit.
+
+#### Trap: purge orphans tables that have left the catalog
+
+`purge` reported complete success while leaving
+`AutoHarness-production-SessionLogs` live — 954 items, deletion protection
+still enabled.
+
+`SessionLogs` was retired from `services/cdk/src/tables.ts` when log bodies
+moved to S3, but the stack created 2026-08-19 still carried the resource. The
+retarget synthesizes the _current_ catalog, so the resource was dropped from
+the stack while its `DeletionPolicy` was still `Retain`:
+
+```
+AutoHarness-production-Foundation | 33/35 | DELETE_SKIPPED | AWS::DynamoDB::Table | SessionLogsABAF303F
+```
+
+The later `destroy` never saw it, because it was no longer stack-managed, and
+purge exited 0. This is the mirror image of #757: that fix handled a table whose
+indexes fell _behind_ the catalog; this is a table that fell _out_ of it.
+
+After any purge of a long-lived environment, check for survivors:
+
+```bash
+aws dynamodb list-tables --output text --query 'TableNames[]' \
+  | tr '\t' '\n' | grep "^AutoHarness-${HARNESS_DEPLOY_ENVIRONMENT}-"
+```
+
+Do not delete survivors by prefix match alone — table prefixes are
+`AutoHarness-${environment}`, so an environment named `prod` prefix-matches
+tables belonging to one named `prod-extra`. The stack's stored template is the
+safe source of truth for what a given stack actually owned — capture it
+(as above) _before_ running `purge`. `purge` also destroys the Foundation
+stack itself, and `get-template` on an already-deleted stack needs its
+unique stack ID, not just its name, so there is no fetching it afterward.
 
 ### Findings
 
