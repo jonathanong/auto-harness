@@ -137,8 +137,24 @@ export HARNESS_DEPLOY_ENVIRONMENT=production
 
 **If any `AutoHarness-production-*` stack already exists** (including a
 retained Foundation after a previous teardown): do **not** run `deploy`.
-`deploy` refuses while any application stack exists. Use `update` in
-Phase 1 to recreate missing Runtime/Web stacks on top of the Foundation.
+`deploy` refuses while any application stack exists — `stackExists`
+(`services/cdk/src/deployment-support.ts`) only reports a stack absent when
+CloudFormation's error text matches `does not exist`; a `describe-stacks`
+call against a stack in any other status, `UPDATE_ROLLBACK_COMPLETE`
+included, succeeds and counts as present. Use `update` in Phase 1 to
+recreate missing Runtime/Web stacks on top of the Foundation.
+
+**As of 2026-09-15, `production` is exactly this case, and the cold-account
+branch below does not apply to it.** `AutoHarness-production-Foundation`
+exists (`UPDATE_ROLLBACK_COMPLETE`); Runtime and Web are both
+`DELETE_COMPLETE`. The three bootstrap SSM parameters already exist too —
+running the cold-account block below against this account would silently
+overwrite production's real admin password and secrets with fresh throwaway
+ones. Read [Account state (2026-09-15)](#account-state-2026-09-15) and
+[Traps found on 2026-09-15](#traps-found-on-2026-09-15) before touching
+Phase 1: the plain `update` command shown there is the unstaged path that
+took this account down on 2026-09-08, and this Foundation cannot be restored
+with one command.
 
 **If the account is cold** (no `AutoHarness-production-*` stacks at all):
 create the three bootstrap SSM `SecureString`s first
@@ -175,7 +191,17 @@ For a disposable environment instead of `production`, set
 ```bash
 pnpm install
 
-# Foundation already present (this account, 2026-08-18): restore Runtime + Web
+# Check the Sessions table's GSI state before running update on a surviving
+# Foundation. The plain `update` below has no staging guard (see the GSI
+# trap in "Traps found on 2026-09-15") — if any index it prints is missing
+# or not ACTIVE, do not run it; it will try to create them all in one
+# CloudFormation update and fail.
+aws dynamodb describe-table \
+  --table-name "AutoHarness-$HARNESS_DEPLOY_ENVIRONMENT-Sessions" \
+  --query 'Table.GlobalSecondaryIndexes[].{Name:IndexName,Status:IndexStatus}' \
+  --output table
+
+# Foundation present, Runtime/Web missing: restore Runtime + Web
 pnpm --filter @auto-harness/cdk run update
 
 # Cold account only:
@@ -194,6 +220,21 @@ If a first `deploy` fails partway (`ROLLBACK_COMPLETE`), delete the failed
 stack(s) by hand before retrying. `update` cannot repair a create-failed
 stack. Full detail:
 [deploy-aws.md#deploy-a-new-environment](deploy-aws.md#deploy-a-new-environment).
+**Do not confuse this with an `UPDATE_ROLLBACK_COMPLETE` Foundation** — that
+stack failed an _update_, not a create; it is stable, holds real data, and
+must not be deleted. `update` can be retried against it once whatever caused
+the failed update is fixed.
+
+**This account cannot clear that gate today.** `AutoHarness-production-Sessions`
+is missing `activeHostId-activeHostOrder` among other indexes (see
+[Account state (2026-09-15)](#account-state-2026-09-15)), and
+[deploy-aws.md's fresh-environment-cutover section](deploy-aws.md#fresh-environment-cutover-for-breaking-coordination-schemas)
+is explicit that this repository provides no in-place backfill for that
+index — adding it to an existing, populated Sessions table is not
+sufficient. Restoring `production` needs that fresh-environment cutover (new
+Foundation, paused admission, and a plan for the 356 existing session rows),
+not a one-command `update`. Do not run the `update` above against this
+account until that plan exists.
 
 ---
 
@@ -615,6 +656,10 @@ chat transcript.
 
 ### Observed results (2026-08-18)
 
+_Superseded — see [Account state (2026-09-15)](#account-state-2026-09-15)
+below. This run's purge really did succeed as described; the account has
+since been redeployed, updated, and gone down again._
+
 - Local: `claude -p` session `sess-87b4bfdd` completed, stdout `QA_SESSION_OK`.
   Grok with the old `-p` + `--` separator failed (`--single` required a
   value). Grok with `-p` and append-prompt separator **off**
@@ -634,6 +679,49 @@ chat transcript.
   Runtime, and Foundation. SSM `/auto-harness/production/*` gone. Seven
   leftover `/aws/lambda/AutoHarness-production*` log groups deleted by
   hand. KMS key is in AWS’s 7-day pending-deletion window.
+
+### Account state (2026-09-15)
+
+Verified against the live account (`010438466032`, `us-west-2`) — this
+supersedes the teardown line above, which was accurate only for that day.
+
+- `AutoHarness-production-Foundation`: **exists**, `UPDATE_ROLLBACK_COMPLETE`.
+  Created 2026-08-20 (two days after the purge above — the account was
+  redeployed shortly after that run), last updated 2026-09-08 (that update
+  **failed and rolled back**; see the GSI trap in
+  [Traps found on 2026-09-15](#traps-found-on-2026-09-15)).
+- `AutoHarness-production-Runtime` and `AutoHarness-production-Web`: both
+  `DELETE_COMPLETE`. **Production has been fully down since 2026-09-08**, but
+  the Foundation and its data survive.
+- 24 DynamoDB tables live, including `AutoHarness-production-Sessions` with
+  **356 items**.
+- S3 archive bucket
+  `autoharness-production-fo-sessionarchivebucket116e-oikdcsxwq0wq` still
+  exists.
+- SSM `/auto-harness/production/harness-admins`, `harness-cursor-secret`,
+  `harness-session-secret`, and `public-base-url` all still exist —
+  recreated after the purge above, which is why the "SSM ... gone" line in
+  that section is no longer true; it was accurate only until the next
+  deploy recreated them.
+- `CDKToolkit` is `CREATE_COMPLETE` — CDK stays bootstrapped in this
+  account/region regardless of application-stack state.
+
+`AutoHarness-production-Sessions` GSI state, against the 8 defined in
+`services/cdk/src/tables.ts`:
+
+| GSI                                   | Status  |
+| ------------------------------------- | ------- |
+| `repositoryId-createdAt`              | ACTIVE  |
+| `statusShard-queueOrder`              | ACTIVE  |
+| `statusShard-createdAt`               | ACTIVE  |
+| `statusShard-createdOrder`            | missing |
+| `statusShard-priorityOrder`           | missing |
+| `statusShard-repositoryPriorityOrder` | missing |
+| `parentSessionId-createdOrder`        | missing |
+| `activeHostId-activeHostOrder`        | missing |
+
+See [Traps found on 2026-09-15](#traps-found-on-2026-09-15) for why this
+happened and why it is not a one-command fix.
 
 ### Findings
 
@@ -729,6 +817,62 @@ chat transcript.
 - **Host pane against `WebUrl`:** `next dev` on `:7424` with
   `HARNESS_API_HTTP=<WebUrl>` loads a page that embeds API 401s. There
   is no login form. Operators do not need it.
+
+## Traps found on 2026-09-15
+
+- **DynamoDB allows only one GSI create or delete per table update; a
+  Sessions table that has fallen behind by more than one index fails the
+  whole Foundation update.** Exact error, from CloudFormation stack events
+  on the 2026-09-08 update:
+
+  ```
+  UPDATE_FAILED  Sessions8896A56D
+  Resource handler returned message: "Cannot perform more than one GSI creation or deletion in a single update"
+  (HandlerErrorCode: InvalidRequest)
+  ```
+
+  Every other table in the stack then reports `UPDATE_FAILED ... "Resource
+update cancelled"`, and the whole Foundation stack rolls back to
+  `UPDATE_ROLLBACK_COMPLETE` — the tables and their data survive, but the
+  update accomplishes nothing. This is what took `production` down (see
+  [Account state (2026-09-15)](#account-state-2026-09-15)).
+
+  Why: `services/cdk/src/tables.ts` currently defines 8 GSIs on Sessions,
+  and an existing, populated environment only has the ones it was deployed
+  or updated with at the time. The plain `pnpm --filter @auto-harness/cdk
+run update` (Phase 1) has no guard for this — `update()` in
+  `services/cdk/src/deployment.ts` only checks that the Foundation stack
+  exists, and `applyDeployment` always synthesizes the full current
+  template (`cdkContext`'s stage defaults in
+  `services/cdk/src/deployment-support.ts` are `"both"`/`"status"` — every
+  index). If more than one GSI the live table doesn't have yet shows up in
+  that template, this is the result.
+
+  The staged-rollout remedy that exists in the repo only covers three of
+  the eight indexes. `pnpm deploy:aws` (`scripts/deploy-aws.sh`) checks
+  `statusShard-priorityOrder`, `statusShard-repositoryPriorityOrder`, and
+  `statusShard-createdOrder` specifically, and adds them one at a time —
+  `priority-index-status`, then `priority-index-both`, then
+  `created-order-index` (`services/cdk/package.json`) — waiting up to 600s
+  (`wait_for_session_priority_index`: 300 polls × 2s) for each to report
+  `ACTIVE` before the next is added. `parentSessionId-createdOrder` and
+  `activeHostId-activeHostOrder` are not gated by either stage flag in
+  `foundation-stack.ts`'s `stagedTables()` (it only ever filters
+  `statusShard-repositoryPriorityOrder` and `statusShard-createdOrder`), so
+  both are present in every stage's template regardless. `deploy-aws.sh`
+  hard-fails up front, before touching anything, if an existing Sessions
+  table lacks an `ACTIVE` `activeHostId-activeHostOrder` index — precisely
+  because that one has no staged remedy: per
+  [deploy-aws.md's fresh-environment-cutover section](deploy-aws.md#fresh-environment-cutover-for-breaking-coordination-schemas),
+  it is a fresh-environment cutover, and this repository provides no
+  in-place backfill for it.
+
+- **`deploy` refuses while any `AutoHarness-production-*` stack exists,
+  `UPDATE_ROLLBACK_COMPLETE` included.** A cold-account reading of Phase 0 —
+  create bootstrap SSM parameters, then `deploy` — is wrong on this account
+  today: the Foundation survives, and the three bootstrap SSM parameters
+  already hold production's real values. See
+  [Account state (2026-09-15)](#account-state-2026-09-15).
 
 ## Known gaps
 
