@@ -21,7 +21,7 @@ describe("createGitClient main checkout", () => {
     await git.prepareMainCheckout({ cwd: "/repo", ref: "main" });
     expect(calls).toEqual([
       ["check-ref-format", "--branch", "main"],
-      ["status", "--porcelain"],
+      ["status", "--porcelain", "-z", "--untracked-files=all"],
       ["show-ref", "--verify", "--quiet", "refs/heads/main"],
       ["switch", "--", "main"],
       ["symbolic-ref", "--quiet", "--short", "HEAD"],
@@ -32,13 +32,13 @@ describe("createGitClient main checkout", () => {
     const dirty = createGitClient({
       async run(options) {
         if (options.argv[1] === "status") {
-          options.onChunk({ stream: "stdout", data: " M tracked.txt\n?? new.txt\n" });
+          options.onChunk({ stream: "stdout", data: " M tracked.txt\0?? new.txt\0" });
         }
         return { exitCode: 0, timedOut: false, signal: null };
       },
     });
     await expect(dirty.prepareMainCheckout({ cwd: "/repo", ref: "main" })).rejects.toThrow(
-      /uncommitted changes/,
+      /uncommitted changes \(M tracked\.txt, \?\? new\.txt\)/,
     );
     const invalid = createGitClient(
       scripted([{ match: ["check-ref-format", "--branch", "HEAD"], exitCode: 1 }]),

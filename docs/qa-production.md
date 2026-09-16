@@ -282,7 +282,12 @@ Do not read `web.md`. Follow nav labels.
    `git worktree` on disk the first time it starts (`git worktree add
 --detach`). **Do not pre-create the worktree directory** — a directory
    sitting at that path can collide with `git worktree add`. Only the
-   repository path must already exist as a valid git repo.
+   repository path must already exist as a valid git repo. Prefer a worktree
+   path **outside** the repository (a sibling directory, e.g.
+   `<repo>-worktrees/wt-1`) — the daemon disregards its own registered
+   worktree directories when it checks whether the main checkout (used by
+   **scheduled** sessions) is clean, but a sibling keeps daemon-managed
+   directories out of the repo's own working tree entirely.
 7. **Providers → Add provider** (the UI fills argv when the name matches a
    catalog preset — `claude`, `grok`, `codex`, `cursor` / `cursor-agent`):
    - name `claude`; default command name e.g. `claude-print`; argv one token
