@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
+
 import { ControlPlane } from "./control-plane.ts";
 import {
   BASE_COMMAND_ID,
@@ -58,6 +60,7 @@ describe("ControlPlane remaining branches", () => {
         hostId: "ax",
         worktrees: [{ id: "wt-x", name: "wt-x", repositoryId: "repo-1", path: "/x", labels: [] }],
         commandProfiles: ["echo-prompt"],
+        protocolVersion: HOST_PROTOCOL_VERSION,
       }).ok,
     ).toBe(true);
     expect(
@@ -66,6 +69,7 @@ describe("ControlPlane remaining branches", () => {
         hostId: "ax",
         worktrees: [{ id: "wt-x", name: "wt-x", repositoryId: "repo-1", path: "/x", labels: [] }],
         commandProfiles: ["echo-prompt"],
+        protocolVersion: HOST_PROTOCOL_VERSION,
       }).ok,
     ).toBe(false);
     expect(plane.heartbeat("ax")).toBe(true);

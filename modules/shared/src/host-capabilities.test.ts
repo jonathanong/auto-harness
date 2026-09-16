@@ -24,12 +24,9 @@ describe("host capabilities", () => {
     ).toEqual(["scheduled-main-checkout"]);
   });
 
-  it("parses legacy arrays and nested assignment capacity", () => {
+  it("parses nested assignment capacity and rejects a feature array", () => {
     expect(parseHostCapabilitiesAdvertisement(undefined)).toEqual({ features: [] });
-    expect(parseHostCapabilitiesAdvertisement(["scheduled-main-checkout"])).toEqual({
-      features: ["scheduled-main-checkout"],
-      maxConcurrentAssignments: 64,
-    });
+    expect(parseHostCapabilitiesAdvertisement(["scheduled-main-checkout"])).toBeNull();
     expect(
       parseHostCapabilitiesAdvertisement({
         features: ["scheduled-main-checkout"],

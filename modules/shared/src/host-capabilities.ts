@@ -14,8 +14,8 @@ export const HOST_CAPABILITIES = [
 export type HostCapability = (typeof HOST_CAPABILITIES)[number];
 
 /**
- * Capability arrays are deliberately additive: an omitted field from an older
- * daemon means it supports no optional features.
+ * Capability arrays are additive: an omitted advertisement means the daemon
+ * supports no optional features.
  */
 export type HostCapabilities = HostCapability[];
 
@@ -53,27 +53,14 @@ export function isPositiveAssignmentCap(value: unknown): value is number {
 }
 
 /**
- * Accept a legacy feature array or a `{ features, maxConcurrentAssignments }`
- * object. Unknown keys and invalid caps fail closed.
+ * Accept `{ features, maxConcurrentAssignments }`. Unknown keys and invalid
+ * caps fail closed. A missing advertisement means no optional features.
  */
 export function parseHostCapabilitiesAdvertisement(
   value: unknown,
 ): HostCapabilitiesAdvertisement | null {
   if (value === undefined) return { features: [] };
-  if (Array.isArray(value)) {
-    if (
-      value.length > HOST_CAPABILITIES.length ||
-      !value.every(isHostCapability) ||
-      new Set(value).size !== value.length
-    ) {
-      return null;
-    }
-    return {
-      features: normalizeHostCapabilities(value),
-      maxConcurrentAssignments: DEFAULT_MAX_CONCURRENT_ASSIGNMENTS,
-    };
-  }
-  if (!value || typeof value !== "object") return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const advertised = value as Record<string, unknown>;
   const keys = Object.keys(advertised);
   if (keys.some((key) => key !== "features" && key !== "maxConcurrentAssignments")) return null;

@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- protocolVersion/runningAttempts invalid cases. */
 import { describe, expect, it } from "vitest";
 
-import { MAX_SESSION_LOG_DROPPED } from "@auto-harness/shared";
+import { HOST_PROTOCOL_VERSION, MAX_SESSION_LOG_DROPPED } from "@auto-harness/shared";
 
 import { parseHostMessage } from "./ws-hub.ts";
 
@@ -17,6 +17,11 @@ const registration = {
   type: "host:register",
   hostId: "host-1",
   worktrees: [worktree],
+  protocolVersion: HOST_PROTOCOL_VERSION,
+  daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+  daemonStartedAt: "2026-08-11T00:00:00.000Z",
+  runningAttempts: [],
+  runtime: { daemonVersion: "0.0.0", gitVersion: "2.36.0", gitReady: true },
 };
 
 describe("parseHostMessage exhaustive wire validation", () => {
@@ -47,16 +52,14 @@ describe("parseHostMessage exhaustive wire validation", () => {
     expect(
       parseHostMessage({
         ...registration,
-        capabilities: ["scheduled-main-checkout"],
-        maxConcurrentAssignments: 3,
+        capabilities: { features: ["scheduled-main-checkout"] },
         runningSessions: ["session-1"],
         runningAttempts: [{ sessionId: "session-1", attemptId: "attempt-1" }],
-        protocolVersion: 1,
-        daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
-        daemonStartedAt: "2026-08-11T00:00:00.000Z",
-        runtime: { daemonVersion: "0.0.0", gitVersion: "2.36.0", gitReady: true },
       }),
-    ).toMatchObject({ type: "host:register" });
+    ).toMatchObject({
+      type: "host:register",
+      capabilities: { features: ["scheduled-main-checkout"], maxConcurrentAssignments: 64 },
+    });
     expect(
       parseHostMessage({
         type: "session:ack",
@@ -85,11 +88,8 @@ describe("parseHostMessage exhaustive wire validation", () => {
       ...status,
       result: { summary: "done", summarySource: "agent", filesChanged: ["README.md"] },
     };
-    expect(parseHostMessage(resultStatus, { protocolVersion: 2 })).toBeNull();
-    expect(parseHostMessage(resultStatus, { protocolVersion: 3 })).toEqual(resultStatus);
-    expect(
-      parseHostMessage({ ...resultStatus, status: "running" }, { protocolVersion: 3 }),
-    ).toBeNull();
+    expect(parseHostMessage(resultStatus)).toEqual(resultStatus);
+    expect(parseHostMessage({ ...resultStatus, status: "running" })).toBeNull();
     expect(parseHostMessage({ ...status, exitCode: undefined })).toMatchObject({
       ...status,
       exitCode: undefined,
@@ -104,8 +104,6 @@ describe("parseHostMessage exhaustive wire validation", () => {
     const legacyLog = { ...log, attemptId: undefined };
     delete (legacyLog as { attemptId?: string }).attemptId;
     expect(parseHostMessage(legacyLog)).toBe(null);
-    expect(parseHostMessage(legacyLog, { protocolVersion: 0 })).toEqual(legacyLog);
-    expect(parseHostMessage(legacyLog, { protocolVersion: 1 })).toBe(null);
     expect(
       parseHostMessage({
         type: "host:keepalive",
@@ -155,6 +153,7 @@ describe("parseHostMessage exhaustive wire validation", () => {
       { ...registration, capabilities: Array(20).fill("scheduled-main-checkout") },
       { ...registration, capabilities: ["unknown"] },
       { ...registration, capabilities: ["scheduled-main-checkout", "scheduled-main-checkout"] },
+      { ...registration, maxConcurrentAssignments: 4 },
       { ...registration, maxConcurrentAssignments: 0 },
       { ...registration, providerAccountReadiness: [{ providerAccountId: "acct" }] },
       { ...registration, runningSessions: "session-1" },
@@ -173,11 +172,14 @@ describe("parseHostMessage exhaustive wire validation", () => {
           { sessionId: "s", attemptId: "b" },
         ],
       },
+      { ...registration, protocolVersion: undefined },
       { ...registration, protocolVersion: -1 },
       { ...registration, protocolVersion: 1.5 },
       { ...registration, protocolVersion: 1_025 },
-      { ...registration, daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000" },
-      { ...registration, daemonStartedAt: "2026-08-11T00:00:00.000Z" },
+      { ...registration, daemonInstanceId: undefined },
+      { ...registration, daemonStartedAt: undefined },
+      { ...registration, runningAttempts: undefined },
+      { ...registration, runtime: undefined },
       {
         ...registration,
         daemonInstanceId: "not-a-uuid",
@@ -294,8 +296,21 @@ describe("parseHostMessage exhaustive wire validation", () => {
         at: "2026-08-11T00:00:00.000Z",
         runningSessions: [null],
       },
+      {
+        type: "session:terminal-hook-complete",
+        sessionId: "session-1",
+        handoffId: "handoff-1",
+        result: { status: "not-a-real-status" },
+      },
       { type: "not-supported" },
     ];
     for (const candidate of invalid) expect(parseHostMessage(candidate)).toBe(null);
+    expect(
+      parseHostMessage({
+        type: "session:terminal-hook-complete",
+        sessionId: "session-1",
+        handoffId: "handoff-1",
+      }),
+    ).toMatchObject({ type: "session:terminal-hook-complete" });
   });
 });

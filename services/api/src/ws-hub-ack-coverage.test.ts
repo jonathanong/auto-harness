@@ -64,6 +64,24 @@ describe("WebSocket durable ACK replies", () => {
     }
   });
 
+  it("omits handoff fields from session:status-acknowledged when there is no handoff", async () => {
+    const run = await startHarness(new RetryOnlyStatusPlane());
+    try {
+      const socket = await registered(run.origin);
+      socket.send(JSON.stringify(status()));
+      await expect(waitForMessage(socket)).resolves.toEqual({
+        type: "session:status-acknowledged",
+        sessionId: "ack-session",
+        attemptId: "attempt-1",
+        retryAccepted: true,
+      });
+      socket.close();
+      await waitForClose(socket);
+    } finally {
+      await run.close();
+    }
+  });
+
   it("replies after command-start authorization and terminal-hook settlement", async () => {
     const run = await startHarness(new ProtocolAckPlane());
     try {
@@ -265,6 +283,28 @@ class StatusPlane extends ControlPlane {
           retryAccepted: false,
           terminalHookHandoffId: "handoff",
           terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
+        },
+      };
+    }
+    return super.handleHostMessageDurable(message);
+  }
+}
+
+class RetryOnlyStatusPlane extends ControlPlane {
+  override getSession(id: string): ReturnType<ControlPlane["getSession"]> {
+    return id === "ack-session"
+      ? ({ hostId: "ack-host" } as ReturnType<ControlPlane["getSession"]>)
+      : null;
+  }
+
+  override async handleHostMessageDurable(message: HostToServerMessage) {
+    if (message.type === "session:status") {
+      return {
+        ok: true,
+        sessionStatusAcknowledged: {
+          sessionId: message.sessionId,
+          attemptId: message.attemptId!,
+          retryAccepted: true,
         },
       };
     }
@@ -499,8 +539,13 @@ function registrationMessage() {
   return {
     type: "host:register",
     hostId: "ack-host",
+    protocolVersion: 7,
+    daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+    daemonStartedAt: "2026-08-11T00:00:00.000Z",
+    runningAttempts: [],
     worktrees: [],
     commandProfiles: [],
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
   };
 }
 

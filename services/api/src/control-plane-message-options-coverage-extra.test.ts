@@ -14,6 +14,13 @@ import type { LogRecord } from "./control-plane-types.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
+const registrationFields = {
+  protocolVersion: 7,
+  runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+  daemonInstanceId: "instance",
+  daemonStartedAt: NOW,
+  runningAttempts: [],
+} as const;
 
 function session(over: Partial<SessionRecord> = {}): SessionRecord {
   return {
@@ -63,12 +70,12 @@ describe("host message optional-field coverage", () => {
     await expect(
       handleHostMessageDurable(current, {
         type: "host:register",
+        ...registrationFields,
         hostId: "host",
         worktrees: [],
         commandProfiles: [],
         repositories: [],
-        capabilities: { features: [] },
-        maxConcurrentAssignments: 1,
+        capabilities: { features: [], maxConcurrentAssignments: 1 },
         runningSessions: [],
       }),
     ).resolves.toMatchObject({ ok: true, connectionId: "connection" });
@@ -331,6 +338,7 @@ describe("host message optional-field coverage", () => {
     expect(
       handleHostMessage(current, {
         type: "host:register",
+        ...registrationFields,
         hostId: "host",
         worktrees: [],
         commandProfiles: [],
@@ -343,6 +351,7 @@ describe("host message optional-field coverage", () => {
     await expect(
       handleHostMessageDurable(current, {
         type: "host:register",
+        ...registrationFields,
         hostId: "durable-host",
         worktrees: [],
         commandProfiles: [],
@@ -351,14 +360,15 @@ describe("host message optional-field coverage", () => {
     ).resolves.toMatchObject({ ok: true });
   });
 
-  it("accepts array capability advertisements and acks a session with no host", () => {
+  it("accepts object capability advertisements and acks a session with no host", () => {
     const current = createControlPlaneState({ connectionIdFactory: () => "connection" });
     expect(
       handleHostMessage(current, {
         type: "host:register",
+        ...registrationFields,
         hostId: "host",
         worktrees: [],
-        capabilities: ["scheduled-main-checkout"],
+        capabilities: { features: ["scheduled-main-checkout"], maxConcurrentAssignments: 1 },
       }),
     ).toEqual({ ok: true });
     expect(current.connections.get("connection")?.capabilities).toEqual([
@@ -410,6 +420,7 @@ describe("host message optional-field coverage", () => {
     expect(
       handleHostMessage(current, {
         type: "host:register",
+        ...registrationFields,
         hostId: "host",
         worktrees: [{ id: "w", name: "w", repositoryId: "repo", path: "/repo/w", labels: [] }],
       }),
@@ -446,6 +457,7 @@ describe("host message optional-field coverage", () => {
     expect(
       handleHostMessage(current, {
         type: "host:register",
+        ...registrationFields,
         hostId: "host",
         worktrees: [{ id: "w", name: "w", repositoryId: "repo", path: "/repo/w", labels: [] }],
       }),

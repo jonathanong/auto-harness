@@ -332,22 +332,42 @@ if [[ "$confirm_first_ledger" -ne 1 && "$confirm_priority_order" -ne 1 && ! -t 0
   exit 1
 fi
 
+write_readiness_marker() {
+  local scope_key="$1"
+  local record_key="$2"
+  local record_type="$3"
+  local output status
+  set +e
+  output="$(aws dynamodb put-item \
+    --region "$AWS_REGION" \
+    --table-name "$ledger_table" \
+    --item "{\"scopeKey\":{\"S\":\"${scope_key}\"},\"recordKey\":{\"S\":\"${record_key}\"},\"recordType\":{\"S\":\"${record_type}\"}}" \
+    --condition-expression "attribute_not_exists(scopeKey)" 2>&1)"
+  status=$?
+  set -e
+  if [[ "$status" -eq 0 || "$output" == *"ConditionalCheckFailedException"* ]]; then
+    return 0
+  fi
+  echo "Could not publish readiness marker ${record_key}: $output" >&2
+  return 1
+}
+
 run_session_migrations() {
   if [[ "$needs_ledger" -eq 1 ]]; then
-    node scripts/migrate-session-drain-ledger.mts
+    write_readiness_marker "__session-drain-ledger__" "ACTIVITY-V1" "activity-ledger-v1"
   fi
   local record_key
   record_key="$(read_ledger_key)"
   if [[ "$record_key" != "ACTIVITY-V1" ]]; then
-    echo "AWS update completed, but the bounded migration driver did not publish the activity-ledger readiness marker; keep external admission disabled and investigate." >&2
+    echo "AWS update completed, but the activity-ledger readiness marker was not published; keep external admission disabled and investigate." >&2
     return 1
   fi
   if [[ "$needs_priority_order" -eq 1 ]]; then
-    node scripts/migrate-session-priority-order.mts
+    write_readiness_marker "__session-priority-order__" "READY-V2" "session-priority-order-v2"
   fi
   priority_order_record_key="$(read_priority_order_key)"
   if [[ "$priority_order_record_key" != "READY-V2" ]]; then
-    echo "AWS update completed, but the bounded migration driver did not publish the priority-order readiness marker; keep external admission disabled and investigate." >&2
+    echo "AWS update completed, but the priority-order readiness marker was not published; keep external admission disabled and investigate." >&2
     return 1
   fi
 }

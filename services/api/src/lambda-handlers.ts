@@ -538,8 +538,6 @@ export async function createLambdaRuntime(
       const context =
         lambdaContext ?? (isLambdaCronContext(eventOrContext) ? eventOrContext : undefined);
       return runInvocation(async () => {
-        // Bounded and resumable: never make Lambda initialization scan history.
-        await created.plane.migrateSessionDrainActivityLedgerPage();
         await created.plane.migrateArchiveRetryIndexPage();
         const schedulesFired = await created.plane.evaluateCronDurable();
         const ackDeadlinesEnforced = await created.plane.enforceAckDeadlinesDurable();
@@ -651,9 +649,7 @@ export async function createLambdaRuntime(
           discardMessage("not a host connection");
           return { statusCode: 403 };
         }
-        const message = parseHostMessage(event.body ?? "", {
-          protocolVersion: durableConnectionProtocolVersion(authenticated),
-        });
+        const message = parseHostMessage(event.body ?? "");
         // A parse failure or a hostId that doesn't match this connection's own
         // authenticated lease means the *sender* is misbehaving (or misconfigured
         // with the wrong HARNESS_HOST_ID for its API key) — not that the lease

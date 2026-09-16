@@ -34,6 +34,12 @@ function finish(
 
 type CommandInput = Parameters<ControlPlane["createCommand"]>[0];
 
+function createPlane(options?: ConstructorParameters<typeof ControlPlane>[0]): ControlPlane {
+  const plane = new ControlPlane(options);
+  plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
+  return plane;
+}
+
 /** Create the given Commands, register a single-worktree host, then create, assign, and
  * finish a session against `target`/`fallbacks` (optionally capturing a `cliResumeRef`).
  * Shared by the native-continuation-preference and deleted-Command-replay tests below,
@@ -45,7 +51,7 @@ function startTerminalSession(
   cliResumeRef?: string,
 ): { plane: ControlPlane; messages: unknown[]; sourceId: string } {
   const messages: unknown[] = [];
-  const plane = new ControlPlane({ shardCount: 1 });
+  const plane = createPlane({ shardCount: 1 });
   plane.setOnHostMessage((_host, message) => messages.push(message));
   for (const command of commands) plane.createCommand(command);
   plane.registerHost({
@@ -71,7 +77,7 @@ function startTerminalSession(
 describe("control-plane native resume", () => {
   it("snapshots the command resume spec and materializes native argv", () => {
     const messages: unknown[] = [];
-    const plane = new ControlPlane({
+    const plane = createPlane({
       shardCount: 1,
       idFactory: (() => {
         let n = 0;
@@ -146,7 +152,7 @@ describe("control-plane native resume", () => {
 
   it("upgrades structured output in provider-bound native resume templates, including frozen legacy snapshots", () => {
     const messages: unknown[] = [];
-    const plane = new ControlPlane({
+    const plane = createPlane({
       shardCount: 1,
       idFactory: (() => {
         let n = 0;
@@ -201,8 +207,6 @@ describe("control-plane native resume", () => {
     plane.assignQueued();
     expect(plane.state.sessions.get(source.session.id)?.resumeSpec?.resumeArgvTemplate).toEqual([
       "claude",
-      "--output-format",
-      "json",
       "-p",
       "--resume",
       "{cliResumeRef}",
@@ -227,8 +231,6 @@ describe("control-plane native resume", () => {
       type: "session:assign",
       resolvedArgv: [
         "claude",
-        "--output-format",
-        "json",
         "-p",
         "--resume",
         "cli-1",
@@ -239,7 +241,7 @@ describe("control-plane native resume", () => {
   });
 
   it("carries the authenticated principal across resumed sessions", () => {
-    const plane = new ControlPlane({
+    const plane = createPlane({
       idFactory: (() => {
         let id = 0;
         return () => `s${++id}`;
@@ -277,7 +279,7 @@ describe("control-plane native resume", () => {
   });
 
   it("recovers the principal from legacy creator metadata", () => {
-    const plane = new ControlPlane({
+    const plane = createPlane({
       idFactory: (() => {
         let id = 0;
         return () => `s${++id}`;
@@ -304,7 +306,7 @@ describe("control-plane native resume", () => {
 
   it("inserts -- before a leading-dash resume prompt in the argv template only when appendPromptSeparator opts in", () => {
     const messages: unknown[] = [];
-    const plane = new ControlPlane({ shardCount: 1 });
+    const plane = createPlane({ shardCount: 1 });
     plane.setOnHostMessage((_host, message) => messages.push(message));
     plane.createCommand({
       id: "cmd",
@@ -390,7 +392,7 @@ describe("control-plane native resume", () => {
   });
 
   it("rejects non-terminal sources and native resumes without a captured reference", () => {
-    const plane = new ControlPlane({ shardCount: 1 });
+    const plane = createPlane({ shardCount: 1 });
     plane.createCommand({
       id: "cmd",
       name: "tool",
@@ -420,7 +422,7 @@ describe("control-plane native resume", () => {
   });
 
   it("retains host affinity and a captured reference from a late cancelled status", () => {
-    const plane = new ControlPlane({ shardCount: 1 });
+    const plane = createPlane({ shardCount: 1 });
     plane.createCommand({
       id: "cmd",
       name: "tool",
@@ -452,10 +454,10 @@ describe("control-plane native resume", () => {
   });
 
   it("rejects missing, non-terminal, scheduled, and invalid override sources", () => {
-    const missing = new ControlPlane({ shardCount: 1 });
+    const missing = createPlane({ shardCount: 1 });
     expect(missing.resumeSession("missing")).toEqual({ ok: false, error: "session not found" });
 
-    const nonTerminal = new ControlPlane({ shardCount: 1 });
+    const nonTerminal = createPlane({ shardCount: 1 });
     nonTerminal.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
     const queued = nonTerminal.createSession({
       repositoryId: "repo",
@@ -471,7 +473,7 @@ describe("control-plane native resume", () => {
       });
     }
 
-    const scheduled = new ControlPlane({
+    const scheduled = createPlane({
       shardCount: 1,
       now: () => "2026-01-01T00:00:00.000Z",
     });
@@ -495,7 +497,7 @@ describe("control-plane native resume", () => {
       error: "scheduled sessions do not support worktree resume",
     });
 
-    const noAgent = new ControlPlane({ shardCount: 1 });
+    const noAgent = createPlane({ shardCount: 1 });
     noAgent.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
     const unpinned = noAgent.createSession({
       repositoryId: "repo",
@@ -512,7 +514,7 @@ describe("control-plane native resume", () => {
       });
     }
 
-    const paused = new ControlPlane({ shardCount: 1 });
+    const paused = createPlane({ shardCount: 1 });
     paused.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
     const pausedSource = paused.createSession({
       repositoryId: "repo",
@@ -539,7 +541,7 @@ describe("control-plane native resume", () => {
       });
     }
 
-    const overrides = new ControlPlane({ shardCount: 1 });
+    const overrides = createPlane({ shardCount: 1 });
     overrides.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
     overrides.registerHost({
       hostId: "host",
@@ -634,7 +636,7 @@ describe("control-plane native resume", () => {
   });
 
   it("returns an already-active session sharing the source's concurrencyId instead of resuming (in-memory path)", () => {
-    const plane = new ControlPlane({ shardCount: 1 });
+    const plane = createPlane({ shardCount: 1 });
     plane.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
     plane.registerHost({
       hostId: "host",
@@ -668,7 +670,7 @@ describe("control-plane native resume", () => {
 
   it("uses the frozen argv without appending a prompt when resuming a command", () => {
     const messages: unknown[] = [];
-    const plane = new ControlPlane({ shardCount: 1 });
+    const plane = createPlane({ shardCount: 1 });
     plane.setOnHostMessage((_host, message) => messages.push(message));
     plane.createCommand({ id: "cmd", name: "tool", argv: ["tool", "run"], appendPrompt: false });
     plane.registerHost({
@@ -697,7 +699,7 @@ describe("control-plane native resume", () => {
   });
 
   it("skips an assignment when its referenced command has been removed", () => {
-    const plane = new ControlPlane({ shardCount: 1 });
+    const plane = createPlane({ shardCount: 1 });
     plane.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
     plane.registerHost({
       hostId: "host",

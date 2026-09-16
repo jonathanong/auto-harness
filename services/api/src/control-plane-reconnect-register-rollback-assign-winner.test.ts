@@ -1,3 +1,4 @@
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -21,7 +22,7 @@ describe("storage-less register rollback assignment with a newer owner", () => {
         lastHeartbeatAt: ROLLBACK_NOW,
         repositoryIds: ["r"],
         capabilities: [],
-        negotiatedProtocolVersion: 1,
+        negotiatedProtocolVersion: HOST_PROTOCOL_VERSION,
       });
       plane.state.hostConnection.set("h", "winner");
       const inventory = plane.state.hostInventories.get("h");

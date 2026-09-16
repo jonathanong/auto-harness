@@ -102,20 +102,7 @@ function parseWorktree(rawWorktree: unknown, index: number, repositoryId: string
   };
 }
 
-type ParseHostInventoryOptions = {
-  /**
-   * Existing documents written before terminal hooks were restricted can be
-   * read-modify-written unchanged. Reconciliation verifies that a relative
-   * value really is unchanged before it reaches durable storage.
-   */
-  allowLegacyRelativeTerminalHooks?: boolean;
-};
-
-function parseRepository(
-  rawRepository: unknown,
-  index: number,
-  options: ParseHostInventoryOptions,
-): HostRepository {
+function parseRepository(rawRepository: unknown, index: number): HostRepository {
   if (!isRecord(rawRepository)) {
     throw new TypeError(`repositories[${index}] must be an object`);
   }
@@ -132,7 +119,6 @@ function parseRepository(
   const terminalHookScript = parseTerminalHookScript(
     optionalString(rawRepository, "terminalHookScript", `repository.${id}`),
     id,
-    { allowLegacyRelative: options.allowLegacyRelativeTerminalHooks === true },
   );
   const requiredEnvironment = parseRequiredEnvironment(
     rawRepository.requiredEnvironment,
@@ -264,10 +250,7 @@ function hostRegistrationByteLength(inventory: HostInventory): number {
 }
 
 /** Strictly parse the operator-editable host inventory document. */
-export function parseHostInventory(
-  value: unknown,
-  options: ParseHostInventoryOptions = {},
-): HostInventory {
+export function parseHostInventory(value: unknown): HostInventory {
   if (!isRecord(value)) {
     throw new TypeError("body must be an object");
   }
@@ -281,7 +264,7 @@ export function parseHostInventory(
     throw new TypeError("repositories must be an array");
   }
   const repositories = value.repositories.map((repository, index) =>
-    parseRepository(repository, index, options),
+    parseRepository(repository, index),
   );
   for (const repository of repositories) {
     assertHostRepositoryRequiredEnvironmentLimit(

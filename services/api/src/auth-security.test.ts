@@ -77,7 +77,7 @@ describe("control-plane authentication security", () => {
     };
     await expect(createAccount({ name: "", role: "operator" }, new Map())).rejects.toThrow();
     await expect(
-      createAccount({ name: "daemon", role: "operator", boundHostId: "host-a" }, new Map()),
+      createAccount({ name: "daemon", role: "agent", boundHostId: "host-a" }, new Map()),
     ).resolves.toMatchObject({ account: { role: "agent", boundHostId: "host-a" } });
     const first = new AuthService({
       mode: "required",

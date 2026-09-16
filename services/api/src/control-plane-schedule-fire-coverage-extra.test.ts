@@ -19,6 +19,7 @@ function schedule(over: Partial<ScheduleRecord> = {}): ScheduleRecord {
   return {
     id: "nightly",
     repositoryId: "repo",
+    principalId: "principal",
     name: "nightly",
     target: { commandId: "cmd" },
     fallbacks: [],
@@ -66,7 +67,7 @@ describe("schedule fire residual coverage", () => {
     expect(current.schedules.get("nightly")?.nextRunAt).not.toBe(NOW);
   });
 
-  it("creates an ownerless local workspace schedule run without serializing absent optional fields", () => {
+  it("creates a local workspace schedule run without serializing absent optional fields", () => {
     const current = state(
       schedule({ workspacePoolId: "pool", repositoryId: "", destroyWorkspaceAfter: undefined }),
     );
@@ -175,13 +176,6 @@ describe("schedule fire residual coverage", () => {
     ).resolves.toEqual({
       ok: false,
       error: "schedule is disabled",
-    });
-  });
-
-  it("rejects an ownerless legacy schedule before a durable manual trigger", async () => {
-    await expect(triggerScheduleDurable(state(schedule()), "nightly")).resolves.toEqual({
-      ok: false,
-      error: "schedule must be claimed by an authenticated principal",
     });
   });
 
@@ -375,66 +369,6 @@ describe("schedule fire residual coverage", () => {
     ).resolves.toBeNull();
     expect(cutoffSkips).toBe(1);
     expect(current.schedules.get("nightly")?.nextRunAt).toBe("2026-01-01T00:04:00.000Z");
-  });
-
-  it("consumes and audits an ownerless legacy cron occurrence", async () => {
-    let claims = 0;
-    let skipped = 0;
-    const current = state(schedule(), {
-      tryClaimScheduleAndCreateSession: async () => {
-        claims += 1;
-        return { kind: "created" };
-      },
-      skipOwnerlessScheduleAndAudit: async () => {
-        skipped += 1;
-        return true;
-      },
-    });
-
-    await expect(evaluateCronDurable(current, NOW)).resolves.toEqual([]);
-    expect(claims).toBe(0);
-    expect(skipped).toBe(1);
-    expect(current.schedules.get("nightly")).toMatchObject({
-      nextRunAt: "2026-01-01T00:01:00.000Z",
-      lastRunAt: NOW,
-    });
-    expect([...current.auditLogs.values()]).toContainEqual(
-      expect.objectContaining({
-        action: "schedule:ownerless-occurrence-skipped",
-        resourceType: "schedule",
-        resourceId: "nightly",
-        outcome: "failed",
-      }),
-    );
-  });
-
-  it("leaves a due ownerless occurrence for a concurrent ownership claim", async () => {
-    const current = state(schedule(), {
-      skipOwnerlessScheduleAndAudit: async () => {
-        current.schedules.get("nightly")!.principalId = "new-owner";
-        return false;
-      },
-    });
-
-    await expect(tryClaimScheduleFireDurable(current, "nightly", NOW, NOW)).resolves.toBeNull();
-    expect(current.schedules.get("nightly")).toMatchObject({
-      principalId: "new-owner",
-      nextRunAt: NOW,
-      lastRunAt: null,
-    });
-    expect(current.auditLogs).toHaveLength(0);
-  });
-
-  it("continues evaluating later schedules when an atomic skip cannot be persisted", async () => {
-    const current = state(schedule(), {
-      skipOwnerlessScheduleAndAudit: async () => {
-        throw new Error("audit unavailable");
-      },
-    });
-    current.schedules.set("owned", schedule({ id: "owned", principalId: "principal" }));
-
-    await expect(evaluateCronDurable(current, NOW)).resolves.toMatchObject([{ id: "run" }]);
-    expect(current.schedules.get("nightly")).toMatchObject({ nextRunAt: NOW, lastRunAt: null });
   });
 
   it("explicitly disables and audits legacy fallback-heavy cron schedules", async () => {

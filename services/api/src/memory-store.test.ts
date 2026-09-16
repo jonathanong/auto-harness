@@ -10,6 +10,11 @@ describe("MemorySessionStore", () => {
       now: () => "2026-01-01T00:00:00.000Z",
       idFactory: () => "sess-fixed",
     });
+    store.plane.createRepository({
+      id: "repo-1",
+      name: "repo-1",
+      url: "https://example.test/repo-1.git",
+    });
     store.plane.createCommand({
       id: "cmd-codex",
       name: "codex-fix",
@@ -43,6 +48,7 @@ describe("MemorySessionStore", () => {
 
   it("uses default id and clock factories", () => {
     const store = new MemorySessionStore();
+    store.plane.createRepository({ id: "r", name: "r", url: "https://example.test/r.git" });
     store.plane.createCommand({ id: "cmd-c", name: "c", argv: ["echo"], providerId: null });
     const created = store.create({
       repositoryId: "r",
@@ -62,6 +68,7 @@ describe("MemorySessionStore", () => {
       idFactory: () => "sess-inj",
       now: () => "2026-01-01T00:00:00.000Z",
     });
+    plane.createRepository({ id: "r", name: "r", url: "https://example.test/r.git" });
     plane.createCommand({ id: "cmd-c", name: "c", argv: ["echo"], providerId: null });
     const store = new MemorySessionStore({ plane });
     const created = store.create({

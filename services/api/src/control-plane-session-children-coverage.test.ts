@@ -55,6 +55,11 @@ function planeWithStorage(storage: Record<string, unknown>, source = parent()): 
         id: "repo",
         name: "repo",
         url: "https://example.test/repo.git",
+        defaultBranch: "main",
+        admissionState: "active" as const,
+        admissionStateChangedAt: "2026-01-01T00:00:00.000Z",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
       }),
       listCommands: async () => [
         { id: "command", name: "command", argv: ["echo"], providerId: null },

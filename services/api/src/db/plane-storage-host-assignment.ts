@@ -49,56 +49,6 @@ export function hostAssignmentReleaseItem(ctx: PlaneStorageCtx, lease: HostAssig
   };
 }
 
-/**
- * Reconcile capacity for a legacy providerless assignment that has no
- * persisted lease. This is deliberately separate from terminal writes: a
- * missing/zero legacy counter must not abort the session transition.
- */
-export async function releaseLegacyHostAssignment(
-  ctx: PlaneStorageCtx,
-  opts: { sessionId: string; attemptId: string; hostId: string; connectionId: string },
-): Promise<boolean> {
-  try {
-    await ctx.doc.send(
-      new TransactWriteCommand({
-        TransactItems: [
-          {
-            Update: {
-              TableName: ctx.tables.sessions,
-              Key: { id: opts.sessionId },
-              UpdateExpression: "SET legacyHostAssignmentReleased = :true",
-              ConditionExpression:
-                "(attemptId = :attemptId OR (attribute_not_exists(attemptId) AND resolvedRoute.attemptId = :attemptId)) AND #status <> :running AND attribute_not_exists(legacyHostAssignmentReleased)",
-              ExpressionAttributeNames: { "#status": "status" },
-              ExpressionAttributeValues: {
-                ":attemptId": opts.attemptId,
-                ":running": "running",
-                ":true": true,
-              },
-            },
-          },
-          {
-            Update: {
-              TableName: ctx.tables.hostLocks,
-              Key: { hostId: opts.hostId },
-              UpdateExpression: "SET assignmentCount = assignmentCount - :one",
-              ConditionExpression: "connectionId = :connectionId AND assignmentCount >= :one",
-              ExpressionAttributeValues: {
-                ":connectionId": opts.connectionId,
-                ":one": 1,
-              },
-            },
-          },
-        ],
-      }),
-    );
-    return true;
-  } catch (error) {
-    if (isConditionalFailed(error) || isConditionalTransactionFailed(error)) return false;
-    throw error;
-  }
-}
-
 /** Release a timeout-preserved host slot when no provider-account lease exists. */
 export async function releaseTimedOutHostAssignment(
   ctx: PlaneStorageCtx,

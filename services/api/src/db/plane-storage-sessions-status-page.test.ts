@@ -4,7 +4,7 @@ import { listSessionsByStatusPage } from "./plane-storage-sessions-status-page.t
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 describe("bounded session status pages", () => {
-  it("limits the event-driven queued page without paginating either index", async () => {
+  it("limits the event-driven queued page from the queue-order index", async () => {
     const send = vi.fn().mockResolvedValue({
       Items: [
         {
@@ -23,7 +23,7 @@ describe("bounded session status pages", () => {
     } as unknown as PlaneStorageCtx;
 
     await expect(listSessionsByStatusPage(ctx, "queued", 0, 3)).resolves.toHaveLength(1);
-    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenCalledTimes(1);
     for (const [command] of send.mock.calls) {
       expect(command.input.Limit).toBe(3);
       expect(command.input.ExclusiveStartKey).toBeUndefined();
@@ -39,17 +39,17 @@ describe("bounded session status pages", () => {
     await expect(listSessionsByStatusPage(ctx, "running", 0, 1)).resolves.toEqual([]);
   });
 
-  it("falls back from an unavailable queue index and propagates other query failures", async () => {
+  it("propagates queued-page query failures", async () => {
     const unavailable = Object.assign(new Error("index is backfilling"), {
       name: "ValidationException",
     });
-    const fallback = {
-      doc: {
-        send: vi.fn().mockRejectedValueOnce(unavailable).mockResolvedValueOnce({ Items: [] }),
-      },
+    const unavailableIndex = {
+      doc: { send: vi.fn().mockRejectedValue(unavailable) },
       tables: { sessions: "Sessions" },
     } as unknown as PlaneStorageCtx;
-    await expect(listSessionsByStatusPage(fallback, "queued", 0, 1)).resolves.toEqual([]);
+    await expect(listSessionsByStatusPage(unavailableIndex, "queued", 0, 1)).rejects.toBe(
+      unavailable,
+    );
 
     const failure = new Error("network failure");
     const failing = {
@@ -57,16 +57,5 @@ describe("bounded session status pages", () => {
       tables: { sessions: "Sessions" },
     } as unknown as PlaneStorageCtx;
     await expect(listSessionsByStatusPage(failing, "queued", 0, 1)).rejects.toBe(failure);
-  });
-
-  it("skips queued index rows whose id is not a string", async () => {
-    const send = vi.fn().mockResolvedValue({
-      Items: [{ id: 1, status: "queued", createdAt: "t0", priority: 0 }, { status: "queued" }],
-    });
-    const ctx = {
-      doc: { send },
-      tables: { sessions: "Sessions" },
-    } as unknown as PlaneStorageCtx;
-    await expect(listSessionsByStatusPage(ctx, "queued", 0, 2)).resolves.toEqual([]);
   });
 });

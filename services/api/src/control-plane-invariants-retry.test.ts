@@ -136,6 +136,7 @@ describe("ControlPlane retry and resume invariants", () => {
     plane.setOnHostMessage((_hostId, message) => {
       if (message.type === "session:assign") assignments.push(message);
     });
+    plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
     plane.createProvider({ id: "provider", name: "vendor", defaultCommandId: "primary" });
     plane.createProviderAccount({ id: "account", providerId: "provider", label: "a" });
     plane.createCommand({

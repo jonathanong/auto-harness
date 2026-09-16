@@ -216,62 +216,17 @@ function addOptionalStringEdit(
   if (!sameOptionalString(existing, incoming)) edits.push(path);
 }
 
-function sameHookResolutionBases(previous: HostRepository, incoming: HostRepository): boolean {
-  if (previous.path !== incoming.path) return false;
-  const previousWorktrees = entriesById(previous.worktrees);
-  const incomingWorktrees = entriesById(incoming.worktrees);
-  if (previousWorktrees.size !== incomingWorktrees.size) return false;
-  for (const [id, worktree] of incomingWorktrees) {
-    if (previousWorktrees.get(id)?.path !== worktree.path) return false;
-  }
-  return true;
-}
-
-function isWindowsPath(path: string): boolean {
-  return path.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(path);
-}
-
-/**
- * The control plane accepts either platform's absolute spelling, but a host
- * executes paths using its own platform rules. Use the repository spelling as
- * the host hint so a foreign absolute-looking hook remains fenced like a
- * relative hook without rejecting inventories from the other platform.
- */
-function isAbsoluteHookForRepository(hook: string, repositoryPath: string): boolean {
-  if (!isAbsolutePathString(hook)) return false;
-  if (isWindowsPath(hook) !== isWindowsPath(repositoryPath)) return false;
-  return true;
-}
-
-/**
- * A relative hook is accepted only when a legacy document supplies the exact
- * same value. New or changed hooks must be absolute even for admins. Since a
- * relative hook is resolved from the execution repository/worktree, ordinary
- * inventory writes may not move either base without exec-config capability.
- */
-function legacyRelativeHookError(
-  existing: HostInventory | null | undefined,
-  incoming: HostInventory,
-  allowExecConfig: boolean,
-): { error: string; kind: "forbidden" | "validation" } | undefined {
-  const previousRepositories = entriesById(existing?.repositories);
-  for (const repository of incoming.repositories) {
+function relativeTerminalHookError(
+  inventory: HostInventory,
+): { error: string; kind: "validation" } | undefined {
+  for (const repository of inventory.repositories) {
     const hook = repository.terminalHookScript;
-    const previous = previousRepositories.get(repository.id);
-    if (
-      hook === undefined ||
-      hook.length === 0 ||
-      isAbsoluteHookForRepository(hook, previous?.path ?? repository.path)
-    )
-      continue;
-    if (previous?.terminalHookScript === hook) {
-      if (allowExecConfig || sameHookResolutionBases(previous, repository)) continue;
-      return { error: EXEC_CONFIG_REQUIRED_MESSAGE, kind: "forbidden" };
+    if (hook !== undefined && hook.length > 0 && !isAbsolutePathString(hook)) {
+      return {
+        error: `repository.${repository.id}.terminalHookScript must be an absolute path`,
+        kind: "validation",
+      };
     }
-    return {
-      error: `repository.${repository.id}.terminalHookScript must be an absolute path`,
-      kind: "validation",
-    };
   }
   return undefined;
 }
@@ -535,9 +490,9 @@ export function reconcileInventoryWrite(input: {
   }
   const inventory = preserveHostExecConfig(input.incoming, input.existing);
   const execEdits = listExecConfigEdits(input.existing, inventory);
-  const legacyHookError = legacyRelativeHookError(input.existing, inventory, input.allowExecConfig);
-  if (legacyHookError) {
-    return { ok: false, execEdits, ...legacyHookError };
+  const relativeHookError = relativeTerminalHookError(inventory);
+  if (relativeHookError) {
+    return { ok: false, execEdits, ...relativeHookError };
   }
   if (execEdits.length && !input.allowExecConfig) {
     return {

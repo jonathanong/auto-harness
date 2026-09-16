@@ -98,14 +98,13 @@ export type AuthzPrincipal = {
 };
 
 /**
- * Legacy rows stored `operator`/`admin` plus `boundHostId` or repo scope. Map them to the
- * named roles those combinations actually were, without escalating `read-only`.
+ * A bound host id is a security fence: any non-read-only principal with
+ * `boundHostId` is treated as `agent` at request time.
  */
 export function effectiveRole(principal: AuthzPrincipal): UserRole {
   if (principal.boundHostId) {
     return principal.role === "read-only" ? "read-only" : "agent";
   }
-  if (principal.role === "admin" && principal.allowedRepositoryIds?.length) return "maintainer";
   return principal.role;
 }
 

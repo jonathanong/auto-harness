@@ -86,13 +86,11 @@ describe("role capability table", () => {
 });
 
 describe("effectiveRole", () => {
-  it("maps legacy bound operator/admin to agent and scoped admin to maintainer", () => {
+  it("maps bound operator/admin to agent and leaves scoped admin as admin", () => {
     expect(effectiveRole(principal("operator", { boundHostId: "host-a" }))).toBe("agent");
     expect(effectiveRole(principal("admin", { boundHostId: "host-a" }))).toBe("agent");
     expect(effectiveRole(principal("maintainer", { boundHostId: "host-a" }))).toBe("agent");
-    expect(effectiveRole(principal("admin", { allowedRepositoryIds: ["repo-a"] }))).toBe(
-      "maintainer",
-    );
+    expect(effectiveRole(principal("admin", { allowedRepositoryIds: ["repo-a"] }))).toBe("admin");
     expect(effectiveRole(principal("read-only", { boundHostId: "host-a" }))).toBe("read-only");
     expect(effectiveRole(principal("operator"))).toBe("operator");
     expect(effectiveRole(principal("admin"))).toBe("admin");
@@ -132,13 +130,13 @@ describe("principalHas", () => {
 });
 
 describe("normalizeAccountGrant", () => {
-  it("rewrites legacy stored shapes to the named roles they actually were", () => {
+  it("maps boundHostId to agent without rewriting scoped admin", () => {
     expect(normalizeAccountGrant({ role: "operator", boundHostId: "h" })).toEqual({
       role: "agent",
       boundHostId: "h",
     });
     expect(normalizeAccountGrant({ role: "admin", allowedRepositoryIds: ["r"] })).toEqual({
-      role: "maintainer",
+      role: "admin",
       allowedRepositoryIds: ["r"],
     });
     expect(normalizeAccountGrant({ role: "admin" })).toEqual({ role: "admin" });

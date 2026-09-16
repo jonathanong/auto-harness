@@ -31,6 +31,7 @@ it("starts the lifecycle worker with durable storage and an injected transport",
     name: "auto-harness",
     url: "git@example.test:auto-harness.git",
     defaultBranch: "main",
+    admissionState: "active",
     createdAt: now,
     updatedAt: now,
   });

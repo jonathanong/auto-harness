@@ -45,8 +45,7 @@ export type CommandRecord = Command;
 export type CustomWebhookIntegrationRecord = {
   id: string;
   type: "custom-webhook";
-  /** Absent only on rows written before recreate fencing was introduced. */
-  generation?: string;
+  generation: string;
   encryptedSecret: string;
   repositoryId: string;
   target: TargetRef;
@@ -89,8 +88,7 @@ export type GitHubIngressConfigRecord = {
   encryptedSecret: string;
   enabled: boolean;
   bindings: GitHubIngressBindingRecord[];
-  /** Immutable creation nonce; absent only on legacy rows. */
-  generation?: string;
+  generation: string;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -101,8 +99,7 @@ export type IntegrationSessionFence = {
   id: string;
   type: "custom-webhook" | "github-ingress";
   storageId: string;
-  /** Undefined fences a legacy row and requires the attribute to remain absent. */
-  generation?: string;
+  generation: string;
   version: number;
   enabled: boolean;
 };

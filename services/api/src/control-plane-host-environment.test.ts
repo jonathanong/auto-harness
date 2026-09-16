@@ -98,7 +98,7 @@ describe("host environment readiness", () => {
     });
   });
 
-  it("withholds new assignments from daemons below the fenced protocol", () => {
+  it("withholds new assignments from hosts that did not negotiate the current protocol", () => {
     const plane = new ControlPlane();
     expect(hostAcceptsNewAssignments(plane.state, "host-1")).toBe(false);
     plane.state.hostConnection.set("host-1", "c1");
@@ -113,6 +113,11 @@ describe("host environment readiness", () => {
     plane.state.connections.set("c1", {
       ...plane.state.connections.get("c1")!,
       protocolVersion: 1,
+    });
+    expect(hostAcceptsNewAssignments(plane.state, "host-1")).toBe(false);
+    plane.state.connections.set("c1", {
+      ...plane.state.connections.get("c1")!,
+      protocolVersion: 7,
     });
     expect(hostAcceptsNewAssignments(plane.state, "host-1")).toBe(true);
   });

@@ -182,22 +182,21 @@ output to the host pane on loopback.
 Each daemon process reports one opaque UUID and process start time on every registration. The UUID
 remains unchanged across socket reconnects and inventory refreshes. A control plane with a prior
 modern UUID records a restart only when a later registration reports a different UUID; first
-registration is a baseline, and legacy registrations without the pair remain accepted. Detection
-is durable local observability only: it neither restarts the host nor sends an external notification.
+registration is a baseline. Detection is durable local observability only: it neither restarts
+the host nor sends an external notification.
 
 A completed WebSocket write is not delivery: the frame reached the kernel send buffer, not
 necessarily the control plane. `session:status` is therefore treated as unacknowledged until an
 explicit `session:status-acknowledged { sessionId, attemptId }` reply arrives, and is resent on
 every 20-second `host:keepalive` tick until then (dropped after 24h). Expiry of an unacknowledged
-v6 deferred checkout-failure status releases the retained claim without running the hook: it must
+deferred checkout-failure status releases the retained claim without running the hook: it must
 not invent a retry-rejected disposition while the control plane may already have accepted the
 retry. The same keepalive also
 carries `runningSessions`: every session id the daemon still owns, including one whose terminal
 status is still awaiting acknowledgement. The control plane requeues any session it believes is
 running on that host but which is missing from this list, bounding a lost/orphaned session to one
-keepalive interval instead of the absolute session timeout. A daemon that omits `runningSessions`
-(a pre-reconciliation version) opts out of this reconciliation rather than being treated as
-reporting nothing running.
+keepalive interval instead of the absolute session timeout. Omitting `runningSessions` is an
+empty list and is reconciled the same way.
 
 ### Config Loader
 
@@ -269,7 +268,7 @@ Orchestrates a single session after `session:assign`:
    - **Resume** (`resume: true`): skip every host/repository/worktree setup script; the assigned worktree still checks out the session `ref` (or default branch) before the native CLI resume command starts
 6. Spawn primary command via Executor (resume-aware argv when `resume: true`)
 7. Pipe output to Log Streamer
-8. On exit / timeout / cancel, run the terminal hook, collect the structured result, then send `session:status`, release claim/lock, and emit worktree status. For a v6 first-attempt `checkout_fetch_failed`, the daemon instead retains the hook until the durable `session:status-acknowledged` disposition arrives: it discards it only when `retryAccepted: true`. When the disposition is terminal, the control plane atomically persists a host-owned hook handoff and withholds archival; the daemon runs the hook, recollects the structured result, and completes that handoff before archival is queued. A lost status acknowledgement replays the same handoff id, and a daemon lost between disposition and completion leaves the durable handoff for its replacement. The retry runs its own hook if it fails and exhausts the budget. Once a retry is durably queued, a later `queue_expired` is the normal control-plane-only queued terminal path; queued sessions have no daemon hook owner. For a non-replay-safe or exhausted `host_lost` outcome, a v5 control plane likewise persists a bounded hook handoff to the original host. Its replacement daemon reserves that physical target as soon as it accepts the handoff, including while reconciling or waiting for execution capacity, so a later assignment cannot overtake the checkout. When that handoff overlaps a still-indexed deferred status in the same process, reconciliation passes the verified `expiresAt` into the retained hook settlement so the hook and post-hook result probes cannot outlive the control-plane lease, including the POSIX SIGTERM-to-SIGKILL grace: SIGKILL is due by `expiresAt`, not `expiresAt` plus five seconds. When it overlaps a still-indexed ordinary terminal status whose hook already ran, reconciliation settles the handoff without a second hook and forwards the buffered `session:status` result so archival keeps branch, changed-files, and PR data. Queued recovery work has bounded priority: it does not consume assignment capacity until it executes, and waiters on its reserved target do not deadlock it. An assignment that is only waiting for ack or its target fence likewise does not occupy that execution bound, so a handoff on another target may start; the assignment reacquires the same bound before its primary command starts. A protocol-v6 deferred terminal hook still occupies that assignment-capacity slot until settlement succeeds or fails, matching an executing replacement handoff. That occupancy survives drain resume (the original inflight entry may already be gone) and `abortInflight` of the assignment controller while the hook is still running. The replacement resolves its current local hook policy, runs (or fail-closed no-ops) the hook, and durably acknowledges it before the terminal session is archived. Protocol-v6 deferred-result completions always persist a bounded result: collected post-hook facts, or a harness fallback when checkout state is missing, the hook fails, or result probes fail. Protocol-v5 host-loss completions may omit `result`, except a same-process reuse of an already-run ordinary hook forwards its buffered result. Duplicate completions keep the first committed result. If that host never returns, the handoff expires after 24 hours and records the no-op rather than retaining an active-host index indefinitely.
+8. On exit / timeout / cancel, run the terminal hook, collect the structured result, then send `session:status`, release claim/lock, and emit worktree status. For a first-attempt `checkout_fetch_failed`, the daemon instead retains the hook until the durable `session:status-acknowledged` disposition arrives: it discards it only when `retryAccepted: true`. When the disposition is terminal, the control plane atomically persists a host-owned hook handoff and withholds archival; the daemon runs the hook, recollects the structured result, and completes that handoff before archival is queued. A lost status acknowledgement replays the same handoff id, and a daemon lost between disposition and completion leaves the durable handoff for its replacement. The retry runs its own hook if it fails and exhausts the budget. Once a retry is durably queued, a later `queue_expired` is the normal control-plane-only queued terminal path; queued sessions have no daemon hook owner. For a non-replay-safe or exhausted `host_lost` outcome, the control plane likewise persists a bounded hook handoff to the original host. Its replacement daemon reserves that physical target as soon as it accepts the handoff, including while reconciling or waiting for execution capacity, so a later assignment cannot overtake the checkout. When that handoff overlaps a still-indexed deferred status in the same process, reconciliation passes the verified `expiresAt` into the retained hook settlement so the hook and post-hook result probes cannot outlive the control-plane lease, including the POSIX SIGTERM-to-SIGKILL grace: SIGKILL is due by `expiresAt`, not `expiresAt` plus five seconds. When it overlaps a still-indexed ordinary terminal status whose hook already ran, reconciliation settles the handoff without a second hook and forwards the buffered `session:status` result so archival keeps branch, changed-files, and PR data. Queued recovery work has bounded priority: it does not consume assignment capacity until it executes, and waiters on its reserved target do not deadlock it. An assignment that is only waiting for ack or its target fence likewise does not occupy that execution bound, so a handoff on another target may start; the assignment reacquires the same bound before its primary command starts. A deferred terminal hook still occupies that assignment-capacity slot until settlement succeeds or fails, matching an executing replacement handoff. That occupancy survives drain resume (the original inflight entry may already be gone) and `abortInflight` of the assignment controller while the hook is still running. The replacement resolves its current local hook policy, runs (or fail-closed no-ops) the hook, and durably acknowledges it before the terminal session is archived. Deferred-result completions always persist a bounded result: collected post-hook facts, or a harness fallback when checkout state is missing, the hook fails, or result probes fail. A same-process reuse of an already-run ordinary hook forwards its buffered result. Duplicate completions keep the first committed result. If that host never returns, the handoff expires after 24 hours and records the no-op rather than retaining an active-host index indefinitely.
 9. If the CLI prints a resumable conversation/session id, capture and send it in status metadata as `cliResumeRef` for later resumes
 
 Concurrent sessions: one runner instance per claimed worktree (and at most one main-lock session per repo).
@@ -359,14 +358,13 @@ The resumed session's prompt already carries a fixed pointer sentence naming `.a
 | Timeout           | A single deadline covers checkout checks, setup, and the primary command. On POSIX, those processes receive SIGTERM, then SIGKILL after a 5-second grace period; report `timed_out`. Terminal hooks, including same-process deferred overlap settlement and ordinary 60s hook timeout, treat their timeout (remaining handoff lease, capped at 60s) as a hard deadline that includes SIGKILL: POSIX SIGTERMs first when five seconds remain, and SIGKILLs by the instant. A recovered handoff with less than five seconds remaining still stops by expiry. On Windows, `SpawnProcessRunner` (git, setup scripts, terminal hooks) kills the full descendant process tree via a single forceful `taskkill /PID <pid> /T /F` at that deadline — Windows has no signal-ignoring equivalent to escalate past, and a delayed second `taskkill` against the same numeric pid risks hitting a process Windows has since recycled that pid to. |
 | Cancel            | `session:cancel { sessionId, attemptId }` aborts only that attempt through the same platform-specific termination path described under Timeout; delayed cancels for an old attempt are ignored. Report exactly one `cancelled` terminal status.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
-For protocol version 4, the daemon sends `session:command-start { sessionId, worktreeId,
+The daemon sends `session:command-start { sessionId, worktreeId,
 attemptId }` after checkout, setup, execution-profile validation, and prior-context preparation,
 but immediately before `commandRunner.run`. It must not spawn the primary CLI until the control
 plane durably replies `session:command-start-acknowledged { sessionId, attemptId }`; duplicate
 requests and acknowledgements for an old attempt are ignored. The daemon retains the pending
 request across reconnects and cancels without spawning if the session deadline or cancellation
-arrives first. Protocol v3 and legacy daemons do not participate in this checkpoint, so their
-ambiguous host loss is never automatically retried.
+arrives first.
 
 A repository-principal session drain uses this same cancel path. The control plane fences the
 exact assignment attempt before sending `session:cancel`; the daemon reports its normal terminal
@@ -698,8 +696,7 @@ When `allowedRoots` is set, the daemon `realpath`s inventory filesystem paths an
 paths (including at worktree claim and hook spawn) and refuses anything outside those roots.
 Unset or empty roots apply no extra restriction. Catalog command argv is not checked against
 these roots. Control-plane inventory and exec-config writes reject a relative `terminalHookScript`;
-an unchanged legacy relative hook is preserved only for compatibility, while new or changed hooks
-must be absolute. An empty string clears the stored hook. If a polled `allowedRoots` policy makes
+hooks must be absolute. An empty string clears the stored hook. If a polled `allowedRoots` policy makes
 the current repository or worktree paths invalid, the daemon immediately re-registers as draining
 and refuses assignments; it continues polling and resumes only after a valid inventory applies.
 
@@ -790,7 +787,7 @@ setup scripts (`fleet:exec-config`); those paths must be relative checkout paths
 segments or absolute prefixes. Declare host-owned files such as
 `/opt/auto-harness/setup/host-environment` as `setupCacheHostInputs` (absolute paths, no `..`
 segments). POSIX daemons reject Windows-absolute and UNC spellings the same way they reject
-foreign terminal-hook paths; the control plane still accepts those spellings for mixed fleets.
+foreign terminal-hook paths.
 Omitting that list keeps the SHA/script/relative-extra fingerprint. The host never
 auto-detects sourced files.
 

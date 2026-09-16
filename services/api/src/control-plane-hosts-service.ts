@@ -203,19 +203,14 @@ export class ControlPlaneHostsService {
     return reconnect.reclaimReconnectDeadlines(this.state, nowMs);
   }
 
-  putHostInventory(
-    hostId: string,
-    body: unknown,
-    options?: { allowLegacyRelativeTerminalHooks?: boolean },
-  ): ReturnType<typeof agentHosts.putHostInventory> {
-    return agentHosts.putHostInventory(this.state, hostId, body, options);
+  putHostInventory(hostId: string, body: unknown): ReturnType<typeof agentHosts.putHostInventory> {
+    return agentHosts.putHostInventory(this.state, hostId, body);
   }
 
   putHostInventoryDurable(
     hostId: string,
     body: unknown,
     options?: {
-      allowLegacyRelativeTerminalHooks?: boolean;
       awaitProjection?: boolean;
     },
   ): Promise<ReturnType<typeof agentHosts.putHostInventory>> {

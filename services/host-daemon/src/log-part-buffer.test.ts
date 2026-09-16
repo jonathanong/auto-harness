@@ -54,7 +54,7 @@ describe("LogPartBuffer", () => {
         controlPlanePollMs: 60_000,
       },
       {
-        apiUrl: "http://127.0.0.1:7420/ws",
+        apiUrl: "http://127.0.0.1:7420",
         apiKey: "hns_x",
         fetchFn: (async (_url, init) => {
           bodies.push(Buffer.from(init?.body as Uint8Array));

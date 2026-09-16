@@ -38,6 +38,7 @@ it("uses ids as deterministic catalog sort tie breakers", () => {
     name: "same",
     url: "/b",
     defaultBranch: "main",
+    admissionState: "active",
     ...timestamps,
   });
   plane.state.repositories.set("a", {
@@ -45,6 +46,7 @@ it("uses ids as deterministic catalog sort tie breakers", () => {
     name: "same",
     url: "/a",
     defaultBranch: "main",
+    admissionState: "active",
     ...timestamps,
   });
 

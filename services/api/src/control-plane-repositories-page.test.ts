@@ -12,6 +12,7 @@ function repository(id: string, name: string) {
     name,
     url: `https://example.test/${id}`,
     defaultBranch: "main",
+    admissionState: "active" as const,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };

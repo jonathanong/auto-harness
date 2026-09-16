@@ -23,7 +23,6 @@ import {
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
 } from "./control-plane-provider-account-leases.ts";
-import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
 import {
   restoreConfirmedSessions,
   type ReconnectConfirmation,
@@ -241,7 +240,6 @@ export async function reclaimReconnectDeadlines(
           : {}),
       });
       if (!released) continue;
-      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
       const next =
         cancelled || timedOut
@@ -315,7 +313,6 @@ export async function reclaimReconnectDeadlines(
         ...providerAccountLeaseWriteOpts(session),
       });
       if (!finished) continue;
-      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
       state.sessions.set(
         session.id,
@@ -347,7 +344,6 @@ export async function reclaimReconnectDeadlines(
         infrastructureErrorCode: "host_lost",
       })
     ) {
-      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, queueHostLossRetry(session));
       state.worktrees.set(worktree.id, {

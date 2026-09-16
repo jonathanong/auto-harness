@@ -120,7 +120,7 @@ async function putHostUpdateConfig(ctx: RouteCtx, hostId: string): Promise<true>
     const result = await ctx.plane.putHostInventoryDurable(
       hostId,
       { ...applyHostExecConfig(existing, { updateConfig }), version },
-      { allowLegacyRelativeTerminalHooks: true, awaitProjection: false },
+      { awaitProjection: false },
     );
     if (!result.ok) {
       await sendPutFailure(ctx, hostId, ctx.res, result);

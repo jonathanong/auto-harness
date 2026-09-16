@@ -140,7 +140,7 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
       try {
         const reconciled = reconcileInventoryWrite({
           existing,
-          incoming: parseHostInventory(body, { allowLegacyRelativeTerminalHooks: true }),
+          incoming: parseHostInventory(body),
           allowExecConfig: !ctx.principal || principalHas(ctx.principal, EXEC_CONFIG_CAPABILITY),
         });
         if (!reconciled.ok) {
@@ -202,9 +202,7 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
           return true;
         execAuditWritten = true;
       }
-      const result = await plane.putHostInventoryDurable(hostId, body, {
-        allowLegacyRelativeTerminalHooks: true,
-      });
+      const result = await plane.putHostInventoryDurable(hostId, body, {});
       if (!result.ok) {
         if (
           execAuditWritten &&

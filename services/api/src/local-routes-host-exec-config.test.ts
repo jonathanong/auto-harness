@@ -305,7 +305,7 @@ describe("host exec-config isolation", () => {
     expect(Object.hasOwn(stored?.repositories[0]?.worktrees[0] ?? {}, "setupScript")).toBe(false);
   });
 
-  it("preserves an explicit empty allowed-roots inventory value and unchanged legacy hooks", async () => {
+  it("preserves an explicit empty allowed-roots inventory value and rejects a preserved legacy relative hook", async () => {
     const plane = new ControlPlane();
     expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
     expect(
@@ -340,6 +340,8 @@ describe("host exec-config isolation", () => {
       version: 1,
     };
     plane.state.hostInventories.set("host-legacy", legacy);
+    // A relative terminal hook is no longer grandfathered in: even an unrelated
+    // field edit that leaves it untouched must now fail closed until it is fixed.
     expect(
       await invoke(
         plane,
@@ -351,7 +353,10 @@ describe("host exec-config isolation", () => {
         },
         admin,
       ),
-    ).toMatchObject({ status: 200 });
+    ).toMatchObject({
+      status: 400,
+      json: { error: { code: "VALIDATION_ERROR", message: expect.stringContaining("absolute") } },
+    });
     expect(
       await invoke(
         plane,

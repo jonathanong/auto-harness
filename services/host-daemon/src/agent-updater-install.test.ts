@@ -134,7 +134,7 @@ describe("file update installer", () => {
     }
   });
 
-  it("migrates a legacy current checkout before switching", async () => {
+  it("refuses to migrate a directory current pointer", async () => {
     const { rootDir, cleanup } = tempRoot();
     try {
       runnableExtract("", join(rootDir, "current"));
@@ -144,11 +144,9 @@ describe("file update installer", () => {
         extract: runnableExtract,
       });
       await installer.stage({ version: "2.0.0", artifact: new Uint8Array() });
-      await installer.activate("2.0.0");
-      expect(readInstalledVersion(rootDir)).toBe("2.0.0");
-      expect(existsSync(join(rootDir, "versions", "1.0.0", "package.json"))).toBe(true);
-      await installer.rollback();
-      expect(readInstalledVersion(rootDir)).toBe("1.0.0");
+      await expect(installer.activate("2.0.0")).rejects.toThrow(
+        "current update path is not a directory pointer",
+      );
     } finally {
       cleanup();
     }
@@ -377,15 +375,11 @@ describe("file update installer", () => {
     }
   });
 
-  it("handles legacy current trees and invalid installed version markers", async () => {
+  it("handles invalid installed version markers", async () => {
     const { rootDir, cleanup } = tempRoot();
     try {
-      runnableExtract("", join(rootDir, "current"));
-      const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
-      await installer.stage({ version: "2.1.0", artifact: new Uint8Array() });
-      await installer.activate("2.1.0");
-      expect(readInstalledVersion(rootDir)).toBe("2.1.0");
       expect(readInstalledVersion(join(rootDir, "missing"))).toBeUndefined();
+      mkdirSync(join(rootDir, "current"), { recursive: true });
       writeFileSync(join(rootDir, "current", ".auto-harness-version"), "not-a-version\n");
       expect(readInstalledVersion(rootDir)).toBeUndefined();
     } finally {
@@ -412,15 +406,14 @@ describe("file update installer", () => {
     }
   });
 
-  it("migrates an unversioned legacy current tree with the stable fallback", async () => {
+  it("refuses to migrate an unversioned directory current tree", async () => {
     const { rootDir, cleanup } = tempRoot();
     try {
       runnableExtract("", join(rootDir, "current"));
       const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
       await installer.stage({ version: "2.4.0", artifact: new Uint8Array() });
-      await installer.activate("2.4.0");
-      expect(readFileSync(join(rootDir, "previous-version"), "utf8")).toBe(
-        join("versions", "0.0.0"),
+      await expect(installer.activate("2.4.0")).rejects.toThrow(
+        "current update path is not a directory pointer",
       );
     } finally {
       cleanup();

@@ -90,7 +90,6 @@ function preparePutSchedule(
   // Authenticated routes always supply their principal. Direct/in-memory use
   // is the authentication-disabled control plane and therefore owns newly
   // created schedules as the same durable system principal used by that route.
-  // Only rows persisted before schedule ownership existed remain ownerless.
   const principalId = input.principalId ?? "system";
   const rec: ScheduleRecord = {
     id,
@@ -201,11 +200,10 @@ export function prepareUpdateSchedule(
 ): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
   const existing = state.schedules.get(id);
   if (!existing) return { ok: false, error: "schedule not found" };
-  if (
-    existing.principalId &&
-    Object.hasOwn(patch, "principalId") &&
-    patch.principalId !== existing.principalId
-  ) {
+  if (!existing.principalId) {
+    return { ok: false, error: "schedule must be claimed by an authenticated principal" };
+  }
+  if (Object.hasOwn(patch, "principalId") && patch.principalId !== existing.principalId) {
     return { ok: false, error: "schedule ownership cannot be transferred" };
   }
   const now = state.now();
@@ -297,7 +295,11 @@ export function prepareUpdateSchedule(
     delete next.destroyWorkspaceAfter;
   } else {
     delete next.ref;
-    if (mode.workspacePoolId) next.workspacePoolId = mode.workspacePoolId;
+    // The workspace arm of `ScheduleMode` types `workspacePoolId` as a required,
+    // non-empty string (validated by `validateScheduleMode`'s `.trim()` check above), so
+    // this is never falsy here. TS can't narrow that discriminant through the truthy
+    // check on the sibling `repositoryId` field, hence the assertion rather than an `if`.
+    next.workspacePoolId = mode.workspacePoolId!;
     if (mode.setupProfileId) next.setupProfileId = mode.setupProfileId;
     else delete next.setupProfileId;
     if (

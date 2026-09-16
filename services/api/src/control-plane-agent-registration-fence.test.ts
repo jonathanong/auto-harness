@@ -1,3 +1,4 @@
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { registerHostDurable } from "./control-plane-agents.ts";
@@ -147,6 +148,7 @@ describe("durable host inventory registration fence", () => {
       registerHostDurable(plane.state, {
         hostId: "h",
         worktrees: [],
+        protocolVersion: HOST_PROTOCOL_VERSION,
         runtime: {
           daemonVersion: "test",
           gitVersion: "2.36.0",
@@ -188,6 +190,7 @@ describe("durable host inventory registration fence", () => {
       registerHostDurable(plane.state, {
         hostId: "h",
         worktrees: [],
+        protocolVersion: HOST_PROTOCOL_VERSION,
         runningAttempts: [
           { sessionId: "s", attemptId: "a" },
           { sessionId: "s", attemptId: "b" },
@@ -196,7 +199,7 @@ describe("durable host inventory registration fence", () => {
     ).resolves.toEqual({ ok: false, error: expect.stringMatching(/duplicate/) });
   });
 
-  it("registers a durable host without protocolVersion", async () => {
+  it("rejects a durable host registration without protocolVersion", async () => {
     const plane = new ControlPlane({ connectionIdFactory: () => "c" });
     plane.state.storage = {
       tryRegisterHost: async () => true,
@@ -212,7 +215,7 @@ describe("durable host inventory registration fence", () => {
         hostId: "h",
         worktrees: [],
       }),
-    ).resolves.toEqual({ ok: true, connectionId: "c" });
-    expect(plane.state.connections.get("c")?.protocolVersion).toBeUndefined();
+    ).resolves.toEqual({ ok: false, error: "unsupported host protocol" });
+    expect(plane.state.connections.get("c")).toBeUndefined();
   });
 });

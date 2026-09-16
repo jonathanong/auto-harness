@@ -62,7 +62,7 @@ On Linux, the service env is root-owned and plain `sudo` drops exported empty va
 The default status is a bounded readiness check with three separately labelled sections:
 local service-manager state, the exact host's control-plane liveness/draining/readiness,
 and configured inventory. It exits `0` only when the service is running and the exact host
-is online, non-draining, and explicitly Git-ready. Missing or legacy readiness data fails
+is online, non-draining, and explicitly Git-ready. Missing readiness data fails
 closed. API keys and service-manager command output are never printed.
 
 ```bash
@@ -238,8 +238,7 @@ curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/hosts/local-1/exec-config" \
 
 When `allowedRoots` is set, the daemon `realpath`s hook and inventory paths (following
 symlinks) and refuses anything outside those roots. Non-empty `terminalHookScript` values must
-be absolute when created or changed; an exactly unchanged legacy relative hook may be preserved
-during an unrelated inventory edit so older documents remain migratable.
+be absolute. Relative `terminalHookScript` values are rejected.
 
 What a session actually runs is **named, fixed argv** (D4), resolved from the global
 Provider/Provider Account/Command catalogs, not from this document — the document above no

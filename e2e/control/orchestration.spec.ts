@@ -7,7 +7,7 @@ import { expect, test } from "@playwright/test";
 import { fetchHostInventory } from "../../services/host-daemon/src/bootstrap.ts";
 import { startDaemon } from "../../services/host-daemon/src/start-daemon.ts";
 import { runCommandOk } from "../../scripts/lib/run-command.mts";
-import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
+import { API_BASE } from "../harness-endpoints.ts";
 
 const API = API_BASE;
 
@@ -82,7 +82,7 @@ test.describe("real orchestration", () => {
       // Real bootstrap fetch (GET /api/v1/hosts/:id/inventory), same as `pnpm local:daemon start`.
       const config = await fetchHostInventory({
         hostId,
-        apiUrl: WS_BASE,
+        apiUrl: API_BASE,
         logLevel: "info",
       });
       const daemon = await startDaemon({

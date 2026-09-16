@@ -26,42 +26,6 @@ describe("legacy custom webhook integrations", () => {
     });
   });
 
-  it("assigns a generation on the next operator update", async () => {
-    const plane = new ControlPlane({
-      secretEncryptor: {
-        encrypt: async (value) => `cipher:${value}`,
-        decrypt: async (value) => value.slice("cipher:".length),
-      },
-    });
-    plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo" });
-    plane.createCommand({ id: "command", name: "command", argv: ["echo"], providerId: null });
-    await plane.createCustomWebhookIntegration({
-      id: "deploy",
-      secret: "s".repeat(32),
-      repositoryId: "repo",
-      target: { commandId: "command" },
-      timeout: 60,
-    });
-    const legacy = await plane.getCustomWebhookIntegrationRecord("deploy");
-    expect(legacy).not.toBeNull();
-    delete legacy!.generation;
-    await expect(plane.getCustomWebhookIntegration("deploy")).resolves.toMatchObject({
-      generation: "legacy",
-    });
-
-    await expect(
-      plane.updateCustomWebhookIntegration({
-        id: "deploy",
-        repositoryId: "repo",
-        target: { commandId: "command" },
-        timeout: 90,
-      }),
-    ).resolves.toMatchObject({ ok: true, integration: { version: 2 } });
-    expect(await plane.getCustomWebhookIntegrationRecord("deploy")).toMatchObject({
-      generation: expect.any(String),
-    });
-  });
-
   it("rejects absent catalog references and malformed legacy ciphertext", async () => {
     const plane = new ControlPlane({
       secretEncryptor: {
@@ -94,6 +58,7 @@ describe("legacy custom webhook integrations", () => {
       requiredLabels: [],
       enabled: true,
       version: 1,
+      generation: "11111111-1111-4111-8111-111111111111",
       createdAt: "now",
       updatedAt: "now",
     };

@@ -53,7 +53,6 @@ it("requeues a running workspace slot and takes the slot offline on durable disc
     putWorkspaceSlot: async (next: WorkspaceSlotRecord) => {
       writes.push(next);
     },
-    releaseLegacyHostAssignment: async () => true,
   } as never;
 
   await expect(

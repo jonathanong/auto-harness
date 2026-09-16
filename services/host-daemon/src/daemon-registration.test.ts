@@ -19,17 +19,31 @@ describe("daemon registration", () => {
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
   });
 
-  it("omits optional identity and runtime while preserving drain intent", async () => {
+  const identity = {
+    instanceId: "123e4567-e89b-42d3-a456-426614174000",
+    startedAt: "2026-08-11T00:00:00.000Z",
+  };
+  const runtime = { daemonVersion: "0.0.0", gitVersion: "2.36.0", gitReady: true };
+
+  it("always includes identity and runtime while preserving drain intent", async () => {
     const messages: unknown[] = [];
     await registerDaemon(
       { hostId: "host", repositories: [], providerAccounts: [] },
       { send: async (message: unknown) => void messages.push(message) } as never,
       [],
       true,
+      identity,
+      runtime,
     );
-    expect(messages).toEqual([expect.objectContaining({ draining: true, runningSessions: [] })]);
-    expect(messages[0]).not.toHaveProperty("daemonInstanceId");
-    expect(messages[0]).not.toHaveProperty("runtime");
+    expect(messages).toEqual([
+      expect.objectContaining({
+        draining: true,
+        runningSessions: [],
+        daemonInstanceId: identity.instanceId,
+        daemonStartedAt: identity.startedAt,
+        runtime,
+      }),
+    ]);
   });
 
   it("publishes sorted running sessions and all configured inventory", async () => {
@@ -118,8 +132,8 @@ describe("daemon registration", () => {
       { send: async (message: unknown) => void messages.push(message) } as never,
       [],
       false,
-      undefined,
-      undefined,
+      identity,
+      runtime,
       [],
       profiles,
     );
@@ -151,8 +165,8 @@ describe("daemon registration", () => {
         { send: async (message: unknown) => void messages.push(message) } as never,
         [],
         false,
-        undefined,
-        undefined,
+        identity,
+        runtime,
         [],
         profiles,
       ),

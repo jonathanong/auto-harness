@@ -32,9 +32,7 @@ describe("repository admission", () => {
       idFactory: () => `session-${tick}`,
     });
     seedBaseCommand(plane);
-    expect(
-      plane.createRepository({ id: "repo-1", name: "repo", url: "https://example.test/repo" }).ok,
-    ).toBe(true);
+    expect(plane.getRepository("repo-1")?.admissionState).toBe("active");
     const first = plane.createSession({
       repositoryId: "repo-1",
       prompt: "run",
@@ -672,8 +670,8 @@ describe("repository admission", () => {
     expect(scans).toBe(4);
   });
 
-  it("treats a legacy missing admission state as an active non-reopening row", async () => {
-    const legacy = {
+  it("rejects a persisted repository missing admission state", async () => {
+    const corrupt = {
       id: "repo",
       name: "repo",
       url: "url",
@@ -688,7 +686,7 @@ describe("repository admission", () => {
       schedules: new Map(),
       repositoryRevision: 0,
       storage: {
-        getRepository: async () => ({ ...legacy }),
+        getRepository: async () => ({ ...corrupt }),
         listSchedules: async () => [],
         setRepositoryAdmissionState: async (
           _id: string,
@@ -697,15 +695,14 @@ describe("repository admission", () => {
           cutoff?: string,
         ) => {
           cutoffs.push(cutoff);
-          return { ...legacy, admissionState: "active" as const };
+          return { ...corrupt, admissionState: "active" as const };
         },
       },
     } as never;
 
-    await expect(setRepositoryAdmissionDurable(state, "repo", "active")).resolves.toMatchObject({
-      ok: true,
-      repository: { admissionState: "active" },
-    });
-    expect(cutoffs).toEqual([undefined]);
+    await expect(setRepositoryAdmissionDurable(state, "repo", "active")).rejects.toThrow(
+      "invalid repository admission state",
+    );
+    expect(cutoffs).toEqual([]);
   });
 });

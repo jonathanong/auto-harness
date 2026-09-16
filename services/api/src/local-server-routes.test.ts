@@ -26,6 +26,7 @@ describe("createLocalApp agent and scheduler routes", () => {
       argv: ["echo"],
       providerId: null,
     });
+    plane.createRepository({ id: "r1", name: "r1", url: "https://example.test/r1.git" });
     const { handler } = createLocalApp({ plane });
 
     const invoke = (method: string, path: string, body?: unknown) =>

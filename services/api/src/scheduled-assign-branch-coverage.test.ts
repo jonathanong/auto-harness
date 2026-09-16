@@ -48,7 +48,7 @@ function addHost(
     capabilities: capabilities as never,
     repositoryIds: repositories,
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-    protocolVersion: 1,
+    protocolVersion: 7,
   });
   state.hostConnection.set(hostId, connectionId);
   state.hostInventories.set(
@@ -71,6 +71,16 @@ function baseState() {
     argv: ["tool"],
     appendPrompt: true,
     providerId: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+  state.repositories.set("repo", {
+    id: "repo",
+    name: "repo",
+    url: "https://example.test/repo.git",
+    defaultBranch: "main",
+    admissionState: "active",
+    admissionStateChangedAt: NOW,
     createdAt: NOW,
     updatedAt: NOW,
   });
@@ -130,49 +140,5 @@ describe("scheduled assignment branch coverage", () => {
     state.storage.tryAssignMainCheckoutSession = async () => (calls.push("claim-lost"), false);
     await expect(assignScheduledQueuedDurable(state)).resolves.toEqual([]);
     expect(calls).toEqual(["map", "map-ok", "claim-lost"]);
-  });
-
-  it("uses legacy metadata ownership for the durable main-checkout drain fence", async () => {
-    const state = baseState();
-    addHost(state, "host", "connection");
-    state.sessions.set(
-      "run",
-      queued("run", {
-        principalId: undefined,
-        metadata: { createdBy: "principal-legacy" },
-      }),
-    );
-    let assignedPrincipalId: string | undefined;
-    setDurableReadStorage(state, {
-      getMainCheckoutCursor: async () => null,
-      ensureMainCheckoutLeaseMap: async () => true,
-      tryAssignMainCheckoutSession: async (opts: { principalId?: string }) => {
-        assignedPrincipalId = opts.principalId;
-        return true;
-      },
-    });
-
-    await expect(assignScheduledQueuedDurable(state)).resolves.toHaveLength(1);
-    expect(assignedPrincipalId).toBe("principal-legacy");
-  });
-
-  it("cancels an ownerless legacy scheduled session before assignment", async () => {
-    const state = baseState();
-    addHost(state, "host", "connection");
-    state.sessions.set("run", queued("run", { principalId: undefined }));
-    let attempted = false;
-    setDurableReadStorage(state, {
-      getMainCheckoutCursor: async () => null,
-      ensureMainCheckoutLeaseMap: async () => true,
-      cancelQueuedSession: async () => true,
-      tryAssignMainCheckoutSession: async () => {
-        attempted = true;
-        return true;
-      },
-    });
-
-    await expect(assignScheduledQueuedDurable(state)).resolves.toEqual([]);
-    expect(attempted).toBe(false);
-    expect(state.sessions.get("run")?.status).toBe("cancelled");
   });
 });

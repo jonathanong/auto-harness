@@ -1,3 +1,4 @@
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { expect, it } from "vitest";
 
 import { parseHostMessage } from "./ws-hub.ts";
@@ -6,6 +7,11 @@ const registration = {
   type: "host:register",
   hostId: "host",
   worktrees: [],
+  protocolVersion: HOST_PROTOCOL_VERSION,
+  daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+  daemonStartedAt: "2026-08-11T00:00:00.000Z",
+  runningAttempts: [],
+  runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
 };
 
 it("accepts a bounded workspace snapshot and rejects malformed pool or slot collections", () => {

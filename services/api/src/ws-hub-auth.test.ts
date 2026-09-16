@@ -108,8 +108,13 @@ async function rejectedRegistration(url: string, apiKey: string, hostId: string)
         JSON.stringify({
           type: "host:register",
           hostId,
+          protocolVersion: 7,
+          daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+          daemonStartedAt: "2026-08-11T00:00:00.000Z",
+          runningAttempts: [],
           worktrees: [],
           commandProfiles: [],
+          runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
         }),
       ),
     );

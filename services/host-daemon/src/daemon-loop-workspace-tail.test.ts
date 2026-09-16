@@ -64,7 +64,7 @@ describe("DaemonLoop workspace assignment tails", () => {
       };
 
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 0 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver(workspaceAssignment("first", "slot-one"));
       transport.deliver(workspaceAssignment("second", "slot-two"));
 
@@ -107,7 +107,7 @@ describe("DaemonLoop workspace assignment tails", () => {
       };
 
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 0 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver(workspaceAssignment("first", "slot-one"));
       await waitFor(() => started.length === 1);
       transport.deliver(workspaceAssignment("second", "slot-one"));

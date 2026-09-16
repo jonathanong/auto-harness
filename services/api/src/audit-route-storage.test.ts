@@ -1,3 +1,4 @@
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
@@ -43,6 +44,11 @@ describe("audit storage and host outcomes", () => {
       hostId: "host-a",
       worktrees: [],
       commandProfiles: [],
+      protocolVersion: HOST_PROTOCOL_VERSION,
+      daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+      daemonStartedAt: "2026-08-11T00:00:00.000Z",
+      runningAttempts: [],
+      runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
     };
     expect(
       (await invokeHandler(failedHandler, "POST", "/api/v1/host/messages", register)).status,

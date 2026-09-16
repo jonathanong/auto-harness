@@ -113,6 +113,19 @@ describe("DaemonLoop reconnect", () => {
         sessionId: "confirmed-once",
         attemptId: "attempt-confirmed-once",
       });
+      // Checkout runs a real `git` subprocess before the primary command is
+      // authorized to start; wait for that authorization request instead of
+      // resurning the old (pre-cleanup) short-circuit that skipped it entirely.
+      await vi.waitFor(() =>
+        expect(transport.sent.some((message) => message.type === "session:command-start")).toBe(
+          true,
+        ),
+      );
+      transport.deliver({
+        type: "session:command-start-acknowledged",
+        sessionId: "confirmed-once",
+        attemptId: "attempt-confirmed-once",
+      });
       await loop.waitForIdle();
       transport.deliver({
         type: "session:acknowledged",

@@ -77,7 +77,7 @@ describe("DaemonLoop orphaned deferred-hook occupancy wakeup", () => {
         },
       };
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver(assignment("other-session", "wt-2"));
       await waitFor(() => sent.some((message) => message.type === "session:ack"));
       transport.deliver({

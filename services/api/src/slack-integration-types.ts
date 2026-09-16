@@ -16,8 +16,7 @@ export type SlackIntegrationRecord = {
   enabled: boolean;
   notifications: SlackNotifications;
   signingSecretConfigured: boolean;
-  /** Missing on rows created before OAuth support; normalize as manual. */
-  installationMethod?: "manual" | "oauth";
+  installationMethod: "manual" | "oauth";
   workspaceId?: string;
   workspaceName?: string;
   appId?: string;
@@ -59,7 +58,7 @@ export function toPublicSlackIntegration(
     ...publicRecord,
     notifications: normalizeSlackNotifications(notifications),
     botTokenConfigured: true,
-    installationMethod: record.installationMethod ?? "manual",
+    installationMethod: record.installationMethod,
     inboundAvailable: record.signingSecretConfigured,
     deliveryAvailable,
   };

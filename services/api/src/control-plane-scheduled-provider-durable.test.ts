@@ -47,7 +47,7 @@ async function plane(
     commandProfiles: [],
     capabilities: ["scheduled-main-checkout"],
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-    protocolVersion: 1,
+    protocolVersion: 7,
     ...(readiness.length ? { providerAccountReadiness: readiness } : {}),
     replaceExisting: true,
   });

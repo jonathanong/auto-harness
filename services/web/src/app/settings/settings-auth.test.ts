@@ -33,8 +33,8 @@ describe("settings auth helpers", () => {
     expect(
       canManageAccounts({
         username: "scoped",
-        role: "admin",
-        kind: "admin",
+        role: "maintainer",
+        kind: "user",
         allowedRepositoryIds: ["repo"],
       }),
     ).toBe(false);

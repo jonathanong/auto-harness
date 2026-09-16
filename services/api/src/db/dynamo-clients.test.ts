@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createDynamoClients,
-  createDynamoDocumentClient,
   DEFAULT_DYNAMODB_ENDPOINT,
   SESSION_LOGS_TTL_ATTRIBUTE,
   SESSION_LOGS_TTL_SECONDS,
@@ -39,7 +38,7 @@ describe("DynamoDB Local clients", () => {
     expect(sessionLogsTtlEpochSeconds(1_700_000_000_500)).toBe(
       1_700_000_000 + SESSION_LOGS_TTL_SECONDS,
     );
-    const doc = createDynamoDocumentClient();
+    const { doc } = createDynamoClients();
     expect(doc).toBeTruthy();
   });
 

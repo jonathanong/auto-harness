@@ -192,8 +192,8 @@ describe("resolveSessionTargetArgv", () => {
       targetIndex: 0,
       providerAccountId: "acct-a",
       commandId: "cmd-provider",
-      resolvedArgv: ["claude", "--output-format", "json", "--print", "hello"],
-      resumeSpec: { argv: ["claude", "--output-format", "json", "--print"] },
+      resolvedArgv: ["claude", "--print", "hello"],
+      resumeSpec: { argv: ["claude", "--print"] },
     });
 
     state.providerAccounts.get("acct-a")!.usageLimitedUntil = "2026-01-02T00:00:00.000Z";
@@ -228,23 +228,15 @@ describe("resolveSessionTargetArgv", () => {
     ).toBeNull();
   });
 
-  it("upgrades legacy provider command forms without overriding explicit output choices", () => {
+  it("preserves configured provider command argv", () => {
     const state = createControlPlaneState({ now: () => "2026-01-01T00:00:00.000Z" });
     const cases = [
-      ["claude", ["claude", "-p"], ["claude", "--output-format", "json", "-p"]],
-      [
-        "windows-claude",
-        ["C:\\Tools\\claude.exe", "-p"],
-        ["C:\\Tools\\claude.exe", "--output-format", "json", "-p"],
-      ],
-      ["codex", ["codex", "exec"], ["codex", "exec", "--json"]],
-      ["codex-no-exec", ["codex"], ["codex"]],
-      [
-        "gemini",
-        ["/opt/bin/gemini", "--prompt"],
-        ["/opt/bin/gemini", "--output-format", "json", "--prompt"],
-      ],
-      ["grok", ["grok", "--single"], ["grok", "--output-format", "json", "--single"]],
+      ["claude", ["claude", "-p"]],
+      ["windows-claude", ["C:\\Tools\\claude.exe", "-p"]],
+      ["codex", ["codex", "exec"]],
+      ["codex-no-exec", ["codex"]],
+      ["gemini", ["/opt/bin/gemini", "--prompt"]],
+      ["grok", ["grok", "--single"]],
     ] as const;
     state.hostInventories.set("host-1", {
       hostId: "host-1",
@@ -253,7 +245,7 @@ describe("resolveSessionTargetArgv", () => {
       commandProfiles: {},
       updatedAt: "t",
     });
-    for (const [id, argv, expected] of cases) {
+    for (const [id, argv] of cases) {
       state.providerAccounts.set(`account-${id}`, {
         id: `account-${id}`,
         providerId: `provider-${id}`,
@@ -277,7 +269,7 @@ describe("resolveSessionTargetArgv", () => {
           session({ target: { commandId: `command-${id}` } }),
           worktree(),
         ),
-      ).toEqual([...expected, "hello"]);
+      ).toEqual([...argv, "hello"]);
     }
     const explicitOutputCases = [
       ["explicit-format", ["claude", "-p", "--output-format", "text"]],
@@ -320,7 +312,7 @@ describe("resolveSessionTargetArgv", () => {
         session({ target: { commandId: "separator" } }),
         worktree(),
       ),
-    ).toEqual(["claude", "--output-format", "json", "-p", "--", "--raw", "hello"]);
+    ).toEqual(["claude", "-p", "--", "--raw", "hello"]);
     state.commands.set("empty-executable", {
       id: "empty-executable",
       name: "empty-executable",

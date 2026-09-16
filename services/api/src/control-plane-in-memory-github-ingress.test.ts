@@ -24,6 +24,7 @@ function commandState() {
     name: "repository",
     url: "https://example.test/repository",
     defaultBranch: "main",
+    admissionState: "active",
     createdAt: NOW,
     updatedAt: NOW,
   });

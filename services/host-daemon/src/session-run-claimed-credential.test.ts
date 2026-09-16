@@ -295,7 +295,7 @@ describe("session command credential", () => {
     expect(seenEnv).not.toHaveProperty("HARNESS_SESSION_ID");
   });
 
-  it("normalizes a legacy WebSocket API URL before exposing it to the session command", async () => {
+  it("exposes the HTTP control-plane origin to the session command", async () => {
     cwd = await mkdtemp(join(tmpdir(), "session-command-api-url-"));
     let seenEnv: NodeJS.ProcessEnv | undefined;
     const commandRunner: ProcessRunner = {
@@ -320,7 +320,7 @@ describe("session command credential", () => {
       commandRunner,
       process.env,
       undefined,
-      { apiUrl: "wss://control.example/ws/", apiKey: "host-secret" },
+      { apiUrl: "https://control.example", apiKey: "host-secret" },
     );
     expect(seenEnv).toMatchObject({
       HARNESS_API_URL: "https://control.example",

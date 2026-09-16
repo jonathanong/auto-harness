@@ -16,6 +16,11 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
       ackDeadlineMs: 1,
     });
     plane.createCommand({ id: "cmd-echo", name: "echo", argv: ["echo"], providerId: null });
+    plane.createRepository({
+      id: "repo-1",
+      name: "repo-1",
+      url: "https://example.test/repo-1.git",
+    });
 
     // Register without worktrees so listHosts builds from connection only
     const r1 = plane.registerHost({ hostId: "solo", worktrees: [] });
@@ -133,6 +138,11 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
       shardCount: 1,
     });
     planeR.createCommand({ id: "cmd-c", name: "c", argv: ["echo"], providerId: null });
+    planeR.createRepository({
+      id: "repo-1",
+      name: "repo-1",
+      url: "https://example.test/repo-1.git",
+    });
     planeR.seedWorktree({
       id: "w",
       name: "w",

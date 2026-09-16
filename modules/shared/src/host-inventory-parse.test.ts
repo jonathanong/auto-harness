@@ -57,25 +57,20 @@ describe("parseHostInventory", () => {
     });
   });
 
-  it("preserves an explicit empty allowed-roots list and can read a legacy hook unchanged", () => {
+  it("preserves an explicit empty allowed-roots list and rejects a relative hook", () => {
     expect(
       parseHostInventory({
         allowedRoots: [],
         repositories: [{ id: "repo", path: "/repo", worktrees: [] }],
       }),
     ).toMatchObject({ allowedRoots: [] });
-    expect(
-      parseHostInventory(
-        {
-          repositories: [
-            { id: "repo", path: "/repo", terminalHookScript: "./hook.sh", worktrees: [] },
-          ],
-        },
-        { allowLegacyRelativeTerminalHooks: true },
-      ),
-    ).toMatchObject({
-      repositories: [expect.objectContaining({ terminalHookScript: "./hook.sh" })],
-    });
+    expect(() =>
+      parseHostInventory({
+        repositories: [
+          { id: "repo", path: "/repo", terminalHookScript: "./hook.sh", worktrees: [] },
+        ],
+      }),
+    ).toThrow(/absolute path/);
   });
 
   it("applies legacy defaults without requiring optional fields", () => {

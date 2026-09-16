@@ -312,36 +312,3 @@ export function removeHostWorktree(
   repo.worktrees = repo.worktrees.filter((w) => w.id !== worktreeId);
   return base;
 }
-
-/**
- * @deprecated Prefer upsertHostRepository + addHostWorktree so worktrees are explicit.
- * Kept for tests/examples: replaces repo and sets a single auto-path worktree.
- */
-export function mergeHostRepository(
-  existing: HostInventory | null | undefined,
-  entry: {
-    id: string;
-    path: string;
-    defaultBranch: string;
-    worktreeId: string;
-    worktreeName: string;
-    labels?: string[];
-  },
-): HostInventory {
-  let next = upsertHostRepository(existing, {
-    id: entry.id,
-    path: entry.path,
-    defaultBranch: entry.defaultBranch,
-  });
-  // Replace worktrees entirely (legacy behavior).
-  const repo = next.repositories.find((r) => r.id === entry.id)!;
-  repo.worktrees = [
-    {
-      id: entry.worktreeId,
-      name: entry.worktreeName,
-      path: defaultWorktreePath(entry.path, entry.worktreeName),
-      labels: entry.labels ?? [],
-    },
-  ];
-  return next;
-}

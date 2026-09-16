@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- scheduled reconnect branch cases share one durable state fixture. */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
 import {
@@ -97,7 +97,6 @@ describe("scheduled reconnect branch coverage", () => {
 
     const durable = state();
     const calls: Record<string, unknown>[] = [];
-    const releaseLegacyHostAssignment = vi.fn(async () => false);
     durable.storage = {
       listActiveSessionsByHost: async () => [
         row,
@@ -109,18 +108,11 @@ describe("scheduled reconnect branch coverage", () => {
         calls.push(input);
         return input.sessionId !== "reported";
       },
-      releaseLegacyHostAssignment,
     } as never;
     const durableRequeued: string[] = [];
     await requeueOmittedScheduled(durable, "host", new Set(["reported"]), durableRequeued);
     expect(calls).toHaveLength(1);
     expect(durableRequeued).toEqual(["s"]);
-    expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
-      sessionId: "s",
-      attemptId: "attempt",
-      hostId: "host",
-      connectionId: "old",
-    });
   });
 
   it("fences an omitted scheduled release against a replacement attempt", async () => {
@@ -190,20 +182,12 @@ describe("scheduled reconnect branch coverage", () => {
     expect(noChange).toEqual([]);
 
     const durableSuccess = state();
-    const releaseLegacyHostAssignment = vi.fn(async () => false);
     durableSuccess.storage = {
       releaseMainCheckoutSession: async () => true,
-      releaseLegacyHostAssignment,
     } as never;
     const success = [] as string[];
     expect(await reclaimScheduledReconnect(durableSuccess, session(), success)).toBe(true);
     expect(success).toEqual(["s"]);
-    expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
-      sessionId: "s",
-      attemptId: "attempt",
-      hostId: "host",
-      connectionId: "old",
-    });
   });
 
   it("does not requeue acknowledged scheduled work after authorization", async () => {

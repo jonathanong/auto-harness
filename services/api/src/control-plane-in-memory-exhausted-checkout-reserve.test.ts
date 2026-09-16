@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { assignQueued } from "./control-plane-assign.ts";
 import { handleHostMessage } from "./control-plane-messages.ts";
+import { createRepository } from "./control-plane-repos.ts";
 import { assignScheduledQueuedDurable } from "./control-plane-scheduled-assign.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { expireTerminalHookHandoffIfNeeded } from "./control-plane-terminal-hook-handoff.ts";
@@ -54,6 +55,7 @@ function v7State() {
     attemptIdFactory: () => "next-attempt",
     shardCount: 1,
   });
+  createRepository(state, { id: "repo", name: "repo", url: "https://example.test/repo.git" });
   state.hostConnection.set("host", "connection");
   state.connections.set("connection", {
     type: "host",

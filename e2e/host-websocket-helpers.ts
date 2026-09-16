@@ -1,3 +1,5 @@
+import { HOST_PROTOCOL_VERSION } from "../modules/shared/src/constants.ts";
+
 import { WS_BASE } from "./harness-endpoints.ts";
 
 export async function registerObservedHost(
@@ -17,12 +19,13 @@ export async function registerObservedHost(
       socket.send(
         JSON.stringify({
           type: "host:register",
-          protocolVersion: 1,
+          protocolVersion: HOST_PROTOCOL_VERSION,
           hostId,
           daemonInstanceId,
           daemonStartedAt,
           worktrees: [],
           commandProfiles: [],
+          runningAttempts: [],
           runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
         }),
       ),

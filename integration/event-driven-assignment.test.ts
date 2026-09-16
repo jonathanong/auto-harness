@@ -146,7 +146,7 @@ async function startTestDaemon(hostId: string, base: string) {
   const config = await loadDaemonConfig({
     env: {
       HARNESS_HOST_ID: hostId,
-      HARNESS_API_URL: `${base}/ws`,
+      HARNESS_API_URL: base,
       HARNESS_LOG_LEVEL: "info",
     },
   });

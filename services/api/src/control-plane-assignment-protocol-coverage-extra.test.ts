@@ -23,6 +23,15 @@ function scheduledState(capabilities: string[] = ["scheduled-main-checkout"]) {
     appendPrompt: true,
     providerId: null,
   });
+  state.repositories.set("repo", {
+    id: "repo",
+    name: "repo",
+    url: "https://example.test/repo.git",
+    defaultBranch: "main",
+    admissionState: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
   state.hostInventories.set("host", {
     hostId: "host",
     repositories: [{ id: "repo", path: "/repo", defaultBranch: "main", worktrees: [] }],
@@ -171,7 +180,7 @@ describe("assignment protocol and optional-field coverage", () => {
       capabilities: [],
       repositoryIds: ["repo"],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-      protocolVersion: 1,
+      protocolVersion: 7,
     });
     state.hostConnection.set("host", "connection");
     const originalGet = state.hostConnection.get.bind(state.hostConnection);

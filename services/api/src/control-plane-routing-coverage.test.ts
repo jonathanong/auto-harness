@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
 import { addDurableReadDefaults } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
@@ -21,6 +22,7 @@ function providerPlane(): ControlPlane {
       return () => `attempt-${++id}`;
     })(),
   });
+  plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
   plane.createProvider({ id: "provider", name: "vendor", defaultCommandId: "provider-command" });
   plane.createProviderAccount({
     id: "account",
@@ -138,6 +140,7 @@ describe("routing edge coverage", () => {
   it("expires a queued session before any capacity becomes available", () => {
     let now = "2026-01-01T00:00:00.000Z";
     const plane = new ControlPlane({ now: () => now, shardCount: 1 });
+    plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
     plane.createCommand({ id: "cli", name: "cli", argv: ["cli"] });
     const created = plane.createSession({
       repositoryId: "repo",
@@ -474,6 +477,7 @@ describe("routing edge coverage", () => {
         hostId: "host",
         worktrees: [],
         commandProfiles: [],
+        protocolVersion: HOST_PROTOCOL_VERSION,
       }),
     ).toEqual({ ok: true, connectionId: "connection" });
 

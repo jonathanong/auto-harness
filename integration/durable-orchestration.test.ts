@@ -153,7 +153,7 @@ describe("durable full-stack orchestration", () => {
     const config = await loadDaemonConfig({
       env: {
         HARNESS_HOST_ID: hostId,
-        HARNESS_API_URL: `${base}/ws`,
+        HARNESS_API_URL: base,
         HARNESS_LOG_LEVEL: "info",
       },
     });

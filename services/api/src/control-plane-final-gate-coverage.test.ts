@@ -139,7 +139,7 @@ describe("final host-message gate branches", () => {
     expect(state.logObjects.size).toBeGreaterThan(0);
   });
 
-  it("covers durable protocol rejection and no-host session report acknowledgement", async () => {
+  it("acknowledges a bounded result for a session with no host", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     state.sessions.set("session", running({ hostId: null }));
     setDurableReadStorage(state, {
@@ -155,13 +155,7 @@ describe("final host-message gate branches", () => {
       result: { summary: "done" },
     };
     await expect(
-      handleHostMessageDurable(state, status, "connection", false, false, 2),
-    ).resolves.toEqual({
-      ok: false,
-      error: "session result requires host protocol 3",
-    });
-    await expect(
-      handleHostMessageDurable(state, status, "connection", false, false, 3),
+      handleHostMessageDurable(state, status, "connection", false, false, 7),
     ).resolves.toMatchObject({
       ok: true,
       sessionStatusAcknowledged: { sessionId: "session", attemptId: "attempt" },
@@ -506,6 +500,7 @@ describe("final exact zero alternatives", () => {
       listWorkspaceSlotsByHost: async () => [],
       putWorkspaceSlot: async () => undefined,
       listSessionsByStatus: async () => [],
+      listActiveSessionsByHost: async () => [],
       releaseHostConnection: async () => true,
       getHostLock: async () => "durable-connection",
     };
@@ -520,7 +515,12 @@ describe("final exact zero alternatives", () => {
           type: "host:register",
           hostId: "durable-host",
           worktrees: [],
-          capabilities: [],
+          protocolVersion: 7,
+          runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+          daemonInstanceId: "instance",
+          daemonStartedAt: NOW,
+          runningAttempts: [],
+          capabilities: { features: [], maxConcurrentAssignments: 1 },
           ...(workspacePools === undefined ? {} : { workspacePools }),
         }),
       ).resolves.toEqual({ ok: true, connectionId: "durable-connection" });

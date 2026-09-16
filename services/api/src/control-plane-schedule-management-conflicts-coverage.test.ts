@@ -31,6 +31,7 @@ function schedulePlane(storage: object): ControlPlane {
     lastRunAt: null,
     createdAt: NOW,
     concurrencyId: "schedule-schedule",
+    principalId: "system",
   });
   addDurableReadDefaults(plane.state);
   return plane;
@@ -84,6 +85,7 @@ describe("durable schedule management conflicts", () => {
               lastRunAt: null,
               createdAt: NOW,
               concurrencyId: "schedule-schedule",
+              principalId: "system",
             }
           : null;
       },

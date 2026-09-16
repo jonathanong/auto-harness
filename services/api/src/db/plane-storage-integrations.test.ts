@@ -173,24 +173,21 @@ describe("custom webhook integration storage", () => {
     });
     await expect(putCustomWebhookIntegration(ctx(send), base, null)).resolves.toBe(true);
     await expect(putCustomWebhookIntegration(ctx(send), base, 1)).resolves.toBe(true);
-    await expect(putCustomWebhookIntegration(ctx(send), base, 1, undefined, null)).resolves.toBe(
-      true,
-    );
     await expect(
       putCustomWebhookIntegration(ctx(send), base, 1, undefined, "generation"),
     ).resolves.toBe(true);
     await expect(deleteCustomWebhookIntegration(ctx(send), "deploy", 1)).resolves.toBe(true);
-    await expect(deleteCustomWebhookIntegration(ctx(send), "deploy", 1, null)).resolves.toBe(true);
     await expect(
       deleteCustomWebhookIntegration(ctx(send), "deploy", 1, "generation"),
     ).resolves.toBe(true);
-    expect(commands).toHaveLength(7);
+    expect(commands).toHaveLength(5);
     expect(commands[0]).toMatchObject({ ConditionExpression: "attribute_not_exists(id)" });
-    expect(commands[3]).toMatchObject({
+    expect(commands[2]).toMatchObject({
       ExpressionAttributeValues: { ":expectedGeneration": "generation" },
+      ConditionExpression: expect.stringContaining("#generation = :expectedGeneration"),
     });
-    expect(commands[5]).toMatchObject({
-      ConditionExpression: expect.stringContaining("attribute_not_exists(#generation)"),
+    expect(commands[4]).toMatchObject({
+      ConditionExpression: expect.stringContaining("#generation = :expectedGeneration"),
     });
   });
 

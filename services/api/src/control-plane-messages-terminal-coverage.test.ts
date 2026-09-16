@@ -182,7 +182,7 @@ describe("control-plane terminal message coverage", () => {
 
   it("keeps a locally requeued scheduled checkout failure queued when its background sweep fails", async () => {
     const state = createControlPlaneState({ now: () => NOW });
-    const backfillQueuedSessionQueueOrder = vi.fn(async () => {
+    const listConnections = vi.fn(async () => {
       throw new Error("scheduler read model unavailable");
     });
     const session = running({
@@ -196,10 +196,10 @@ describe("control-plane terminal message coverage", () => {
       sessionId: session.id,
       connectionId: "connection",
     });
-    setDurableReadStorage(state, { backfillQueuedSessionQueueOrder });
+    setDurableReadStorage(state, { listConnections });
 
     expect(handleHostMessage(state, failedCheckoutStatus("session", null))).toEqual({ ok: true });
-    await vi.waitFor(() => expect(backfillQueuedSessionQueueOrder).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(listConnections).toHaveBeenCalledOnce());
     expect(state.sessions.get(session.id)).toMatchObject({
       status: "queued",
       infrastructureRetryCount: 1,
@@ -465,34 +465,6 @@ describe("control-plane terminal message coverage", () => {
     expect(state.sessions.get(session.id)).toEqual(session);
   });
 
-  it("does not persist a deferred terminal-hook handoff for a pre-v7 peer", async () => {
-    const idFactory = vi.fn(() => "handoff");
-    const state = createControlPlaneState({ now: () => NOW, idFactory });
-    const session = running({ infrastructureRetryCount: 1 });
-    const finishSession = vi.fn(async () => true);
-    const putArchive = vi.fn(async () => undefined);
-    setDurableReadStorage(state, {
-      getSession: async () => session,
-      finishSession,
-      listLogs: async () => [],
-      putArchive,
-    });
-    state.sessions.set(session.id, session);
-
-    await expect(
-      handleHostMessageDurable(state, failedCheckoutStatus(), undefined, false, false, 6),
-    ).resolves.toMatchObject({
-      ok: true,
-      sessionStatusAcknowledged: { sessionId: "session", attemptId: "attempt" },
-    });
-    expect(idFactory).not.toHaveBeenCalled();
-    expect(finishSession).toHaveBeenCalledWith(
-      expect.not.objectContaining({ terminalHookHandoff: expect.anything() }),
-    );
-    expect(state.sessions.get(session.id)).not.toHaveProperty("terminalHookHandoff");
-    expect(putArchive).toHaveBeenCalledOnce();
-  });
-
   it("finishes a hostless deferred failure without fabricating a terminal hook handoff", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     const session = running({ hostId: null, infrastructureRetryCount: 1 });
@@ -505,8 +477,8 @@ describe("control-plane terminal message coverage", () => {
     });
 
     await expect(
-      handleHostMessageDurable(state, failedCheckoutStatus(), undefined, false, false, 6),
-    ).resolves.toMatchObject({ ok: true, sessionStatusAcknowledged: { sessionId: "session" } });
+      handleHostMessageDurable(state, failedCheckoutStatus(), undefined, false, false, 7),
+    ).resolves.toMatchObject({ ok: true });
     expect(finishSession).toHaveBeenCalledWith(
       expect.not.objectContaining({ terminalHookHandoff: expect.anything() }),
     );
@@ -711,7 +683,7 @@ describe("control-plane terminal message coverage", () => {
         errorCode: "checkout_fetch_failed",
         deferTerminalHookResult: true,
       }),
-    ).resolves.toMatchObject({ ok: true, sessionStatusAcknowledged: { sessionId: "session" } });
+    ).resolves.toMatchObject({ ok: true });
     expect(releaseMainCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({ status: "failed", errorCode: "checkout_fetch_failed" }),
     );
@@ -856,7 +828,7 @@ describe("control-plane terminal message coverage", () => {
     );
   });
 
-  it("does not expose a local reconciliation handoff to a legacy keepalive", async () => {
+  it("exposes a local reconciliation handoff to keepalive", async () => {
     const state = createControlPlaneState({ now: () => NOW, idFactory: () => "handoff" });
     state.hostConnection.set("host", "connection");
     state.connections.set("connection", {
@@ -868,7 +840,7 @@ describe("control-plane terminal message coverage", () => {
       repositoryIds: ["repo"],
       commandProfiles: [],
       capabilities: [],
-      protocolVersion: 4,
+      protocolVersion: 7,
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
     });
     state.sessions.set(
@@ -889,13 +861,16 @@ describe("control-plane terminal message coverage", () => {
         at: NOW,
         runningSessions: [],
       }),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toMatchObject({
+      ok: true,
+      terminalHookHandoffs: [expect.objectContaining({ handoffId: "handoff" })],
+    });
     expect(state.sessions.get("session")?.terminalHookHandoff).toMatchObject({
       handoffId: "handoff",
     });
   });
 
-  it("does not expose a durable reconciliation handoff to a legacy keepalive", async () => {
+  it("exposes a durable reconciliation handoff to keepalive", async () => {
     const state = createControlPlaneState({ now: () => NOW, idFactory: () => "handoff" });
     const session = running({
       ackReceivedAt: NOW,
@@ -920,9 +895,12 @@ describe("control-plane terminal message coverage", () => {
         "connection",
         false,
         false,
-        4,
+        7,
       ),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toMatchObject({
+      ok: true,
+      terminalHookHandoffs: [expect.objectContaining({ handoffId: "handoff" })],
+    });
     expect(finishSession).toHaveBeenCalledWith(
       expect.objectContaining({
         terminalHookHandoff: expect.objectContaining({ handoffId: "handoff" }),
@@ -1168,5 +1146,143 @@ describe("control-plane terminal message coverage", () => {
       }),
     ).toEqual({ ok: true });
     expect(state.sessions.get(session.id)).toMatchObject({ status: "queued" });
+  });
+
+  it("stamps a fresh completedAt when a retained timed-out handoff's session lacks one", async () => {
+    const state = createControlPlaneState({ now: () => NOW, idFactory: () => "handoff-a" });
+    const current = running({
+      status: "timed_out",
+      hostId: null,
+      timedOutHostId: "host",
+      worktreeId: null,
+    });
+    let persisted = current;
+    const finishSession = vi.fn(async (options: Record<string, unknown>) => {
+      persisted = {
+        ...current,
+        terminalHookHandoff: options.terminalHookHandoff as never,
+        completedAt: options.completedAt as string,
+      };
+      return true;
+    });
+    setDurableReadStorage(state, {
+      getSession: async () => persisted,
+      finishSession,
+      listLogs: async () => [],
+      putArchive: async () => undefined,
+    });
+
+    await expect(
+      handleHostMessageDurable(
+        state,
+        {
+          type: "session:status",
+          sessionId: "session",
+          worktreeId: null,
+          attemptId: "attempt",
+          status: "completed",
+          deferTerminalHookResult: true,
+        },
+        undefined,
+        false,
+        false,
+        7,
+      ),
+    ).resolves.toMatchObject({
+      sessionStatusAcknowledged: {
+        terminalHookHandoffId: "handoff-a",
+        terminalHookHandoffExpiresAt: expect.any(String),
+      },
+    });
+    // No `completedAt` was ever stamped on the timed-out row, so the retained
+    // finish must fall back to the current time rather than carry `undefined`.
+    expect(finishSession).toHaveBeenCalledWith(expect.objectContaining({ completedAt: NOW }));
+  });
+
+  it("retains a timed-out main-checkout handoff with a fresh completedAt", async () => {
+    const state = createControlPlaneState({ now: () => NOW, idFactory: () => "handoff-b" });
+    const current = running({
+      status: "timed_out",
+      mainCheckoutLease: true,
+      assignmentConnectionId: "connection",
+      worktreeId: null,
+    });
+    let persisted = current;
+    const releaseMainCheckoutSession = vi.fn(async (options: Record<string, unknown>) => {
+      persisted = {
+        ...current,
+        terminalHookHandoff: options.terminalHookHandoff as never,
+        completedAt: options.completedAt as string,
+      };
+      return true;
+    });
+    setDurableReadStorage(state, {
+      getSession: async () => persisted,
+      releaseMainCheckoutSession,
+      listLogs: async () => [],
+      putArchive: async () => undefined,
+    });
+
+    await expect(
+      handleHostMessageDurable(
+        state,
+        {
+          type: "session:status",
+          sessionId: "session",
+          worktreeId: null,
+          attemptId: "attempt",
+          status: "completed",
+          deferTerminalHookResult: true,
+        },
+        undefined,
+        false,
+        false,
+        7,
+      ),
+    ).resolves.toMatchObject({
+      sessionStatusAcknowledged: { terminalHookHandoffId: "handoff-b" },
+    });
+    // A timed-out (not cancelled) row must report `expectedStatus: "timed_out"`
+    // and, having no stamped `completedAt` of its own, fall back to the current
+    // time rather than carry `undefined` into the durable write.
+    expect(releaseMainCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedStatus: "timed_out", completedAt: NOW }),
+    );
+  });
+
+  it("reports no infra retry for a stale first-checkout-failure report against an orphaned main-checkout flag", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    // `mainCheckoutLease` lingers on this cancelled row without the host/connection
+    // markers that a live lease always carries together, so none of the specific
+    // cancelled-resource release paths (worktree/workspace/lease) apply.
+    const session = running({
+      status: "cancelled",
+      mainCheckoutLease: true,
+      hostId: null,
+      worktreeId: null,
+    });
+    setDurableReadStorage(state, {
+      getSession: async () => session,
+      listLogs: async () => [],
+      putArchive: async () => undefined,
+    });
+
+    await expect(
+      handleHostMessageDurable(state, {
+        type: "session:status",
+        sessionId: session.id,
+        worktreeId: null,
+        attemptId: "attempt",
+        status: "failed",
+        errorCode: "checkout_fetch_failed",
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      sessionStatusAcknowledged: {
+        sessionId: session.id,
+        attemptId: "attempt",
+        retryAccepted: false,
+      },
+    });
   });
 });

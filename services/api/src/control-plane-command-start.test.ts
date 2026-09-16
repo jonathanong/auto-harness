@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { commandStartStateForProtocol } from "./control-plane-command-start.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
@@ -32,14 +31,6 @@ function runningSession(over: Partial<SessionRecord> = {}): SessionRecord {
 }
 
 describe("command-start assignment gating", () => {
-  it.each([undefined, 0, 2, 3])("authorizes legacy protocol %s assignments", (version) => {
-    expect(commandStartStateForProtocol(version)).toBe("authorized");
-  });
-
-  it.each([4, 5])("leaves protocol %s assignments pending", (version) => {
-    expect(commandStartStateForProtocol(version)).toBe("pending");
-  });
-
   it("acknowledges a durable command start only after its fenced commit, idempotently", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     let persisted = runningSession();

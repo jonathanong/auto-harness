@@ -59,6 +59,7 @@ export function triggerSchedule(
     return { ok: false, error: result.error };
   }
   if (result.created) {
+    state.sessions.get(result.session.id)!.principalId = schedule.principalId!;
     schedule.nextRunAt = newNextRunAt;
     schedule.lastRunAt = nowIso;
     if (state.storage) {
@@ -112,9 +113,6 @@ export async function triggerScheduleDurable(
   }
   if (!schedule.enabled) {
     return { ok: false, error: "schedule is disabled" };
-  }
-  if (!schedule.principalId) {
-    return { ok: false, error: "schedule must be claimed by an authenticated principal" };
   }
   if (
     schedule.workspacePoolId &&
@@ -254,6 +252,7 @@ export function tryClaimScheduleFire(
   if (!result.created) {
     return null;
   }
+  state.sessions.get(result.session.id)!.principalId = schedule.principalId!;
   schedule.lastRunAt = nowIso;
   return result.session;
 }
@@ -337,28 +336,6 @@ export async function tryClaimScheduleFireDurable(
       });
     }
     if (skipped) state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
-    return null;
-  }
-  if (!schedule.principalId) {
-    // Legacy rows without an authenticated owner cannot safely author a
-    // session. Consume this occurrence with the same cursor CAS used by a
-    // normal claim so cron does not hot-loop until an operator claims it.
-    const audit = ownerlessSkipAudit(state, schedule);
-    const skipped = await state.storage.skipOwnerlessScheduleAndAudit({
-      scheduleId,
-      expectedNextRunAt,
-      newNextRunAt,
-      lastRunAt: nowIso,
-      audit,
-    });
-    if (skipped) {
-      state.schedules.set(scheduleId, {
-        ...schedule,
-        nextRunAt: newNextRunAt,
-        lastRunAt: nowIso,
-      });
-      state.auditLogs.set(audit.id, audit);
-    }
     return null;
   }
   if (
@@ -461,22 +438,6 @@ export async function tryClaimScheduleFireDurable(
   state.sessions.set(session.id, session);
   noteSlackSessionLifecycle(state, session);
   return toPublic(state, session);
-}
-
-function ownerlessSkipAudit(state: ControlPlaneState, schedule: ScheduleRecord): AuditLogRecord {
-  return newAuditRecord(
-    {
-      actor: SYSTEM_AUDIT_ACTOR,
-      action: "schedule:ownerless-occurrence-skipped",
-      resourceType: "schedule",
-      resourceId: schedule.id,
-      repositoryId: schedule.repositoryId,
-      outcome: "failed",
-      metadata: { reason: "schedule must be claimed by an authenticated principal" },
-    },
-    state.now(),
-    state.auditIdFactory(),
-  );
 }
 
 function principalDrainSkipAudit(
@@ -589,7 +550,7 @@ function createScheduledSession(state: ControlPlaneState, schedule: ScheduleReco
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
     concurrencyId: schedule.concurrencyId ?? `schedule-${schedule.id}`,
     scheduleId: schedule.id,
-    ...(schedule.principalId ? { principalId: schedule.principalId } : {}),
+    principalId: schedule.principalId!,
   };
 }
 
@@ -651,6 +612,6 @@ function scheduledSessionInput(
             false,
         }
       : {}),
-    ...(schedule.principalId ? { metadata: { createdBy: schedule.principalId } } : {}),
+    metadata: { createdBy: schedule.principalId! },
   };
 }

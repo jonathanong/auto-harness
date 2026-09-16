@@ -150,7 +150,7 @@ describe("target optional routing residual coverage", () => {
       capabilities: [],
       repositoryIds: ["repo"],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-      protocolVersion: 1,
+      protocolVersion: 7,
       providerAccountReadiness: [
         { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
       ],

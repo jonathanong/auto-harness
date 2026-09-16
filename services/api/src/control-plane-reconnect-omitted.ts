@@ -7,7 +7,6 @@ import {
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
 } from "./control-plane-provider-account-leases.ts";
-import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
 import {
   canRetryHostLoss,
   finishHostLostSession,
@@ -91,7 +90,6 @@ async function requeueOmittedWorktreeSessions(
         infrastructureErrorCode: "host_lost",
       }))
     ) {
-      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, queueHostLossRetry(session));
       state.worktrees.set(worktree.id, {
@@ -120,7 +118,6 @@ async function requeueOmittedWorktreeSessions(
         ...providerAccountLeaseWriteOpts(session),
       });
       if (!finished) continue;
-      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
       state.sessions.set(
         session.id,
@@ -162,7 +159,6 @@ async function requeueOmittedWorktreeSessions(
         ...providerAccountLeaseWriteOpts(session),
       })
     ) {
-      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, queueReconnectSession(session, reason));
       state.worktrees.set(worktree.id, {
@@ -248,7 +244,6 @@ async function requeueOmittedWorkspaceSessions(
       ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
     });
     if (!released) continue;
-    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     releaseProviderAccountLease(state, session);
     state.sessions.set(
       session.id,

@@ -4,7 +4,7 @@ import { fetchControlPlaneHostStatus } from "./host-status.ts";
 
 const identity = {
   hostId: "host-1",
-  apiUrl: "https://control.example/ws",
+  apiUrl: "https://control.example",
   apiKey: "secret-token",
 };
 
@@ -59,7 +59,7 @@ describe("fetchControlPlaneHostStatus", () => {
     expect(signal).toBe(controller.signal);
   });
 
-  it("fails closed for absent, offline, and legacy readiness", async () => {
+  it("fails closed for absent, offline, and missing readiness", async () => {
     const absent = await fetchControlPlaneHostStatus(
       identity,
       async () => new Response(JSON.stringify({ error: { code: "NOT_FOUND" } }), { status: 404 }),

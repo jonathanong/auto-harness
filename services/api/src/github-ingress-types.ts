@@ -34,9 +34,13 @@ export function githubIngressEncryptionContext(): Record<string, string> {
 export function toPublicGitHubIngressConfig(
   record: GitHubIngressConfigRecord,
 ): PublicGitHubIngressConfig {
-  const { encryptedSecret: _encryptedSecret, ...publicRecord } = record;
+  const { encryptedSecret: _encryptedSecret, generation, ...publicRecord } = record;
+  if (typeof generation !== "string" || generation.length === 0) {
+    throw new TypeError("GitHub ingress generation is required");
+  }
   return {
     ...publicRecord,
+    generation,
     secretConfigured: true,
     bindings: publicRecord.bindings.map((binding) => ({
       ...binding,

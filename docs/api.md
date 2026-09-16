@@ -121,8 +121,8 @@ resets. A temporary failure reaching durable rate-limit storage is `503`
 
 ## Repository admission
 
-Repository records expose `admissionState`: `active`, `paused`, or `draining`. A missing state on
-a legacy row means `active`.
+Repository records expose `admissionState`: `active`, `paused`, or `draining`. A missing state is
+invalid and treated as closed.
 
 - `POST /repositories/:id/pause` closes admission immediately. New create, clone, resume, manual
   schedule trigger, cron fire, and assignment attempts return or observe
@@ -184,10 +184,7 @@ requests fail closed until the marker exists. Roll upgrades must retire all olde
 writers before enabling the scheduler bootstrap, since an old binary could otherwise admit an
 untracked session during the migration.
 
-Durable schedules have an authenticated owner. Legacy schedules created before ownership was
-persisted are deliberately inert: durable manual trigger and cron do not mint sessions, and cron
-consumes each due occurrence with an operator-visible audit event until an authenticated,
-repository-scoped schedule edit claims ownership for that principal. The owner is derived from
+Every durable schedule stores an authenticated `principalId`. The owner is derived from
 authentication and cannot be supplied in schedule JSON.
 
 It requires `sessions:write`; repository scope and principal ownership are always derived from
@@ -405,7 +402,7 @@ Admin `POST` creates and `PUT` replaces routing with a body containing `secret`,
 `target`, and `timeout`, plus optional `fallbacks`, `queueTtlSeconds`, `priority`, `requiredLabels`,
 and `enabled`. `POST` requires `secret`. `PUT` may omit `secret` to retain the encrypted value,
 supplying it rotates the secret, and requires the last observed positive integer `version` plus
-opaque `generation` (`legacy` when the stored row has none). `DELETE` requires those fences in `If-Match` and `If-Match-Generation`;
+opaque `generation`. `DELETE` requires those fences in `If-Match` and `If-Match-Generation`;
 stale writes and deletes (including a delete/recreate of the same integration ID) return `409`.
 In-memory control-plane deletes re-check the live webhook row and its catalog references immediately
 before mutation, and return the same concurrent-change conflict when either observation moved.
@@ -480,8 +477,7 @@ notification settings, requires the positive version read by the client, and nev
 credentials. `GET` returns no token,
 signing secret, or ciphertext: only redacted configured flags plus installation
 method, optional workspace/app/bot-user/scope metadata, `inboundAvailable`, and
-`deliveryAvailable`. Legacy records without an installation method are reported
-as manual. `DELETE` returns `204`. `deliveryAvailable` is true only when this
+`deliveryAvailable`. `installationMethod` is required. `DELETE` returns `204`. `deliveryAvailable` is true only when this
 environment can decrypt the bot token and run the outbound worker; otherwise the
 control plane reports configured-but-unavailable and does not imply that messages
 will be sent.
@@ -761,7 +757,7 @@ do not pause an account. See [host-daemon.md — Usage limits](host-daemon.md#us
 
 Infrastructure failures have a separate bounded retry policy. A checkout-stage fetch failure is
 reported as `checkout_fetch_failed` (including a failed GitHub pull-request ref `ls-remote` or
-`fetch`, and a failed `git fetch --recurse-submodules` during ordinary ref checkout); a host lost after assignment but before the v4
+`fetch`, and a failed `git fetch --recurse-submodules` during ordinary ref checkout); a host lost after assignment but before the
 `session:command-start-acknowledged` checkpoint is reported as `host_lost`. The control plane
 automatically retries the same logical session once with a fresh `attemptId`, preserving its
 inputs, concurrency lock, and absolute `queueExpiresAt`. A second eligible failure, an
@@ -886,7 +882,7 @@ Get session details.
 | `resolvedRoute`                 | Last assigned route: `targetIndex`, optional `providerAccountId`, `commandId`, `hostId`, `worktreeId`, `attemptId` (no secrets)    |
 | `infrastructureRetryCount`      | Number of automatic infrastructure retries consumed for this logical session; absent/`0` means none, and the hard maximum is `1`   |
 | `lastInfrastructureErrorCode`   | Most recent retry cause: `checkout_fetch_failed` or `host_lost`; retained across attempts and reset only by creating a new session |
-| `result`                        | Best-effort structured terminal outcome; absent for active, legacy, and unavailable-result sessions                                |
+| `result`                        | Best-effort structured terminal outcome; absent for active and unavailable-result sessions                                         |
 
 Internal terminal-hook handoff fences (`terminalHookHandoff`, `terminalHookHandoffSettled`,
 `terminalHookHandoffExpiredAt`) and `infrastructureRetryAttemptId` are durable coordination fields
@@ -894,7 +890,7 @@ only. They are omitted from session detail and list responses. The storage-less 
 keeps `terminalHookHandoffSettled` after clearing the pending handoff. A later
 `session:terminal-hook-complete` for that exact handoff ID on the settled host's current connection
 re-emits `session:terminal-hook-acknowledged`; mismatched handoff IDs and host owners stay rejected.
-An exhausted protocol-v6 `checkout_fetch_failed` handoff enqueues the terminal Slack lifecycle
+An exhausted `checkout_fetch_failed` handoff enqueues the terminal Slack lifecycle
 (`session_failed`) when it settles or expires, even on a cold worker with no in-memory session
 history. Host-loss already enqueues Slack at the terminal write.
 
@@ -1459,7 +1455,7 @@ their path mid-run.
 List configured hosts, including connection health and local daemon restart observability.
 
 Each host also reports `daemonVersion`, `gitVersion`, `gitReady`, and a bounded
-`gitReadinessReason`. `online` is connection liveness, not schedulability: legacy daemons or hosts
+`gitReadinessReason`. `online` is connection liveness, not schedulability: hosts
 whose Git preflight fails remain visible as online but have `gitReady: false` and receive no work.
 
 `limit` is 1–100 (default 50). `nextCursor` continues the hostId-ordered page.
@@ -1716,10 +1712,8 @@ POSIX, Windows-drive, and UNC absolute paths so mixed fleets can share inventory
 rejects foreign-platform spellings when applying that list, matching terminal-hook path checks. Omitted keys are left unchanged. Empty strings / empty
 `allowedRoots`, empty `setupCacheInputs`, and empty `setupCacheHostInputs` clear the stored value. A host with no inventory yet is created empty, then the
 patch is applied. Unknown repository or worktree ids return `400 VALIDATION_ERROR`. Non-empty
-new or changed `terminalHookScript` values must be absolute paths on both this route and
-`PUT /inventory`. A relative hook persisted by an earlier release may be carried through an
-otherwise unrelated write only when it is exactly unchanged; replacing or clearing it migrates
-the document to the current rule.
+non-empty `terminalHookScript` values must be absolute paths on both this route and
+`PUT /inventory`, including values preserved from an earlier inventory document.
 The success audit is recorded **before** the durable write; if that audit cannot be persisted the
 document is left unchanged (HTTP 500). If the following write fails, a failed
 `host-exec-config:update` is also recorded. Successful writes include the changed field paths

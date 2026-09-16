@@ -9,16 +9,28 @@ describe("concurrency response scope", () => {
   it("does not expose a cross-repository duplicate session", async () => {
     const plane = new ControlPlane();
     plane.createCommand({ id: "cmd-a", name: "echo", argv: ["echo"], providerId: null });
-    plane.putSchedule({
-      id: "schedule-a",
-      repositoryId: "repo-a",
-      name: "nightly",
-      target: { commandId: "cmd-a" },
-      cron: "* * * * *",
-      timeout: 10,
-      nextRunAt: "2026-01-01T00:00:00.000Z",
-      concurrencyId: "shared-cross-repo",
+    plane.createRepository({
+      id: "repo-a",
+      name: "repo-a",
+      url: "https://example.test/repo-a.git",
     });
+    plane.createRepository({
+      id: "repo-b",
+      name: "repo-b",
+      url: "https://example.test/repo-b.git",
+    });
+    expect(
+      plane.putSchedule({
+        id: "schedule-a",
+        repositoryId: "repo-a",
+        name: "nightly",
+        target: { commandId: "cmd-a" },
+        cron: "* * * * *",
+        timeout: 10,
+        nextRunAt: "2026-01-01T00:00:00.000Z",
+        concurrencyId: "shared-cross-repo",
+      }),
+    ).toMatchObject({ ok: true });
     plane.createSession({
       repositoryId: "repo-b",
       prompt: "secret duplicate",
@@ -41,16 +53,20 @@ describe("concurrency response scope", () => {
       invokeHandler(handler, "POST", path, body, { authorization: `Bearer ${apiKey}` });
 
     expect(
-      (
-        await invoke("/api/v1/sessions", {
-          repositoryId: "repo-a",
-          prompt: "allowed request",
-          target: { commandId: "cmd-a" },
-          timeout: 10,
-          concurrencyId: "shared-cross-repo",
-        })
-      ).status,
-    ).toBe(404);
-    expect((await invoke("/api/v1/schedules/schedule-a/trigger")).status).toBe(404);
+      await invoke("/api/v1/sessions", {
+        repositoryId: "repo-a",
+        prompt: "allowed request",
+        target: { commandId: "cmd-a" },
+        timeout: 10,
+        concurrencyId: "shared-cross-repo",
+      }),
+    ).toMatchObject({
+      status: 404,
+      json: { error: { code: "NOT_FOUND", message: "resource not found" } },
+    });
+    expect(await invoke("/api/v1/schedules/schedule-a/trigger")).toMatchObject({
+      status: 404,
+      json: { error: { code: "NOT_FOUND", message: "resource not found" } },
+    });
   });
 });

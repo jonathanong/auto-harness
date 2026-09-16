@@ -1,4 +1,5 @@
 /* eslint-disable max-lines */
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -67,6 +68,11 @@ describe("durable host-message fencing", () => {
         type: "host:register",
         hostId: "host",
         worktrees: [],
+        protocolVersion: HOST_PROTOCOL_VERSION,
+        daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+        daemonStartedAt: "2026-08-11T00:00:00.000Z",
+        runningAttempts: [],
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
         capabilities: { features: ["scheduled-main-checkout"] },
         maxConcurrentAssignments: 2,
       }),
@@ -201,6 +207,7 @@ describe("durable host-message fencing", () => {
         attemptId: "a",
         retryAccepted: false,
         terminalHookHandoffId: "handoff",
+        terminalHookHandoffExpiresAt: "2099-01-01T00:00:00.000Z",
       },
     });
   });
@@ -244,6 +251,56 @@ describe("durable host-message fencing", () => {
     } as never;
 
     await expectAcknowledgedStatusRetry(state, "connection-for-h1");
+  });
+
+  it("carries a lingering deferred handoff id and expiry forward on a moot attempt-mismatch retry", async () => {
+    const state = createControlPlaneState({ now: () => "now" });
+    // Same "row already moved past this attempt" shape as above, but the row
+    // still carries a deferred handoff recorded against the exact old attempt
+    // this retry reports — the daemon must still learn its id/expiry so it can
+    // settle the hook even though the status report itself is moot.
+    const reassigned = {
+      ...running(),
+      hostId: "h2",
+      attemptId: "b",
+      terminalHookHandoff: {
+        handoffId: "handoff",
+        attemptId: "a",
+        hostId: "h",
+        repositoryId: "r",
+        worktreeId: "w",
+        status: "completed" as const,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      },
+    };
+    state.sessions.set("s", reassigned);
+    state.storage = {
+      getSession: async () => reassigned,
+      getHostLock: async () => "connection-for-h2",
+    } as never;
+
+    await expect(
+      handleHostMessageDurable(
+        state,
+        {
+          type: "session:status",
+          sessionId: "s",
+          worktreeId: "w",
+          attemptId: "a",
+          status: "completed",
+          deferTerminalHookResult: true,
+        },
+        "connection-for-h1",
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      sessionStatusAcknowledged: {
+        sessionId: "s",
+        attemptId: "a",
+        terminalHookHandoffId: "handoff",
+        terminalHookHandoffExpiresAt: "2099-01-01T00:00:00.000Z",
+      },
+    });
   });
 
   it("withholds the acknowledgement when a terminal status's conditional write loses a race", async () => {
@@ -300,6 +357,8 @@ describe("durable host-message fencing", () => {
     plane.state.storage = {
       getSession: async () => running(),
       getHostLock: async () => "current",
+      getWorktree: async () => undefined,
+      listActiveSessionsByHost: async () => [],
       acknowledgeSession: async () => true,
       heartbeatConnection: async () => false,
       finishSession: async () => false,

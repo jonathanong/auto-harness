@@ -91,36 +91,11 @@ export const DEFAULT_QUEUE_SHARD_COUNT = 4;
 /** Session:assign must be acked within this window (Invariant 2). */
 export const DEFAULT_ACK_DEADLINE_MS = 15_000;
 
-/** Current host control-channel protocol advertised by modern daemons. */
+/** Host control-channel protocol. Peers must advertise this exact version. */
 export const HOST_PROTOCOL_VERSION = 7;
-
-/** Daemons at this version require a durable command-start acknowledgement before spawning. */
-export const COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION = 4;
-
-/** Daemons at this version durably settle terminal-hook handoffs after a host-loss recovery. */
-export const TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION = 5;
-
-/** Daemons at this version retain a terminal checkout failure until its hook and result settle. */
-export const DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION = 6;
-
-/** Daemons at this version honor the control plane's absolute handoff expiry. */
-export const TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION = 7;
-
-/**
- * Daemons that negotiate this version on `host:registered` re-arm the keepalive
- * stall watchdog only on peer evidence (`host:registered` / `host:keepalive-ack`),
- * not on a local `send()` resolving. Older peers keep the send-based re-arm.
- */
-export const KEEPALIVE_ACK_PROTOCOL_VERSION = 2;
 
 /** Wire bound for `session:log.dropped` (docs/websocket.md). */
 export const MAX_SESSION_LOG_DROPPED = 1_000_000;
-
-/**
- * Daemons below this version may finish `runningAttempts` but receive no new
- * `session:assign` once attempt-fenced scheduling is enabled.
- */
-export const ATTEMPT_FENCED_PROTOCOL_VERSION = 1;
 
 /**
  * Worktree reclaim if host heartbeat is older than this (Phase 3).

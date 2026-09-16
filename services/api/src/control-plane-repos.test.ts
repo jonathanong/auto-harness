@@ -17,7 +17,10 @@ const repository = (id: string, admissionState?: string): RepositoryRecord => ({
 it("omits malformed persisted admission rows while listing healthy repositories", async () => {
   const plane = new ControlPlane({
     storage: {
-      listRepositories: async () => [repository("malformed", "unknown"), repository("healthy")],
+      listRepositories: async () => [
+        repository("malformed", "unknown"),
+        repository("healthy", "active"),
+      ],
     } as never,
   });
 

@@ -1,6 +1,8 @@
 /* eslint-disable max-lines -- one end-to-end flow owns the host, viewer, and terminal lifecycle. */
-import { expect, test } from "@playwright/test";
+import { expect, test, type APIRequestContext } from "@playwright/test";
 import { createCatalogRepository } from "../local-1-host.ts";
+import { HOST_PROTOCOL_VERSION } from "../../modules/shared/src/constants.ts";
+import { gzipJsonlLines } from "../../modules/shared/src/session-log-gzip.ts";
 
 const API = `http://127.0.0.1:${7430 + portOffset()}`;
 
@@ -60,15 +62,7 @@ test.describe("live session logs", () => {
           attemptId: assignment.attemptId,
         }),
       );
-      host.socket.send(
-        logFrame(
-          session.id,
-          "history from the real host socket",
-          1,
-          "stdout",
-          assignment.attemptId,
-        ),
-      );
+      await putLogPart(request, session.id, "history from the real host socket", 1);
 
       const ticketResponse = page.waitForResponse((response) =>
         response.url().endsWith("/api/v1/auth/viewer-ticket"),
@@ -89,35 +83,21 @@ test.describe("live session logs", () => {
       );
       await expect(page.getByTestId("session-terminal")).toHaveAttribute("data-view", "readable");
 
-      host.socket.send(
-        logFrame(
-          session.id,
-          "\u001b[31mANSI red output\u001b[0m",
-          2,
-          "stdout",
-          assignment.attemptId,
-        ),
-      );
+      await putLogPart(request, session.id, "\u001b[31mANSI red output\u001b[0m", 2);
       await expect(page.getByTestId("session-terminal-transcript")).toContainText(
         "ANSI red output",
       );
-      host.socket.send(
-        logFrame(session.id, "live browser tail", 3, "stdout", assignment.attemptId),
-      );
+      await putLogPart(request, session.id, "live browser tail", 3);
       await expect(page.getByTestId("session-terminal-transcript")).toContainText(
         "live browser tail",
       );
-      host.socket.send(
-        logFrame(session.id, "Process exited with code 0", 4, "system", assignment.attemptId),
-      );
-      host.socket.send(
-        logFrame(
-          session.id,
-          "Session completed at 2026-08-01T12:05:30.000Z",
-          5,
-          "system",
-          assignment.attemptId,
-        ),
+      await putLogPart(request, session.id, "Process exited with code 0", 4, "system");
+      await putLogPart(
+        request,
+        session.id,
+        "Session completed at 2026-08-01T12:05:30.000Z",
+        5,
+        "system",
       );
       await expect(page.getByTestId("session-terminal-transcript")).toContainText(
         "[system] Process exited with code 0",
@@ -148,17 +128,14 @@ test.describe("live session logs", () => {
         "false",
       );
 
-      host.socket.send(
-        logFrame(
-          session.id,
-          JSON.stringify({
-            type: "item.completed",
-            item: { type: "agent_message", text: "pretty json body" },
-          }),
-          6,
-          "stdout",
-          assignment.attemptId,
-        ),
+      await putLogPart(
+        request,
+        session.id,
+        JSON.stringify({
+          type: "item.completed",
+          item: { type: "agent_message", text: "pretty json body" },
+        }),
+        6,
       );
       await expect(page.getByTestId("session-log-line-6")).toContainText(
         '"type": "item.completed"',
@@ -218,7 +195,10 @@ async function connectHost(
       socket.send(
         JSON.stringify({
           type: "host:register",
-          protocolVersion: 1,
+          protocolVersion: HOST_PROTOCOL_VERSION,
+          daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+          daemonStartedAt: "2026-08-11T00:00:00.000Z",
+          runningAttempts: [],
           hostId,
           worktrees: [
             {
@@ -240,22 +220,27 @@ async function connectHost(
   return { socket, assignment };
 }
 
-function logFrame(
+/** Durable transcript bodies are gzip log parts PUT over REST, not control-plane WS frames. */
+async function putLogPart(
+  request: APIRequestContext,
   sessionId: string,
   content: string,
   seq: number,
   stream: "stdout" | "system" = "stdout",
-  attemptId: string,
-): string {
-  return JSON.stringify({
-    type: "session:log",
-    sessionId,
-    attemptId,
-    stream,
-    content: `${content}\r\n`,
-    timestamp: new Date().toISOString(),
-    seq,
-  });
+): Promise<void> {
+  const body = gzipJsonlLines([
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      stream,
+      content: `${content}\r\n`,
+      seq,
+    }),
+  ]);
+  const response = await request.put(
+    `${API}/api/v1/sessions/${sessionId}/log-parts?seqStart=${seq}&seqEnd=${seq}`,
+    { data: body, headers: { "content-type": "application/gzip" } },
+  );
+  expect(response.ok()).toBe(true);
 }
 
 async function closeSocket(socket: WebSocket): Promise<void> {

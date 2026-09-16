@@ -70,6 +70,7 @@ function assignedFixtureSession(
  * `host-a` into advertising capabilities such as `prior-session-context`. */
 export function finishedCommandSwapSourcePlane(hostCapabilities: string[] = []): ControlPlane {
   const plane = deterministicPlane();
+  plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
   plane.createCommand({
     id: "cmd-old",
     name: "old",
@@ -95,6 +96,7 @@ export function finishedCommandSwapSourcePlane(hostCapabilities: string[] = []):
  * capturing a native-resume ref. */
 export function finishedLoggedSessionPlane(content: string): ControlPlane {
   const plane = deterministicPlane();
+  plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
   plane.createCommand({ id: "cmd", name: "echo", argv: ["echo"], appendPrompt: true });
   const session = assignedFixtureSession(plane, "cmd", "first run", "host");
   plane.handleHostMessage({

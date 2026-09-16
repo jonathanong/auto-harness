@@ -175,30 +175,6 @@ export function setInMemoryScheduleStorage(
       state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
       return true;
     },
-    skipOwnerlessScheduleAndAudit: async ({
-      scheduleId,
-      expectedNextRunAt,
-      newNextRunAt,
-      lastRunAt,
-    }: {
-      scheduleId: string;
-      expectedNextRunAt: string;
-      newNextRunAt: string;
-      lastRunAt: string;
-      audit: AuditLogRecord;
-    }) => {
-      const schedule = state.schedules.get(scheduleId);
-      if (
-        !schedule ||
-        !schedule.enabled ||
-        schedule.principalId !== undefined ||
-        schedule.nextRunAt !== expectedNextRunAt
-      ) {
-        return false;
-      }
-      state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt });
-      return true;
-    },
     disableLegacyFallbackScheduleAndAudit: async ({
       scheduleId,
       expectedNextRunAt,

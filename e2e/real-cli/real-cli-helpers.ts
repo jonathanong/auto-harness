@@ -7,7 +7,7 @@ import { expect, type APIRequestContext, type Page } from "@playwright/test";
 import { fetchHostInventory } from "../../services/host-daemon/src/bootstrap.ts";
 import { startDaemon } from "../../services/host-daemon/src/start-daemon.ts";
 import { runCommandOk } from "../../scripts/lib/run-command.mts";
-import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
+import { API_BASE } from "../harness-endpoints.ts";
 
 const API = API_BASE;
 
@@ -155,7 +155,7 @@ export async function runRealCliSession(opts: {
     writeFileSync(profilePath, JSON.stringify({ accounts: { [account.id]: { home: homedir() } } }));
     const config = await fetchHostInventory({
       hostId,
-      apiUrl: WS_BASE,
+      apiUrl: API_BASE,
     });
     const daemon = await startDaemon({
       config,

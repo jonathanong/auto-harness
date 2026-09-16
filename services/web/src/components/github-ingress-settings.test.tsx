@@ -266,25 +266,6 @@ describe("GitHubIngressSettings", () => {
     );
   });
 
-  it("uses legacy generation headers when an older config omits generation", async () => {
-    const legacy = { ...existing, generation: undefined };
-    const fake = createApiFake(json(legacy), json({ version: 3 }), json({}, 204));
-    const view = mountForm(<GitHubIngressSettings />);
-    await settle();
-    setValue(labelled(view.container, "Timeout seconds"), "240");
-    press(field(view.container, "github-ingress-save"));
-    await settle();
-    const saved = JSON.parse(String(fake.requests[1]?.[1]?.body)) as Record<string, unknown>;
-    expect(saved).toMatchObject({ version: 2, generation: "legacy" });
-    press(field(view.container, "github-ingress-delete"));
-    press(field(view.container, "github-ingress-delete-confirm-submit"));
-    await settle();
-    expect(fake.requests[2]?.[1]?.headers).toMatchObject({
-      "if-match": "3",
-      "if-match-generation": "legacy",
-    });
-  });
-
   it("loads command targets and provider fallbacks across multiple bindings", async () => {
     const alternate = {
       ...existing,

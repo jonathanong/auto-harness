@@ -103,6 +103,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     // default constructor factories
     const bare = new ControlPlane();
     seedBaseCommand(bare);
+    bare.createRepository({ id: "r", name: "r", url: "https://example.test/r.git" });
     const created = bare.createSession({
       repositoryId: "r",
       prompt: "p",

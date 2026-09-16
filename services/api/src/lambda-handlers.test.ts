@@ -181,10 +181,6 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async markHostDraining(hostId: string, connectionId: string) {
       return hostLocks.get(hostId) === connectionId;
     },
-    async migrateSessionDrainActivityLedgerPage() {
-      recordSchedulerCall("migration");
-      return true;
-    },
     async putConnection(connection: Record<string, unknown>) {
       connections.set(String(connection.connectionId), connection);
     },
@@ -412,7 +408,11 @@ async function registerGatewayHost(
       hostId: "host-1",
       worktrees: [],
       commandProfiles: [],
-      ...(protocolVersion === undefined ? {} : { protocolVersion }),
+      protocolVersion: protocolVersion ?? 7,
+      daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+      daemonStartedAt: "2026-08-11T00:00:00.000Z",
+      runningAttempts: [],
+      runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
     }),
     requestContext: { connectionId, routeKey: "$default" },
   });
@@ -504,7 +504,7 @@ function seedSchedulerSweep(fixture: ReturnType<typeof runtimeFixture>) {
     capabilities: ["scheduled-main-checkout"],
     repositoryIds: ["repo-active", "repo-ack", "repo-timeout"],
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-    protocolVersion: 1,
+    protocolVersion: 7,
   });
   fixture.connections.set("stale-connection", {
     hostId: "stale-host",
@@ -687,6 +687,11 @@ describe("Lambda runtime adapters", () => {
           hostId: "host-1",
           worktrees: [],
           commandProfiles: [],
+          protocolVersion: 7,
+          daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+          daemonStartedAt: "2026-08-11T00:00:00.000Z",
+          runningAttempts: [],
+          runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
         }),
         requestContext: { connectionId: "gateway-1", routeKey: "$default" },
       }),
@@ -709,6 +714,27 @@ describe("Lambda runtime adapters", () => {
       connectionId: "gateway-1",
       protocolVersion: HOST_PROTOCOL_VERSION,
     });
+  });
+
+  it("discards a well-formed frame whose hostId does not match the authenticated lease", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await expect(
+        runtime.websocket({
+          body: JSON.stringify({
+            type: "host:keepalive",
+            hostId: "some-other-host",
+            at: "2026-08-12T00:00:20.000Z",
+          }),
+          requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+        }),
+      ).resolves.toEqual({ statusCode: 403 });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('"reason":"hostId mismatch"'));
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("delivers v7 terminal-hook handoffs sequentially after registration on the inbound socket", async () => {
@@ -776,7 +802,11 @@ describe("Lambda runtime adapters", () => {
           hostId: "host-1",
           worktrees: [],
           commandProfiles: [],
-          protocolVersion: HOST_PROTOCOL_VERSION,
+          protocolVersion: 7,
+          daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+          daemonStartedAt: "2026-08-11T00:00:00.000Z",
+          runningAttempts: [],
+          runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
         }),
         requestContext: { connectionId: "gateway-1", routeKey: "$default" },
       }),
@@ -822,7 +852,7 @@ describe("Lambda runtime adapters", () => {
         expiresAt: "2026-08-13T00:00:00.000Z",
       },
     });
-    const runtime = await registerGatewayHost(fixture, "gateway-1", 5);
+    const runtime = await registerGatewayHost(fixture, "gateway-1", 7);
     fixture.management.send.mockClear();
     await expect(
       runtime.websocket({
@@ -1070,6 +1100,37 @@ describe("Lambda runtime adapters", () => {
     }
   });
 
+  it("stays fail-closed when a public base URL refetch also comes up empty", async () => {
+    const fixture = runtimeFixture();
+    fixture.plane.state.publicBaseUrl = undefined as unknown as string;
+    const previousParam = process.env.PUBLIC_BASE_URL_SSM_PARAM;
+    const previousWs = process.env.WS_API_ENDPOINT;
+    const send = vi.fn(async () => ({ Parameter: {} }));
+    try {
+      process.env.PUBLIC_BASE_URL_SSM_PARAM = "/auto-harness/qa/public-base-url";
+      process.env.WS_API_ENDPOINT = "https://example.execute-api.us-east-1.amazonaws.com/prod";
+      const runtime = await createLambdaRuntime({
+        auth: fixture.auth as never,
+        created: { plane: fixture.plane, storage: fixture.storage } as never,
+        management: fixture.management,
+        ssmClient: { send } as never,
+      });
+      await expect(
+        runtime.websocket({
+          headers: { origin: "https://d1234.cloudfront.net" },
+          queryStringParameters: { ticket: "viewer-ticket" },
+          requestContext: { connectionId: "viewer-refetch-empty", routeKey: "$connect" },
+        }),
+      ).resolves.toEqual({ statusCode: 403 });
+      expect(send).toHaveBeenCalled();
+    } finally {
+      if (previousParam === undefined) delete process.env.PUBLIC_BASE_URL_SSM_PARAM;
+      else process.env.PUBLIC_BASE_URL_SSM_PARAM = previousParam;
+      if (previousWs === undefined) delete process.env.WS_API_ENDPOINT;
+      else process.env.WS_API_ENDPOINT = previousWs;
+    }
+  });
+
   it("rehydrates auth on connect when the runtime constructed AuthService itself", async () => {
     const fixture = runtimeFixture();
     const previous = {
@@ -1186,6 +1247,44 @@ describe("Lambda runtime adapters", () => {
       }),
     ).resolves.toEqual({ statusCode: 200 });
     expect(fixture.connections.has("viewer-1")).toBe(false);
+  });
+
+  it("notifies the owning host when the first viewer subscribes and the last unsubscribes", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    fixture.sessions.set("session-1", {
+      id: "session-1",
+      repositoryId: "repository-1",
+      status: "running",
+      hostId: "host-1",
+    });
+    fixture.management.send.mockClear();
+    await expect(
+      runtime.websocket({
+        headers: { origin: "http://localhost:7421" },
+        queryStringParameters: { ticket: "viewer-ticket" },
+        requestContext: { connectionId: "viewer-1", routeKey: "$connect" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+        requestContext: { connectionId: "viewer-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({ type: "session:log-watch", sessionId: "session-1" });
+    fixture.management.send.mockClear();
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({ type: "session:unsubscribe", sessionId: "session-1" }),
+        requestContext: { connectionId: "viewer-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({ type: "session:log-unwatch", sessionId: "session-1" });
   });
 
   it("preserves an existing log callback and rejects malformed client connection rows", async () => {
@@ -1547,7 +1646,7 @@ describe("Lambda runtime adapters", () => {
 
   it("uses the authenticated durable protocol on a cold process cache", async () => {
     const fixture = runtimeFixture();
-    const runtime = await registerGatewayHost(fixture, "gateway-1", 3);
+    const runtime = await registerGatewayHost(fixture, "gateway-1", 7);
     fixture.plane.state.connections.clear();
     fixture.plane.state.hostConnection.clear();
     fixture.mainCheckoutLeases.set("host-1#repository-1", "session-2");
@@ -2010,7 +2109,6 @@ describe("Lambda runtime adapters", () => {
         staleHostsReclaimed: 1,
       });
       expect(fixture.schedulerCalls).toEqual([
-        "migration",
         "schedules",
         "sessions",
         "connections",
@@ -2199,6 +2297,11 @@ describe("Lambda runtime adapters", () => {
         hostId: "host-1",
         worktrees: [],
         commandProfiles: [],
+        protocolVersion: 7,
+        daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+        daemonStartedAt: "2026-08-11T00:00:00.000Z",
+        runningAttempts: [],
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
       }),
       requestContext: { connectionId: "gateway-2", routeKey: "$default" },
     });
@@ -2585,6 +2688,34 @@ describe("loadSlackAppCredentials", () => {
         ).rejects.toBe(failure);
       }
     } finally {
+      if (previousParam === undefined) delete process.env.HARNESS_SLACK_APP_SSM_PARAM;
+      else process.env.HARNESS_SLACK_APP_SSM_PARAM = previousParam;
+    }
+  });
+
+  it("constructs the default SSM client when none is injected", async () => {
+    const previousLocal = process.env.HARNESS_SLACK_APP;
+    const previousParam = process.env.HARNESS_SLACK_APP_SSM_PARAM;
+    const send = vi.spyOn(SSMClient.prototype, "send").mockImplementation(async () => ({
+      Parameter: {
+        Value: JSON.stringify({
+          clientId: "default-client",
+          clientSecret: "secret",
+          signingSecret: "slack-signing_secret-123",
+        }),
+      },
+    }));
+    try {
+      delete process.env.HARNESS_SLACK_APP;
+      process.env.HARNESS_SLACK_APP_SSM_PARAM = "/slack/app";
+      await expect(loadSlackAppCredentials()).resolves.toMatchObject({
+        clientId: "default-client",
+      });
+      expect(send).toHaveBeenCalled();
+    } finally {
+      send.mockRestore();
+      if (previousLocal === undefined) delete process.env.HARNESS_SLACK_APP;
+      else process.env.HARNESS_SLACK_APP = previousLocal;
       if (previousParam === undefined) delete process.env.HARNESS_SLACK_APP_SSM_PARAM;
       else process.env.HARNESS_SLACK_APP_SSM_PARAM = previousParam;
     }

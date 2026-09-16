@@ -28,12 +28,7 @@ export type {
 } from "./control-plane.ts";
 export { createControlPlane } from "./create-plane.ts";
 export type { CreateControlPlaneOptions } from "./create-plane.ts";
-export {
-  createDynamoClients,
-  createDynamoDocumentClient,
-  DEFAULT_DYNAMODB_ENDPOINT,
-  tableNames,
-} from "./db/dynamo.ts";
+export { createDynamoClients, DEFAULT_DYNAMODB_ENDPOINT, tableNames } from "./db/dynamo.ts";
 export { ensureControlPlaneTables } from "./db/ensure-tables.ts";
 export { DynamoPlaneStorage } from "./db/plane-storage.ts";
 export type { SessionRecord, WorktreeRecord } from "./db/types.ts";

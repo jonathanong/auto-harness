@@ -272,7 +272,7 @@ already captured nonempty logs for the current retry generation is not expired o
 its upload. Memory-only expiry re-reads the live in-memory row before writing that fence, so a
 stale pending snapshot cannot expire a claim that already recorded captured bytes. Memory-only
 retries also check the live claim against the owned retry before empty expiry or the object PUT,
-including empty legacy unversioned replacements after the queue await, and again after the
+including empty replacements after the queue await, and again after the
 retention log probe even when recent logs remain. Durable empty replacements also re-check the
 processing claim before the object PUT. An absent in-memory claim is treated as a lost
 fence.
@@ -497,7 +497,7 @@ observability) · **Repositories & Worktrees** (attach/detach, add worktrees) ·
 The Overview tab's Daemon block shows the detected restart count, daemon start time, and last-restart
 time (all relative, full timestamp on hover). A daemon process keeps one opaque instance id across
 WebSocket reconnects; the control plane counts a restart only when a later registration changes a
-previously known instance id. Legacy daemons establish no baseline. This is local API/UI
+previously known instance id. This is local API/UI
 observability. Stale/offline host reclaim also enqueues an external Slack **Host Offline**
 notification when that toggle is enabled. Its retry candidate is retained with the released host
 lease until the durable Slack outbox accepts it, so independent WebSocket and cron Lambdas can
@@ -588,7 +588,7 @@ management chrome.
 Settings displays only redacted Slack state: installation method and optional
 workspace/app/bot-user/scope metadata, whether each secret is configured, the default channel, enabled state, notification
 toggles (session lifecycle plus Host Offline), delivery availability, and inbound availability.
-Legacy rows without installation metadata are shown as manual. Bot tokens and signing secrets are
+Bot tokens and signing secrets are
 write-only password inputs with no initial value and are cleared after successful create or
 replacement.
 

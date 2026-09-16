@@ -24,7 +24,6 @@ import {
   setRepositoryAdmissionState,
   skipScheduleBeforeActivationCutoff,
   skipScheduleForClosedRepository,
-  skipOwnerlessScheduleAndAudit,
   skipScheduleForPrincipalDrainAndAudit,
   tryClaimScheduleAndCreateSession,
   updateScheduleManagement,
@@ -1243,33 +1242,24 @@ describe("durable schedule management updates", () => {
     );
   });
 
-  it("couples ownerless and drain skips with their audit records", async () => {
+  it("couples drain skips with their audit records", async () => {
     const writes: TransactWriteCommandInput[] = [];
     const ctx = scheduleCtx(async (command) => {
       writes.push((command as TransactWriteCommand).input);
       return {};
     });
     const audit = {
-      id: "audit-1",
+      id: "audit-2",
       createdAt: "now",
       actor: { id: "system", kind: "system" as const, role: "system" as const },
-      action: "schedule:ownerless-occurrence-skipped",
+      action: "session-drain:admission-rejected",
       resourceType: "schedule",
       resourceId: "schedule-1",
       repositoryId: "repo-1",
       outcome: "failed" as const,
-      metadata: { reason: "ownerless" },
+      metadata: { reason: "draining" },
     };
 
-    await expect(
-      skipOwnerlessScheduleAndAudit(ctx, {
-        scheduleId: "schedule-1",
-        expectedNextRunAt: "one",
-        newNextRunAt: "two",
-        lastRunAt: "now",
-        audit,
-      }),
-    ).resolves.toBe(true);
     await expect(
       skipScheduleForPrincipalDrainAndAudit(ctx, {
         scheduleId: "schedule-1",
@@ -1278,26 +1268,11 @@ describe("durable schedule management updates", () => {
         operationId: "drain-1",
         expectedNextRunAt: "two",
         newNextRunAt: "three",
-        audit: { ...audit, id: "audit-2", action: "session-drain:admission-rejected" },
+        audit,
       }),
     ).resolves.toBe(true);
 
     expect(writes[0]?.TransactItems).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          Update: expect.objectContaining({
-            ConditionExpression: expect.stringContaining("attribute_not_exists(principalId)"),
-          }),
-        }),
-        expect.objectContaining({
-          Put: expect.objectContaining({
-            TableName: "AuditLogs",
-            Item: expect.objectContaining({ scope: "audit", id: "audit-1" }),
-          }),
-        }),
-      ]),
-    );
-    expect(writes[1]?.TransactItems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           ConditionCheck: expect.objectContaining({ TableName: "SessionDrains" }),
@@ -1310,7 +1285,7 @@ describe("durable schedule management updates", () => {
         }),
       ]),
     );
-    const update = writes[1]?.TransactItems?.find((item) => item.Update)?.Update;
+    const update = writes[0]?.TransactItems?.find((item) => item.Update)?.Update;
     expect(update).toMatchObject({
       ConditionExpression: expect.stringContaining("repositoryId = :repositoryId"),
       ExpressionAttributeValues: expect.objectContaining({

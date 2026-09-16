@@ -82,7 +82,7 @@ describe("DaemonLoop deferred terminal-hook assignment capacity", () => {
         },
       };
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       transport.deliver(assignment("checkout-failure", "wt-1"));
       await waitFor(() =>
         sent.some(

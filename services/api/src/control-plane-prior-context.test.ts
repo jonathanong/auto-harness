@@ -19,6 +19,7 @@ describe("loadPriorSessionContextLocal", () => {
 
   it("returns null for a session that exists but never logged anything", () => {
     const plane = deterministicPlane();
+    plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
     plane.createCommand({ id: "cmd", name: "echo", argv: ["echo"], appendPrompt: true });
     registerFixtureHost(plane, "host");
     plane.createSession({

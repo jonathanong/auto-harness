@@ -41,6 +41,7 @@ function commandState() {
     name: "repo",
     url: "https://example.test/repo.git",
     defaultBranch: "main",
+    admissionState: "active",
     createdAt: NOW,
     updatedAt: NOW,
   });
