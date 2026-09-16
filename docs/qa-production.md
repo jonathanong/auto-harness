@@ -756,7 +756,7 @@ export AWS_REGION=us-west-2 AWS_PAGER=""
 export HARNESS_DEPLOY_ENVIRONMENT=production
 export HARNESS_DEPLOY_CONFIRM=production
 export HARNESS_DEPLOY_PURGE_CONFIRM=destroy-all-data-in-production
-# HARNESS_DEPLOY_PURGE_SSM left unset — reuse the 3 existing bootstrap secrets
+unset HARNESS_DEPLOY_PURGE_SSM
 pnpm --filter @auto-harness/cdk run purge
 
 unset HARNESS_DEPLOY_CONFIRM HARNESS_DEPLOY_PURGE_CONFIRM
@@ -815,7 +815,7 @@ After any purge of a long-lived environment, check for survivors:
 
 ```bash
 aws dynamodb list-tables --output text --query 'TableNames[]' \
-  | tr '\t' '\n' | grep '^AutoHarness-<env>-'
+  | tr '\t' '\n' | grep "^AutoHarness-${HARNESS_DEPLOY_ENVIRONMENT}-"
 ```
 
 Do not delete survivors by prefix match alone — table prefixes are
