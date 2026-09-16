@@ -3,6 +3,7 @@ import {
   DeleteCommand,
   GetCommand,
   PutCommand,
+  QueryCommand,
   ScanCommand,
   TransactWriteCommand,
   UpdateCommand,
@@ -10,6 +11,10 @@ import {
 
 import type { SlackDeliveryRecord } from "../slack-delivery-types.ts";
 
+import {
+  HOST_LOCKS_OFFLINE_ALERT_INDEX,
+  HOST_OFFLINE_ALERT_PENDING,
+} from "./ensure-host-locks-offline-alert-index.ts";
 import {
   isConditionalFailed,
   isConditionalTransactionFailed,
@@ -129,7 +134,7 @@ export async function tryRegisterHost(
               TableName: ctx.tables.hostLocks,
               Key: { hostId: opts.hostId },
               UpdateExpression:
-                "SET connectionId = :connectionId, draining = :draining, disconnected = :false, mainCheckoutLeases = if_not_exists(mainCheckoutLeases, :empty) REMOVE offlineAlertReason, offlineAlertLastHeartbeatAt",
+                "SET connectionId = :connectionId, draining = :draining, disconnected = :false, mainCheckoutLeases = if_not_exists(mainCheckoutLeases, :empty) REMOVE offlineAlertReason, offlineAlertLastHeartbeatAt, offlineAlertPending",
               ...(opts.replaceExisting
                 ? existingConnectionId
                   ? {
@@ -211,7 +216,7 @@ export async function releaseHostConnection(
               TableName: ctx.tables.hostLocks,
               Key: { hostId: opts.hostId },
               UpdateExpression: opts.offlineAlert
-                ? "SET disconnected = :true, offlineAlertReason = :reason, offlineAlertLastHeartbeatAt = :lastHeartbeatAt REMOVE draining"
+                ? "SET disconnected = :true, offlineAlertReason = :reason, offlineAlertLastHeartbeatAt = :lastHeartbeatAt, offlineAlertPending = :pending REMOVE draining"
                 : "SET disconnected = :true REMOVE draining",
               ConditionExpression: "connectionId = :connectionId",
               ExpressionAttributeValues: {
@@ -221,6 +226,7 @@ export async function releaseHostConnection(
                   ? {
                       ":reason": opts.offlineAlert.reason,
                       ":lastHeartbeatAt": opts.offlineAlert.lastHeartbeatAt,
+                      ":pending": HOST_OFFLINE_ALERT_PENDING,
                     }
                   : {}),
               },
@@ -250,7 +256,7 @@ export async function recordHostOfflineAlertCandidate(
         TableName: ctx.tables.hostLocks,
         Key: { hostId: candidate.hostId },
         UpdateExpression:
-          "SET disconnected = :true, offlineAlertReason = :reason, offlineAlertLastHeartbeatAt = :lastHeartbeatAt REMOVE draining",
+          "SET disconnected = :true, offlineAlertReason = :reason, offlineAlertLastHeartbeatAt = :lastHeartbeatAt, offlineAlertPending = :pending REMOVE draining",
         // A stale warm Lambda may retry after a newer disconnect has already
         // recorded its own candidate. Only create a missing candidate (or
         // repeat this exact one); never replace a newer alert observation.
@@ -260,6 +266,7 @@ export async function recordHostOfflineAlertCandidate(
           ":true": true,
           ":reason": candidate.reason,
           ":lastHeartbeatAt": candidate.lastHeartbeatAt,
+          ":pending": HOST_OFFLINE_ALERT_PENDING,
         },
       }),
     );
@@ -279,7 +286,8 @@ export async function clearHostOfflineAlertCandidate(
       new UpdateCommand({
         TableName: ctx.tables.hostLocks,
         Key: { hostId: candidate.hostId },
-        UpdateExpression: "REMOVE offlineAlertReason, offlineAlertLastHeartbeatAt",
+        UpdateExpression:
+          "REMOVE offlineAlertReason, offlineAlertLastHeartbeatAt, offlineAlertPending",
         ConditionExpression:
           "offlineAlertReason = :reason AND offlineAlertLastHeartbeatAt = :lastHeartbeatAt",
         ExpressionAttributeValues: {
@@ -315,7 +323,8 @@ export async function enqueueHostOfflineAlertCandidate(
             Update: {
               TableName: ctx.tables.hostLocks,
               Key: { hostId: candidate.hostId },
-              UpdateExpression: "REMOVE offlineAlertReason, offlineAlertLastHeartbeatAt",
+              UpdateExpression:
+                "REMOVE offlineAlertReason, offlineAlertLastHeartbeatAt, offlineAlertPending",
               ConditionExpression:
                 "offlineAlertReason = :reason AND offlineAlertLastHeartbeatAt = :lastHeartbeatAt",
               ExpressionAttributeValues: {
@@ -356,7 +365,27 @@ function hostOfflineAlertCandidate(
   return { hostId, reason, lastHeartbeatAt };
 }
 
-/** Scan only durable retry candidates; host locks are one row per known host. */
+/**
+ * Query the sparse offlineAlertPending GSI instead of scanning HostLocks. HostLocks is a
+ * lock table and is deliberately excluded from Scan grants (see the SCAN_TABLE_NAMES
+ * docstring in services/cdk/src/foundation-data-access.ts) — a Scan here throws
+ * AccessDenied against the deployed least-privilege policy.
+ *
+ * DynamoDB does not support ConsistentRead on a GSI Query (it rejects the request), so
+ * this read is eventually consistent — unlike the Scan it replaces. That is acceptable
+ * here: this sweep runs on a 1-minute cron, GSI propagation is typically sub-second, and
+ * this read does not enforce correctness on its own. On the transactional delivery path
+ * (enqueueHostOfflineAlertCandidate, taken whenever the storage layer implements it — the
+ * only production implementation, DynamoPlaneStorage, always does) a momentarily stale
+ * index entry (e.g. one just cleared by a reconnect) fails that transaction's
+ * ConditionExpression against the HostLocks base item and is silently dropped by
+ * conditionalHostWriteOrThrow rather than firing a stale alert; clearHostOfflineAlertCandidate
+ * is conditioned the same way. A newly-set candidate that hasn't yet propagated to the index
+ * is simply picked up on the next tick, one minute later. A store that omits the optional
+ * transactional method falls back to a non-atomic enqueue-then-clear (see
+ * enqueueOfflineAlertCandidate in control-plane-lifecycle.ts) where a stale-positive read
+ * could in principle race a concurrent reconnect; no such store exists in this codebase today.
+ */
 export async function listHostOfflineAlertCandidates(
   ctx: PlaneStorageCtx,
 ): Promise<HostOfflineAlertCandidate[]> {
@@ -364,12 +393,12 @@ export async function listHostOfflineAlertCandidates(
   let startKey: Record<string, unknown> | undefined;
   do {
     const result = await ctx.doc.send(
-      new ScanCommand({
+      new QueryCommand({
         TableName: ctx.tables.hostLocks,
-        FilterExpression:
-          "attribute_exists(offlineAlertReason) AND attribute_exists(offlineAlertLastHeartbeatAt)",
+        IndexName: HOST_LOCKS_OFFLINE_ALERT_INDEX,
+        KeyConditionExpression: "offlineAlertPending = :pending",
+        ExpressionAttributeValues: { ":pending": HOST_OFFLINE_ALERT_PENDING },
         ExclusiveStartKey: startKey,
-        ConsistentRead: true,
       }),
     );
     for (const item of result.Items ?? []) {
