@@ -47,6 +47,7 @@ What Auto Harness is, what it does and does not, and why: root [README](../READM
 | [auth.md](auth.md)                      | Credentials, login, agent binding                                                                      |
 | [roles.md](roles.md)                    | Named roles, capabilities, and the grant matrix                                                        |
 | [security.md](security.md)              | Principles, transport, hardening, threat boundaries                                                    |
+| [observability.md](observability.md)    | Metrics/alarms, CloudWatch, Sentry, known gaps                                                         |
 | [web.md](web.md)                        | Web UI behavior                                                                                        |
 | [terminology.md](terminology.md)        | Canonical UI vocabulary (nav labels, copy, `data-pw`)                                                  |
 | [integrations.md](integrations.md)      | Slack (+ future)                                                                                       |
