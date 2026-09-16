@@ -1599,17 +1599,23 @@ export async function resumeHostDurable(
   // A single read gives both the current owner and the durable flag, so a
   // no-op resume (already not draining) costs one GetItem and touches nothing.
   const lockState = await state.storage.getHostLockState(hostId);
-  const ownerConnectionId =
-    connectionId ?? state.hostConnection.get(hostId) ?? lockState.connectionId;
-  if (!ownerConnectionId) {
-    return { ok: false };
-  }
   if (!lockState.draining) {
     // Already resolved: an operator retry, or a race with the daemon's own
     // reconnect clearing it. Reconcile a possibly-stale local cache and stop
     // — nothing durable to clear, no worktrees to touch, no message to send.
+    //
+    // Deliberately ahead of the lease-owner guard below: with nothing to write
+    // there is nothing to fence, so not knowing the owner must not turn an
+    // idempotent retry into a 409. A cold REST container that never saw this
+    // host connect has neither `hostConnection` nor, once drain is cleared, a
+    // reason to care who owns the lease.
     state.drainingHosts.delete(hostId);
     return { ok: true };
+  }
+  const ownerConnectionId =
+    connectionId ?? state.hostConnection.get(hostId) ?? lockState.connectionId;
+  if (!ownerConnectionId) {
+    return { ok: false };
   }
 
   // Same rationale as drainHostDurable: a cold-started REST process may have
