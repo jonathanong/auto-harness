@@ -72,9 +72,14 @@ esac`,
 }
 
 function run(bin: string, env: Record<string, string | undefined> = {}) {
+  // CI exports GITHUB_ACTIONS=true, and the hook's very first line honours that by exiting 0.
+  // Inheriting it would make every case below assert against an immediate no-op — green
+  // locally, green on CI, and blind to the hook actually breaking. Strip it by default; the
+  // one case that asserts the guard passes GITHUB_ACTIONS explicitly.
+  const { GITHUB_ACTIONS: _ciFlag, ...parentEnv } = process.env;
   return spawnSync("sh", [hookPath], {
     encoding: "utf8",
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}`, ...env },
+    env: { ...parentEnv, PATH: `${bin}:${process.env.PATH ?? ""}`, ...env },
   });
 }
 
@@ -110,12 +115,10 @@ describe("pre-push hook", () => {
   });
 
   it("fails loudly when pnpm is not on PATH", () => {
-    const directory = mkdtempSync(join(tmpdir(), "auto-harness-pre-push-test-"));
-    temporaryDirectories.push(directory);
-    const result = spawnSync("sh", [hookPath], {
-      encoding: "utf8",
-      env: { ...process.env, PATH: "/usr/bin:/bin" },
-    });
+    const { bin } = fixture();
+    // Goes through run() so the GITHUB_ACTIONS strip applies here too; the PATH override
+    // lands last and replaces run()'s own, leaving a PATH with no pnpm on it.
+    const result = run(bin, { PATH: "/usr/bin:/bin" });
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("pnpm not found on PATH");
