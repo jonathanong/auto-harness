@@ -10,15 +10,30 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-const hookPath = new URL("../.husky/pre-push", import.meta.url).pathname;
+// fileURLToPath, not URL.pathname: pathname keeps percent-encoding, so a checkout path
+// containing a space would hand readFileSync/spawnSync a path that does not resolve.
+const hookPath = fileURLToPath(new URL("../.husky/pre-push", import.meta.url));
 const hook = readFileSync(hookPath, "utf8");
 const rootPackage = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ) as { scripts: Record<string, string> };
 const githubActionsGuard = '[ "${GITHUB_ACTIONS:-}" = "true" ] && exit 0\n';
 const temporaryDirectories: string[] = [];
+
+/** Distinct fake shas, so an assertion can prove *which* pushed commit the hook compared. */
+const FEATURE_SHA = "1".repeat(40);
+const OTHER_SHA = "2".repeat(40);
+const DELETED_SHA = "0".repeat(40);
+
+/** One pre-push stdin line: `<local ref> SP <local sha> SP <remote ref> SP <remote sha>`. */
+function pushLine(localRef: string, sha: string, remoteRef = localRef): string {
+  return `${localRef} ${sha} ${remoteRef} ${OTHER_SHA}\n`;
+}
+
+const FEATURE_PUSH = pushLine("refs/heads/feature", FEATURE_SHA);
 
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
@@ -32,27 +47,35 @@ function executable(bin: string, name: string, body: string): void {
   chmodSync(path, 0o755);
 }
 
-function fixture(): { bin: string; directory: string; log: string } {
+function fixture(): { bin: string; directory: string; gitLog: string; log: string } {
   const directory = mkdtempSync(join(tmpdir(), "auto-harness-pre-push-test-"));
   temporaryDirectories.push(directory);
   const bin = join(directory, "bin");
   const log = join(directory, "calls.log");
+  const gitLog = join(directory, "git-calls.log");
   mkdirSync(bin);
   writeFileSync(log, "");
-  return { bin, directory, log };
+  writeFileSync(gitLog, "");
+  return { bin, directory, gitLog, log };
 }
 
-function fakeGit(bin: string, overrides: Record<string, string> = {}): void {
+function fakeGit(
+  bin: string,
+  gitLog: string,
+  overrides: { behind?: string[]; fetchExit?: string } = {},
+): void {
+  // Listed before the catch-all ancestor arm so these shas report "not an ancestor".
+  const behindArms = (overrides.behind ?? [])
+    .map((sha) => `  "merge-base --is-ancestor FETCH_HEAD ${sha}") exit 1 ;;`)
+    .join("\n");
   executable(
     bin,
     "git",
-    `case "$*" in
-  "rev-parse --abbrev-ref HEAD") echo "${overrides.branch ?? "feature"}" ;;
+    `printf 'git %s\\n' "$*" >> "${gitLog}"
+case "$*" in
   "fetch origin main --quiet") exit ${overrides.fetchExit ?? "0"} ;;
-  "rev-parse --verify --quiet refs/remotes/origin/main") ${
-    overrides.originMainResolves === "0" ? "exit 1" : "echo deadbeef"
-  } ;;
-  "merge-base --is-ancestor origin/main HEAD") exit ${overrides.ancestorExit ?? "0"} ;;
+${behindArms}
+  "merge-base --is-ancestor FETCH_HEAD "*) exit 0 ;;
   *) echo "unexpected git call: $*" >&2; exit 1 ;;
 esac`,
   );
@@ -71,15 +94,20 @@ esac`,
   );
 }
 
-function run(bin: string, env: Record<string, string | undefined> = {}) {
+function run(bin: string, env: Record<string, string | undefined> = {}, input = FEATURE_PUSH) {
   // CI exports GITHUB_ACTIONS=true, and the hook's very first line honours that by exiting 0.
   // Inheriting it would make every case below assert against an immediate no-op — green
   // locally, green on CI, and blind to the hook actually breaking. Strip it by default; the
   // one case that asserts the guard passes GITHUB_ACTIONS explicitly.
+  //
+  // `input` defaults to a real feature-branch push for the same reason: git supplies the pushed
+  // refs on stdin, and empty stdin takes the hook's "nothing to compare" skip path, so a case
+  // that forgot to supply refs would pass vacuously.
   const { GITHUB_ACTIONS: _ciFlag, ...parentEnv } = process.env;
   return spawnSync("sh", [hookPath], {
     encoding: "utf8",
     env: { ...parentEnv, PATH: `${bin}:${process.env.PATH ?? ""}`, ...env },
+    input,
   });
 }
 
@@ -104,14 +132,15 @@ describe("pre-push hook", () => {
   });
 
   it("exits 0 under GITHUB_ACTIONS=true without invoking git or pnpm", () => {
-    const { bin, log } = fixture();
-    fakeGit(bin);
+    const { bin, gitLog, log } = fixture();
+    fakeGit(bin, gitLog);
     fakePnpm(bin, log);
 
     const result = run(bin, { GITHUB_ACTIONS: "true" });
 
     expect(result.status).toBe(0);
     expect(readFileSync(log, "utf8")).toBe("");
+    expect(readFileSync(gitLog, "utf8")).toBe("");
   });
 
   it("fails loudly when pnpm is not on PATH", () => {
@@ -125,8 +154,8 @@ describe("pre-push hook", () => {
   });
 
   it("fails and prints the exact fix command when formatting is wrong", () => {
-    const { bin, log } = fixture();
-    fakeGit(bin);
+    const { bin, gitLog, log } = fixture();
+    fakeGit(bin, gitLog);
     fakePnpm(bin, log, { fmtExit: "1" });
 
     const result = run(bin);
@@ -137,8 +166,8 @@ describe("pre-push hook", () => {
   });
 
   it("fails when lint fails, after formatting already passed", () => {
-    const { bin, log } = fixture();
-    fakeGit(bin);
+    const { bin, gitLog, log } = fixture();
+    fakeGit(bin, gitLog);
     fakePnpm(bin, log, { lintExit: "1" });
 
     const result = run(bin);
@@ -148,53 +177,72 @@ describe("pre-push hook", () => {
     expect(readFileSync(log, "utf8")).toBe("pnpm run --silent fmt:check\npnpm run --silent lint\n");
   });
 
-  it("skips the up-to-date check when pushing main itself", () => {
-    const { bin, log } = fixture();
-    fakeGit(bin, { branch: "main" });
+  it("compares the ref git supplies on stdin, not the checked-out branch", () => {
+    const { bin, gitLog, log } = fixture();
+    fakeGit(bin, gitLog);
     fakePnpm(bin, log);
 
     const result = run(bin);
 
+    // The discriminating assertion: reading the checked-out branch instead would compare
+    // `origin/main HEAD` here, and would skip this check outright when pushing a feature
+    // branch from a `main` checkout.
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("pushing main itself");
+    expect(readFileSync(gitLog, "utf8")).toContain(
+      `merge-base --is-ancestor FETCH_HEAD ${FEATURE_SHA}`,
+    );
+  });
+
+  it.each([
+    { input: pushLine("refs/heads/main", OTHER_SHA), label: "the push only targets main" },
+    {
+      input: pushLine("(delete)", DELETED_SHA, "refs/heads/gone"),
+      label: "the push only deletes a branch",
+    },
+  ])("skips the up-to-date check, touching git not at all, when $label", ({ input }) => {
+    const { bin, gitLog, log } = fixture();
+    fakeGit(bin, gitLog);
+    fakePnpm(bin, log);
+
+    const result = run(bin, {}, input);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("no non-main branch to compare");
+    expect(readFileSync(gitLog, "utf8")).toBe("");
   });
 
   it("does not block the push when origin is unreachable", () => {
-    const { bin, log } = fixture();
-    fakeGit(bin, { fetchExit: "1" });
+    const { bin, gitLog, log } = fixture();
+    fakeGit(bin, gitLog, { fetchExit: "1" });
     fakePnpm(bin, log);
 
     const result = run(bin);
 
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain("could not reach origin (offline?) — not blocking the push");
+    expect(result.stderr).toContain("could not fetch origin main (offline?) — not blocking");
   });
 
-  it("does not block the push when origin/main cannot be resolved locally", () => {
-    const { bin, log } = fixture();
-    fakeGit(bin, { originMainResolves: "0" });
+  it("checks every pushed ref and names the one that is behind origin/main", () => {
+    const { bin, gitLog, log } = fixture();
+    fakeGit(bin, gitLog, { behind: [OTHER_SHA] });
     fakePnpm(bin, log);
 
-    const result = run(bin);
+    const result = run(bin, {}, FEATURE_PUSH + pushLine("refs/heads/second", OTHER_SHA));
 
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain("origin/main is not available locally — not blocking");
-  });
-
-  it("fails and prints the exact rebase command when behind origin/main", () => {
-    const { bin, log } = fixture();
-    fakeGit(bin, { ancestorExit: "1" });
-    fakePnpm(bin, log);
-
-    const result = run(bin);
-
+    // Only the second ref is behind, so stopping after the first would pass this push.
     expect(result.status).toBe(1);
+    expect(result.stderr).toContain("refs/heads/second is behind origin/main");
     expect(result.stderr).toContain("git fetch origin && git rebase origin/main");
+    expect(readFileSync(gitLog, "utf8")).toContain(
+      `merge-base --is-ancestor FETCH_HEAD ${FEATURE_SHA}`,
+    );
   });
 
   it("checks up-to-date-ness last, only after formatting and lint pass", () => {
     expect(hook.indexOf("fmt:check")).toBeLessThan(hook.indexOf("run --silent lint"));
-    expect(hook.indexOf("run --silent lint")).toBeLessThan(hook.indexOf("origin/main"));
+    expect(hook.indexOf("run --silent lint")).toBeLessThan(
+      hook.indexOf("merge-base --is-ancestor"),
+    );
   });
 
   it("never suggests bypassing itself", () => {

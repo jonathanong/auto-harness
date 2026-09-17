@@ -20,16 +20,40 @@ tool invocations, so it cannot silently drift from CI.
   of re-spelling the underlying tool invocation.
 - Never bypass a failing hook with `--no-verify`, `HUSKY=0`, or `core.hooksPath`. Fix the failure
   the hook reports.
+- The up-to-date check reads the refs git supplies on **stdin**, never the checked-out branch.
+  See the edge cases below for why.
 - Do not add a pre-commit hook or any other hook here without updating this file and
   `scripts/pre-push-hook.test.ts` together.
 
-## Edge cases in the "branch is up to date with `main`" check
+## Edge cases in the "pushed branches are up to date with `main`" check
 
-- **On `main` itself:** skipped — there is nothing to be "ahead of".
-- **A brand-new branch:** not special-cased. It is simply checked like any other branch; a new
-  branch cut from a current `main` passes trivially.
-- **`origin` unreachable (offline):** `git fetch` failing does not block the push. Network access
-  is not guaranteed for every push, and this check runs again on the next push.
+Git feeds `pre-push` one line per pushed ref on stdin:
+
+```
+<local ref> SP <local sha> SP <remote ref> SP <remote sha>
+```
+
+The hook reads those lines rather than `git rev-parse --abbrev-ref HEAD`, because **the
+checked-out branch is not the pushed ref**. Reading the branch instead produced two silent
+no-ops: `git push origin feature` from a `main` checkout skipped the check entirely, and
+`git push origin main` from a feature checkout compared the wrong commit. The lines are read
+before `fmt:check`/`lint` run, so git is never left blocked writing into a pipe nobody drains
+when an early check fails during a push with a long ref list.
+
+- **A pushed ref of `refs/heads/main`:** skipped — `main` is the baseline and cannot be behind
+  itself. A push carrying only `main` reaches no `git` invocation at all.
+- **A branch deletion:** skipped. Git reports an all-zero local sha, so there is no commit to
+  compare. Matched as "all zeros" rather than a 40-zero literal, so sha256 repositories work.
+- **Several refs in one push:** every non-`main` ref is checked, and the failure message names
+  the ref that is behind. Stopping at the first ref would let a stale second branch through.
+- **A brand-new branch:** not special-cased. It is simply checked like any other pushed ref; a
+  new branch cut from a current `main` passes trivially.
+- **`origin` unreachable (offline):** `git fetch origin main` failing does not block the push.
+  Network access is not guaranteed for every push, and this check runs again on the next push.
+- **Comparing against `FETCH_HEAD`, not `refs/remotes/origin/main`:** the fetch above always
+  writes `FETCH_HEAD`, while updating the remote-tracking ref is an opportunistic side effect of
+  the remote's configured refspec. A narrowed refspec leaves `origin/main` stale or absent, which
+  would compare against the wrong commit or skip the check.
 - **`pnpm` missing from `PATH`:** the hook fails loudly and stops before running any check,
   rather than silently skipping formatting/lint. A `pre-push` hook that can silently no-op
   defeats its own purpose.
