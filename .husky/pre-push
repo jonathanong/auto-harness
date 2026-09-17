@@ -1,0 +1,71 @@
+#!/bin/sh
+[ "${GITHUB_ACTIONS:-}" = "true" ] && exit 0
+set -e
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pre-push: pnpm not found on PATH — install pnpm (see package.json's \"packageManager\") and try again." >&2
+  exit 1
+fi
+
+# Git feeds this hook one line per pushed ref on stdin:
+#   <local ref> SP <local sha> SP <remote ref> SP <remote sha>
+#
+# Read them up front, before the slow checks below, so git is never left blocked writing into a
+# pipe nobody drains if fmt/lint exits early during a push with a long ref list.
+#
+# The checked-out branch is NOT the pushed ref, which is why this reads stdin instead of
+# `rev-parse --abbrev-ref HEAD`: `git push origin feature` from a `main` checkout would skip the
+# up-to-date check entirely, and `git push origin main` from a feature checkout would compare
+# the wrong commit. Both are the silent no-op .husky/CLAUDE.md forbids.
+pushed_revs=""
+while read -r local_ref local_sha remote_ref _remote_sha || [ -n "$local_ref" ]; do
+  # A deletion reports an all-zero local sha and has no commit to compare. Matched with `case`
+  # rather than a 40-zero literal so sha256 repositories (64 zeros) are covered too. A blank
+  # line falls through the same arm.
+  case "$local_sha" in
+  *[!0]*) ;;
+  *) continue ;;
+  esac
+  # `main` is the baseline; it cannot be behind itself.
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    continue
+  fi
+  pushed_revs="$pushed_revs $local_ref:$local_sha"
+done
+
+echo "pre-push: pnpm fmt:check (whole repo — oxfmt also formats Markdown/YAML/TOML, not just TypeScript, so a changed-files-only check is not enough)"
+if ! pnpm run --silent fmt:check; then
+  echo "" >&2
+  echo "pre-push: formatting check failed. Fix with:" >&2
+  echo "  pnpm exec oxfmt ." >&2
+  exit 1
+fi
+
+echo "pre-push: pnpm lint (whole repo)"
+if ! pnpm run --silent lint; then
+  echo "" >&2
+  echo "pre-push: lint failed (oxlint --deny-warnings). Fix the errors above." >&2
+  exit 1
+fi
+
+echo "pre-push: checking the pushed branches are up to date with origin/main"
+if [ -z "$pushed_revs" ]; then
+  echo "pre-push: this push carries no non-main branch to compare — skipping this check."
+elif ! git fetch origin main --quiet; then
+  echo "pre-push: could not fetch origin main (offline?) — not blocking the push. This check will run again next time you push." >&2
+else
+  for entry in $pushed_revs; do
+    # FETCH_HEAD, not refs/remotes/origin/main: the fetch above always writes FETCH_HEAD, while
+    # updating the remote-tracking ref is an opportunistic side effect of the remote's configured
+    # refspec. A narrowed refspec leaves origin/main stale or absent, which would compare against
+    # the wrong commit or skip the check.
+    if ! git merge-base --is-ancestor FETCH_HEAD "${entry#*:}"; then
+      echo "" >&2
+      echo "pre-push: ${entry%%:*} is behind origin/main. Rebase first:" >&2
+      echo "  git fetch origin && git rebase origin/main" >&2
+      exit 1
+    fi
+  done
+fi
+
+exit 0

@@ -283,6 +283,18 @@ pnpm local:manage-verify
 
 ---
 
+## Git hooks
+
+`pnpm install` sets up a Husky `pre-push` hook (see [.husky/CLAUDE.md](../.husky/CLAUDE.md)) that
+runs `pnpm fmt:check` and `pnpm lint` across the **whole repo** — not just changed files, since
+`oxfmt` also formats Markdown, YAML, and TOML — then checks that every branch the push actually
+carries is up to date with `origin/main`, before every push. It reads the pushed refs from git's
+own `pre-push` stdin, so the check holds whichever branch happens to be checked out; pushing
+`main` itself, and deleting a branch, are skipped. It exits immediately when
+`GITHUB_ACTIONS=true`: GitHub Actions
+is still the full, authoritative gate. Never bypass a failing hook with `--no-verify` or
+`HUSKY=0`; fix the failure it reports.
+
 ## Quality gate
 
 ```bash
