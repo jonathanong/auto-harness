@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- shared deployment sequencing keeps stack mutations consistent. */
 import { awsArgs } from "./aws-cli.ts";
+import { probeAuthenticatedDeployment } from "./deploy-authenticated-smoke.ts";
 import type { DeploymentConfig } from "./deployment-config.ts";
 import { recycleRuntimeLambdas } from "./recycle-runtime-lambdas.ts";
 
@@ -254,6 +255,14 @@ export async function smokeDeployment(
   if (!webResponse.ok) throw new Error(`web health check failed with HTTP ${webResponse.status}`);
   assertLoginRendered(await webResponse.text());
   dependencies.log(`Web health check passed: ${webUrl}`);
+  // Authenticated surface, not just the two unauthenticated checks above: every bug that
+  // took production down on 2026-09-16 returned a good status code on unauthenticated
+  // surface. Runs in this same validate-before-propagate phase, alongside the health/login
+  // checks above and before the config writes below (publish WebUrl, recycle Lambdas) --
+  // not because those writes are unsafe on a broken deploy, but because a deploy this
+  // check cannot yet vouch for should not be marked healthy by writing anything further.
+  // See deploy-authenticated-smoke.ts.
+  await probeAuthenticatedDeployment(config, dependencies, webUrl);
   // Runtime cannot know WebUrl at synth/deploy time — Web depends on Runtime, not the
   // reverse, so CloudFront's domain doesn't exist yet when Runtime's Lambdas are created.
   // Publish it here, now that Web is confirmed healthy, so a session's `url` field, the
