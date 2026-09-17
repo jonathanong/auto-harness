@@ -4,7 +4,10 @@ import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as iam from "aws-cdk-lib/aws-iam";
 import type { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
+import type * as sns from "aws-cdk-lib/aws-sns";
 import type { Construct } from "constructs";
+
+import { addErrorAlarm, createAlarmTopic } from "./runtime-alarms.ts";
 
 /** Keep in sync with services/api/src/operational-metrics.ts. */
 const OPERATIONAL_METRIC_NAMESPACE = "AutoHarness";
@@ -75,22 +78,6 @@ function configureStage(
   };
 }
 
-function addErrorAlarm(
-  scope: Construct,
-  id: string,
-  metric: cloudwatch.IMetric,
-  threshold: number,
-): cloudwatch.Alarm {
-  return new cloudwatch.Alarm(scope, id, {
-    comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
-    datapointsToAlarm: 1,
-    evaluationPeriods: 1,
-    metric,
-    threshold,
-    treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-  });
-}
-
 function apiGateway5xx(apiId: string, stage: string): cloudwatch.Metric {
   return new cloudwatch.Metric({
     dimensionsMap: { ApiId: apiId, Stage: stage },
@@ -147,11 +134,15 @@ function operationalMetric(
  * `accessLogsEnabled` is set. Access logs require a one-time, account-level API Gateway
  * CloudWatch Logs role (`scripts/bootstrap-apigateway-account.sh`) that this stack
  * deliberately does not provision — see docs/deploy-aws.md.
+ *
+ * Returns the alarm topic so the stack can publish its ARN, which is how an operator
+ * subscribes without a redeploy.
  */
 export function addRuntimeObservability(input: {
   scope: Construct;
   environment: string;
   accessLogsEnabled: boolean;
+  alarmEmails?: readonly string[];
   rest: NodejsFunction;
   websocket: NodejsFunction;
   cron: NodejsFunction;
@@ -159,7 +150,7 @@ export function addRuntimeObservability(input: {
   httpStage: apigatewayv2.CfnStage;
   websocketApi: apigatewayv2.CfnApi;
   websocketStage: apigatewayv2.CfnStage;
-}): void {
+}): sns.Topic {
   configureStage(
     input.httpStage,
     HTTP_ACCESS_LOG_FORMAT,
@@ -173,16 +164,24 @@ export function addRuntimeObservability(input: {
     input.accessLogsEnabled ? accessLogGroup(input.scope, "WebSocketAccessLogs") : undefined,
   );
 
+  const topic = createAlarmTopic(input.scope, input.environment, input.alarmEmails ?? []);
   const errors = { period: Duration.minutes(5), statistic: "Sum" } as const;
-  addErrorAlarm(input.scope, "RestFunctionErrors", input.rest.metricErrors(errors), 1);
-  addErrorAlarm(input.scope, "WebSocketFunctionErrors", input.websocket.metricErrors(errors), 1);
-  addErrorAlarm(input.scope, "CronFunctionErrors", input.cron.metricErrors(errors), 1);
-  addErrorAlarm(input.scope, "HttpApi5xx", apiGateway5xx(input.httpApi.ref, "$default"), 1);
+  addErrorAlarm(input.scope, "RestFunctionErrors", input.rest.metricErrors(errors), 1, topic);
+  addErrorAlarm(
+    input.scope,
+    "WebSocketFunctionErrors",
+    input.websocket.metricErrors(errors),
+    1,
+    topic,
+  );
+  addErrorAlarm(input.scope, "CronFunctionErrors", input.cron.metricErrors(errors), 1, topic);
+  addErrorAlarm(input.scope, "HttpApi5xx", apiGateway5xx(input.httpApi.ref, "$default"), 1, topic);
   addErrorAlarm(
     input.scope,
     "WebSocketApiErrors",
     websocketApiErrors(input.websocketApi.ref, "prod"),
     1,
+    topic,
   );
 
   const env = input.environment;
@@ -191,6 +190,7 @@ export function addRuntimeObservability(input: {
     "QueueAge",
     operationalMetric("QueueAgeSeconds", env, "Maximum", cloudwatch.Unit.SECONDS),
     1800,
+    topic,
   );
   for (const name of [
     "AssignmentFailures",
@@ -203,6 +203,13 @@ export function addRuntimeObservability(input: {
     // exhausted and the logical session still cannot proceed.
     "InfrastructureRetryExhausted",
   ] as const) {
-    addErrorAlarm(input.scope, name, operationalMetric(name, env, "Sum", cloudwatch.Unit.COUNT), 1);
+    addErrorAlarm(
+      input.scope,
+      name,
+      operationalMetric(name, env, "Sum", cloudwatch.Unit.COUNT),
+      1,
+      topic,
+    );
   }
+  return topic;
 }

@@ -45,6 +45,7 @@ export const HEALTHY_LOGIN_HTML = [
 export const config = (overrides: Partial<DeploymentConfig> = {}): DeploymentConfig => ({
   accessLogsEnabled: false,
   adminsSsmParam: "/auto-harness/review/harness-admins",
+  alarmEmails: [],
   cursorSecretSsmParam: "/auto-harness/review/harness-cursor-secret",
   environment: "review",
   foundationStackName: "AutoHarness-review-Foundation",

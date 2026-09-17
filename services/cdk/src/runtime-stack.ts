@@ -1,12 +1,11 @@
 import { fileURLToPath } from "node:url";
 
-import { Aws, CfnOutput, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import { Aws, CfnOutput, Duration, Fn, Stack, type StackProps } from "aws-cdk-lib";
 import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
-import * as logs from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
 
 import { bootstrapSecretParams, grantBootstrapSecretsAccess } from "./bootstrap-secret-param.ts";
@@ -16,6 +15,7 @@ import { grantRuntimeLambdaAccess } from "./lambda-iam.ts";
 import { grantPublicBaseUrlAccess, publicBaseUrlParam } from "./public-base-url-param.ts";
 import { addLambdaIntegration } from "./runtime-api-integration.ts";
 import { addRuntimeIngressAuthorizer } from "./runtime-ingress-authorizer.ts";
+import { functionLogGroup } from "./runtime-log-groups.ts";
 import { addRuntimeObservability } from "./runtime-observability.ts";
 import type { RuntimeResources } from "./runtime-resources.ts";
 import { grantSlackAppAccess, slackAppParam } from "./slack-app-param.ts";
@@ -25,21 +25,12 @@ type RuntimeStackProps = StackProps & {
   tablePrefix: string;
   /** Defaults to false — see addRuntimeObservability's account-role prerequisite. */
   accessLogsEnabled?: boolean;
+  /** Subscribers for the alarm topic. Empty still creates the topic — see runtime-alarms.ts. */
+  alarmEmails?: readonly string[];
   sentryDsn?: string;
 };
 
 const lambdaEntry = fileURLToPath(new URL("../../api/src/lambda-handlers.ts", import.meta.url));
-/**
- * RETAINed, not DESTROYed, matching runtime-observability.ts's accessLogGroup: deleting or
- * renaming a Lambda function's construct would otherwise delete up to 14 days of retained
- * application log history along with the orphaned log group.
- */
-function functionLogGroup(scope: Construct, id: string): logs.LogGroup {
-  return new logs.LogGroup(scope, `${id}LogGroup`, {
-    removalPolicy: RemovalPolicy.RETAIN,
-    retention: logs.RetentionDays.TWO_WEEKS,
-  });
-}
 
 /** Synthesizable REST + WebSocket Lambda runtime. This construct never deploys by itself. */
 export class AutoHarnessRuntimeStack extends Stack {
@@ -185,10 +176,11 @@ export class AutoHarnessRuntimeStack extends Stack {
       foundation: props.foundation,
       websocketApiId: websocketApi.ref,
     });
-    addRuntimeObservability({
+    const alarmTopic = addRuntimeObservability({
       scope: this,
       environment: props.tablePrefix,
       accessLogsEnabled: props.accessLogsEnabled ?? false,
+      ...(props.alarmEmails ? { alarmEmails: props.alarmEmails } : {}),
       rest: restFunction,
       websocket: websocketFunction,
       cron: cronFunction,
@@ -206,6 +198,9 @@ export class AutoHarnessRuntimeStack extends Stack {
 
     const restApiUrl = httpApi.attrApiEndpoint;
     const websocketUrl = Fn.join("", [websocketApi.attrApiEndpoint, "/prod"]);
+    // Published so an operator can subscribe without a redeploy:
+    //   aws sns subscribe --topic-arn <this> --protocol email --notification-endpoint <you>
+    void new CfnOutput(this, "AlarmTopicArn", { value: alarmTopic.topicArn });
     void new CfnOutput(this, "RestApiUrl", { value: restApiUrl });
     void new CfnOutput(this, "WebSocketUrl", { value: websocketUrl });
     void new CfnOutput(this, "IntegrationKeyArn", {

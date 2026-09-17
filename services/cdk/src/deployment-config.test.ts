@@ -152,4 +152,47 @@ describe("deploymentConfig", () => {
       }),
     ).toThrow("HARNESS_API_SENTRY_DSN");
   });
+
+  it("parses alarm subscribers, defaulting to none", () => {
+    const base = { AWS_REGION: "us-west-2", HARNESS_DEPLOY_ENVIRONMENT: "review" };
+
+    // Empty is the default, and it does not mean "no topic" — the topic and every alarm
+    // action are unconditional. See services/cdk/src/runtime-alarms.ts.
+    expect(deploymentConfig("deploy", base).alarmEmails).toEqual([]);
+    expect(
+      deploymentConfig("deploy", { ...base, HARNESS_DEPLOY_ALARM_EMAILS: "   " }).alarmEmails,
+    ).toEqual([]);
+    expect(
+      deploymentConfig("deploy", {
+        ...base,
+        HARNESS_DEPLOY_ALARM_EMAILS: " ops@example.com , oncall@example.com ,",
+      }).alarmEmails,
+    ).toEqual(["ops@example.com", "oncall@example.com"]);
+    // Deduped, so one address cannot collide two identical subscription constructs.
+    expect(
+      deploymentConfig("deploy", {
+        ...base,
+        HARNESS_DEPLOY_ALARM_EMAILS: "ops@example.com,ops@example.com",
+      }).alarmEmails,
+    ).toEqual(["ops@example.com"]);
+  });
+
+  it("fails the deploy on a malformed alarm address rather than dropping it", () => {
+    const base = { AWS_REGION: "us-west-2", HARNESS_DEPLOY_ENVIRONMENT: "review" };
+
+    // Accepting it silently is the failure this feature exists to fix: the operator believes
+    // alarms reach them and discovers otherwise during an incident.
+    for (const bad of ["nope", "no-at-sign.example.com", "missing@tld", "a b@example.com"]) {
+      expect(() =>
+        deploymentConfig("deploy", { ...base, HARNESS_DEPLOY_ALARM_EMAILS: bad }),
+      ).toThrow("HARNESS_DEPLOY_ALARM_EMAILS");
+    }
+    // One bad address in an otherwise valid list still fails, and names the offender.
+    expect(() =>
+      deploymentConfig("deploy", {
+        ...base,
+        HARNESS_DEPLOY_ALARM_EMAILS: "ops@example.com,nope",
+      }),
+    ).toThrow("nope");
+  });
 });
