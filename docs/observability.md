@@ -125,6 +125,12 @@ those platforms, and `services/web` ships as a Lambda `DockerImageFunction`, so 
 guarantee delivery before the execution environment freezes. Both are DSN-gated the same way
 `initWebSentryServer`/`initHostPaneSentryServer` are, so this stays a no-op with no DSN set.
 
+This covers the **Node runtime only**. Both `onRequestError` exports return early when
+`NEXT_RUNTIME === "edge"`, mirroring `register()`: neither app initializes Sentry on the edge
+runtime, so there would be no client for a captured error to reach. No route in either app opts
+into the edge runtime today, so nothing is currently unreported — but a route that does would
+have its server errors silently skipped until `register()` initializes Sentry there too.
+
 ## Known gaps
 
 - **All CloudWatch alarms have no alarm action.** `grep -rn "Topic|SnsAction|addAlarmAction|aws-sns" services/cdk/src/`
