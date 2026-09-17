@@ -983,6 +983,87 @@ run update` (Phase 1) has no guard for this — `update()` in
   already hold production's real values. See
   [Account state (2026-09-15)](#account-state-2026-09-15).
 
+## Why the 2026-09-16 bugs reached production
+
+Asked after the redeploy: how did these get past CI since the last release, and
+is the answer more tests, Playwright, or more static-analysis rules?
+
+**The post-deploy verification was two status codes.** `smokeDeployment` in
+`services/cdk/src/deployment-support.ts` did exactly this:
+
+```
+GET {WebUrl}/health   → assert body.ok === true
+GET {WebUrl}/login    → assert response.ok
+```
+
+Every bug found that day passes it:
+
+| Bug                                          | What the smoke check saw                                   |
+| -------------------------------------------- | ---------------------------------------------------------- |
+| SSR fetches omit the ingress token           | 12 pages return **200 rendering nothing**; `/login` is 200 |
+| `dynamodb:Scan` ungranted → `/hosts` 500     | never probed                                               |
+| Login redirect loop                          | the loop is _post_-login; smoke never authenticates        |
+| `NEXT_` digest leaked into the HTML          | 200, with the digest as visible text                       |
+| Resume 409 (#762), unrouted write 403 (#763) | never probed                                               |
+
+It was structurally incapable of failing for any of them: it asserted status
+codes, and every one of these bugs returns a good status code. Both probes are
+also the weakest two requests available — `/health` is a static literal
+(`local-app.ts`) that touches no storage, and `/login` is the one page that
+makes no API call at all.
+
+### Two of them were not deployment-parity bugs
+
+Worth separating, because the fix differs:
+
+- **#762 (resume → 409) had a test that asserted the bug.** A case named
+  `"has nothing to resolve without a live lease owner"` pinned `{ ok: false }`.
+  Coverage was green. No tool catches a spec written wrong — more tests of the
+  same kind would have produced more confidently-wrong assertions. Drain and
+  resume are inverse operators whose tests were written independently; the
+  defense is a **paired operator table**, not more coverage.
+- **#763 (unrouted write → 403) was fully reachable locally.** Any `POST` to
+  `/api/v1/frobnicate` against `local-app.ts` reproduces it. That was a missing
+  **negative** test, not a parity gap.
+
+### Playwright was not the gap
+
+`pnpm test:e2e` builds Next locally and runs against a local API. CloudFront,
+the API Gateway REQUEST authorizer, and IAM — the three things that actually
+broke — do not exist in that harness, so the Playwright suite could not have
+caught any of the deployment bugs. It remains the right tool for UI regressions
+and was correctly added in #746; it is not a substitute for probing a deployed
+environment.
+
+### What actually closes the gaps
+
+1. **Assert content, not status, in the deployed smoke probe.** No new
+   credentials; catches the SSR-empty and digest-leak classes on public surface.
+2. **A checked-in `(table, operation)` manifest** cross-checking `ScanCommand`
+   call sites against CDK IAM grants. Makes the #748 class impossible and
+   enforces [invariant 13](plan.md#5-invariants). A blanket `Scan` ban would be
+   wrong — there are legitimate documented catalogs — but each one should be
+   deliberate.
+3. **A `docs/openapi.yaml` ↔ `auth-policy.ts` consistency test.** The spec has
+   drifted badly and nothing validates it; `/hosts/resume`, the #762 route, has
+   no published contract at all.
+4. **Mechanical invariants for the two web-layer bugs** — no raw `fetch(` in
+   server-side web code outside `lib/api.ts`/`proxy.ts`, and every `catch` under
+   `services/web/src/app/**` routed through `lib/page-error.ts`.
+
+Static analysis was already dense before this (oxlint, ~30 `no-mistakes` rules,
+knip, dependency-cruiser, patch-coverage gates). The real hole was that the four
+invariants `CLAUDE.md` states in prose were enforced by almost nothing — the repo
+had exactly **one** `ast-grep` rule.
+
+### Still open
+
+Authenticated deployed probes — `/hosts`, resume, an unrouted write — need a
+credential at deploy time. `smokeDeployment`'s own comment records that it
+deliberately carries no private ingress credential, and no service-account key is
+among the three SSM bootstrap parameters. Until that is decided, **the SSR-empty
+class on the 12 authenticated pages is not covered by any automated check.**
+
 ## Known gaps
 
 - **Cost model still needs a heavier run.** These sessions are short CLI
