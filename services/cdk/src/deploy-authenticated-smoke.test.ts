@@ -17,6 +17,8 @@ const adminsB64 = b64([{ username: "root-admin", password: "correct-horse" }]);
 // The realistic case: every AWS deploy hardcodes HARNESS_AUTH_MODE=required in the deployed
 // Lambdas, but the deploy script's own process env does not set it -- so unset must proceed.
 const env = {} as NodeJS.ProcessEnv;
+/** A compact JWT: three base64url segments. See the leak assertions at the end of the file. */
+const COMPACT_JWT = /[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/u;
 
 /**
  * A local fetch/query/log/run stub built for this file only -- deployment-test-helpers.ts's
@@ -217,13 +219,19 @@ describe("probeAuthenticatedDeployment", () => {
         (error: unknown) => (error instanceof Error ? error.message : String(error)),
       );
       const loggedText = deps.log.mock.calls.map((call: unknown[]) => String(call[0])).join("\n");
-      // A minted token always contains this admin-id claim segment once base64url-decoded, so
-      // its plain-text presence here would mean the token (or the secret/password behind it)
-      // leaked into a log line or a thrown Error message.
+      // Plain-text leaks: the signing secret and the admin password are never encoded, so
+      // their literal presence in a log line or thrown Error is a leak.
       for (const forbidden of [secret, "correct-horse", "admin:root-admin"]) {
         expect(loggedText).not.toContain(forbidden);
         expect(thrownMessage).not.toContain(forbidden);
       }
+      // The token itself is base64url-encoded, so NONE of the claims above appear in it
+      // literally -- a fully leaked session token would sail past the loop. Assert its shape
+      // instead: three long base64url segments is a session cookie in a log, whatever it
+      // encodes. The 20-char floor is well under a real JWT's segments (header ~36, payload
+      // ~110, signature 43) and well over any dotted hostname or SSM path we do log.
+      expect(loggedText).not.toMatch(COMPACT_JWT);
+      expect(thrownMessage).not.toMatch(COMPACT_JWT);
     }
   });
 });
