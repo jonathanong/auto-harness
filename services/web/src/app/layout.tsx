@@ -18,6 +18,13 @@ export const dynamic = "force-dynamic";
 async function layoutPathname(): Promise<string | null> {
   try {
     return (await headers()).get("x-pathname");
+    // The ast-grep suppression below is safe: this only ever catches headers()'s own
+    // bailout when there is no Next request context (static rendering, unit tests) —
+    // mirroring incomingAuthHeaders() in lib/api.ts — never a control-flow error from
+    // redirect()/notFound(), so there is nothing here for rethrowControlFlowError() to
+    // rethrow. (The directive must be the last comment line before the catch clause, or
+    // ast-grep reports it as an unused suppression — hence the explanation above it.)
+    // ast-grep-ignore: page-catch-must-route-through-page-error-tsx
   } catch {
     return null;
   }

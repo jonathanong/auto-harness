@@ -1,0 +1,48 @@
+id: no-raw-fetch-in-web-server-code-tsx
+language: Tsx
+severity: error
+message: >-
+  services/web server-side code (app pages/layouts, and the lib/ helpers they call) must
+  reach the API through lib/api.ts's apiGet/apiGetAllPages/apiGetFirstPageWithItems, never
+  a raw fetch(). apiBase() resolves to HARNESS_API_HTTP server-side — the raw execute-api
+  URL, which bypasses CloudFront. CloudFront is the only thing that injects the ingress
+  token (CLOUDFRONT_INGRESS_TOKEN_HEADER) the API Gateway REQUEST authorizer requires, so a
+  raw fetch() here gets rejected by the authorizer and the page renders silently empty with
+  HTTP 200 (this shipped to production twice — see PR #745). lib/api.ts and proxy.ts are the
+  only two files that legitimately call fetch() directly; both already merge in the ingress
+  token. (Client-side fetch() in "use client" components is a different, unaffected code
+  path: apiBase() resolves to "" in the browser, so those requests go through CloudFront
+  like any other page asset and are out of scope for this rule.)
+files:
+  - "services/web/src/app/**/*.tsx"
+ignores:
+  - "services/web/src/app/**/*.test.tsx"
+rule:
+  pattern: fetch($$$ARGS)
+---
+id: no-raw-fetch-in-web-server-code-ts
+language: TypeScript
+severity: error
+message: >-
+  services/web server-side code (app pages/layouts, and the lib/ helpers they call) must
+  reach the API through lib/api.ts's apiGet/apiGetAllPages/apiGetFirstPageWithItems, never
+  a raw fetch(). apiBase() resolves to HARNESS_API_HTTP server-side — the raw execute-api
+  URL, which bypasses CloudFront. CloudFront is the only thing that injects the ingress
+  token (CLOUDFRONT_INGRESS_TOKEN_HEADER) the API Gateway REQUEST authorizer requires, so a
+  raw fetch() here gets rejected by the authorizer and the page renders silently empty with
+  HTTP 200 (this shipped to production twice — see PR #745). lib/api.ts and proxy.ts are the
+  only two files that legitimately call fetch() directly; both already merge in the ingress
+  token. (Client-side fetch() in "use client" components is a different, unaffected code
+  path: apiBase() resolves to "" in the browser, so those requests go through CloudFront
+  like any other page asset and are out of scope for this rule.)
+files:
+  - "services/web/src/app/**/*.ts"
+  - "services/web/src/lib/**/*.ts"
+ignores:
+  - "services/web/src/app/**/*.test.ts"
+  - "services/web/src/lib/**/*.test.ts"
+  - "services/web/src/lib/api.ts"
+  - "services/web/src/lib/client-api.ts"
+  - "services/web/src/lib/live-session-logs.ts"
+rule:
+  pattern: fetch($$$ARGS)
