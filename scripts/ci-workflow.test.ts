@@ -50,6 +50,7 @@ describe("required CI check contract", () => {
     expect(staticAnalysis).toContain("run: pnpm depcruise");
     expect(staticAnalysis).toContain("run: pnpm check:no-mistakes");
     expect(staticAnalysis).toContain("run: pnpm check:systemd");
+    expect(staticAnalysis).toContain("run: pnpm check:dynamo-scans");
     expect(staticAnalysis).toContain(
       "uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2",
     );
