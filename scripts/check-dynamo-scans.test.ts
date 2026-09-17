@@ -8,11 +8,11 @@ import {
   buildObservedSites,
   collectSourceFiles,
   extractScanTableExprs,
-  fieldToTableMap,
   validateScanManifest,
   type ObservedSites,
 } from "./check-dynamo-scans.mts";
 import { DYNAMO_SCAN_MANIFEST, SCAN_GRANT_EXEMPT_FILES } from "./dynamo-scan-manifest.ts";
+import { fieldToTableMap } from "./dynamo-scan-field-map.mts";
 import { SCAN_TABLE_NAMES } from "../services/cdk/src/foundation-data-access.ts";
 
 describe("extractScanTableExprs", () => {
@@ -76,15 +76,6 @@ describe("collectSourceFiles", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
-});
-
-describe("fieldToTableMap", () => {
-  it("strips the sentinel prefix to recover bare DynamoDB table names", () => {
-    const map = fieldToTableMap();
-    expect(map.schedules).toBe("Schedules");
-    expect(map.workspacePools).toBe("WorkspacePools");
-    expect(map.hostLocks).toBe("HostLocks");
   });
 });
 

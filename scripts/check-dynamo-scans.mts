@@ -3,12 +3,16 @@ import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { SCAN_TABLE_NAMES } from "../services/cdk/src/foundation-data-access.ts";
-import { tableNames } from "../services/api/src/db/dynamo.ts";
 import {
   DYNAMO_SCAN_MANIFEST,
   SCAN_GRANT_EXEMPT_FILES,
   type ScanManifestEntry,
 } from "./dynamo-scan-manifest.ts";
+import {
+  fieldToTableMap,
+  validateFieldCapitalization,
+  type TableFieldMap,
+} from "./dynamo-scan-field-map.mts";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const servicesRoot = resolve(repoRoot, "services");
@@ -21,7 +25,6 @@ const FIELD_EXPR_PATTERN = /^(?:ctx\.)?tables\.([A-Za-z0-9_]+)$/;
 const KEY_SEPARATOR = "::";
 
 export type ObservedSites = Record<string, Record<string, number>>;
-export type TableFieldMap = Record<string, string>;
 
 /** Every `.ts`/`.tsx` source file under `root`, excluding tests, types, and build output. */
 export function collectSourceFiles(root: string): string[] {
@@ -170,16 +173,6 @@ function validateEntryGrant(
   return errors;
 }
 
-/** Map every `DynamoTableNames` field to its bare (unprefixed) DynamoDB table name. */
-export function fieldToTableMap(): TableFieldMap {
-  const sentinel = "SCANCHECKSENTINEL";
-  const map: TableFieldMap = {};
-  for (const [field, value] of Object.entries(tableNames(sentinel))) {
-    map[field] = value.slice(sentinel.length + 1);
-  }
-  return map;
-}
-
 function relativeToRepoRoot(absPath: string): string {
   return relative(repoRoot, absPath).split(sep).join("/");
 }
@@ -190,6 +183,7 @@ function main(): void {
     content: readFileSync(absPath, "utf8"),
   }));
   const { observed, unresolved } = buildObservedSites(files);
+  const fieldToTable = fieldToTableMap();
   const errors = [
     ...unresolved,
     ...validateScanManifest(
@@ -197,8 +191,9 @@ function main(): void {
       DYNAMO_SCAN_MANIFEST,
       SCAN_TABLE_NAMES,
       SCAN_GRANT_EXEMPT_FILES,
-      fieldToTableMap(),
+      fieldToTable,
     ),
+    ...validateFieldCapitalization(fieldToTable),
   ];
   if (errors.length > 0) throw new Error(errors.join("\n"));
 

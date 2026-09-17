@@ -21,6 +21,21 @@ import { TEST_ONLY_SCAN_MANIFEST } from "./dynamo-scan-manifest-test-only.ts";
  * honored for files listed in `SCAN_GRANT_EXEMPT_FILES` (today just the DynamoDB-Local
  * test-cleanup helper) so a production Scan can't dodge the grant check by simply flipping
  * the flag — see check-dynamo-scans.mts's `validateScanManifest`.
+ *
+ * Two entries below (`plane-storage-catalog-providers.ts`'s `listCatalogTablePage` and
+ * `plane-storage-clear.ts`'s `clearByKey`/`clearByKeys`) cover **parameterized** Scan helpers
+ * whose table is a runtime argument, not a literal `ctx.tables.x`. Their `tables` lists used to
+ * be hand-enumerated from their callers — a new caller passing an ungranted table wouldn't add
+ * a new `new ScanCommand(` call site, so it stayed invisible to this manifest. That gap is now
+ * closed at the type level: `listCatalogTablePage`'s table parameter is typed
+ * `ScannableTableField` (services/api/src/db/dynamo.ts), a union derived from `SCAN_TABLE_NAMES`
+ * itself, so passing an ungranted table is a `pnpm typecheck` error, not a manifest gap. Its
+ * `tables` entry below is therefore `[...SCAN_TABLE_NAMES]` (exhaustive of what the type
+ * permits, not just today's callers) rather than a hand list that could go stale.
+ * `clearByKey`/`clearByKeys` are exempt from grants entirely (test-only), so the same technique
+ * doesn't apply there; they're instead typed to `DynamoTableField` (any real table field), which
+ * only rules out a typo'd or computed non-table string, not a specific ungranted-but-real table
+ * — there's nothing to grant-check for an exempt file.
  */
 export type ScanManifestEntry = {
   /** Path relative to the repo root. */

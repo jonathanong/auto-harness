@@ -3,33 +3,18 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import type * as s3 from "aws-cdk-lib/aws-s3";
 import type { Construct } from "constructs";
 
+import { SCAN_TABLE_NAMES } from "@auto-harness/shared";
+
 import { DYNAMO_TABLES } from "./tables.ts";
 
 /**
- * Production Scan paths: catalog hydrate/list, auth hydrate, session/worktree/connection
- * snapshots, workspace pool/slot hydrate (listHostsDurable's scheduler read model), custom
- * webhook integration lookups (delete-guard reference scans), and webhook outbox listing.
- * SessionLogs, AuditLogs, and lock/TTL tables are Query/Get/Put only — do not grant Scan there.
+ * Re-exported so this stays the one place that attaches the `dynamodb:Scan` grant, and so
+ * scripts/check-dynamo-scans.mts and this file's own test keep importing from here unchanged.
+ * The array itself lives in modules/shared (see its docstring) because services/api also needs
+ * it — services may not import other services — to derive `ScannableTableField`
+ * (services/api/src/db/dynamo.ts), which makes an ungranted table argument a compile error.
  */
-export const SCAN_TABLE_NAMES = [
-  "Users",
-  "Repositories",
-  "Worktrees",
-  "WorkspacePools",
-  "WorkspaceSlots",
-  "Sessions",
-  "SessionDrains",
-  "Schedules",
-  "Connections",
-  "Archives",
-  "HostInventories",
-  "Providers",
-  "ProviderAccounts",
-  "Commands",
-  "SessionUsage",
-  "Integrations",
-  "WebhookDeliveries",
-] as const;
+export { SCAN_TABLE_NAMES };
 
 const ITEM_ACTIONS = [
   "dynamodb:BatchGetItem",
