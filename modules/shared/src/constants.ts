@@ -127,3 +127,35 @@ export const LOCAL_WEB_HTTP = "http://127.0.0.1:7421" as const;
 export const LOCAL_HOST_PANE_HTTP = "http://127.0.0.1:7422" as const;
 export const LOCAL_DDB_HTTP = "http://127.0.0.1:7423" as const;
 export const LOCAL_HOST_ID = "local-1" as const;
+
+/**
+ * Bare (unprefixed) DynamoDB table names granted `dynamodb:Scan` on the rest/websocket/cron
+ * Lambda role (see services/cdk/src/foundation-data-access.ts, which re-exports this array to
+ * attach the grant). Shared with services/api so `services/api/src/db/dynamo.ts` can derive a
+ * `ScannableTableField` type restricted to exactly these tables — a caller passing an ungranted
+ * table to a parameterized Scan helper is then a compile error, not just a scripts/
+ * check-dynamo-scans.mts finding. Production Scan paths: catalog hydrate/list, auth hydrate,
+ * session/worktree/connection snapshots, workspace pool/slot hydrate (listHostsDurable's
+ * scheduler read model), custom webhook integration lookups (delete-guard reference scans), and
+ * webhook outbox listing. SessionLogs, AuditLogs, and lock/TTL tables are Query/Get/Put only —
+ * do not add them here.
+ */
+export const SCAN_TABLE_NAMES = [
+  "Users",
+  "Repositories",
+  "Worktrees",
+  "WorkspacePools",
+  "WorkspaceSlots",
+  "Sessions",
+  "SessionDrains",
+  "Schedules",
+  "Connections",
+  "Archives",
+  "HostInventories",
+  "Providers",
+  "ProviderAccounts",
+  "Commands",
+  "SessionUsage",
+  "Integrations",
+  "WebhookDeliveries",
+] as const;

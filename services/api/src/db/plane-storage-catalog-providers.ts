@@ -6,6 +6,7 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 
+import type { ScannableTableField } from "./dynamo.ts";
 import {
   isConditionalFailed,
   isConditionalTransactionFailed,
@@ -88,12 +89,12 @@ export type CatalogPage<T> = { items: T[]; nextKey: Record<string, unknown> | nu
 
 async function listCatalogTablePage<T extends { id: string }>(
   ctx: PlaneStorageCtx,
-  tableName: string,
+  tableField: ScannableTableField,
   query: { limit: number; startKey?: Record<string, unknown> },
 ): Promise<CatalogPage<T>> {
   const result = await ctx.doc.send(
     new ScanCommand({
-      TableName: tableName,
+      TableName: ctx.tables[tableField],
       ConsistentRead: true,
       Limit: query.limit + 1,
       ...(query.startKey ? { ExclusiveStartKey: query.startKey } : {}),
@@ -115,14 +116,14 @@ export function listProvidersPage(
   ctx: PlaneStorageCtx,
   query: { limit: number; startKey?: Record<string, unknown> },
 ): Promise<CatalogPage<ProviderRecord>> {
-  return listCatalogTablePage(ctx, ctx.tables.providers, query);
+  return listCatalogTablePage(ctx, "providers", query);
 }
 
 export function listCommandsPage(
   ctx: PlaneStorageCtx,
   query: { limit: number; startKey?: Record<string, unknown> },
 ): Promise<CatalogPage<CommandRecord>> {
-  return listCatalogTablePage(ctx, ctx.tables.commands, query);
+  return listCatalogTablePage(ctx, "commands", query);
 }
 
 export async function listProviders(ctx: PlaneStorageCtx): Promise<ProviderRecord[]> {

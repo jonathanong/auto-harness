@@ -19,6 +19,7 @@ import {
   listCustomWebhookIntegrations,
 } from "./plane-storage-integrations.ts";
 import { listAllWebhookDeliveries } from "./plane-storage-webhook-outbox.ts";
+import type { DynamoTableField } from "./dynamo.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 import { nextPageKey } from "./plane-storage-types.ts";
 
@@ -28,12 +29,12 @@ const SESSION_DRAIN_LEDGER_RECORD_KEY = "ACTIVITY-V1";
 /** Test helper: wipe all items in every table (DynamoDB Local). */
 export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
   await clearSessionDrains(ctx);
-  await clearByKey(ctx, ctx.tables.workspaceSlots, "id");
-  await clearByKey(ctx, ctx.tables.workspacePools, "id");
-  await clearByKey(ctx, ctx.tables.notificationDeliveries, "id");
-  await clearByKey(ctx, ctx.tables.sessionCancelRedeliveries, "sessionId");
-  await clearByKey(ctx, ctx.tables.slackOAuthStates, "stateHash");
-  await clearByKeys(ctx, ctx.tables.slackInboundEvents, ["workspaceId", "eventId"]);
+  await clearByKey(ctx, "workspaceSlots", "id");
+  await clearByKey(ctx, "workspacePools", "id");
+  await clearByKey(ctx, "notificationDeliveries", "id");
+  await clearByKey(ctx, "sessionCancelRedeliveries", "sessionId");
+  await clearByKey(ctx, "slackOAuthStates", "stateHash");
+  await clearByKeys(ctx, "slackInboundEvents", ["workspaceId", "eventId"]);
   for (const account of await listAuthAccounts(ctx)) {
     await deleteAuthAccount(ctx, account.id);
   }
@@ -90,7 +91,7 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
       startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
     } while (startKey !== undefined);
   }
-  await clearByKey(ctx, ctx.tables.viewerTickets, "ticketHash");
+  await clearByKey(ctx, "viewerTickets", "ticketHash");
   {
     let startKey: Record<string, unknown> | undefined;
     do {
@@ -225,7 +226,12 @@ async function clearSessionDrains(ctx: PlaneStorageCtx): Promise<void> {
   } while (startKey !== undefined);
 }
 
-async function clearByKey(ctx: PlaneStorageCtx, tableName: string, keyName: string): Promise<void> {
+async function clearByKey(
+  ctx: PlaneStorageCtx,
+  tableField: DynamoTableField,
+  keyName: string,
+): Promise<void> {
+  const tableName = ctx.tables[tableField];
   let startKey: Record<string, unknown> | undefined;
   do {
     const result = await ctx.doc.send(
@@ -242,9 +248,10 @@ async function clearByKey(ctx: PlaneStorageCtx, tableName: string, keyName: stri
 
 async function clearByKeys(
   ctx: PlaneStorageCtx,
-  tableName: string,
+  tableField: DynamoTableField,
   keyNames: readonly string[],
 ): Promise<void> {
+  const tableName = ctx.tables[tableField];
   let startKey: Record<string, unknown> | undefined;
   do {
     const result = await ctx.doc.send(

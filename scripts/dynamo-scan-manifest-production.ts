@@ -1,3 +1,4 @@
+import { SCAN_TABLE_NAMES } from "../services/cdk/src/foundation-data-access.ts";
 import type { ScanManifestEntry } from "./dynamo-scan-manifest.ts";
 
 /** Manifest entries for Scan call sites that run under the rest/websocket/cron Lambda role. */
@@ -36,11 +37,15 @@ export const PRODUCTION_SCAN_MANIFEST: readonly ScanManifestEntry[] = [
   },
   {
     file: "services/api/src/db/plane-storage-catalog-providers.ts",
-    tableExpr: "tableName",
+    tableExpr: "ctx.tables[tableField]",
     count: 1,
-    tables: ["Providers", "Commands"],
+    // `tableField`'s type (`ScannableTableField`, services/api/src/db/dynamo.ts) is derived from
+    // this same SCAN_TABLE_NAMES constant, so this call site cannot type-check against a table
+    // outside it — the list below is exhaustive of what the type permits, not just today's two
+    // callers (Providers and Commands), and can't go stale: it moves with SCAN_TABLE_NAMES.
+    tables: [...SCAN_TABLE_NAMES],
     runsUnderLambdaRole: true,
-    why: "shared paginated-list helper (listCatalogTablePage) invoked for the Providers and Commands catalogs.",
+    why: "shared paginated-list helper (listCatalogTablePage); its table parameter is type-restricted to ScannableTableField, so a caller passing an ungranted table fails pnpm typecheck before this manifest is ever consulted.",
   },
   {
     file: "services/api/src/db/plane-storage-catalog-providers.ts",
