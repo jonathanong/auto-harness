@@ -7,6 +7,7 @@ import type { DeploymentDependencies } from "./deployment-support.ts";
 const config: DeploymentConfig = {
   accessLogsEnabled: false,
   adminsSsmParam: "/auto-harness/review/harness-admins",
+  alarmEmails: [],
   cursorSecretSsmParam: "/auto-harness/review/harness-cursor-secret",
   environment: "review",
   foundationStackName: "AutoHarness-review-Foundation",
