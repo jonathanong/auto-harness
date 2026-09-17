@@ -414,30 +414,13 @@ describe("agent registration branch boundaries", () => {
     expect(plane.isDraining("h")).toBe(false);
   });
 
-  it("resumeHostDurable no-ops when not draining even without a live lease owner", async () => {
-    // Regression: the lease-owner guard used to run first, so a host that was
-    // not draining returned ok:false -- surfacing as 409 CONFLICT "host
-    // connection changed while resuming" -- whenever the owner was unknown.
-    // Observed live in production: a second POST /hosts/resume 409'd right
-    // after a successful one. Nothing to resolve is a success, not a conflict.
-    const plane = new ControlPlane();
-    plane.state.drainingHosts.add("h");
-    plane.state.storage = {
-      getHostLockState: async () => ({ connectionId: null, draining: false }),
-    } as never;
-    expect(await resumeHostDurable(plane.state, "h")).toEqual({ ok: true });
-    expect(plane.isDraining("h")).toBe(false);
-  });
-
-  it("resumeHostDurable still fails when it IS draining and no lease owner is known", async () => {
-    // The guard is still load-bearing for real work: clearing drain and
-    // bringing worktrees online are fenced writes that need an owner.
-    const plane = new ControlPlane();
-    plane.state.storage = {
-      getHostLockState: async () => ({ connectionId: null, draining: true }),
-    } as never;
-    expect(await resumeHostDurable(plane.state, "h")).toEqual({ ok: false });
-  });
+  // The "not draining, no lease owner known" (PR #762's regression shape) and
+  // "draining, no lease owner known" cases are now paired with their drain
+  // counterpart from the exact same starting lock state in the operator table
+  // at ./host-drain-resume-pairs.test.ts (Table B: "no lock row at all --
+  // unresolvable lease owner, not draining" and "durable lock says draining,
+  // but no live lease owner is recorded"). That table also proves the
+  // regression guard by sabotage; see its file header for the exact result.
 
   it("resumeHostDurable no-ops and reconciles a stale local drain cache", async () => {
     const plane = new ControlPlane();
