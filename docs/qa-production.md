@@ -998,13 +998,13 @@ GET {WebUrl}/login    → assert response.ok
 
 Every bug found that day passes it:
 
-| Bug | What the smoke check saw |
-| --- | --- |
-| SSR fetches omit the ingress token | 12 pages return **200 rendering nothing**; `/login` is 200 |
-| `dynamodb:Scan` ungranted → `/hosts` 500 | never probed |
-| Login redirect loop | the loop is _post_-login; smoke never authenticates |
-| `NEXT_` digest leaked into the HTML | 200, with the digest as visible text |
-| Resume 409 (#762), unrouted write 403 (#763) | never probed |
+| Bug                                          | What the smoke check saw                                   |
+| -------------------------------------------- | ---------------------------------------------------------- |
+| SSR fetches omit the ingress token           | 12 pages return **200 rendering nothing**; `/login` is 200 |
+| `dynamodb:Scan` ungranted → `/hosts` 500     | never probed                                               |
+| Login redirect loop                          | the loop is _post_-login; smoke never authenticates        |
+| `NEXT_` digest leaked into the HTML          | 200, with the digest as visible text                       |
+| Resume 409 (#762), unrouted write 403 (#763) | never probed                                               |
 
 It was structurally incapable of failing for any of them: it asserted status
 codes, and every one of these bugs returns a good status code. Both probes are
