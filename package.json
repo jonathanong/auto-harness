@@ -5,6 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "prepare": "husky",
     "lint": "oxlint --deny-warnings .",
     "lint:ast": "ast-grep scan --config sgconfig.yml .",
     "fmt": "oxfmt .",
@@ -75,6 +76,7 @@
     "dependency-cruiser": "^18.2.0",
     "esbuild": "^0.28.2",
     "happy-dom": "20.14.3",
+    "husky": "^9.1.7",
     "knip": "^6.34.0",
     "no-mistakes": "^0.61.11",
     "oxfmt": "^0.67.0",

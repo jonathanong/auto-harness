@@ -1,0 +1,40 @@
+#!/bin/sh
+[ "${GITHUB_ACTIONS:-}" = "true" ] && exit 0
+set -e
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pre-push: pnpm not found on PATH — install pnpm (see package.json's \"packageManager\") and try again." >&2
+  exit 1
+fi
+
+echo "pre-push: pnpm fmt:check (whole repo — oxfmt also formats Markdown/YAML/TOML, not just TypeScript, so a changed-files-only check is not enough)"
+if ! pnpm run --silent fmt:check; then
+  echo "" >&2
+  echo "pre-push: formatting check failed. Fix with:" >&2
+  echo "  pnpm exec oxfmt ." >&2
+  exit 1
+fi
+
+echo "pre-push: pnpm lint (whole repo)"
+if ! pnpm run --silent lint; then
+  echo "" >&2
+  echo "pre-push: lint failed (oxlint --deny-warnings). Fix the errors above." >&2
+  exit 1
+fi
+
+echo "pre-push: checking this branch is up to date with origin/main"
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+if [ "$current_branch" = "main" ]; then
+  echo "pre-push: pushing main itself — nothing to compare against, skipping this check."
+elif ! git fetch origin main --quiet; then
+  echo "pre-push: could not reach origin (offline?) — not blocking the push. This check will run again next time you push." >&2
+elif ! git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null; then
+  echo "pre-push: origin/main is not available locally — not blocking the push. This check could not run." >&2
+elif ! git merge-base --is-ancestor origin/main HEAD; then
+  echo "" >&2
+  echo "pre-push: this branch is behind origin/main. Rebase first:" >&2
+  echo "  git fetch origin && git rebase origin/main" >&2
+  exit 1
+fi
+
+exit 0
