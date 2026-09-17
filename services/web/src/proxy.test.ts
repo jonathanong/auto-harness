@@ -43,6 +43,19 @@ describe("web authentication proxy", () => {
     expect(expired.headers.get("location")).toContain("/login?");
   });
 
+  it("passes the unauthenticated SSR probe through, narrowly, without a session", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    process.env.HARNESS_SESSION_SECRET = "a".repeat(32);
+    const probe = await proxy(new NextRequest("http://localhost/health/probe"));
+    expect(probe.headers.get("x-middleware-next")).toBe("1");
+
+    // The pass-through is an exact match, not a prefix — a sibling path still needs a
+    // session, so this can never widen into a public subtree by accident.
+    const sibling = await proxy(new NextRequest("http://localhost/health/probe/extra"));
+    expect(sibling.status).toBe(307);
+    expect(sibling.headers.get("location")).toContain("/login?");
+  });
+
   it("lets the Sentry tunnel through without a session", async () => {
     process.env.HARNESS_AUTH_MODE = "required";
     process.env.HARNESS_SESSION_SECRET = "a".repeat(32);
