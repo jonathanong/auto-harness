@@ -201,6 +201,36 @@ export async function stackOutput(
   return value;
 }
 
+/**
+ * Markers the deployed login page must actually render. HTTP 200 on its own proved
+ * nothing: the CloudFront-ingress-token and swallowed-control-flow bugs of 2026-09-16
+ * both served 200 on every page while rendering no usable content, so this smoke check
+ * passed a deployment whose entire UI was dead. `page-login` is the server component's
+ * own shell; `form-login` additionally proves the client subtree really server-rendered.
+ */
+const LOGIN_CONTENT_MARKERS = ['data-pw="page-login"', 'data-pw="form-login"'];
+
+/**
+ * Next control-flow errors carry a digest like `NEXT_REDIRECT;replace;/login;307;`. It
+ * belongs in the server log, never in delivered HTML — a page that renders one caught a
+ * redirect it should have re-thrown (see services/web/src/lib/page-error.ts). A healthy
+ * page emits no `NEXT_`-prefixed token at all; Next's own inline payload is `__next_f`.
+ */
+const CONTROL_FLOW_DIGEST = /NEXT_[A-Z_]+/u;
+
+function assertLoginRendered(html: string): void {
+  const missing = LOGIN_CONTENT_MARKERS.filter((marker) => !html.includes(marker));
+  if (missing.length > 0) {
+    throw new Error(
+      `web health check returned HTTP 200 without rendering the login form (missing ${missing.join(", ")})`,
+    );
+  }
+  const digest = CONTROL_FLOW_DIGEST.exec(html);
+  if (digest) {
+    throw new Error(`web health check leaked a Next control-flow digest: ${digest[0]}`);
+  }
+}
+
 export async function smokeDeployment(
   config: DeploymentConfig,
   dependencies: DeploymentDependencies,
@@ -215,8 +245,14 @@ export async function smokeDeployment(
   const body = (await response.json()) as { ok?: unknown };
   if (body.ok !== true) throw new Error("CloudFront API health check returned an unexpected body");
   dependencies.log(`CloudFront API health check passed: ${webUrl}`);
-  const webResponse = await dependencies.fetch(new URL("login", `${webUrl}/`));
+  // `redirect: "manual"` because the login page must be terminal. Following redirects
+  // hides the bounce loop that made a deployed environment unusable on 2026-09-12: a
+  // session check that always failed sent every page, login included, back to /login.
+  const webResponse = await dependencies.fetch(new URL("login", `${webUrl}/`), {
+    redirect: "manual",
+  });
   if (!webResponse.ok) throw new Error(`web health check failed with HTTP ${webResponse.status}`);
+  assertLoginRendered(await webResponse.text());
   dependencies.log(`Web health check passed: ${webUrl}`);
   // Runtime cannot know WebUrl at synth/deploy time — Web depends on Runtime, not the
   // reverse, so CloudFront's domain doesn't exist yet when Runtime's Lambdas are created.
