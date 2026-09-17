@@ -1,0 +1,71 @@
+id: page-catch-must-route-through-page-error-tsx
+language: Tsx
+severity: error
+message: >-
+  A catch block under services/web/src/app must call lib/page-error.ts's
+  rethrowControlFlowError()/pageErrorMessage(), or re-throw the caught error itself.
+  redirect()/notFound()/forbidden()/unauthorized() (and other Next control-flow signals)
+  work by THROWING an error whose .digest Next's rendering machinery must see uncaught —
+  e.g. redirect()'s digest is "NEXT_REDIRECT;replace;/login;307;". A page catch block that
+  swallows or rewraps that error turns the redirect into visible "NEXT_REDIRECT" text
+  instead of performing it — 10 of 12 pages leaked this at the 2026-09-16 baseline (PR
+  #746). rethrowControlFlowError()/pageErrorMessage() call Next's unstable_rethrow first so
+  the control-flow error keeps propagating; re-throwing the same caught value (not a new or
+  wrapped error) is equally safe. A catch with neither is a live regression of that bug.
+files:
+  - "services/web/src/app/**/*.tsx"
+ignores:
+  - "services/web/src/app/**/*.test.tsx"
+rule:
+  kind: catch_clause
+  not:
+    any:
+      - has:
+          stopBy: end
+          pattern: rethrowControlFlowError($$$ARGS)
+      - has:
+          stopBy: end
+          pattern: pageErrorMessage($$$ARGS)
+      - all:
+          - pattern:
+              context: "try { $$$T } catch ($ERR) { $$$BODY }"
+              selector: catch_clause
+          - has:
+              stopBy: end
+              pattern: throw $ERR
+---
+id: page-catch-must-route-through-page-error-ts
+language: TypeScript
+severity: error
+message: >-
+  A catch block under services/web/src/app must call lib/page-error.ts's
+  rethrowControlFlowError()/pageErrorMessage(), or re-throw the caught error itself.
+  redirect()/notFound()/forbidden()/unauthorized() (and other Next control-flow signals)
+  work by THROWING an error whose .digest Next's rendering machinery must see uncaught —
+  e.g. redirect()'s digest is "NEXT_REDIRECT;replace;/login;307;". A page catch block that
+  swallows or rewraps that error turns the redirect into visible "NEXT_REDIRECT" text
+  instead of performing it — 10 of 12 pages leaked this at the 2026-09-16 baseline (PR
+  #746). rethrowControlFlowError()/pageErrorMessage() call Next's unstable_rethrow first so
+  the control-flow error keeps propagating; re-throwing the same caught value (not a new or
+  wrapped error) is equally safe. A catch with neither is a live regression of that bug.
+files:
+  - "services/web/src/app/**/*.ts"
+ignores:
+  - "services/web/src/app/**/*.test.ts"
+rule:
+  kind: catch_clause
+  not:
+    any:
+      - has:
+          stopBy: end
+          pattern: rethrowControlFlowError($$$ARGS)
+      - has:
+          stopBy: end
+          pattern: pageErrorMessage($$$ARGS)
+      - all:
+          - pattern:
+              context: "try { $$$T } catch ($ERR) { $$$BODY }"
+              selector: catch_clause
+          - has:
+              stopBy: end
+              pattern: throw $ERR
