@@ -711,6 +711,99 @@ paths:
               schema: { $ref: "#/components/schemas/SessionDrain" }
         "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/Error" }
+  /hosts:
+    get:
+      operationId: listHosts
+      summary: List fleet hosts visible to the caller
+      description: A repository-scoped principal only sees hosts that carry at least one repository or worktree it may access.
+      parameters:
+        - $ref: "#/components/parameters/HostLimit"
+        - $ref: "#/components/parameters/HostCursor"
+        - $ref: "#/components/parameters/HostOnlineFilter"
+      responses:
+        "200":
+          description: Bounded page of hosts visible to the caller
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HostPage" }
+        default: { $ref: "#/components/responses/Error" }
+  /hosts/{hostId}:
+    parameters:
+      - $ref: "#/components/parameters/HostId"
+    get:
+      operationId: getHost
+      summary: Get a fleet host
+      responses:
+        "200":
+          description: Host status and daemon-reported runtime facts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Host" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /hosts/drain:
+    post:
+      operationId: drainHost
+      summary: Mark a host draining
+      description: No new session assigns to this host until it resumes; already-running sessions keep running. Resume is this operation's inverse and shares the fleet:drain capability.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HostIdBody" }
+      responses:
+        "200":
+          description: Host marked draining
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HostDrainResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /hosts/resume:
+    post:
+      operationId: resumeHost
+      summary: Resume a draining host
+      description: Clears the durable draining flag so scheduling resumes. Resuming a host that is not draining is a no-op that still returns 200.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HostIdBody" }
+      responses:
+        "200":
+          description: Host resumed (or already was not draining)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HostResumeResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /audit-logs:
+    get:
+      operationId: listAuditLogs
+      summary: Query the immutable audit-log history
+      description: Requires audit:read. There is intentionally no write route — audit entries are appended internally by every authorizing route.
+      parameters:
+        - $ref: "#/components/parameters/AuditLogLimit"
+        - $ref: "#/components/parameters/AuditLogCursor"
+        - $ref: "#/components/parameters/AuditLogActorId"
+        - $ref: "#/components/parameters/AuditLogAction"
+        - $ref: "#/components/parameters/AuditLogResourceType"
+        - $ref: "#/components/parameters/AuditLogResourceId"
+        - $ref: "#/components/parameters/AuditLogRepositoryId"
+        - $ref: "#/components/parameters/AuditLogOutcome"
+      responses:
+        "200":
+          description: Bounded page of audit-log entries, newest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditLogPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     bearerAuth:
@@ -792,6 +885,72 @@ components:
       required: false
       description: Opaque continuation cursor returned by a previous response.
       schema: { type: string }
+    HostId:
+      name: hostId
+      in: path
+      required: true
+      schema: { type: string }
+    HostLimit:
+      name: limit
+      in: query
+      required: false
+      description: Number of hosts to return. Defaults to 50; maximum is 100.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    HostCursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque continuation cursor returned by a previous response.
+      schema: { type: string }
+    HostOnlineFilter:
+      name: online
+      in: query
+      required: false
+      description: Filter by connection state. Omit or pass "all" for both.
+      schema: { type: string, enum: [online, offline, all] }
+    AuditLogLimit:
+      name: limit
+      in: query
+      required: false
+      description: Number of audit-log entries to return. Defaults to 50; maximum is 100.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    AuditLogCursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque continuation cursor returned by a previous response.
+      schema: { type: string }
+    AuditLogActorId:
+      name: actorId
+      in: query
+      required: false
+      schema: { type: string, maxLength: 256 }
+    AuditLogAction:
+      name: action
+      in: query
+      required: false
+      description: 'Exact audit action, e.g. "host:drain".'
+      schema: { type: string, maxLength: 256 }
+    AuditLogResourceType:
+      name: resourceType
+      in: query
+      required: false
+      schema: { type: string, maxLength: 256 }
+    AuditLogResourceId:
+      name: resourceId
+      in: query
+      required: false
+      schema: { type: string, maxLength: 256 }
+    AuditLogRepositoryId:
+      name: repositoryId
+      in: query
+      required: false
+      schema: { type: string, maxLength: 256 }
+    AuditLogOutcome:
+      name: outcome
+      in: query
+      required: false
+      schema: { type: string, enum: [success, denied, failed] }
   responses:
     Conflict:
       description: Conflict, including closed repository admission
@@ -1613,6 +1772,133 @@ components:
           maximum: 64
         usageLimitCooldownSeconds: { type: integer, minimum: 1 }
       additionalProperties: false
+    Host:
+      type: object
+      required:
+        - hostId
+        - online
+        - draining
+        - connectedAt
+        - lastHeartbeatAt
+        - capabilities
+        - worktreeIds
+        - repositories
+        - repositoryIds
+        - daemonStartedAt
+        - daemonVersion
+        - gitVersion
+        - gitReady
+        - gitReadinessReason
+        - restartCount
+        - lastRestartDetectedAt
+      properties:
+        hostId: { type: string }
+        online: { type: boolean }
+        draining: { type: boolean }
+        connectedAt: { type: string, format: date-time, nullable: true }
+        lastHeartbeatAt: { type: string, format: date-time, nullable: true }
+        capabilities:
+          type: array
+          items:
+            type: string
+            enum:
+              [scheduled-main-checkout, prior-session-context, workspace-sessions, session-spawn]
+        worktreeIds: { type: array, items: { type: string } }
+        repositories:
+          type: array
+          description: Repositories reachable through this host's attached worktrees.
+          items:
+            type: object
+            required: [id, path]
+            properties:
+              id: { type: string }
+              path: { type: string }
+        repositoryIds: { type: array, items: { type: string } }
+        daemonStartedAt: { type: string, format: date-time, nullable: true }
+        daemonVersion: { type: string, nullable: true }
+        gitVersion: { type: string, nullable: true }
+        gitReady: { type: boolean }
+        gitReadinessReason:
+          type: string
+          nullable: true
+          enum:
+            [
+              git_unavailable,
+              git_version_unparseable,
+              git_version_unsupported,
+              git_readiness_unreported,
+            ]
+        restartCount: { type: integer, minimum: 0 }
+        lastRestartDetectedAt: { type: string, format: date-time, nullable: true }
+    HostPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/Host" }
+        nextCursor:
+          type: [string, "null"]
+          description: Opaque continuation cursor, or null when the page is complete.
+    HostIdBody:
+      type: object
+      required: [hostId]
+      properties:
+        hostId: { type: string }
+      additionalProperties: false
+    HostDrainResult:
+      type: object
+      required: [ok, runningSessionIds]
+      properties:
+        ok: { type: boolean, const: true }
+        runningSessionIds:
+          type: array
+          items: { type: string }
+          description: Sessions that were running on the host at the moment it was marked draining.
+    HostResumeResult:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean, const: true }
+    AuditActor:
+      type: object
+      required: [id, kind, role]
+      properties:
+        id: { type: string }
+        kind:
+          type: string
+          enum: [admin, user, service-account, session, system, anonymous]
+        role:
+          type: string
+          enum: [read-only, author, operator, maintainer, agent, admin, session, system, anonymous]
+    AuditLogRecord:
+      type: object
+      required: [id, createdAt, actor, action, resourceType, resourceId, outcome, metadata]
+      properties:
+        id: { type: string }
+        createdAt: { type: string, format: date-time }
+        actor: { $ref: "#/components/schemas/AuditActor" }
+        action: { type: string, description: 'Colon-scoped action name, e.g. "host:drain".' }
+        resourceType: { type: string }
+        resourceId: { type: string }
+        repositoryId: { type: string, nullable: true }
+        outcome: { type: string, enum: [success, denied, failed] }
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Small bounded JSON subset (booleans, numbers, strings, string arrays) — not a second log store.
+    AuditLogPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/AuditLogRecord" }
+        nextCursor:
+          type: string
+          description: Opaque continuation cursor. Absent (not null) once the page is complete.
     Error:
       type: object
       required: [error]
