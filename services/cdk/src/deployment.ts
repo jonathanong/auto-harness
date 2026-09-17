@@ -6,6 +6,7 @@ import {
 } from "./deployment-purge.ts";
 import { deleteOrphanedTables, findOrphanedTableNames } from "./deployment-purge-orphans.ts";
 import { reportOrphanedTablesAfterUpdate } from "./deployment-orphan-report.ts";
+import { writeFreshDeployReadinessMarkers } from "./deployment-readiness-markers.ts";
 import { inspectLiveTables } from "./deployment-purge-schema.ts";
 import {
   applyDeployment,
@@ -44,6 +45,11 @@ async function deploy(
   await applyDeployment(config, dependencies);
   await requireCompleteDeployment(config, dependencies, "deployment");
   await smokeDeployment(config, dependencies);
+  // Only reachable on this fresh-environment path — never from update() below — and only
+  // after the health checks above prove the new stacks actually work. See
+  // deployment-readiness-markers.ts for why a fresh deploy needs these and why update() must
+  // never write them.
+  await writeFreshDeployReadinessMarkers(config, dependencies);
 }
 
 async function update(
