@@ -85,25 +85,28 @@ const REGEX_BRANCH_SAMPLES: Array<{ label: string; example: string }> = [
 
 /**
  * Route branches confirmed present in auth-policy.ts but not yet in docs/openapi.yaml.
- * Each is documentation debt, not a design decision — see the PR description for the full
- * list and reasoning. An entry here must actually be undocumented: if the route gets
- * documented later, remove the entry (the assertion below fails otherwise), and if a route
- * is removed from auth-policy.ts, drop the now-unmatched entry (the stale-entry check below
- * fails otherwise).
+ * Most of what used to live here (see #768 and the PR that closed this list down to one
+ * entry) was ordinary documentation debt with no reason beyond "nobody wrote it yet." What
+ * remains is a deliberate exclusion with a named, per-route blocker — not debt. An entry
+ * here must actually be undocumented: if the route gets documented later, remove the entry
+ * (the assertion below fails otherwise), and if a route is removed from auth-policy.ts, drop
+ * the now-unmatched entry (the stale-entry check below fails otherwise).
+ *
+ * "/api/v1/host/messages" — the host-daemon wire-protocol relay, not a REST resource.
+ * Its request body is `HostToServerMessage` (modules/shared/src/session.ts), a discriminated
+ * union versioned by HOST_PROTOCOL_VERSION and designed to evolve with the daemon, not as a
+ * stable public contract. Six of its message variants (session:ack, session:command-start,
+ * session:status, session:log, session:usage, session:terminal-hook-complete) are rejected
+ * with 410 HOST_MESSAGE_WEBSOCKET_REQUIRED, because this legacy HTTP relay has no
+ * per-connection epoch fence the way the WebSocket does; only host:register, host:status,
+ * and host:keepalive are actually reachable here. Documenting an OpenAPI request schema for
+ * this path would either (a) describe a union most of whose branches always fail, or (b)
+ * describe only the three live branches and silently misrepresent the route. It also runs
+ * against this repo's own invariant that hosts talk to the control plane over WebSocket
+ * only (CLAUDE.md "the control plane must do everything"), so keeping it out of the
+ * REST-facing spec is the accurate outcome, not a gap.
  */
-const KNOWN_UNDOCUMENTED = new Set<string>([
-  "/api/v1/integrations/slack",
-  "/api/v1/integrations/slack/oauth/start",
-  "/api/v1/host/messages",
-  "/api/v1/host-inventories",
-  "/api/v1/auth/users",
-  "/api/v1/auth/service-accounts",
-  "/api/v1/scheduler",
-  "/api/v1/schedules",
-  "/hosts/{id}/(exec-config|update-config)",
-  "/hosts/{id}/inventory",
-  "/sessions/{id}/archive",
-]);
+const KNOWN_UNDOCUMENTED = new Set<string>(["/api/v1/host/messages"]);
 
 describe("every auth-policy.ts route branch appears in docs/openapi.yaml (or is allowlisted)", () => {
   const exactLiterals = extractExactLiterals(authPolicySource);

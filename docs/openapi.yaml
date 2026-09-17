@@ -392,6 +392,34 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}/archive:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      operationId: getSessionArchive
+      summary: Get the durable terminal-transcript archive's current availability
+      description: Requires authenticated (same visibility as getSession). Distinct from log-archive, which is the host's raw PUT target; this describes whether the terminal transcript has been archived to S3 yet.
+      responses:
+        "200":
+          description: Current archive availability for this session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionArchiveReadResponse" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: archiveSession
+      summary: Archive a terminal session's logs to durable storage
+      description: Requires sessions:archive. Returns 404 (not 403) when the session is missing or out of the caller's scope, matching getSession's visibility. The response is metadata only; the transcript itself stays reachable only through the scoped logs route.
+      responses:
+        "200":
+          description: Archive written
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionArchiveWriteResult" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
   /workspace-pools:
     get:
       operationId: listWorkspacePools
@@ -741,11 +769,165 @@ paths:
               schema: { $ref: "#/components/schemas/Host" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
+  /host-inventories:
+    get:
+      operationId: listHostInventories
+      summary: List host inventories visible to the caller
+      description: >
+        Requires authenticated. A repository-scoped principal only sees each inventory's
+        repositories it may access; an inventory left with zero visible repositories after
+        that filtering is omitted from the page entirely.
+      parameters:
+        - $ref: "#/components/parameters/HostInventoryLimit"
+        - $ref: "#/components/parameters/HostInventoryCursor"
+      responses:
+        "200":
+          description: Bounded page of host inventories, each with unauthorized repositories filtered out
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HostInventoryPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /hosts/{hostId}/inventory:
+    parameters:
+      - $ref: "#/components/parameters/HostId"
+    get:
+      operationId: getHostInventory
+      summary: Get one host's inventory
+      description: >
+        Requires authenticated. Returns 404 (not 403) when the host is out of a
+        repository-scoped principal's access, or when that principal is scoped and every
+        repository on the host was filtered out.
+      responses:
+        "200":
+          description: Host inventory with unauthorized repositories filtered out
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HostInventoryRecord" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: putHostInventory
+      summary: Replace one host's inventory
+      description: >
+        Requires fleet:inventory. Full-document replace with optimistic concurrency, not a
+        merge — version omitted defaults to the currently stored version (or 0). Changing
+        setupScript, a repository/worktree setupScript or terminalHookScript, allowedRoots,
+        or updateConfig additionally requires fleet:exec-config and 403s otherwise, even if
+        the caller has fleet:inventory. A repository-scoped principal's write 404s if any
+        repository in the body is out of scope; repositories that principal cannot see are
+        preserved from the existing stored document rather than deleted by an unaware
+        overwrite.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HostInventoryInput" }
+      responses:
+        "200":
+          description: Updated host inventory
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HostInventoryRecord" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteHostInventory
+      summary: Delete one host's inventory
+      description: >
+        Requires fleet:inventory; a principal with any allowedRepositoryIds is always
+        rejected as 404, regardless of which repositories those are. Deleting an inventory
+        that carries any executable configuration (setupScript, allowedRoots, updateConfig,
+        or a repository/worktree setupScript or terminalHookScript) additionally requires
+        fleet:exec-config and 403s otherwise.
+      responses:
+        "204": { description: Host inventory deleted }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /hosts/{hostId}/exec-config:
+    parameters:
+      - $ref: "#/components/parameters/HostId"
+    put:
+      operationId: putHostExecConfig
+      summary: Patch a host's executable configuration (setup scripts, terminal hooks, allowed roots, signed-update settings)
+      description: >
+        Requires fleet:exec-config. A patch, not a replace — every field is optional and an
+        omitted key leaves the corresponding stored value unchanged; this differs from PUT
+        /hosts/{hostId}/inventory, which replaces the whole document. version omitted
+        defaults to the currently stored version.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HostExecConfigInput" }
+      responses:
+        "200":
+          description: Executable-configuration projection of the updated inventory
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HostExecConfigView" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /hosts/{hostId}/update-config:
+    parameters:
+      - $ref: "#/components/parameters/HostId"
+    get:
+      operationId: getHostUpdateConfig
+      summary: Get a host's signed-update settings
+      description: Requires authenticated.
+      responses:
+        "200":
+          description: Current signed-update settings and inventory version
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HostUpdateConfigView" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: putHostUpdateConfig
+      summary: Replace a host's signed-update settings
+      description: >
+        Requires fleet:exec-config. Replaces updateConfig as a whole (not merged); every
+        other inventory field is left untouched. version omitted defaults to the currently
+        stored version.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HostUpdateConfigInput" }
+      responses:
+        "200":
+          description: Updated signed-update settings and new inventory version
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HostUpdateConfigView" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
   /hosts/drain:
     post:
       operationId: drainHost
       summary: Mark a host draining
-      description: No new session assigns to this host until it resumes; already-running sessions keep running. Resume is this operation's inverse and shares the fleet:drain capability.
+      description: >
+        No new session assigns to this host until it resumes; already-running sessions keep
+        running. Resume is this operation's inverse and shares the fleet:drain capability. Drain
+        resolves the durable lease owner before it writes anything and returns 409 CONFLICT when
+        no owner can be resolved (a host DynamoDB has never seen connect looks identical to one
+        this process just has not cached). This is intentional — marking a host draining without
+        a fenced owner would let an operator "successfully" drain a host with nothing backing
+        that state. Contrast with resume below, which is a 200 no-op in that same
+        unresolvable-owner case.
       requestBody:
         required: true
         content:
@@ -765,7 +947,15 @@ paths:
     post:
       operationId: resumeHost
       summary: Resume a draining host
-      description: Clears the durable draining flag so scheduling resumes. Resuming a host that is not draining is a no-op that still returns 200.
+      description: >
+        Clears the durable draining flag so scheduling resumes. Resuming a host that is not
+        draining is a no-op that still returns 200 — including when the lease owner cannot be
+        resolved at all, deliberately asymmetric with drain above. Resume checks the durable
+        draining flag before it needs a lease owner, so a cold REST container that never cached
+        this host's connection still gets a 200 no-op rather than a 409 — with nothing to write,
+        there is nothing to fence, and treating that as a failure would turn an idempotent retry
+        (or a race with the daemon's own reconnect) into a spurious error. See
+        host-drain-resume-pairs.test.ts for the paired outcome table this pins.
       requestBody:
         required: true
         content:
@@ -803,6 +993,394 @@ paths:
               schema: { $ref: "#/components/schemas/AuditLogPage" }
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /auth/users:
+    get:
+      operationId: listAuthUsers
+      summary: List operator user accounts
+      description: Requires accounts:write — there is no read-only view of the account catalog; this GET is gated the same as every write on this path and below.
+      parameters:
+        - $ref: "#/components/parameters/AuthAccountLimit"
+        - $ref: "#/components/parameters/AuthAccountCursor"
+      responses:
+        "200":
+          description: Bounded page of user accounts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthUserPage" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAuthUser
+      summary: Create a user account
+      description: Requires accounts:write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAuthUser" }
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthPrincipal" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /auth/users/{username}:
+    parameters:
+      - $ref: "#/components/parameters/AuthUsername"
+    delete:
+      operationId: deleteAuthUser
+      summary: Delete a user account
+      description: >
+        Requires accounts:write. Returns 409 with a dependencies list when the account still
+        owns an enabled schedule or a non-released session drain; retire those first.
+      responses:
+        "204": { description: User deleted }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /auth/service-accounts:
+    get:
+      operationId: listAuthServiceAccounts
+      summary: List service accounts
+      description: Requires accounts:write (including for this GET).
+      parameters:
+        - $ref: "#/components/parameters/AuthAccountLimit"
+        - $ref: "#/components/parameters/AuthAccountCursor"
+      responses:
+        "200":
+          description: Bounded page of service accounts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthServiceAccountPage" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAuthServiceAccount
+      summary: Create a service account
+      description: >
+        Requires accounts:write. The plaintext apiKey is returned only in this response —
+        only its hash is stored, so a lost key cannot be recovered; issue a new account
+        instead.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAuthServiceAccount" }
+      responses:
+        "201":
+          description: Service account created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateAuthServiceAccountResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /auth/service-accounts/{serviceAccountId}:
+    parameters:
+      - $ref: "#/components/parameters/AuthServiceAccountId"
+    delete:
+      operationId: deleteAuthServiceAccount
+      summary: Delete a service account
+      description: >
+        Requires accounts:write. Returns 409 with a dependencies list when the account still
+        owns an enabled schedule or a non-released session drain; retire those first.
+      responses:
+        "204": { description: Service account deleted }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /scheduler/assign:
+    post:
+      operationId: schedulerAssign
+      summary: Assign queued sessions to available worktrees
+      description: >
+        Requires scheduler:run. Internal cron/operator machinery, not part of normal
+        session-authoring flow; idempotent no-op when nothing is assignable.
+      responses:
+        "200":
+          description: Sessions assigned this pass
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SchedulerAssignResult" }
+        default: { $ref: "#/components/responses/Error" }
+  /scheduler/ack-deadlines:
+    post:
+      operationId: schedulerAckDeadlines
+      summary: Requeue running sessions whose host never acknowledged assignment
+      description: Requires scheduler:run. Internal cron/operator machinery.
+      responses:
+        "200":
+          description: Sessions requeued this pass
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SchedulerAckDeadlinesResult" }
+        default: { $ref: "#/components/responses/Error" }
+  /scheduler/reclaim-stale:
+    post:
+      operationId: schedulerReclaimStale
+      summary: Release stale host connection leases and requeue their sessions
+      description: Requires scheduler:run. Internal cron/operator machinery.
+      responses:
+        "200":
+          description: Hosts reclaimed this pass
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SchedulerReclaimResult" }
+        default: { $ref: "#/components/responses/Error" }
+  /scheduler/cron:
+    post:
+      operationId: schedulerCron
+      summary: Fire every due cron schedule
+      description: >
+        Requires scheduler:run. Distinct from /schedules, which is the user-facing
+        cron-schedule CRUD this route evaluates — this route only advances due schedules and
+        creates their sessions.
+      responses:
+        "200":
+          description: Sessions created by schedules that were due
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SchedulerCronResult" }
+        default: { $ref: "#/components/responses/Error" }
+  /schedules:
+    get:
+      operationId: listSchedules
+      summary: List cron schedules visible to the caller
+      description: Requires authenticated.
+      parameters:
+        - $ref: "#/components/parameters/ScheduleLimit"
+        - $ref: "#/components/parameters/ScheduleCursor"
+      responses:
+        "200":
+          description: Bounded page of schedules visible to the caller
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SchedulePage" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createSchedule
+      summary: Create a cron schedule
+      description: >
+        Requires schedules:write and, separately, sessions:write (a bound host/agent
+        credential can never author a schedule, matching session creation).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScheduleCreateInput" }
+      responses:
+        "201":
+          description: Schedule created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /schedules/{scheduleId}:
+    parameters:
+      - $ref: "#/components/parameters/ScheduleId"
+    get:
+      operationId: getSchedule
+      summary: Get a cron schedule
+      description: Requires authenticated.
+      responses:
+        "200":
+          description: Schedule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateSchedule
+      summary: Update a cron schedule (merge-patch semantics)
+      description: >
+        Requires schedules:write and sessions:write (a bound host/agent credential can never
+        update a schedule). PUT and PATCH are handled identically here — both merge the
+        given fields onto the stored schedule; omitted fields keep their stored value. See
+        ScheduleUpdateInput.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScheduleUpdateInput" }
+      responses:
+        "200":
+          description: Updated schedule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: patchSchedule
+      summary: Update a cron schedule (merge-patch semantics)
+      description: Identical handler to PUT on this path; see ScheduleUpdateInput.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScheduleUpdateInput" }
+      responses:
+        "200":
+          description: Updated schedule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteSchedule
+      summary: Delete a cron schedule
+      description: Requires schedules:write and sessions:write; a bound host/agent credential never has sessions:write and so can never delete a schedule.
+      responses:
+        "204": { description: Schedule deleted }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /schedules/{scheduleId}/trigger:
+    parameters:
+      - $ref: "#/components/parameters/ScheduleId"
+    post:
+      operationId: triggerSchedule
+      summary: Fire a schedule immediately
+      description: >
+        Requires schedules:write and sessions:write (a bound host/agent credential can never
+        trigger a schedule). Creates a session using the same concurrency-dedup rules as
+        normal cron firing. When a new session is actually created (not a dedupe hit), this
+        also advances the schedule's nextRunAt/lastRunAt exactly as if its cron cursor had
+        fired now, so a manual trigger consumes that occurrence instead of stacking a
+        duplicate run at the next scheduled time.
+      responses:
+        "200":
+          description: Existing active session with the same inherited concurrency ID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionCreateResult" }
+        "201":
+          description: Triggered session created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionCreateResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /integrations/slack:
+    get:
+      operationId: getSlackIntegration
+      summary: Get the Slack integration
+      description: Requires integrations:write (including for this GET; there is no separate read-only capability for Slack configuration).
+      responses:
+        "200":
+          description: Slack integration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SlackIntegration" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createSlackIntegration
+      summary: Create the Slack integration
+      description: Requires integrations:write. Returns 409 if a Slack integration already exists (including one installed via OAuth); use PUT to replace it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SlackIntegrationInput" }
+      responses:
+        "201":
+          description: Slack integration created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SlackIntegration" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: replaceSlackIntegration
+      summary: Replace the Slack integration
+      description: >
+        Requires integrations:write. Full replace, not a merge — every field in
+        SlackIntegrationInput is re-validated as if creating fresh, and botToken (plus
+        signingSecret, if used) must be resupplied. Returns 404 if no integration exists yet
+        and 409 on a concurrent replace.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SlackIntegrationInput" }
+      responses:
+        "200":
+          description: Slack integration replaced
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SlackIntegration" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: patchSlackIntegration
+      summary: Update Slack integration settings with compare-and-swap versioning
+      description: >
+        Requires integrations:write. Cannot replace botToken or signingSecret (use PUT for
+        that); expectedVersion fences against a concurrent edit and 409s on mismatch.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SlackIntegrationPatch" }
+      responses:
+        "200":
+          description: Slack integration updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SlackIntegration" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteSlackIntegration
+      summary: Delete the Slack integration
+      description: Requires integrations:write.
+      responses:
+        "204": { description: Slack integration deleted }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /integrations/slack/oauth/start:
+    post:
+      operationId: startSlackOAuth
+      summary: Begin a Slack OAuth install or reinstall
+      description: >
+        Requires integrations:write. Returns 503 UNAVAILABLE when this deployment has no
+        configured Slack app credentials. expectedVersion/expectedInstallationId fence a
+        concurrent install — passing the currently observed installation identity (or null
+        when none exists yet) causes a 409 if the Slack integration was installed or
+        reinstalled by someone else since it was last read. The returned url is Slack's
+        one-time OAuth authorize link; installation completes asynchronously via the
+        unauthenticated /integrations/slack/oauth/callback redirect, which is not itself
+        part of this REST surface.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SlackOAuthStartInput" }
+      responses:
+        "201":
+          description: OAuth flow started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SlackOAuthStartResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
@@ -908,6 +1486,59 @@ components:
       required: false
       description: Filter by connection state. Omit or pass "all" for both.
       schema: { type: string, enum: [online, offline, all] }
+    HostInventoryLimit:
+      name: limit
+      in: query
+      required: false
+      description: Number of host inventories to return. Defaults to 50; maximum is 100.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    HostInventoryCursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque continuation cursor returned by a previous response.
+      schema: { type: string }
+    ScheduleId:
+      name: scheduleId
+      in: path
+      required: true
+      schema: { type: string }
+    ScheduleLimit:
+      name: limit
+      in: query
+      required: false
+      description: Number of schedules to return. Defaults to 50; maximum is 100.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    ScheduleCursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque continuation cursor returned by a previous response.
+      schema: { type: string }
+    AuthAccountLimit:
+      name: limit
+      in: query
+      required: false
+      description: Number of accounts to return. Defaults to 50; maximum is 100.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    AuthAccountCursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque continuation cursor returned by a previous response.
+      schema: { type: string }
+    AuthUsername:
+      name: username
+      in: path
+      required: true
+      description: The account's username, not its internal id.
+      schema: { type: string, minLength: 1 }
+    AuthServiceAccountId:
+      name: serviceAccountId
+      in: path
+      required: true
+      description: 'The service account''s id (e.g. "service:<hex>"), not its display name.'
+      schema: { type: string, minLength: 1 }
     AuditLogLimit:
       name: limit
       in: query
@@ -1437,6 +2068,56 @@ components:
           description: Unique pull request associated with the final branch, at most 2,048 UTF-8 bytes.
       additionalProperties: false
       description: Untrusted, best-effort terminal outcome bounded to 32 KiB overall. Absent on list responses and when unavailable.
+    SessionArchiveWriteResult:
+      type: object
+      required: [key, contentType, bodyBytes]
+      additionalProperties: false
+      properties:
+        key: { type: string, description: Durable object key for the written archive. }
+        contentType: { type: string }
+        bodyBytes: { type: integer, minimum: 0 }
+    SessionArchiveReadResponse:
+      description: Discriminated by state. dynamodb means logs are still only in the durable log store; archived is the terminal, downloadable case.
+      oneOf:
+        - type: object
+          required: [state]
+          additionalProperties: false
+          properties:
+            state: { type: string, const: dynamodb }
+        - type: object
+          required: [state, downloadUrl, expiresAt, contentType, bodyBytes]
+          additionalProperties: false
+          properties:
+            state: { type: string, const: archived }
+            downloadUrl: { type: string, format: uri }
+            expiresAt: { type: string, format: date-time }
+            contentType: { type: string }
+            bodyBytes: { type: integer, minimum: 0 }
+        - type: object
+          required: [state, reason]
+          additionalProperties: false
+          properties:
+            state: { type: string, const: incomplete }
+            reason:
+              type: string
+              enum:
+                [
+                  content-length-mismatch,
+                  content-type-mismatch,
+                  content-length-and-type-mismatch,
+                  version-id-missing,
+                  version-id-mismatch,
+                ]
+        - type: object
+          required: [state]
+          additionalProperties: false
+          properties:
+            state: { type: string, const: expired }
+        - type: object
+          required: [state]
+          additionalProperties: false
+          properties:
+            state: { type: string, const: unavailable }
     WorkspaceSetupProfileInput:
       type: object
       required: [id, name, script]
@@ -1927,3 +2608,867 @@ components:
             statusUrl:
               type: string
               description: API-relative durable drain URL present for DRAINING admission rejections
+            dependencies:
+              type: array
+              items: { $ref: "#/components/schemas/DeleteDependency" }
+              description: Present on a delete 409; the referencing records blocking deletion.
+    DeleteDependency:
+      type: object
+      required: [kind, id]
+      properties:
+        kind:
+          type: string
+          enum:
+            [
+              schedule,
+              session,
+              provider,
+              provider-account,
+              command,
+              integration,
+              worktree,
+              host-inventory,
+              session-drain,
+            ]
+        id: { type: string }
+        status: { type: string, description: e.g. a session or session-drain's current status }
+        scope:
+          type: string
+          enum: [host, repository, worktree]
+          description: Precise location when a host inventory's provider-account command override owns the reference.
+        hostId: { type: string }
+        repositoryId: { type: string }
+        worktreeId: { type: string }
+        providerAccountId: { type: string }
+      additionalProperties: false
+    HostUpdateConfig:
+      description: >
+        Signed-update settings for one host daemon. Disabled retains only `enabled: false`;
+        enabling requires both manifestUrl and publicKey. Unknown fields are rejected on
+        write (unlike most other host-inventory objects).
+      oneOf:
+        - type: object
+          required: [enabled]
+          additionalProperties: false
+          properties:
+            enabled: { type: boolean, const: false }
+        - type: object
+          required: [enabled, manifestUrl, publicKey]
+          additionalProperties: false
+          properties:
+            enabled: { type: boolean, const: true }
+            manifestUrl:
+              type: string
+              format: uri
+              maxLength: 2048
+              description: Must be an HTTPS URL without embedded userinfo credentials.
+            publicKey:
+              type: string
+              minLength: 1
+              maxLength: 32768
+              description: PEM line breaks are persisted as literal backslash-n.
+            installDir:
+              type: string
+              minLength: 1
+              maxLength: 4096
+              description: Absolute POSIX, Windows-drive, or UNC path.
+            pollMs: { type: integer, minimum: 0, maximum: 2147483647 }
+            daemonVersion:
+              type: string
+              pattern: "^\\d+\\.\\d+\\.\\d+$"
+              maxLength: 64
+    HostRuntimeReport:
+      type: object
+      required: [daemonVersion, gitVersion, gitReady]
+      additionalProperties: false
+      properties:
+        daemonVersion: { type: string }
+        gitVersion: { type: [string, "null"] }
+        gitReady: { type: boolean }
+        gitReadinessReason:
+          type: string
+          enum:
+            [
+              git_unavailable,
+              git_version_unparseable,
+              git_version_unsupported,
+              git_readiness_unreported,
+            ]
+        environmentNames:
+          type: array
+          items: { type: string }
+          description: Names available to repository child processes; values never cross the daemon boundary.
+        environmentNamesCaseSensitive:
+          type: boolean
+          description: Missing means a legacy report; preserves POSIX-compatible exact-match behavior.
+    HostInventoryProviderAccountOverride:
+      type: object
+      properties:
+        enabled:
+          { type: boolean, description: Explicit false disables at this scope; absent inherits. }
+        commandId: { type: string, minLength: 1, description: Explicit override; absent inherits. }
+    HostInventoryWorktree:
+      type: object
+      required: [id, name, path, labels]
+      properties:
+        id:
+          {
+            type: string,
+            minLength: 1,
+            description: Auto-generated (UUIDv7) and immutable once created.,
+          }
+        name:
+          type: string
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+          description: Lowercase letters, numbers, and dashes only; unique across all hosts.
+        path: { type: string, minLength: 1 }
+        labels: { type: array, items: { type: string } }
+        setupScript: { type: string }
+        setupCacheInputs:
+          type: array
+          maxItems: 32
+          items: { type: string, maxLength: 4096 }
+          description: Checkout-relative paths only; no absolute/drive-qualified prefix or "."/".." segment.
+        providerAccountOverrides:
+          type: object
+          additionalProperties:
+            { $ref: "#/components/schemas/HostInventoryProviderAccountOverride" }
+        daemonLabels:
+          type: array
+          items: { type: string }
+          readOnly: true
+          description: >
+            Last labels advertised by the daemon for this worktree. GET /host-inventories and
+            GET /hosts/{hostId}/inventory omit it; a PUT response can echo it forward from the
+            prior stored row when a worktree with the same id existed before.
+      description: Unknown properties are ignored, not rejected, on write.
+    HostInventoryRepository:
+      type: object
+      required: [id, path, worktrees]
+      properties:
+        id: { type: string, minLength: 1 }
+        path: { type: string, minLength: 1 }
+        defaultBranch:
+          type: string
+          minLength: 1
+          default: main
+          description: Defaults to "main" when omitted or empty.
+        worktrees: { type: array, items: { $ref: "#/components/schemas/HostInventoryWorktree" } }
+        setupScript: { type: string }
+        setupCacheInputs:
+          type: array
+          maxItems: 32
+          items: { type: string, maxLength: 4096 }
+        terminalHookScript:
+          type: string
+          maxLength: 4096
+          description: Empty string clears a stored hook; a non-empty value must be an absolute path.
+        requiredEnvironment:
+          type: array
+          maxItems: 256
+          items: { type: string, pattern: "^[A-Za-z_]\\w*$", maxLength: 128 }
+          description: >
+            Deduplicated, case-sensitive names; sorted in responses. A name (case-insensitively)
+            starting with HARNESS_ is rejected, and the union of host- and repository-level
+            names must not exceed 256.
+        providerAccountOverrides:
+          type: object
+          additionalProperties:
+            { $ref: "#/components/schemas/HostInventoryProviderAccountOverride" }
+      description: Unknown properties are ignored, not rejected, on write.
+    HostInventoryProviderAccount:
+      type: object
+      required: [providerAccountId]
+      properties:
+        providerAccountId: { type: string, minLength: 1 }
+        commandId:
+          { type: string, minLength: 1, description: Host-level command override for this account. }
+    HostInventoryWorkspaceSlot:
+      type: object
+      required: [id, name, path]
+      properties:
+        id:
+          {
+            type: string,
+            minLength: 1,
+            description: UTF-8 byte length at most 1,
+            024 (DynamoDB sort-key limit).,
+          }
+        name: { type: string, minLength: 1 }
+        path: { type: string, minLength: 1 }
+    HostInventoryWorkspacePool:
+      type: object
+      required: [workspacePoolId, slots]
+      properties:
+        workspacePoolId: { type: string, minLength: 1 }
+        slots:
+          type: array
+          items: { $ref: "#/components/schemas/HostInventoryWorkspaceSlot" }
+          description: Slot ids and pool ids must each be unique across the whole inventory.
+    HostInventoryInput:
+      type: object
+      required: [repositories]
+      properties:
+        setupScript: { type: string }
+        setupCacheInputs:
+          type: array
+          maxItems: 32
+          items: { type: string, maxLength: 4096 }
+        setupCacheHostInputs:
+          type: array
+          maxItems: 32
+          items: { type: string, maxLength: 4096 }
+          description: Absolute host paths (not checkout-relative) the daemon may hash into the setup cache key.
+        allowedRoots:
+          type: array
+          maxItems: 32
+          items: { type: string, maxLength: 4096 }
+          description: Absolute paths inventory filesystem/terminal-hook paths must resolve under; empty/absent is unrestricted.
+        requiredEnvironment:
+          type: array
+          maxItems: 256
+          items: { type: string, pattern: "^[A-Za-z_]\\w*$", maxLength: 128 }
+        updateConfig: { $ref: "#/components/schemas/HostUpdateConfig" }
+        workspacePools:
+          type: array
+          items: { $ref: "#/components/schemas/HostInventoryWorkspacePool" }
+        repositories:
+          { type: array, items: { $ref: "#/components/schemas/HostInventoryRepository" } }
+        providerAccounts:
+          type: array
+          items: { $ref: "#/components/schemas/HostInventoryProviderAccount" }
+        capabilities:
+          type: array
+          maxItems: 4
+          items:
+            type: string
+            enum:
+              [scheduled-main-checkout, prior-session-context, workspace-sessions, session-spawn]
+        version:
+          type: integer
+          minimum: 0
+          description: Optimistic-concurrency fence for the whole document; omitted defaults to the currently stored version (or 0).
+      description: >
+        Full-document replace, not a merge. Unknown top-level and nested properties are
+        ignored, not rejected. The serialized daemon registration this inventory would
+        produce must fit within a bounded frame (120 KiB minus an 8 KiB headroom); a document
+        that would not fit is rejected with 400.
+    HostInventoryRecord:
+      type: object
+      required: [hostId, repositories, providerAccounts, updatedAt]
+      properties:
+        hostId: { type: string }
+        setupScript: { type: string }
+        setupCacheInputs: { type: array, items: { type: string } }
+        setupCacheHostInputs: { type: array, items: { type: string } }
+        allowedRoots: { type: array, items: { type: string } }
+        requiredEnvironment: { type: array, items: { type: string } }
+        updateConfig: { $ref: "#/components/schemas/HostUpdateConfig" }
+        daemonInstanceId:
+          type: string
+          readOnly: true
+          description: Opaque identity last reported by a modern daemon process.
+        daemonStartedAt: { type: string, format: date-time, readOnly: true }
+        restartCount: { type: integer, minimum: 0, readOnly: true }
+        lastRestartDetectedAt: { type: string, format: date-time, readOnly: true }
+        runtime:
+          $ref: "#/components/schemas/HostRuntimeReport"
+          readOnly: true
+          description: Most recently registered daemon/Git compatibility facts.
+        repositories:
+          { type: array, items: { $ref: "#/components/schemas/HostInventoryRepository" } }
+        workspacePools:
+          type: array
+          items: { $ref: "#/components/schemas/HostInventoryWorkspacePool" }
+        providerAccounts:
+          type: array
+          items: { $ref: "#/components/schemas/HostInventoryProviderAccount" }
+        capabilities:
+          type: array
+          items:
+            type: string
+            enum:
+              [scheduled-main-checkout, prior-session-context, workspace-sessions, session-spawn]
+        updatedAt: { type: string, format: date-time }
+        version:
+          type: integer
+          minimum: 0
+          description: Optimistic-concurrency counter; absent on rows written before versioning existed.
+    HostInventoryPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/HostInventoryRecord" }
+        nextCursor:
+          type: [string, "null"]
+          description: Opaque continuation cursor, or null when the page is complete.
+    HostExecConfigInput:
+      type: object
+      properties:
+        setupScript: { type: string }
+        setupCacheInputs:
+          type: array
+          maxItems: 32
+          items: { type: string, maxLength: 4096 }
+        setupCacheHostInputs:
+          type: array
+          maxItems: 32
+          items: { type: string, maxLength: 4096 }
+        allowedRoots:
+          type: array
+          maxItems: 32
+          items: { type: string, maxLength: 4096 }
+        updateConfig: { $ref: "#/components/schemas/HostUpdateConfig" }
+        repositories:
+          type: array
+          items:
+            type: object
+            required: [id]
+            properties:
+              id: { type: string, minLength: 1 }
+              setupScript: { type: string }
+              setupCacheInputs: { type: array, items: { type: string } }
+              terminalHookScript: { type: string }
+              worktrees:
+                type: array
+                items:
+                  type: object
+                  required: [id]
+                  properties:
+                    id: { type: string, minLength: 1 }
+                    setupScript: { type: string }
+                    setupCacheInputs: { type: array, items: { type: string } }
+        version:
+          type: integer
+          minimum: 0
+          description: Optimistic-concurrency fence; omitted defaults to the currently stored version.
+      description: >
+        Every field is optional; an omitted key leaves the corresponding stored value
+        unchanged (a present empty array or empty string clears it). Unknown properties are
+        ignored, not rejected.
+    HostExecConfigView:
+      type: object
+      required: [repositories, version]
+      properties:
+        setupScript: { type: string }
+        allowedRoots: { type: array, items: { type: string } }
+        updateConfig: { $ref: "#/components/schemas/HostUpdateConfig" }
+        repositories:
+          type: array
+          items:
+            type: object
+            required: [id, worktrees]
+            properties:
+              id: { type: string }
+              setupScript: { type: string }
+              terminalHookScript: { type: string }
+              worktrees:
+                type: array
+                items:
+                  type: object
+                  required: [id]
+                  properties:
+                    id: { type: string }
+                    setupScript: { type: string }
+        version: { type: integer, minimum: 0 }
+      description: >
+        Narrow projection of the host inventory limited to executable-configuration fields.
+        Unlike GET /hosts/{hostId}/inventory, this omits non-executable fields such as
+        repository paths, labels, and provider accounts.
+    HostUpdateConfigInput:
+      type: object
+      required: [updateConfig]
+      properties:
+        updateConfig: { $ref: "#/components/schemas/HostUpdateConfig" }
+        version:
+          type: integer
+          minimum: 0
+          description: Optimistic-concurrency fence; omitted defaults to the currently stored version.
+    HostUpdateConfigView:
+      type: object
+      required: [version]
+      properties:
+        updateConfig: { $ref: "#/components/schemas/HostUpdateConfig" }
+        version: { type: integer, minimum: 0 }
+      description: updateConfig is absent, not null, when no signed-update settings are stored for this host.
+    AuthPrincipal:
+      type: object
+      required: [id, username, role, kind]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        username: { type: string }
+        role:
+          type: string
+          enum: [read-only, author, operator, maintainer, agent, admin]
+        kind: { type: string, enum: [admin, user, service-account] }
+        allowedRepositoryIds: { type: array, items: { type: string } }
+        boundHostId: { type: string }
+    AuthServiceAccount:
+      allOf:
+        - $ref: "#/components/schemas/AuthPrincipal"
+        - type: object
+          required: [name, createdAt]
+          properties:
+            name: { type: string }
+            createdAt: { type: string, format: date-time }
+    AuthUserPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, maxItems: 100, items: { $ref: "#/components/schemas/AuthPrincipal" } }
+        nextCursor:
+          type: [string, "null"]
+          description: Opaque continuation cursor, or null when the page is complete.
+    AuthServiceAccountPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/AuthServiceAccount" }
+        nextCursor:
+          type: [string, "null"]
+          description: Opaque continuation cursor, or null when the page is complete.
+    CreateAuthUser:
+      type: object
+      required: [username, password, role]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: No control characters. Becomes the account id as "user:<username>".
+        password:
+          type: string
+          minLength: 1
+          maxLength: 256
+          writeOnly: true
+          description: No control characters. Hashed with bcrypt; never stored in plaintext or returned.
+        role:
+          type: string
+          enum: [read-only, author, operator, maintainer, agent, admin]
+        allowedRepositoryIds: { type: array, items: { type: string, minLength: 1 } }
+        allowedRepositories:
+          type: array
+          items: { type: string, minLength: 1 }
+          description: Accepted alias for allowedRepositoryIds; only one of the two is read (allowedRepositoryIds takes precedence when both are present).
+      description: >
+        admin accounts cannot carry allowedRepositoryIds. agent accounts require
+        boundHostId, which this endpoint never accepts — role "agent" therefore always
+        400s for a user account; use CreateAuthServiceAccount instead. Unrecognized
+        top-level fields are ignored, not rejected.
+    CreateAuthServiceAccount:
+      type: object
+      required: [name, role]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: No control characters. Becomes both username and name on the created account.
+        role:
+          type: string
+          enum: [read-only, author, operator, maintainer, agent, admin]
+        allowedRepositoryIds: { type: array, items: { type: string, minLength: 1 } }
+        allowedRepositories:
+          type: array
+          items: { type: string, minLength: 1 }
+          description: Accepted alias for allowedRepositoryIds.
+        boundHostId:
+          type: string
+          minLength: 1
+          description: Required when role is agent; rejected for every other role.
+      description: >
+        admin accounts cannot carry allowedRepositoryIds or boundHostId. Unrecognized
+        top-level fields are ignored, not rejected.
+    CreateAuthServiceAccountResult:
+      type: object
+      required: [account, apiKey]
+      additionalProperties: false
+      properties:
+        account: { $ref: "#/components/schemas/AuthServiceAccount" }
+        apiKey:
+          type: string
+          description: Plaintext API key, present only in this response; only its hash is stored server-side.
+    SchedulerAssignResult:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [sessionId, worktreeId, hostId]
+            additionalProperties: false
+            properties:
+              sessionId: { type: string }
+              worktreeId: { type: [string, "null"] }
+              hostId: { type: string }
+    SchedulerAckDeadlinesResult:
+      type: object
+      required: [requeued]
+      additionalProperties: false
+      properties:
+        requeued:
+          type: array
+          items: { type: string }
+          description: Session ids requeued because their host never acknowledged assignment.
+    SchedulerReclaimResult:
+      type: object
+      required: [reclaimed]
+      additionalProperties: false
+      properties:
+        reclaimed:
+          type: array
+          items: { type: string }
+          description: Host ids whose stale connection lease was released.
+    SchedulerCronResult:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Session" }
+          description: Sessions newly created by due cron schedules.
+    Schedule:
+      type: object
+      required:
+        [
+          id,
+          repositoryId,
+          name,
+          target,
+          fallbacks,
+          targetDisplayNames,
+          cron,
+          enabled,
+          timeout,
+          queueTtlSeconds,
+          nextRunAt,
+          lastRunAt,
+          createdAt,
+        ]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        repositoryId:
+          type: [string, "null"]
+          description: null for a workspace-pool schedule.
+        workspacePoolId: { type: string, description: Workspace schedules only. }
+        setupProfileId: { type: string, description: Workspace schedules only. }
+        destroyWorkspaceAfter: { type: boolean, description: Workspace schedules only. }
+        name: { type: string }
+        target: { $ref: "#/components/schemas/Target" }
+        fallbacks: { type: array, items: { $ref: "#/components/schemas/Target" } }
+        targetDisplayNames:
+          type: array
+          items: { type: string }
+          description: Resolved provider/command display names for target, then each fallback in order.
+        cron:
+          type: string
+          description: >
+            Strict five-field UTC cron expression (minute hour day-of-month month
+            day-of-week). Comma lists, dash ranges, and /step are accepted; named days/months
+            and @-macros are not. When both day-of-month and day-of-week are restricted
+            (neither is "*"), they combine with OR, matching traditional cron.
+        enabled: { type: boolean }
+        timeout:
+          type: number
+          description: >
+            Seconds. Unlike CreateSessionCommon.timeout, this is not bounds-checked when the
+            schedule is created or updated; an out-of-range value only surfaces as a failed
+            run when the schedule fires and session creation validates it.
+        queueTtlSeconds: { type: integer, minimum: 1, maximum: 2592000 }
+        nextRunAt: { type: string, format: date-time }
+        lastRunAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        ref: { type: string, description: Repository schedules only. }
+        concurrencyId: { type: string }
+        principalId:
+          type: string
+          description: Authenticated owner; absent only for schedules created before authentication was enforced.
+        prompt: { type: string }
+        activeSessionId:
+          type: [string, "null"]
+          description: Computed for responses from currently active sessions; never a write input.
+    SchedulePage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, maxItems: 100, items: { $ref: "#/components/schemas/Schedule" } }
+        nextCursor:
+          type: [string, "null"]
+          description: Opaque continuation cursor, or null when the page is complete.
+    ScheduleCreateInput:
+      type: object
+      required: [repositoryId, name, target, cron, timeout]
+      properties:
+        repositoryId:
+          type: [string, "null"]
+          description: null creates a workspace-pool schedule (workspacePoolId then required); a non-empty string creates a repository schedule.
+        name: { type: string }
+        target: { $ref: "#/components/schemas/Target" }
+        fallbacks: { type: array, items: { $ref: "#/components/schemas/Target" } }
+        cron: { type: string, description: See Schedule.cron. }
+        timeout:
+          { type: number, description: See Schedule.timeout; not bounds-checked at write time. }
+        queueTtlSeconds: { type: integer, minimum: 1, maximum: 2592000 }
+        nextRunAt:
+          type: string
+          format: date-time
+          description: Validated but always overwritten by the server-computed cursor from cron; effectively advisory.
+        enabled: { type: boolean, default: true }
+        ref:
+          {
+            type: string,
+            description: Repository schedules only; rejected when repositoryId is null.,
+          }
+        concurrencyId:
+          type: string
+          description: Defaults to "schedule-<id>" when omitted; reserved internal prefixes (catalog-delete:, provider-account:, provider-lease:, session-spawn:, webhook:, github-comment:) are rejected.
+        prompt: { type: string }
+        id:
+          {
+            type: string,
+            description: Optional caller-supplied schedule id; server-generated when omitted.,
+          }
+        workspacePoolId:
+          {
+            type: string,
+            description: Required when repositoryId is null; rejected when repositoryId is a string.,
+          }
+        setupProfileId: { type: [string, "null"], description: Workspace schedules only. }
+        destroyWorkspaceAfter: { type: [boolean, "null"], description: Workspace schedules only. }
+        requiredLabels:
+          type: array
+          maxItems: 0
+          description: Not supported for schedules; must be empty or omitted.
+      description: >
+        Two mutually exclusive shapes selected by repositoryId: a repository schedule
+        (repositoryId is a non-empty string; workspacePoolId/setupProfileId/
+        destroyWorkspaceAfter must be absent) or a workspace schedule (repositoryId is
+        null; workspacePoolId is required, ref must be absent). setupScript is never
+        accepted — any presence, including null, 400s — matching session creation's
+        setupScript restriction. Unrecognized top-level fields are ignored, not rejected.
+    ScheduleUpdateInput:
+      type: object
+      properties:
+        repositoryId:
+          type: [string, "null"]
+          description: Switches the schedule between repository and workspace mode using the same field rules as create.
+        name: { type: string }
+        target: { $ref: "#/components/schemas/Target" }
+        fallbacks: { type: array, items: { $ref: "#/components/schemas/Target" } }
+        cron: { type: string, description: See Schedule.cron. }
+        timeout:
+          { type: number, description: See Schedule.timeout; not bounds-checked at write time. }
+        queueTtlSeconds: { type: integer, minimum: 1, maximum: 2592000 }
+        nextRunAt: { type: string, format: date-time }
+        enabled: { type: boolean }
+        ref:
+          {
+            type: string,
+            description: Repository schedules only; rejected when repositoryId is (or remains) null.,
+          }
+        concurrencyId: { type: string }
+        prompt: { type: string }
+        workspacePoolId:
+          { type: string, description: Required when repositoryId is (or becomes) null. }
+        setupProfileId: { type: [string, "null"], description: Workspace schedules only. }
+        destroyWorkspaceAfter: { type: [boolean, "null"], description: Workspace schedules only. }
+        requiredLabels:
+          type: array
+          maxItems: 0
+          description: Not supported for schedules; must be empty or omitted.
+      description: >
+        Merge-patch semantics for both PUT and PATCH on /schedules/{scheduleId}: every field
+        is optional and an omitted field keeps its stored value. Schedule ownership
+        (principalId) can never be reassigned. setupScript is never accepted. Unrecognized
+        top-level fields are ignored, not rejected.
+    SlackNotifications:
+      type: object
+      required:
+        [
+          onSessionCreated,
+          onSessionStarted,
+          onSessionCompleted,
+          onSessionFailed,
+          onSessionCancelled,
+          onScheduleCompleted,
+          onHostOffline,
+        ]
+      additionalProperties: false
+      properties:
+        onSessionCreated: { type: boolean }
+        onSessionStarted: { type: boolean }
+        onSessionCompleted: { type: boolean }
+        onSessionFailed: { type: boolean }
+        onSessionCancelled: { type: boolean }
+        onScheduleCompleted: { type: boolean }
+        onHostOffline: { type: boolean }
+    SlackNotificationsCreate:
+      description: >
+        If present, must specify either every one of the 7 SlackNotifications keys, or
+        exactly the 6 legacy keys (every key except onHostOffline) — no other subset is
+        accepted.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required:
+            [
+              onSessionCreated,
+              onSessionStarted,
+              onSessionCompleted,
+              onSessionFailed,
+              onSessionCancelled,
+              onScheduleCompleted,
+              onHostOffline,
+            ]
+          properties:
+            onSessionCreated: { type: boolean }
+            onSessionStarted: { type: boolean }
+            onSessionCompleted: { type: boolean }
+            onSessionFailed: { type: boolean }
+            onSessionCancelled: { type: boolean }
+            onScheduleCompleted: { type: boolean }
+            onHostOffline: { type: boolean }
+        - type: object
+          additionalProperties: false
+          required:
+            [
+              onSessionCreated,
+              onSessionStarted,
+              onSessionCompleted,
+              onSessionFailed,
+              onSessionCancelled,
+              onScheduleCompleted,
+            ]
+          properties:
+            onSessionCreated: { type: boolean }
+            onSessionStarted: { type: boolean }
+            onSessionCompleted: { type: boolean }
+            onSessionFailed: { type: boolean }
+            onSessionCancelled: { type: boolean }
+            onScheduleCompleted: { type: boolean }
+    SlackNotificationsPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        onSessionCreated: { type: boolean }
+        onSessionStarted: { type: boolean }
+        onSessionCompleted: { type: boolean }
+        onSessionFailed: { type: boolean }
+        onSessionCancelled: { type: boolean }
+        onScheduleCompleted: { type: boolean }
+        onHostOffline: { type: boolean }
+      description: Any subset of the 7 keys; omitted keys keep their current value.
+    SlackIntegrationInput:
+      type: object
+      required: [botToken, defaultChannel]
+      additionalProperties: false
+      properties:
+        botToken: { type: string, pattern: "^xoxb-[A-Za-z0-9-]{10,}$", writeOnly: true }
+        defaultChannel:
+          type: string
+          pattern: "^(#[a-z0-9][a-z0-9_-]{0,79}|[CGD][A-Z0-9]{8,})$"
+          description: A "#channel-name", or a raw channel/group/DM id (C/G/D followed by 8+ uppercase-alnum characters).
+        enabled: { type: boolean, default: true }
+        signingSecret: { type: string, pattern: "^[\\x21-\\x7e]{16,128}$", writeOnly: true }
+        notifications: { $ref: "#/components/schemas/SlackNotificationsCreate" }
+      description: Used identically for both create (POST) and replace (PUT), including the allowed-key set.
+    SlackIntegrationPatch:
+      type: object
+      required: [expectedVersion]
+      additionalProperties: false
+      properties:
+        expectedVersion: { type: integer, minimum: 1 }
+        defaultChannel:
+          type: string
+          pattern: "^(#[a-z0-9][a-z0-9_-]{0,79}|[CGD][A-Z0-9]{8,})$"
+        enabled: { type: boolean }
+        notifications: { $ref: "#/components/schemas/SlackNotificationsPatch" }
+      description: At least one of defaultChannel, enabled, or notifications must accompany expectedVersion, or the request 400s. Cannot replace botToken or signingSecret (use PUT for that).
+    SlackIntegration:
+      type: object
+      required:
+        [
+          id,
+          type,
+          defaultChannel,
+          enabled,
+          notifications,
+          botTokenConfigured,
+          signingSecretConfigured,
+          installationMethod,
+          inboundAvailable,
+          deliveryAvailable,
+          version,
+          createdAt,
+          updatedAt,
+        ]
+      additionalProperties: false
+      properties:
+        id: { type: string, const: slack }
+        type: { type: string, const: slack }
+        defaultChannel: { type: string }
+        enabled: { type: boolean }
+        notifications: { $ref: "#/components/schemas/SlackNotifications" }
+        botTokenConfigured: { type: boolean, const: true }
+        signingSecretConfigured: { type: boolean }
+        installationMethod: { type: string, enum: [manual, oauth] }
+        installationId:
+          {
+            type: string,
+            description: Opaque identity for this singleton installation; absent on legacy rows.,
+          }
+        workspaceId: { type: string }
+        workspaceName: { type: string }
+        appId: { type: string }
+        botUserId: { type: string }
+        grantedScopes: { type: array, items: { type: string } }
+        inboundAvailable:
+          {
+            type: boolean,
+            description: Whether this installation can verify signed inbound Slack events right now.,
+          }
+        deliveryAvailable:
+          {
+            type: boolean,
+            description: False when configuration exists but this environment cannot currently send.,
+          }
+        version: { type: integer, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    SlackOAuthStartInput:
+      type: object
+      required: [defaultChannel]
+      additionalProperties: false
+      properties:
+        expectedVersion:
+          type: [integer, "null"]
+          minimum: 1
+          description: The integration's currently observed version, or null when none exists yet; used only to detect a concurrent install (see expectedInstallationId), not compared as a compare-and-swap version the way SlackIntegrationPatch's is.
+        expectedInstallationId:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 256
+          description: The integration's currently observed installationId, or null when none exists yet. A mismatch at submit time 409s.
+        defaultChannel:
+          type: string
+          pattern: "^(#[a-z0-9][a-z0-9_-]{0,79}|[CGD][A-Z0-9]{8,})$"
+        enabled: { type: boolean }
+        notifications: { $ref: "#/components/schemas/SlackNotificationsPatch" }
+      description: Requires integrations:write. Begins a Slack OAuth install/reinstall; the returned url is a one-time Slack authorize link.
+    SlackOAuthStartResult:
+      type: object
+      required: [url]
+      additionalProperties: false
+      properties:
+        url: { type: string, format: uri }
