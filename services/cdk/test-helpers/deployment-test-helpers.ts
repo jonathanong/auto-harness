@@ -25,6 +25,23 @@ const CURRENT_CATALOG_TEMPLATE_STDOUT = JSON.stringify({
   },
 });
 
+/**
+ * What a working deployment serves at /login: the page shell, the server-rendered form,
+ * and no Next control-flow digest. Trimmed from the real production response.
+ *
+ * These markers are duplicated from services/web on purpose — they are the contract
+ * smokeDeployment asserts against a live distribution, which cannot import from the web
+ * package. Renaming one there fails that package's own auth-forms-coverage test first;
+ * this string must then be updated in step, or the next deploy fails at the smoke probe.
+ */
+export const HEALTHY_LOGIN_HTML = [
+  "<!DOCTYPE html><html><body>",
+  '<main data-pw="page-login">',
+  '<div data-pw="login-card"><form data-pw="form-login">',
+  '<button data-pw="login-submit">Sign in</button>',
+  "</form></div></main></body></html>",
+].join("");
+
 export const config = (overrides: Partial<DeploymentConfig> = {}): DeploymentConfig => ({
   accessLogsEnabled: false,
   adminsSsmParam: "/auto-harness/review/harness-admins",
@@ -57,7 +74,11 @@ export function dependencies(stackStates: boolean[]): DeploymentDependencies & {
   const runs: string[][] = [];
   let stackIndex = 0;
   return {
-    fetch: vi.fn(async () => new Response('{"ok":true}', { status: 200 })),
+    fetch: vi.fn(async (input: Parameters<typeof fetch>[0]) =>
+      new URL(input as URL).pathname === "/health"
+        ? new Response('{"ok":true}', { status: 200 })
+        : new Response(HEALTHY_LOGIN_HTML, { status: 200 }),
+    ),
     log: vi.fn(),
     queries,
     query: vi.fn(async (command, args) => {
