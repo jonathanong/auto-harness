@@ -15,7 +15,11 @@ import type { DeploymentDependencies } from "./deployment-support.ts";
  * package cannot import the API service's constants. A rename on either side must update all
  * four call sites, or a future `deploy:aws` run stops recognizing a marker this deploy wrote.
  */
-type ReadinessMarker = { readonly scopeKey: string; readonly recordKey: string; readonly recordType: string };
+type ReadinessMarker = {
+  readonly scopeKey: string;
+  readonly recordKey: string;
+  readonly recordType: string;
+};
 
 const SESSION_DRAIN_LEDGER_READY_MARKER: ReadinessMarker = {
   scopeKey: "__session-drain-ledger__",
