@@ -245,16 +245,13 @@ describe("createLocalApp agent and scheduler routes", () => {
     expect((await invoke("POST", "/api/v1/scheduler/ack-deadlines")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/scheduler/reclaim-stale")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/scheduler/cron")).status).toBe(200);
-    expect((await invoke("POST", "/api/v1/hosts/drain", { hostId: "a1" })).status).toBe(200);
-    expect((await invoke("POST", "/api/v1/hosts/resume", { hostId: "a1" })).status).toBe(200);
-    // Undrain on a host that was never (or is no longer) draining is a safe
-    // no-op, not an error — an operator retry must not fail.
-    expect((await invoke("POST", "/api/v1/hosts/resume", { hostId: "a1" })).status).toBe(200);
-    plane.drainHostDurable = async () => ({ ok: false, runningSessionIds: [] });
-    expect((await invoke("POST", "/api/v1/hosts/drain", { hostId: "a1" })).status).toBe(409);
+    // Drain/resume success-vs-409 mapping (not-draining no-op, already-draining
+    // no-op, and the ok:false -> 409 CONFLICT mapping) is now a single paired
+    // table at ./host-drain-resume-pairs.test.ts, so each state's drain and
+    // resume outcome sit next to each other instead of being asserted here
+    // independently. Kept here: the two routes' own body validation, since
+    // the table never sends an invalid body.
     expect((await invoke("POST", "/api/v1/hosts/drain", {})).status).toBe(400);
-    plane.resumeHostDurable = async () => ({ ok: false });
-    expect((await invoke("POST", "/api/v1/hosts/resume", { hostId: "a1" })).status).toBe(409);
     expect((await invoke("POST", "/api/v1/hosts/resume", {})).status).toBe(400);
     const concurrencyFirst = await invoke("POST", "/api/v1/sessions", {
       repositoryId: "r1",
