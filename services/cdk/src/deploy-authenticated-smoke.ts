@@ -95,7 +95,7 @@ function firstAdminUsername(adminsBase64Json: string): string | undefined {
  * it today, so an *unset* env must proceed, not skip, or this stage would silently never
  * run against a real deployment. Only an explicit non-required override skips.
  */
-export async function mintDeploySmokeSession(
+async function mintDeploySmokeSession(
   config: DeploymentConfig,
   dependencies: DeploymentDependencies,
   env: NodeJS.ProcessEnv = process.env,
