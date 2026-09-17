@@ -38,6 +38,7 @@ import { handleGitHubIngressConfigRoutes } from "./local-routes-github-ingress-c
 import { handleSessionLogSettingsRoutes } from "./local-routes-session-log-settings.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 import { enforceRateLimit } from "./local-rate-limit.ts";
+import { captureSentryException } from "./sentry.ts";
 import {
   classifyRateLimitBucket,
   MemoryRateLimiter,
@@ -280,6 +281,16 @@ export function createLocalApp(options: LocalServerOptions = {}): {
    * used to reject the floated promise in local-server's createServer callback. Node
    * turns an unhandled rejection into process exit, so a single unguarded throw took the
    * whole API down and left the client socket hanging with no response.
+   *
+   * This same `handler` also runs inside the Lambda REST path (lambda-handlers.ts calls
+   * `app.handler` directly), and it never rethrows, so the catch here is the only place an
+   * error from this class of failure is ever seen — lambda-handlers.ts's own `restUnhandledError`
+   * boundary is unreachable for it. Report to Sentry here, not through route-errors.ts's
+   * `reportRouteError`: that helper requires a `URL` to log, but the canonical trigger for this
+   * catch is `new URL(req.url, ...)` itself throwing, so no parsed `url` is ever in scope. No
+   * flush here, deliberately, for the same reason route-errors.ts gives: the Lambda REST wrapper
+   * flushes once after the response is built, and a long-lived local/Docker process doesn't need
+   * a synchronous flush at all.
    */
   const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     try {
@@ -287,6 +298,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     } catch (error) {
       // Do not log request-derived method or URL text: either can contain control characters.
       console.error("unhandled request error", error);
+      captureSentryException(error, "rest");
       if (!res.headersSent) {
         send(res, 500, {
           error: { code: "INTERNAL_ERROR", message: "internal server error" },

@@ -113,8 +113,23 @@ first, the process exits `1` regardless of whether the Sentry flush actually com
 unreachable Sentry ingest endpoint can silently lose the crash report; the exit itself is never
 delayed by it. The browser and Next.js-server inits do **not** filter these integrations (they
 have no equivalent single-owner crash path), so Node process crashes in `web`/`host-pane`
-plausibly still reach Sentry via the SDK's own default handlers — see Known gaps for what's
-missing on the Next.js server side.
+plausibly still reach Sentry via the SDK's own default handlers.
+
+**Next.js request errors.** Errors Next itself catches and renders (server-component and
+route-handler errors) reach Sentry through each app's `onRequestError` export in
+`instrumentation.ts`, wired to `captureWebRequestError`/`captureHostPaneRequestError` in
+`lib/sentry-server.ts`. Both call the installed `@sentry/nextjs@10.74.0`'s `captureRequestError`
+(the function Next 15+/16 documents this hook for) and then explicitly `await Sentry.flush(2_000)`
+— `captureRequestError`'s own internal flush is a Vercel/Cloudflare `waitUntil` that no-ops off
+those platforms, and `services/web` ships as a Lambda `DockerImageFunction`, so nothing else would
+guarantee delivery before the execution environment freezes. Both are DSN-gated the same way
+`initWebSentryServer`/`initHostPaneSentryServer` are, so this stays a no-op with no DSN set.
+
+This covers the **Node runtime only**. Both `onRequestError` exports return early when
+`NEXT_RUNTIME === "edge"`, mirroring `register()`: neither app initializes Sentry on the edge
+runtime, so there would be no client for a captured error to reach. No route in either app opts
+into the edge runtime today, so nothing is currently unreported — but a route that does would
+have its server errors silently skipped until `register()` initializes Sentry there too.
 
 ## Known gaps
 
@@ -132,18 +147,6 @@ missing on the Next.js server side.
   debug-only and never deployed to AWS (see the repo invariant) — but the local-development.md
   table lists these vars alongside the other four as if they have equivalent reach, which they
   don't.
-- **Next.js server-side errors likely never reach Sentry via `onRequestError`.**
-  `grep -rn "onRequestError|captureRequestError"` across the repo returns nothing. Neither
-  `services/web/src/instrumentation.ts` nor `services/host-pane/src/instrumentation.ts` exports
-  anything but `register()`. The installed `@sentry/nextjs@10.74.0` does export
-  `captureRequestError` (confirmed in its type declarations), which Next 15+/16 calls via the
-  `onRequestError` hook to route server-component and route-handler errors to an error monitor —
-  without that hook wired up, those errors are not forwarded. This is scoped narrowly: neither
-  Next server init strips Sentry's default `OnUncaughtException`/`OnUnhandledRejection`
-  integrations (unlike the API/host-daemon inits), so a raw Node process crash in `web` or
-  `host-pane` plausibly still reaches Sentry through the SDK's own handlers — what's specifically
-  missing is the hook for errors Next itself catches and renders. **Likely — not empirically
-  confirmed against a running deployment.**
 - **No sourcemap upload or release tracking.** Neither `next.config.ts` (`services/web`,
   `services/host-pane`) wraps its config in `withSentryConfig`, and
   `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_RELEASE` appear nowhere in the repo.
@@ -153,22 +156,11 @@ missing on the Next.js server side.
   bundling does set `sourceMap: true` in `runtime-stack.ts`, but that's local esbuild output for
   stack-trace readability in CloudWatch Logs, not a Sentry release upload — no auth token or
   org/project is configured for Node either.)
-- **`services/api/src/local-app.ts`'s last-resort request handler never calls
-  `captureSentryException`.** The catch block at lines 283–291 logs via `console.error` only; the
-  file has no Sentry import at all. Its Lambda twin, `handleRestEvent`'s catch in
-  `services/api/src/lambda-handlers.ts:866`, calls `captureSentryException(error, "rest")`. So a
-  route exception under `pnpm local:api` or the Docker API reaches container stdout logs but never
-  Sentry — even when `HARNESS_API_SENTRY_DSN` is set. This is narrower than a dead local Sentry
-  integration: `cli.ts` wires `installCrashLogging({ report: reportApiCrash })`, so an actual
-  process crash (uncaught exception / unhandled rejection) under `pnpm local:api` **does** reach
-  Sentry — only in-request route errors that `local-app.ts` catches and turns into a 500 are
-  invisible to it.
-- **Silent 500s.** Beyond the local-app.ts gap above, some route handlers elsewhere catch an error
-  and return a 500 without logging it at all, so the failure never reaches CloudWatch either —
-  Sentry and structured logs both miss it. This is a pattern to watch for in review, not a single
-  known site: one instance recently cost a live IAM-policy read to diagnose. A related file is
-  being edited concurrently by another agent as this page is written, so its current state isn't
-  asserted here.
+- **Silent 500s.** Some route handlers catch an error and return a 500 without logging it at all,
+  so the failure never reaches CloudWatch either — Sentry and structured logs both miss it. This
+  is a pattern to watch for in review, not a single known site: one instance recently cost a live
+  IAM-policy read to diagnose. A related file is being edited concurrently by another agent as
+  this page is written, so its current state isn't asserted here.
 
 ## Related
 
