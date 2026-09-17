@@ -47,6 +47,11 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   // A locally valid token can still name an account revoked by the API. Keep
   // login reachable so that stale cookies never trap the browser in a loop.
   if (request.nextUrl.pathname === "/login") return pass(request);
+  // Unauthenticated SSR transport probe (services/web/src/app/health/probe/page.tsx) —
+  // it must be reachable with no session so its rendered marker proves the server-side
+  // apiGet() fetch path itself, not that a caller happened to be logged in. Exact match
+  // only: this must not broaden to a prefix, which would leave a whole subtree public.
+  if (request.nextUrl.pathname === "/health/probe") return pass(request);
   const valid =
     process.env.HARNESS_WEB_REMOTE_AUTH === "1"
       ? await hasRemoteSession(request)
