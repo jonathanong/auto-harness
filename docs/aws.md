@@ -85,19 +85,35 @@ graph TB
 
 ### CDK package layout
 
-```
-services/cdk/
-└── src/
-    ├── cli.ts                       # CDK app; reads documented CDK context
-    ├── foundation-stack.ts          # DynamoDB, archive S3, KMS, PITR, deletion protection
-    ├── foundation-data-access.ts    # Split DynamoDB item/query vs Scan and archive PutObject
-    ├── runtime-stack.ts             # HTTP/WS APIs, Lambdas, and EventBridge cron
-    ├── lambda-iam.ts                # Per-function archive, KMS, and connection grants
-    ├── runtime-observability.ts     # Access logs, throttles, and CloudWatch alarms
-    ├── web-stack.ts                 # CloudFront + Next.js Lambda image; caches /_next/static/*
-    ├── tables.ts                    # durable-table catalog shared by synthesis metadata
-    └── foundation-stack.test.ts     # deterministic CloudFormation assertions
-```
+`services/cdk/src/` has 27 non-test source files (52 total including `*.test.ts`).
+An exhaustive hand-maintained file listing already drifted out of date once
+(this table replaces one that still named 8 files), so this groups the code by
+role instead of enumerating every file in one flat tree: even if a file list
+below slips out of sync, the category and its role stay meaningful, which is
+more durable than a flat listing that just goes silently incomplete.
+
+| Group                    | Files                                                                                                                                                                                                                                                                                                   | Role                                                                                                                                                                                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CLI entry points         | `cli.ts`, `apigateway-account-cli.ts`                                                                                                                                                                                                                                                                   | `cdk synth`/`diff` apps. `cli.ts` wires Foundation → Runtime → Web (the normal app); `apigateway-account-cli.ts` is the separate, environment-independent app for the one-time account-level bootstrap (see [deploy-aws.md#api-gateway-access-logs-opt-in](deploy-aws.md#api-gateway-access-logs-opt-in)). |
+| Stacks                   | `foundation-stack.ts`, `runtime-stack.ts`, `web-stack.ts`, `apigateway-account-stack.ts`                                                                                                                                                                                                                | The CloudFormation stacks: persistence (DynamoDB, archive S3, KMS, PITR), REST/WebSocket/cron runtime, CloudFront + Next.js web Lambda, and the account-level API Gateway → CloudWatch Logs role/singleton.                                                                                                |
+| Stack-support constructs | `lambda-iam.ts`, `runtime-observability.ts`, `runtime-api-integration.ts`, `runtime-ingress-authorizer.ts`, `runtime-resources.ts`, `cloudfront-ingress-secret.ts`, `bootstrap-secret-param.ts`, `public-base-url-param.ts`, `slack-app-param.ts`, `tables.ts`, `foundation-data-access.ts`, `index.ts` | Per-function IAM grants, access-log/throttle/alarm wiring, API Gateway integrations and the CloudFront-ingress authorizer, the SSM/Secrets Manager parameter constructs (see [deploy-aws.md](deploy-aws.md#secrets-and-config-never-commit)), and the shared table catalog.                                |
+| Lifecycle / deployment   | `deployment.ts`, `deployment-config.ts`, `deployment-support.ts`, `deployment-purge.ts`, `deployment-purge-schema.ts`, `deployment-purge-orphans.ts`, `deployment-orphan-report.ts`, `recycle-runtime-lambdas.ts`, `aws-cli.ts`                                                                         | The deploy/update/teardown/purge orchestration invoked by `scripts/aws-deployment.mts` — stack-existence checks, GSI-drift-aware purge retargeting, orphan table detection, and Lambda-recycle helpers.                                                                                                    |
+
+Coverage is not one test file per source file. The four stacks are asserted by
+`foundation-stack.test.ts`, `web-stack.test.ts`, `apigateway-account-stack.test.ts`, and
+`runtime-stack.test.ts` plus six `runtime-stack-*.test.ts` variants (IAM,
+observability, public-base-url, removal, Slack app, SSM param name); most stack-support
+constructs (IAM, observability, the ingress authorizer, the parameter constructs,
+`tables.ts`) are exercised through those stack tests rather than through a same-named
+test of their own — `cli.ts`, `apigateway-account-cli.ts`, and `deployment-support.ts`
+likewise have no dedicated test file. The lifecycle group's
+larger files split their tests across more than one `*.test.ts` instead —
+`deployment-purge.ts` and `deployment-purge-orphans.ts` are covered by
+`deployment-purge.test.ts`, `deployment-purge-orphans.test.ts`,
+`deployment-purge-orphans-delete.test.ts`, `deployment-purge-schema.test.ts`, and three
+`deployment-purge-flow*.test.ts` files — consistent with this repo's `.oxlintrc.json`
+`max-lines: 200` rule (non-blank, non-comment lines), which applies repo-wide and is not
+relaxed for test files.
 
 The CDK app emits a persistence foundation and separately deployable runtime and
 web stacks. The runtime contains HTTP/WebSocket API Gateway APIs, three bundled
