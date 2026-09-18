@@ -65,7 +65,7 @@ export async function resolveConfig(flags, io) {
   checkAdminLoginUsage(flags, io.env);
   const allowInsecureHttp = Boolean(flags["--allow-insecure-http"]);
   if (flags["--admin-password-stdin"]) {
-    const adminUsername = flags["--admin-username"] || "admin";
+    const adminUsername = explicitFlag(flags, "--admin-username") ?? "admin";
     return { baseUrl, allowInsecureHttp, adminMode: true, adminUsername };
   }
   const apiKey = await resolveApiKey(flags, io.env, io.readFile);

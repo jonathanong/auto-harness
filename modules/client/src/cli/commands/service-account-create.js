@@ -27,6 +27,15 @@ export async function runServiceAccountCreate(argv, io) {
   if (positionals.length > 0 || !flags["--name"] || !flags["--role"]) {
     throw new CliUsageError(USAGE);
   }
+  // An empty value (`--key-file "$UNSET"`) is a mistake, not an absent flag, and both must be
+  // caught before the request: an empty --key-file creates the account and only then fails to
+  // write its one-time key, orphaning it; an empty --bound-host sends `boundHostId: ""`, which
+  // risks minting an unbound key where a host-bound one was meant.
+  for (const name of ["--key-file", "--bound-host"]) {
+    if (flags[name] !== undefined && flags[name].trim() === "") {
+      throw new CliUsageError(`${name} was given an empty value`);
+    }
+  }
   const hasKeyFile = flags["--key-file"] !== undefined;
   const hasPrintKey = Boolean(flags["--print-key"]);
   if (hasKeyFile === hasPrintKey) {

@@ -1,6 +1,7 @@
 import { parseFlags } from "../args.js";
 import { CliUsageError } from "../cli-errors.js";
 import { createClient, GLOBAL_BOOLEAN_FLAGS, GLOBAL_VALUE_FLAGS } from "../config.js";
+import { pathSegment } from "../path-segment.js";
 import { conflictDependencies, isDependencyConflict } from "./dependency-conflict.js";
 
 const USAGE = "usage: auto-harness service-account rm <id> [--json]";
@@ -15,9 +16,10 @@ export async function runServiceAccountRm(argv, io) {
   });
   const [id] = positionals;
   if (!id || positionals.length > 1) throw new CliUsageError(USAGE);
+  const idSegment = pathSegment(id, "id");
   const client = await createClient(flags, io);
   try {
-    await client.request(`/auth/service-accounts/${encodeURIComponent(id)}`, {
+    await client.request(`/auth/service-accounts/${idSegment}`, {
       method: "DELETE",
     });
   } catch (error) {

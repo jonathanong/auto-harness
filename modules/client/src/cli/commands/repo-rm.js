@@ -1,6 +1,7 @@
 import { parseFlags } from "../args.js";
 import { CliUsageError } from "../cli-errors.js";
 import { createClient, GLOBAL_BOOLEAN_FLAGS, GLOBAL_VALUE_FLAGS } from "../config.js";
+import { pathSegment } from "../path-segment.js";
 import { conflictDependencies, isDependencyConflict } from "./dependency-conflict.js";
 
 const USAGE = "usage: auto-harness repo rm <repositoryId> [--json]";
@@ -17,9 +18,10 @@ export async function runRepoRm(argv, io) {
   });
   const [repositoryId] = positionals;
   if (!repositoryId || positionals.length > 1) throw new CliUsageError(USAGE);
+  const repositorySegment = pathSegment(repositoryId, "repositoryId");
   const client = await createClient(flags, io);
   try {
-    await client.request(`/repositories/${encodeURIComponent(repositoryId)}`, {
+    await client.request(`/repositories/${repositorySegment}`, {
       method: "DELETE",
     });
   } catch (error) {

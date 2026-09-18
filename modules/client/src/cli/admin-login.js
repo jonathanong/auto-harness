@@ -2,6 +2,9 @@ import { isLoopbackOrigin } from "../loopback.js";
 import { CliConfigError, CliUsageError } from "./cli-errors.js";
 import { readStdin } from "./read-stdin.js";
 
+// Matches `AutoHarnessClient`'s default `requestTimeoutMs`.
+const ADMIN_LOGIN_TIMEOUT_MS = 30_000;
+
 /**
  * Usage-error checks for `--admin-password-stdin`, run before any request. An admin login is an
  * alternate *identity*, not an additional one, so it is ambiguous to also have an API key
@@ -11,7 +14,9 @@ import { readStdin } from "./read-stdin.js";
  */
 export function checkAdminLoginUsage(flags, env, stdinClaimedBy) {
   if (!flags["--admin-password-stdin"]) return;
-  if (flags["--api-key-file"] || env.HARNESS_API_KEY || env.HARNESS_API_KEY_FILE) {
+  // Presence, not truthiness: an empty `--api-key-file=` is still an explicit (broken) request
+  // for API-key identity, and must not slip past this ambiguity check.
+  if (Object.hasOwn(flags, "--api-key-file") || env.HARNESS_API_KEY || env.HARNESS_API_KEY_FILE) {
     throw new CliUsageError(
       "--admin-password-stdin cannot be combined with an API key (--api-key-file, " +
         "HARNESS_API_KEY, or HARNESS_API_KEY_FILE); pick one identity",
@@ -45,10 +50,13 @@ export async function loginAsAdmin(io, baseUrl, username, allowInsecureHttp = fa
   const rawPassword = await readStdin(io.stdin);
   const password = rawPassword.endsWith("\n") ? rawPassword.slice(0, -1) : rawPassword;
   const origin = baseUrl.replace(/\/$/, "").replace(/\/api\/v1$/, "");
+  // A raw fetch, so it needs its own bound — the same one `doctor`'s /health probe uses —
+  // or a stalled server hangs the command before `AutoHarnessClient`'s timeout ever applies.
   const response = await io.fetch(`${origin}/api/v1/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ username, password }),
+    signal: (io.timeoutSignal ?? AbortSignal.timeout)(ADMIN_LOGIN_TIMEOUT_MS),
   });
   if (response.status !== 200) throw new Error(`admin login failed (HTTP ${response.status})`);
   const cookieHeader = response.headers
