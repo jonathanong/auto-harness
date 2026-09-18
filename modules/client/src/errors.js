@@ -7,6 +7,7 @@ export class AutoHarnessError extends Error {
     this.retryAfter = options.retryAfter;
     this.operationId = options.operationId;
     this.statusUrl = options.statusUrl;
+    this.details = options.details;
   }
 }
 

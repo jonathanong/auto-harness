@@ -217,3 +217,79 @@ import { parseHarnessTarget, requiredEnvironmentValue } from "auto-harness-clien
 const target = parseHarnessTarget(process.env.HARNESS_TARGET);
 const apiKey = requiredEnvironmentValue(process.env, "HARNESS_API_KEY");
 ```
+
+## CLI: `auto-harness`
+
+This package also ships a small operator CLI, `auto-harness`, for scripting and debugging
+against a control plane from a shell:
+
+```sh
+npx auto-harness-client whoami
+# or, once installed:
+auto-harness whoami
+```
+
+### Configuration
+
+The CLI never touches your repository config or the host daemon's persisted env file — it only
+reads what you pass it:
+
+| Setting              | Flag                    | Environment variable(s)                       |
+| -------------------- | ----------------------- | --------------------------------------------- |
+| Base URL             | `--api-url <url>`       | `HARNESS_API_URL` (alias: `HARNESS_API_HTTP`) |
+| API key              | —                       | `HARNESS_API_KEY`                             |
+| API key, from a file | `--api-key-file <path>` | `HARNESS_API_KEY_FILE`                        |
+| Allow plain HTTP     | `--allow-insecure-http` | —                                             |
+
+A flag always wins over its environment variable. `HARNESS_API_URL`/`HARNESS_API_HTTP` are the
+same two variables the host daemon itself already accepts, so operators typically have one set.
+An `--api-key-file`/`HARNESS_API_KEY_FILE` value is read and trimmed of surrounding whitespace.
+
+**There is no `--api-key` flag.** A key passed on the command line lands in `ps` output and shell
+history for the life of the process and the life of the shell's history file. Use the
+`HARNESS_API_KEY` environment variable, or point `--api-key-file` / `HARNESS_API_KEY_FILE` at a
+file holding it; passing `--api-key` fails immediately with a usage error telling you so.
+
+Exit codes: `0` success, `1` an API/HTTP failure (or a failed `doctor` check), `2` a usage or
+configuration error.
+
+### `auto-harness api <METHOD> <path>`
+
+A generic escape hatch for any route the control plane exposes. Both `/hosts` and
+`/api/v1/hosts` are accepted (a leading `/api/v1` is stripped). `--body` takes inline JSON;
+`--body-file <path>` reads a file, and `--body-file -` reads stdin. A `204` or otherwise empty
+response prints nothing; anything else is pretty-printed JSON on stdout.
+
+```sh
+auto-harness api GET /hosts
+auto-harness api POST /repositories --body '{"name":"org/repo","url":"https://github.com/org/repo"}'
+echo '{"prompt":"Review the latest changes"}' | auto-harness api POST /sessions --body-file -
+```
+
+### `auto-harness whoami [--json]`
+
+`GET /auth/me`, printing only an allowlist of fields (`id`, `kind`, `username`, `name`, `role`,
+`capabilities`, `boundHostId`, `allowedRepositoryIds`) — never `passwordHash`, `apiKeyHash`, or
+anything else the API response happens to carry.
+
+```sh
+auto-harness whoami
+auto-harness whoami --json
+```
+
+### `auto-harness doctor`
+
+Runs a handful of independent checks and reports each as `ok`, `warn`, or `fail` with a one-line
+reason, exiting `1` if any check `fail`s:
+
+- **url** — `fail`s for a plain `http://` base URL unless `--allow-insecure-http` is set; `warn`s
+  for a raw `*.execute-api.*.amazonaws.com` URL, which bypasses CloudFront (and the ingress token
+  CloudFront injects), so requests against it will be rejected.
+- **reachability** — `GET /health` (at the site root, not under `/api/v1`) expecting HTTP 200 and
+  `{"ok":true}`.
+- **auth** — if an API key is configured, `GET /auth/me`; `warn`s instead, without making the
+  call, when no key is configured. A `401` reports "API key rejected".
+
+```sh
+auto-harness doctor
+```

@@ -229,6 +229,10 @@ export class AutoHarnessError extends Error {
   operationId?: string;
   /** API-relative URL for the drain that fenced this request. */
   statusUrl?: string;
+  /** The complete `body.error` object from the response, when the server returned JSON —
+   * e.g. a refused delete's `dependencies` array. Undefined when the response had no parseable
+   * JSON `error` object. */
+  details?: Record<string, unknown>;
   constructor(
     message: string,
     options: {
@@ -237,6 +241,7 @@ export class AutoHarnessError extends Error {
       retryAfter?: string;
       operationId?: string;
       statusUrl?: string;
+      details?: Record<string, unknown>;
     },
   );
 }
