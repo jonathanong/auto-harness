@@ -11,9 +11,9 @@ describe("AutoHarnessFoundationStack removal", () => {
       dataRemovalPolicy: RemovalPolicy.DESTROY,
       tablePrefix: "DisposableRuntime",
     });
-    const key = Object.values(Template.fromStack(foundation).toJSON().Resources).find(
-      (resource) => resource.Type === "AWS::KMS::Key",
-    );
+    const keys = Object.values(Template.fromStack(foundation).findResources("AWS::KMS::Key"));
+    expect(keys).toHaveLength(1);
+    const [key] = keys;
     expect(key?.DeletionPolicy).toBe("Delete");
     expect(key?.UpdateReplacePolicy).toBe("Delete");
   });

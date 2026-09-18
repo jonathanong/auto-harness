@@ -28,15 +28,16 @@ describe("ApiGatewayAccountStack", () => {
       ]),
     });
 
-    const resources = template.toJSON().Resources;
-    const role = Object.values(resources).find((resource) => resource.Type === "AWS::IAM::Role");
+    const roles = Object.values(template.findResources("AWS::IAM::Role"));
+    expect(roles).toHaveLength(1);
+    const [role] = roles;
     expect(role?.DeletionPolicy).toBe("Retain");
     expect(role?.UpdateReplacePolicy).toBe("Retain");
 
     template.resourceCountIs("AWS::ApiGateway::Account", 1);
-    const account = Object.values(resources).find(
-      (resource) => resource.Type === "AWS::ApiGateway::Account",
-    );
+    const accounts = Object.values(template.findResources("AWS::ApiGateway::Account"));
+    expect(accounts).toHaveLength(1);
+    const [account] = accounts;
     expect(account?.DeletionPolicy).toBe("Retain");
     expect(account?.UpdateReplacePolicy).toBe("Retain");
     expect(account?.Properties?.CloudWatchRoleArn).toBeDefined();
