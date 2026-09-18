@@ -6,6 +6,8 @@ export type DeploymentConfig = {
   accessLogsEnabled: boolean;
   accountId?: string;
   adminsSsmParam: string;
+  /** Empty by default. The alarm topic is created either way — see runtime-alarms.ts. */
+  alarmEmails: string[];
   apiSentryDsn?: string;
   cursorSecretSsmParam: string;
   environment: string;
@@ -42,6 +44,26 @@ function optionalDsn(env: NodeJS.ProcessEnv, name: string): string | undefined {
   return inspected.dsn;
 }
 
+/**
+ * Fails the deploy on a malformed address rather than accepting it, matching optionalDsn.
+ * A silently-dropped address is the failure mode this whole feature exists to fix: the
+ * operator believes alarms reach them and finds out otherwise during an incident. SNS would
+ * also reject it later, at a point where nothing is watching the output.
+ */
+function alarmEmails(env: NodeJS.ProcessEnv, name: string): string[] {
+  const raw = env[name]?.trim();
+  if (!raw) return [];
+  const addresses = raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  const invalid = addresses.filter((entry) => !/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(entry));
+  if (invalid.length > 0) {
+    throw new Error(`${name} contains an invalid email address: ${invalid.join(", ")}`);
+  }
+  return [...new Set(addresses)];
+}
+
 export function deploymentConfig(
   _operation: DeploymentOperation,
   env: NodeJS.ProcessEnv = process.env,
@@ -68,6 +90,7 @@ export function deploymentConfig(
     // deploy does not provision — see scripts/bootstrap-apigateway-account.sh.
     accessLogsEnabled: env.HARNESS_ACCESS_LOGS_ENABLED?.trim() === "1",
     adminsSsmParam: env.HARNESS_ADMINS_SSM_PARAM?.trim() || `${base}/harness-admins`,
+    alarmEmails: alarmEmails(env, "HARNESS_DEPLOY_ALARM_EMAILS"),
     cursorSecretSsmParam:
       env.HARNESS_CURSOR_SECRET_SSM_PARAM?.trim() || `${base}/harness-cursor-secret`,
     environment,

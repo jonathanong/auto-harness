@@ -63,6 +63,9 @@ export function cdkContext(
     `sessionPriorityIndexStage=${sessionPriorityIndexStage}`,
     "-c",
     `sessionCreatedOrderIndexStage=${sessionCreatedOrderIndexStage}`,
+    ...(config.alarmEmails.length > 0
+      ? (["-c", `alarmEmails=${config.alarmEmails.join(",")}`] as const)
+      : []),
     ...(config.apiSentryDsn ? (["-c", `apiSentryDsn=${config.apiSentryDsn}`] as const) : []),
     ...(config.webSentryDsnClient
       ? (["-c", `webSentryDsnClient=${config.webSentryDsnClient}`] as const)

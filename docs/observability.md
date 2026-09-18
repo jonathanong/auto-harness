@@ -131,12 +131,49 @@ runtime, so there would be no client for a captured error to reach. No route in 
 into the edge runtime today, so nothing is currently unreported — but a route that does would
 have its server errors silently skipped until `register()` initializes Sentry there too.
 
+## Alarm notifications
+
+Every alarm above publishes to one SNS topic, created by
+`services/cdk/src/runtime-alarms.ts` and exported as the runtime stack's **`AlarmTopicArn`**
+output.
+
+The topic is created **unconditionally, even with no subscribers**. Until it existed, all 13
+alarms were constructed with no action at all: they changed state and notified nobody, which is
+operationally indistinguishable from having no alarms. Making the topic unconditional turns
+"every alarm has an action" into a property of the synthesized template, asserted over _every_
+alarm in `runtime-alarm-routing.test.ts` rather than over a list that a fourteenth alarm could
+silently escape — and it makes subscribing a one-line operation rather than a code change:
+
+```bash
+aws sns subscribe --topic-arn "$(aws cloudformation describe-stacks \
+  --stack-name "AutoHarness-${ENV}-Runtime" \
+  --query 'Stacks[0].Outputs[?OutputKey==`AlarmTopicArn`].OutputValue' --output text)" \
+  --protocol email --notification-endpoint you@example.com
+```
+
+Subscribers can also be set at deploy time with **`HARNESS_DEPLOY_ALARM_EMAILS`**, a
+comma-separated list. A malformed address **fails the deploy** rather than being dropped, on the
+same reasoning as an invalid Sentry DSN: silently discarding it would leave an operator
+believing alarms reach them until an incident proved otherwise.
+
+Two deliberate limits:
+
+- **Alarm actions only, no OK actions.** Every alarm pairs `treatMissingData: NOT_BREACHING`
+  with a single datapoint over one period, so a sparse `Sum` metric returns to OK on the next
+  period. OK actions would roughly double the volume to report that a one-off spike had stopped.
+  Recovery stays visible in the alarm's own history.
+- **The topic is not KMS-encrypted.** A notification carries metric metadata only — alarm name,
+  namespace, metric, threshold, state transition, timestamp — and no session, repository, or
+  credential content. CloudWatch cannot publish through the AWS-managed `alias/aws/sns` key
+  because that key's policy cannot be edited, so encrypting would require a customer-managed
+  key, and every `pnpm purge` would drop one into a 7–30 day deletion window. `enforceSSL` still
+  denies any publish attempted over plaintext HTTP. Revisit if the topic ever carries a payload.
+
 ## Known gaps
 
-- **All CloudWatch alarms have no alarm action.** `grep -rn "Topic|SnsAction|addAlarmAction|aws-sns" services/cdk/src/`
-  returns nothing — there is no SNS topic anywhere in `services/cdk/`. Every alarm above changes
-  state and notifies nobody; there is no page, email, or Slack hook. This is a deliberate,
-  deferred decision, not a bug — surfacing it here, not fixing it.
+- **Nothing is subscribed to `AlarmTopicArn` by default.** The wiring above is unconditional,
+  but a topic with zero subscribers still notifies nobody. Subscribe an address per environment,
+  or set `HARNESS_DEPLOY_ALARM_EMAILS`, before treating an environment as monitored.
 - **`HARNESS_HOST_PANE_SENTRY_DSN_CLIENT` / `_SERVER` have no deploy or persist path.** Neither
   var appears anywhere in `services/cdk/` (`DeploymentConfig` only has `apiSentryDsn`,
   `webSentryDsnClient`, `webSentryDsnServer`), and neither is in the persisted-env allowlist in

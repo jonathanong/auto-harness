@@ -11,6 +11,7 @@ import {
 
 const config: DeploymentConfig = {
   adminsSsmParam: "/auto-harness/review/harness-admins",
+  alarmEmails: [],
   cursorSecretSsmParam: "/auto-harness/review/harness-cursor-secret",
   environment: "review",
   foundationStackName: "AutoHarness-review-Foundation",
