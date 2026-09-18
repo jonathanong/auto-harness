@@ -1,6 +1,7 @@
 import { parseFlags } from "../args.js";
 import { CliUsageError } from "../cli-errors.js";
 import { createClient, GLOBAL_BOOLEAN_FLAGS, GLOBAL_VALUE_FLAGS } from "../config.js";
+import { pathSegment } from "../path-segment.js";
 import { readStdin } from "../read-stdin.js";
 
 const USAGE = "usage: auto-harness host inventory set <hostId> --file <path|->";
@@ -23,10 +24,11 @@ export async function runHostInventorySet(argv, io) {
   });
   const [hostId] = positionals;
   if (!hostId || positionals.length > 1 || !flags["--file"]) throw new CliUsageError(USAGE);
+  const hostSegment = pathSegment(hostId, "hostId");
   const text = await readDocument(flags["--file"], io);
   validateDocument(text);
   const client = await createClient(flags, io);
-  const result = await client.request(`/hosts/${encodeURIComponent(hostId)}/inventory`, {
+  const result = await client.request(`/hosts/${hostSegment}/inventory`, {
     method: "PUT",
     body: text,
   });

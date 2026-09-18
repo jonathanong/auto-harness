@@ -2,6 +2,7 @@ import { AutoHarnessError } from "../../index.js";
 import { parseFlags } from "../args.js";
 import { CliUsageError } from "../cli-errors.js";
 import { createClient, GLOBAL_BOOLEAN_FLAGS, GLOBAL_VALUE_FLAGS } from "../config.js";
+import { pathSegment } from "../path-segment.js";
 
 const USAGE = "usage: auto-harness host repo rm <hostId> <repositoryId> [--dry-run] [--json]";
 const MAX_ATTEMPTS = 3;
@@ -21,6 +22,7 @@ export async function runHostRepoRm(argv, io) {
   });
   const [hostId, repositoryId] = positionals;
   if (!hostId || !repositoryId || positionals.length > 2) throw new CliUsageError(USAGE);
+  pathSegment(hostId, "hostId"); // validate before createClient, which may log in
   const client = await createClient(flags, io);
   const record = await getInventory(client, hostId);
   const removal = extractRepository(record, hostId, repositoryId);
@@ -32,7 +34,7 @@ export async function runHostRepoRm(argv, io) {
 }
 
 function getInventory(client, hostId) {
-  return client.request(`/hosts/${encodeURIComponent(hostId)}/inventory`);
+  return client.request(`/hosts/${pathSegment(hostId, "hostId")}/inventory`);
 }
 
 /** Finds the repository by id. By default throws (exit 1) listing what is actually attached;
@@ -61,7 +63,7 @@ async function removeWithRetry(client, io, flags, hostId, repositoryId, record, 
     const fromVersion = currentRecord.version ?? 0;
     const document = { ...currentRecord, repositories: current.remaining, version: fromVersion };
     try {
-      const result = await client.request(`/hosts/${encodeURIComponent(hostId)}/inventory`, {
+      const result = await client.request(`/hosts/${pathSegment(hostId, "hostId")}/inventory`, {
         method: "PUT",
         body: JSON.stringify(document),
       });
