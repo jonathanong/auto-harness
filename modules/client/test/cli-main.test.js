@@ -49,3 +49,28 @@ test("a request timeout error prints a clear message and exits 1", () => {
   assert.equal(exitCode, 1);
   assert.match(stderr(), /error: Auto Harness request timed out after 30000ms/);
 });
+
+test("a global flag before the command name is hoisted after it", async () => {
+  const { io, stdout } = makeIo({
+    env: { HARNESS_API_URL: "https://harness.test" },
+    fetch: async () => Response.json({ items: [] }),
+  });
+  const exitCode = await main(["--allow-insecure-http", "host", "list"], io);
+  assert.equal(exitCode, 0);
+  assert.match(stdout(), /no hosts/);
+});
+
+test("a global value flag before a two-word command carries its value through", async () => {
+  const { io } = makeIo({
+    fetch: async () => Response.json({ items: [] }),
+  });
+  const exitCode = await main(["--api-url", "https://harness.test", "service-account", "list"], io);
+  assert.equal(exitCode, 0);
+});
+
+test("an unknown leading flag still falls through to the usage/exit-2 path", async () => {
+  const { io, stderr } = makeIo({});
+  const exitCode = await main(["--mystery", "whoami"], io);
+  assert.equal(exitCode, 2);
+  assert.match(stderr(), /Usage:/);
+});

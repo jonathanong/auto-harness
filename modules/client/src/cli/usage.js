@@ -1,6 +1,11 @@
 export function usage() {
   return `auto-harness - operator CLI for the Auto Harness control plane API
 
+A global flag (--api-url, --api-key-file, --allow-insecure-http, --admin-password-stdin,
+--admin-username) is recognized before or after the command name — both
+\`auto-harness --admin-password-stdin whoami\` and \`auto-harness whoami --admin-password-stdin\`
+work the same way.
+
 Usage:
   auto-harness api <METHOD> <path> [--body <json> | --body-file <path|->]
   auto-harness whoami [--json]
@@ -11,6 +16,12 @@ Usage:
   auto-harness host inventory get <hostId> [--json]
   auto-harness host inventory set <hostId> --file <path|->
   auto-harness host repo rm <hostId> <repositoryId> [--dry-run] [--json]
+  auto-harness repo list [--limit N] [--cursor C] [--all] [--json]
+  auto-harness repo rm <repositoryId> [--json]
+  auto-harness service-account list [--limit N] [--cursor C] [--all] [--json]
+  auto-harness service-account create --name <name> --role <role> [--bound-host <hostId>]
+    [--repositories <id,id,...>] (--key-file <path> | --print-key) [--json]
+  auto-harness service-account rm <id> [--json]
   auto-harness help | --help | -h
 
 Configuration:
@@ -22,6 +33,17 @@ The API key is never accepted as a command-line flag: it would land in \`ps\` ou
 history. Set the HARNESS_API_KEY environment variable, or point --api-key-file /
 HARNESS_API_KEY_FILE at a file holding it.
 
+Admin bootstrap (no API key exists yet):
+  --admin-password-stdin          Log in as an admin (password piped through stdin) instead of
+                                   using an API key; combine with --admin-username (default: admin)
+  --admin-username <name>         Admin username for --admin-password-stdin (default: admin)
+
+--admin-password-stdin reads the password from stdin (one trailing newline stripped), logs in
+once via POST /auth/login, and carries the session cookie on every later request instead of an
+API key — it never touches argv, shell history, or output. It cannot be combined with an API key
+(--api-key-file, HARNESS_API_KEY, or HARNESS_API_KEY_FILE), nor with a command that also reads
+stdin for its own input (\`api --body-file -\`, \`host inventory set --file -\`).
+
 Examples:
   auto-harness whoami
   auto-harness api GET /hosts
@@ -32,5 +54,13 @@ Examples:
   auto-harness host drain host-1
   auto-harness host inventory get host-1 --json > inventory.json
   auto-harness host repo rm host-1 repo-1 --dry-run
+  auto-harness repo list --all
+  auto-harness repo rm repo-1
+  auto-harness service-account list
+  auto-harness service-account create --name ci --role operator --print-key > /dev/null
+  KEY=$(auto-harness service-account create --name ci --role operator --print-key)
+  aws ssm get-parameter --name /auto-harness/admin-password --with-decryption \\
+    --query Parameter.Value --output text \\
+    | auto-harness --admin-password-stdin service-account create --name ci --role operator --print-key
 `;
 }

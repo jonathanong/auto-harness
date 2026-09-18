@@ -1,4 +1,5 @@
 import { AutoHarnessClient, AutoHarnessError } from "../../index.js";
+import { loginAsAdmin } from "../admin-login.js";
 import { allowlistPrincipal } from "../allowlist.js";
 import { parseFlags } from "../args.js";
 import { CliUsageError } from "../cli-errors.js";
@@ -22,7 +23,7 @@ export async function runDoctor(argv, io) {
   const checks = [
     checkUrlShape(config.baseUrl, config.allowInsecureHttp),
     await checkReachability(config.baseUrl, io.fetch),
-    await checkAuth(config, io.fetch),
+    await checkAuth(config, io),
   ];
   for (const check of checks) io.stdout.write(formatCheck(check));
   return checks.some((check) => check.status === "fail") ? 1 : 0;
@@ -90,13 +91,28 @@ async function checkReachability(baseUrl, fetchFn) {
   return { name: "reachability", status: "ok", message: "control plane is reachable" };
 }
 
-async function checkAuth(config, fetchFn) {
-  if (!config.apiKey) {
+/**
+ * In admin mode the login itself is attempted here, inside this check's own try/catch — not
+ * eagerly in `resolveConfig` — so a bad admin password only fails this one check and still
+ * lets the url/reachability checks above it print, the same way a rejected API key does.
+ */
+async function checkAuth(config, io) {
+  if (!config.apiKey && !config.adminMode) {
     return {
       name: "auth",
       status: "warn",
       message: "no API key configured; only unauthenticated checks ran",
     };
+  }
+  let fetchFn = io.fetch;
+  if (config.adminMode) {
+    try {
+      fetchFn = (
+        await loginAsAdmin(io, config.baseUrl, config.adminUsername, config.allowInsecureHttp)
+      ).fetch;
+    } catch (error) {
+      return { name: "auth", status: "fail", message: error.message };
+    }
   }
   let client;
   try {
@@ -115,11 +131,10 @@ async function checkAuth(config, fetchFn) {
     const capabilities = Array.isArray(principal.capabilities)
       ? principal.capabilities.join(", ")
       : "none";
-    return {
-      name: "auth",
-      status: "ok",
-      message: `authenticated as role ${role} (capabilities: ${capabilities})`,
-    };
+    const message = config.adminMode
+      ? `authenticated as ${principal.username} (role ${role}; capabilities: ${capabilities})`
+      : `authenticated as role ${role} (capabilities: ${capabilities})`;
+    return { name: "auth", status: "ok", message };
   } catch (error) {
     if (error instanceof AutoHarnessError && error.status === 401) {
       return { name: "auth", status: "fail", message: "API key rejected" };

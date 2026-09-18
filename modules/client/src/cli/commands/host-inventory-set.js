@@ -1,3 +1,4 @@
+import { checkAdminLoginUsage } from "../admin-login.js";
 import { parseFlags } from "../args.js";
 import { CliUsageError } from "../cli-errors.js";
 import { createClient, GLOBAL_BOOLEAN_FLAGS, GLOBAL_VALUE_FLAGS } from "../config.js";
@@ -23,6 +24,10 @@ export async function runHostInventorySet(argv, io) {
   });
   const [hostId] = positionals;
   if (!hostId || positionals.length > 1 || !flags["--file"]) throw new CliUsageError(USAGE);
+  // Both this command's own `--file -` and `--admin-password-stdin` need stdin; catch the
+  // conflict before reading either, rather than letting one silently drain the other's input.
+  const stdinClaimedBy = flags["--file"] === "-" ? "host inventory set --file -" : undefined;
+  checkAdminLoginUsage(flags, io.env, stdinClaimedBy);
   const text = await readDocument(flags["--file"], io);
   validateDocument(text);
   const client = await createClient(flags, io);

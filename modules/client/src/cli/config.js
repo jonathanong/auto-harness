@@ -1,8 +1,9 @@
 import { AutoHarnessClient } from "../index.js";
+import { checkAdminLoginUsage, loginAsAdmin } from "./admin-login.js";
 import { CliConfigError } from "./cli-errors.js";
 
-export const GLOBAL_VALUE_FLAGS = ["--api-url", "--api-key-file"];
-export const GLOBAL_BOOLEAN_FLAGS = ["--allow-insecure-http"];
+export const GLOBAL_VALUE_FLAGS = ["--api-url", "--api-key-file", "--admin-username"];
+export const GLOBAL_BOOLEAN_FLAGS = ["--allow-insecure-http", "--admin-password-stdin"];
 
 /** `--api-url`, else `HARNESS_API_URL`, else `HARNESS_API_HTTP` (the host daemon's own alias —
  * operators already have one of these two set). Missing entirely is a config error naming both. */
@@ -43,23 +44,39 @@ async function readApiKeyFile(path, readFile) {
   return trimmed;
 }
 
+/**
+ * `--admin-password-stdin` replaces the whole apiKey identity with an admin username/password
+ * login, so its usage checks run here — unconditionally, for every command — before either an
+ * apiKey is resolved or (in `createClient`) the login request is made.
+ */
 export async function resolveConfig(flags, io) {
   const baseUrl = resolveApiUrl(flags, io.env);
-  const apiKey = await resolveApiKey(flags, io.env, io.readFile);
+  checkAdminLoginUsage(flags, io.env);
   const allowInsecureHttp = Boolean(flags["--allow-insecure-http"]);
+  if (flags["--admin-password-stdin"]) {
+    const adminUsername = flags["--admin-username"] || "admin";
+    return { baseUrl, allowInsecureHttp, adminMode: true, adminUsername };
+  }
+  const apiKey = await resolveApiKey(flags, io.env, io.readFile);
   return { baseUrl, apiKey, allowInsecureHttp };
 }
 
 /** Builds the real `AutoHarnessClient`; a constructor rejection (e.g. plaintext http with an
  * apiKey set against a non-loopback host) is a configuration problem, not an API failure, so it
- * is re-thrown as `CliConfigError` (exit 2) rather than surfacing as a generic exit-1 error. */
+ * is re-thrown as `CliConfigError` (exit 2) rather than surfacing as a generic exit-1 error. A
+ * failed admin login (a bad password, an unreachable server) is deliberately *not* wrapped this
+ * way — it is reported as a plain error (exit 1), matching a rejected API key rather than a
+ * usage/config problem. */
 export async function createClient(flags, io) {
   const config = await resolveConfig(flags, io);
+  const fetchFn = config.adminMode
+    ? (await loginAsAdmin(io, config.baseUrl, config.adminUsername, config.allowInsecureHttp)).fetch
+    : io.fetch;
   try {
     return new AutoHarnessClient({
       baseUrl: config.baseUrl,
       apiKey: config.apiKey,
-      fetch: io.fetch,
+      fetch: fetchFn,
       allowInsecureHttp: config.allowInsecureHttp,
     });
   } catch (error) {

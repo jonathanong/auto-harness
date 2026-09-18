@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
 import { main } from "./main.js";
 
@@ -12,6 +12,10 @@ const io = {
   stderr: process.stderr,
   stdin: process.stdin,
   readFile,
+  // O_CREAT | O_EXCL ("wx") — never overwrites an existing file. Used only for
+  // `service-account create --key-file`, where a plaintext API key is written to disk exactly
+  // once and mode 0600 (passed by the caller) keeps it readable only by its owner.
+  writeFileExclusive: (path, data, options) => writeFile(path, data, { flag: "wx", ...options }),
 };
 
 process.exitCode = await main(process.argv.slice(2), io);

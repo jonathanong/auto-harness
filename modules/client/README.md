@@ -253,6 +253,30 @@ file holding it; passing `--api-key` fails immediately with a usage error tellin
 Exit codes: `0` success, `1` an API/HTTP failure (or a failed `doctor` check), `2` a usage or
 configuration error.
 
+#### Admin bootstrap: `--admin-password-stdin`
+
+Every API key is minted by `service-account create`, which itself requires being authenticated —
+so the very first maintainer or service-account key can only come from an admin, and admin exists
+only as a username/password, not an API key. `--admin-password-stdin` (with `--admin-username
+<name>`, default `admin`) logs in as that admin instead of using an API key: it reads the password
+from stdin (one trailing newline stripped), `POST`s it once to `/auth/login`, and carries the
+returned session cookie on every later request for the rest of the invocation. The password never
+touches argv, shell history, or output, and the login response body — which carries the
+principal — is deliberately never read or printed.
+
+```sh
+aws ssm get-parameter --name /auto-harness/admin-password --with-decryption \
+  --query Parameter.Value --output text \
+  | auto-harness --admin-password-stdin service-account create --name ci --role operator --print-key
+```
+
+It cannot be combined with an API key (`--api-key-file`, `HARNESS_API_KEY`, or
+`HARNESS_API_KEY_FILE` all make the identity ambiguous) or with a command that also reads stdin
+for its own input (`api --body-file -`, `host inventory set --file -`) — both are usage errors
+(exit 2) before any request is made. A rejected password is `error: admin login failed (HTTP 401)`
+(exit 1), never anything about the password itself. `whoami` and `doctor` work in this mode too,
+reporting the admin identity instead of an API key's role.
+
 ### `auto-harness api <METHOD> <path>`
 
 A generic escape hatch for any route the control plane exposes. Both `/hosts` and
@@ -379,4 +403,90 @@ detaching it from this host's inventory) is a separate operation.
 ```sh
 auto-harness host repo rm host-1 repo-1 --dry-run
 auto-harness host repo rm host-1 repo-1
+```
+
+### `auto-harness repo <subcommand>`
+
+Repository CRUD, straight against the same routes `auto-harness api` would hit.
+
+#### `auto-harness repo list [--limit N] [--cursor C] [--all] [--json]`
+
+`GET /repositories`, printing one line per repository (id, name, and status/url when present).
+Paging works exactly like `host list`: `--limit`/`--cursor` page manually, and `--all` follows
+`nextCursor` itself, capped at 20 pages with a stderr warning if more remain.
+
+```sh
+auto-harness repo list --all
+```
+
+#### `auto-harness repo rm <repositoryId> [--json]`
+
+`DELETE /repositories/<id>`. The point of this command is that a refusal explains itself: a `409`
+means other records still reference the repository, and rather than dumping that as raw JSON,
+each blocking dependency gets the concrete next step to actually clear it:
+
+| Dependency kind               | Next step                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------ |
+| `schedule`                    | `auto-harness api DELETE /schedules/<id>`                                            |
+| `session` (live)              | wait for it, or `auto-harness api POST /sessions/<id>/cancel`                        |
+| `session-drain`               | `auto-harness api POST /repositories/<repositoryId>/session-drains/<id>/release`     |
+| `host-inventory`              | `auto-harness host repo rm <hostId> <repositoryId>`                                  |
+| `worktree`                    | same as `host-inventory` — worktrees go with detaching the repository from that host |
+| `integration: github-ingress` | remove this repository's binding from the GitHub ingress configuration               |
+| `integration` (other)         | remove or retarget that integration                                                  |
+| anything else                 | printed as `<kind> <id>`, so a new server-side kind still displays                   |
+
+Exits `1` on a `409` (after printing the server's message and every hint). With `--json`, a `409`
+prints `{ "deleted": false, "dependencies": [...], "hints": [...] }`; success prints
+`{ "deleted": true, "id": "..." }`.
+
+```sh
+auto-harness repo rm repo-1
+```
+
+### `auto-harness service-account <subcommand>`
+
+Service-account lifecycle. Every account's real permissions are its `role` and grants
+(`boundHostId`/`allowedRepositoryIds`) — the CLI never invents a route for anything else.
+
+#### `auto-harness service-account list [--limit N] [--cursor C] [--all] [--json]`
+
+`GET /auth/service-accounts`, printing id, name, role, `boundHostId` (if set), and `createdAt`.
+Items are already server-sanitized, but this still filters them through the same allowlist as
+`whoami`/`doctor` as defense in depth — in **both** human and `--json` output, so a field outside
+the allowlist can never leak through either mode. Paging matches `host list`/`repo list`.
+
+#### `auto-harness service-account create --name <name> --role <role> [--bound-host <hostId>] [--repositories <id,id,...>] (--key-file <path> | --print-key) [--json]`
+
+`POST /auth/service-accounts`. The response's API key is shown **exactly once** — the server
+stores only a hash — so this command forces a deliberate choice about where that one-time value
+goes:
+
+- **`--key-file <path>`** writes the key to a new file, created with `O_CREAT | O_EXCL` and mode
+  `0600` — it never overwrites an existing file (checked before the request is even made, and
+  enforced atomically when the file is actually written). Only the account id and
+  `key written to <path>` are printed; if the write fails _after_ the account was already
+  created, the error names the account id and tells you to run `service-account rm` on it, since
+  the key itself is unrecoverable at that point.
+- **`--print-key`** writes _only_ the key to stdout, on its own line, so
+  `KEY=$(auto-harness service-account create … --print-key)` works; the human-readable account
+  summary goes to stderr instead. Combining this with `--json` is a usage error — the stdout
+  contract would be ambiguous.
+
+Exactly one of `--key-file`/`--print-key` is required; neither/both is a usage error (exit 2,
+no request made). `--repositories a,b,c` maps to `allowedRepositoryIds`. The server validates
+`--role` and any grants; an invalid one surfaces as its own `400`, unchanged.
+
+```sh
+auto-harness service-account create --name ci --role operator --key-file ./ci.key
+KEY=$(auto-harness service-account create --name ci --role operator --print-key)
+```
+
+#### `auto-harness service-account rm <id> [--json]`
+
+`DELETE /auth/service-accounts/<id>`. A `409` prints each blocking dependency generically, as
+`<kind> <id>` — unlike `repo rm`, there is no per-kind hint here.
+
+```sh
+auto-harness service-account rm svc-1
 ```
