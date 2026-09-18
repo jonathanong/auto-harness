@@ -1,3 +1,4 @@
+import { checkAdminLoginUsage } from "../admin-login.js";
 import { parseFlags } from "../args.js";
 import { CliUsageError } from "../cli-errors.js";
 import { createClient, GLOBAL_BOOLEAN_FLAGS, GLOBAL_VALUE_FLAGS } from "../config.js";
@@ -39,6 +40,10 @@ export async function runApi(argv, io) {
     );
   }
   const apiPath = normalizeApiPath(path);
+  // Both this command's own `--body-file -` and `--admin-password-stdin` need stdin; catch the
+  // conflict before reading either, rather than letting one silently drain the other's input.
+  const stdinClaimedBy = flags["--body-file"] === "-" ? "api --body-file -" : undefined;
+  checkAdminLoginUsage(flags, io.env, stdinClaimedBy);
   const body = await resolveBody(flags, io);
   const client = await createClient(flags, io);
   const result = await client.request(apiPath, {
