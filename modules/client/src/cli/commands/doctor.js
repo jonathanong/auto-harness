@@ -9,6 +9,9 @@ import { GLOBAL_BOOLEAN_FLAGS, GLOBAL_VALUE_FLAGS, resolveConfig } from "../conf
 // host daemon's own usage text says never to use one (see cli-usage.ts).
 const EXECUTE_API_HOST = /\.execute-api\.[^.]+\.amazonaws\.com$/i;
 
+// Matches `AutoHarnessClient`'s default `requestTimeoutMs`.
+const REACHABILITY_TIMEOUT_MS = 30_000;
+
 /** Runs the url/reachability/auth checks and prints one `<status> <name>: <reason>` line each.
  * Returns 1 if any check `fail`s, else 0 — a `warn` never fails the overall run. */
 export async function runDoctor(argv, io) {
@@ -22,7 +25,7 @@ export async function runDoctor(argv, io) {
   const config = await resolveConfig(flags, io);
   const checks = [
     checkUrlShape(config.baseUrl, config.allowInsecureHttp),
-    await checkReachability(config.baseUrl, io.fetch),
+    await checkReachability(config.baseUrl, io.fetch, io.timeoutSignal ?? AbortSignal.timeout),
     await checkAuth(config, io),
   ];
   for (const check of checks) io.stdout.write(formatCheck(check));
@@ -61,11 +64,25 @@ function checkUrlShape(baseUrl, allowInsecureHttp) {
   return { name: "url", status: "ok", message: `using ${baseUrl}` };
 }
 
-async function checkReachability(baseUrl, fetchFn) {
+/** `timeoutSignal(ms)` defaults to `AbortSignal.timeout`; tests inject one they can abort,
+ * since a real 30-second timer cannot be fast-forwarded. */
+async function checkReachability(baseUrl, fetchFn, timeoutSignal) {
   const url = `${siteOrigin(baseUrl)}/health`;
+  // Bounded like `AutoHarnessClient`'s default, and it covers the body read below as well as
+  // the connection — without it a stalled server hangs doctor forever instead of failing.
+  const signal = timeoutSignal(REACHABILITY_TIMEOUT_MS);
   let response;
+  let body;
   try {
-    response = await fetchFn(url);
+    response = await fetchFn(url, { signal });
+    if (response.status === 200) {
+      // A non-JSON body is a failed check, but a timeout mid-body must surface as the timeout
+      // rather than be swallowed here — the same rule `AutoHarnessClient#request` applies.
+      body = await response.json().catch((error) => {
+        if (signal.aborted) throw error;
+        return undefined;
+      });
+    }
   } catch (error) {
     return {
       name: "reachability",
@@ -80,7 +97,6 @@ async function checkReachability(baseUrl, fetchFn) {
       message: `GET /health returned HTTP ${response.status}`,
     };
   }
-  const body = await response.json().catch(() => undefined);
   if (!body || body.ok !== true) {
     return {
       name: "reachability",

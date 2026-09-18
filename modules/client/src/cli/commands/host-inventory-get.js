@@ -1,6 +1,7 @@
 import { parseFlags } from "../args.js";
 import { CliUsageError } from "../cli-errors.js";
 import { createClient, GLOBAL_BOOLEAN_FLAGS, GLOBAL_VALUE_FLAGS } from "../config.js";
+import { pathSegment } from "../path-segment.js";
 
 const USAGE = "usage: auto-harness host inventory get <hostId> [--json]";
 
@@ -12,8 +13,9 @@ export async function runHostInventoryGet(argv, io) {
   });
   const [hostId] = positionals;
   if (!hostId || positionals.length > 1) throw new CliUsageError(USAGE);
+  const hostSegment = pathSegment(hostId, "hostId");
   const client = await createClient(flags, io);
-  const record = await client.request(`/hosts/${encodeURIComponent(hostId)}/inventory`);
+  const record = await client.request(`/hosts/${hostSegment}/inventory`);
   io.stdout.write(
     flags["--json"] ? `${JSON.stringify(record, null, 2)}\n` : formatInventory(record),
   );
