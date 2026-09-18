@@ -5,6 +5,12 @@ Usage:
   auto-harness api <METHOD> <path> [--body <json> | --body-file <path|->]
   auto-harness whoami [--json]
   auto-harness doctor
+  auto-harness host list [--online | --offline] [--limit N] [--cursor C] [--all] [--json]
+  auto-harness host drain <hostId> [--json]
+  auto-harness host resume <hostId> [--json]
+  auto-harness host inventory get <hostId> [--json]
+  auto-harness host inventory set <hostId> --file <path|->
+  auto-harness host repo rm <hostId> <repositoryId> [--dry-run] [--json]
   auto-harness help | --help | -h
 
 Configuration:
@@ -22,5 +28,9 @@ Examples:
   auto-harness api POST /repositories --body '{"name":"org/repo","url":"https://github.com/org/repo"}'
   auto-harness api DELETE /repositories/repo-1 --body-file -
   auto-harness doctor
+  auto-harness host list --online
+  auto-harness host drain host-1
+  auto-harness host inventory get host-1 --json > inventory.json
+  auto-harness host repo rm host-1 repo-1 --dry-run
 `;
 }
