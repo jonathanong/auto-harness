@@ -8,6 +8,7 @@ var AutoHarnessError = class extends Error {
     this.retryAfter = options.retryAfter;
     this.operationId = options.operationId;
     this.statusUrl = options.statusUrl;
+    this.details = options.details;
   }
 };
 var AutoHarnessRequestTimeoutError = class extends Error {
@@ -180,7 +181,8 @@ var AutoHarnessClient = class _AutoHarnessClient {
             code: error?.code ?? "HTTP_ERROR",
             retryAfter: response.headers.get("retry-after") ?? void 0,
             operationId: error?.operationId,
-            statusUrl: error?.statusUrl
+            statusUrl: error?.statusUrl,
+            details: error
           }
         );
       }

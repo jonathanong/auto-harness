@@ -65,6 +65,7 @@ export class AutoHarnessClient {
             retryAfter: response.headers.get("retry-after") ?? undefined,
             operationId: error?.operationId,
             statusUrl: error?.statusUrl,
+            details: error,
           },
         );
       }
