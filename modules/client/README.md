@@ -293,3 +293,90 @@ reason, exiting `1` if any check `fail`s:
 ```sh
 auto-harness doctor
 ```
+
+### `auto-harness host <subcommand>`
+
+Operator commands for the host fleet. Every call goes through `client.request()` against the
+same routes `auto-harness api` would hit — nothing here is a special path.
+
+#### `auto-harness host list [--online | --offline] [--limit N] [--cursor C] [--all] [--json]`
+
+`GET /hosts`, printing one line per host (`hostId`, `online`/`offline`, and `draining` when
+true). `--online`/`--offline` filter server-side (mutually exclusive — passing both is a usage
+error); `--limit`/`--cursor` page manually. If the page has a `nextCursor` and `--all` was not
+passed, a final line prints it so you can continue.
+
+`--all` follows `nextCursor` itself and prints every host across pages (or `{ items: [...all] }`
+with `--json`). Per this repo's [list/history invariant](../../docs/plan.md#5-invariants), it
+never collects pages without bound: it stops after 20 pages and warns on stderr if there was
+still more, rather than silently truncating or looping forever.
+
+```sh
+auto-harness host list --online
+auto-harness host list --all --json
+```
+
+#### `auto-harness host drain <hostId> [--json]`
+
+`POST /hosts/drain` with `{"hostId": "<id>"}` in the JSON body — **the host id is never in the
+path** (`POST /hosts/<id>/drain` does not exist). Prints how many sessions are still running and
+their ids. A `409 CONFLICT` means the host's connection changed mid-request; the normal error is
+printed, followed by a one-line hint that retrying is safe.
+
+#### `auto-harness host resume <hostId> [--json]`
+
+`POST /hosts/resume`, same body-param shape as `drain`. Idempotent — safe to run on a host that
+is not currently draining, which returns 200 rather than an error.
+
+#### `auto-harness host inventory get <hostId> [--json]`
+
+`GET /hosts/<hostId>/inventory`. Human output shows the record's `version`, each attached
+repository (`id`, `path`, worktree count), and the provider account count; `--json` prints the
+raw record.
+
+#### `auto-harness host inventory set <hostId> --file <path|->`
+
+`PUT /hosts/<hostId>/inventory` from a JSON file (or `-` for stdin), sent **verbatim** — this is
+an authoritative write that replaces the entire inventory record, not a merge. Two traps this
+command guards against:
+
+- **Omitting `version` silently disables optimistic concurrency**: the server falls back to
+  whatever version is currently stored, so a concurrent edit can be overwritten with no error.
+  This command refuses (exit 2) to send a document with no integer `version` field, and tells you
+  to start from `auto-harness host inventory get <hostId> --json`.
+- A version that has moved since you read it comes back as `409 CONFLICT` — re-read and reapply
+  rather than retrying the same body.
+
+Because the write replaces the whole record, omitting `providerAccounts` wipes the host's
+provider routing — always build the new document from a fresh `inventory get --json`, editing
+only what you mean to change.
+
+#### `auto-harness host repo rm <hostId> <repositoryId> [--dry-run] [--json]`
+
+Detaches one repository from a host. This exists because the only prior way to do it was to
+hand-assemble a full `PUT` of the inventory record — easy to get wrong, especially for
+`providerAccounts`, which a naive PUT can silently drop. This command does a safe
+read-modify-write instead:
+
+1. `GET` the inventory.
+2. If no repository with that id is attached, it fails (exit 1) and lists the ids that _are_
+   attached — nothing is written.
+3. Builds the new document as the record exactly as read, with only that repository removed from
+   `repositories` and the read `version` kept — every other field, including
+   `providerAccounts`, is preserved untouched. (The control plane also re-adds any repository a
+   scoped API key can't see before persisting, so this read-modify-write is safe even when the
+   caller's key is scoped to a subset of repositories.)
+4. `--dry-run` prints what would be removed — the repository's id, path, and the ids of its
+   worktrees — and exits without writing.
+5. On a `409` (someone else wrote first) it re-reads and re-applies, up to 3 attempts total, then
+   fails saying the inventory kept changing. Any other error status is not retried.
+6. On success it prints what was removed and the version transition (e.g. `version 29 → 30`).
+
+**Removing a repository from the inventory also removes its worktrees** — they are a projection
+of the repository, not independent records. Deleting the repository record itself (as opposed to
+detaching it from this host's inventory) is a separate operation.
+
+```sh
+auto-harness host repo rm host-1 repo-1 --dry-run
+auto-harness host repo rm host-1 repo-1
+```

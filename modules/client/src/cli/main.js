@@ -1,5 +1,6 @@
 import { runApi } from "./commands/api.js";
 import { runDoctor } from "./commands/doctor.js";
+import { runHost } from "./commands/host.js";
 import { runWhoami } from "./commands/whoami.js";
 import { reportError } from "./report-error.js";
 import { usage } from "./usage.js";
@@ -22,6 +23,7 @@ export async function main(argv, io) {
     if (command === "api") return await runApi(rest, io);
     if (command === "whoami") return await runWhoami(rest, io);
     if (command === "doctor") return await runDoctor(rest, io);
+    if (command === "host") return await runHost(rest, io);
     io.stderr.write(usage());
     return 2;
   } catch (error) {
