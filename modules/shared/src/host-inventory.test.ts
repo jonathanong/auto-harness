@@ -46,7 +46,7 @@ describe("host-inventory", () => {
     const next = updateHostSetupScript(seeded, "echo host");
     expect(next.workspacePools).toEqual(seeded.workspacePools);
     expect(next.workspacePools).not.toBe(seeded.workspacePools);
-    expect(next.workspacePools?.[0]?.slots).not.toBe(seeded.workspacePools[0].slots);
+    expect(next.workspacePools?.[0]?.slots).not.toBe(seeded.workspacePools[0]!.slots);
   });
 
   it("clones a host-wide update config through unrelated mutations", () => {

@@ -79,16 +79,19 @@ describe("getInventory / putInventory", () => {
   it("getInventory treats present-but-undefined cache extras as empty lists", async () => {
     process.env.HARNESS_API_HTTP = "http://example.test:9101b";
     const original = globalThis.fetch;
-    globalThis.fetch = (async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        setupCacheInputs: undefined,
-        setupCacheHostInputs: undefined,
-        repositories: [],
-        providerAccounts: [],
-      }),
-    })) as typeof fetch;
+    // A real Response with `json()` overridden: routing this body through
+    // `JSON.stringify` (like the fetch stubs above) would drop these `undefined`
+    // keys instead of keeping them present-but-undefined, which is exactly the
+    // `Object.hasOwn` branch this test exercises.
+    globalThis.fetch = (async () =>
+      Object.assign(new Response(null, { status: 200 }), {
+        json: async () => ({
+          setupCacheInputs: undefined,
+          setupCacheHostInputs: undefined,
+          repositories: [],
+          providerAccounts: [],
+        }),
+      })) as typeof fetch;
     try {
       const inv = await getInventory("host-1");
       expect(inv.setupCacheInputs).toEqual([]);

@@ -26,7 +26,7 @@ function repository(overrides?: HostRepository["providerAccountOverrides"]): Hos
 }
 
 function inventory(providerAccounts: HostInventory["providerAccounts"] = []): HostInventory {
-  return { repositories: [], providerAccounts, commandProfiles: {} };
+  return { repositories: [], providerAccounts };
 }
 
 const provider: Provider = {
