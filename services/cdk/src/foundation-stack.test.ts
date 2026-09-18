@@ -356,7 +356,9 @@ describe("AutoHarnessFoundationStack", () => {
       dataRemovalPolicy: RemovalPolicy.DESTROY,
       tablePrefix: "Review20",
     });
-    const json = template.toJSON() as { Resources: Record<string, { DeletionPolicy?: string }> };
+    const json = template.toJSON() as {
+      Resources: Record<string, { DeletionPolicy?: string; Type?: string }>;
+    };
 
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       DeletionProtectionEnabled: false,

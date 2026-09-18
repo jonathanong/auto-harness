@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 
 import { hasValidSession } from "@auto-harness/shared";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 
 import { config } from "../test-helpers/deployment-test-helpers.ts";
 import type { DeploymentDependencies } from "./deployment-support.ts";
@@ -29,10 +29,10 @@ function makeDeps(options: {
   admins?: string | null;
   secretParam?: string | null;
   fetchResponses: Array<() => Response>;
-}): DeploymentDependencies & { log: ReturnType<typeof vi.fn>; fetch: ReturnType<typeof vi.fn> } {
+}): DeploymentDependencies & { log: Mock<(message: string) => void>; fetch: Mock<typeof fetch> } {
   const responses = [...options.fetchResponses];
   return {
-    log: vi.fn(),
+    log: vi.fn<(message: string) => void>(),
     query: vi.fn(async (_command: string, args: string[]) => {
       if (args.includes("get-parameter")) {
         const name = args[args.indexOf("--name") + 1];
@@ -50,7 +50,7 @@ function makeDeps(options: {
       throw new Error(`unexpected query: ${args.join(" ")}`);
     }),
     run: vi.fn(async () => {}),
-    fetch: vi.fn(async () => {
+    fetch: vi.fn<typeof fetch>(async () => {
       const factory = responses.shift();
       if (!factory) throw new Error("unexpected extra fetch call");
       return factory();

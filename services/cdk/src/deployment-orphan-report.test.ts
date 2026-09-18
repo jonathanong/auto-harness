@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 
 import type { DeploymentConfig } from "./deployment-config.ts";
 import { reportOrphanedTablesAfterUpdate } from "./deployment-orphan-report.ts";
@@ -23,10 +23,15 @@ const config: DeploymentConfig = {
 };
 
 function dependencies(query: DeploymentDependencies["query"]): DeploymentDependencies & {
-  log: ReturnType<typeof vi.fn>;
-  run: ReturnType<typeof vi.fn>;
+  log: Mock<(message: string) => void>;
+  run: Mock<(command: string, args: string[]) => Promise<void>>;
 } {
-  return { fetch: vi.fn(), log: vi.fn(), query, run: vi.fn() };
+  return {
+    fetch: vi.fn(),
+    log: vi.fn<(message: string) => void>(),
+    query,
+    run: vi.fn<(command: string, args: string[]) => Promise<void>>(),
+  };
 }
 
 const found = {
