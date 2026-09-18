@@ -8,7 +8,6 @@ describe("host-inventory providerAccounts", () => {
       {
         repositories: [],
         providerAccounts: [{ providerAccountId: "acct-1", commandId: "cmd-1" }],
-        commandProfiles: {},
       },
       { id: "demo", path: "/repo", defaultBranch: "main" },
     );
