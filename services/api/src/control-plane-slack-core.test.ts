@@ -133,6 +133,7 @@ describe("Slack control-plane durability", () => {
     const legacyManual = { ...stored };
     delete legacyManual.installationMethod;
     expect(await publicIntegration(plane.state, legacyManual)).toMatchObject({
+      installationMethod: "manual",
       inboundAvailable: false,
     });
     expect(

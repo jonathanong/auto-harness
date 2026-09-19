@@ -83,7 +83,7 @@ export function toPublicSlackIntegration(
     ...publicRecord,
     notifications: normalizeSlackNotifications(notifications),
     botTokenConfigured: true,
-    installationMethod: record.installationMethod,
+    installationMethod: record.installationMethod ?? "manual",
     inboundAvailable: record.signingSecretConfigured,
     deliveryAvailable,
   };
