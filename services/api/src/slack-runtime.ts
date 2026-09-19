@@ -53,6 +53,7 @@ export function createSlackLifecycleWorker(
       transport,
       getConfig: () => loadSlackLifecycleConfig(plane),
       listSessions: () => listSlackSessionSnapshots(plane, trackedActive),
+      recordDeliveryOutcome: (outcome) => storage.recordSlackDeliveryOutcome(outcome),
     },
     options.worker,
   );
@@ -70,6 +71,7 @@ async function loadSlackLifecycleConfig(plane: ControlPlane): Promise<SlackLifec
         enabled: record.enabled,
         defaultChannel: record.defaultChannel,
         notifications: record.notifications,
+        installationId: record.installationId ?? null,
       }
     : null;
 }

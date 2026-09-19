@@ -351,6 +351,7 @@ export {
   normalizeSlackNotifications,
   type PublicSlackIntegration,
   type SlackNotifications,
+  type SlackOAuthAvailability,
 } from "./slack.ts";
 
 export {

@@ -24,12 +24,32 @@ export type SlackIntegrationRecord = {
   grantedScopes?: string[];
   /** Opaque identity for this singleton installation; absent on legacy rows. */
   installationId?: string;
+  /**
+   * The most recent delivery failure, cleared on the next successful delivery. `message`
+   * is always the outbox row's already-sanitized `lastError` (never a token or secret —
+   * `slackError()` in slack-http-transport.ts never includes the bot token). Written by a
+   * narrow, unconditioned-on-version update (`recordSlackDeliveryOutcome`) so an operator
+   * editing settings concurrently never loses this write to a version conflict, and vice
+   * versa.
+   */
+  lastDeliveryFailure?: { message: string; at: string };
+  /** Internal ordering fence for worker-owned delivery status. Never exposed publicly. */
+  lastDeliveryOutcomeAt?: string;
   version: number;
   createdAt: string;
   updatedAt: string;
 };
 
-export type PublicSlackIntegration = Omit<SlackIntegrationRecord, "encryptedConfig"> & {
+/** Outcome of one durable delivery attempt, recorded on the integration row so Settings
+ * can show *why* Slack isn't working without querying the deliveries table. */
+export type SlackDeliveryOutcome =
+  | { ok: true; at: string; installationId: string | null }
+  | { ok: false; error: string; at: string; installationId: string | null };
+
+export type PublicSlackIntegration = Omit<
+  SlackIntegrationRecord,
+  "encryptedConfig" | "lastDeliveryOutcomeAt"
+> & {
   botTokenConfigured: true;
   deliveryAvailable: boolean;
   installationMethod: "manual" | "oauth";
@@ -53,12 +73,17 @@ export function toPublicSlackIntegration(
   record: SlackIntegrationRecord,
   deliveryAvailable = false,
 ): PublicSlackIntegration {
-  const { encryptedConfig: _encryptedConfig, notifications, ...publicRecord } = record;
+  const {
+    encryptedConfig: _encryptedConfig,
+    lastDeliveryOutcomeAt: _lastDeliveryOutcomeAt,
+    notifications,
+    ...publicRecord
+  } = record;
   return {
     ...publicRecord,
     notifications: normalizeSlackNotifications(notifications),
     botTokenConfigured: true,
-    installationMethod: record.installationMethod,
+    installationMethod: record.installationMethod ?? "manual",
     inboundAvailable: record.signingSecretConfigured,
     deliveryAvailable,
   };

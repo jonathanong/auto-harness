@@ -1280,8 +1280,12 @@ paths:
           description: Slack integration
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/SlackIntegration" }
-        "404": { $ref: "#/components/responses/Error" }
+              schema: { $ref: "#/components/schemas/SlackIntegrationGetResponse" }
+        "404":
+          description: Slack integration not configured; OAuth capability is still reported
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SlackIntegrationGetNotFoundResponse" }
         default: { $ref: "#/components/responses/Error" }
     post:
       operationId: createSlackIntegration
@@ -3443,9 +3447,42 @@ components:
             type: boolean,
             description: False when configuration exists but this environment cannot currently send.,
           }
+        oauthAvailable:
+          {
+            type: boolean,
+            description: Present on GET responses; whether this environment has Slack OAuth app credentials configured.,
+          }
+        lastDeliveryFailure:
+          type: object
+          required: [message, at]
+          additionalProperties: false
+          properties:
+            message:
+              {
+                type: string,
+                description: Sanitized error from the most recent failed Slack delivery.,
+              }
+            at: { type: string, format: date-time }
+          description: Absent until a delivery fails, and removed after a later delivery succeeds.
         version: { type: integer, minimum: 1 }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    SlackIntegrationGetResponse:
+      allOf:
+        - { $ref: "#/components/schemas/SlackIntegration" }
+        - type: object
+          required: [oauthAvailable]
+    SlackIntegrationGetNotFoundResponse:
+      allOf:
+        - { $ref: "#/components/schemas/Error" }
+        - type: object
+          required: [oauthAvailable]
+          properties:
+            oauthAvailable:
+              {
+                type: boolean,
+                description: Whether this environment has Slack OAuth app credentials configured.,
+              }
     SlackOAuthStartInput:
       type: object
       required: [defaultChannel]

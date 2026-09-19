@@ -4,8 +4,17 @@ import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.t
 
 const SLACK_PATH = "/api/v1/integrations/slack";
 
-/** Admin authorization occurs before this handler; none of the secret body is audited or logged. */
-export async function handleSlackIntegrationRoutes(ctx: RouteCtx): Promise<boolean> {
+/**
+ * Admin authorization occurs before this handler; none of the secret body is audited or
+ * logged. `oauthAvailable` reflects whether this environment has OAuth app credentials
+ * configured at all (resolved once at cold start — see local-app.ts/lambda-handlers.ts —
+ * never an SSM/env read per request); it is included on every GET, configured or not, so
+ * the web UI can disable "Connect with Slack" before a click rather than only after one.
+ */
+export async function handleSlackIntegrationRoutes(
+  ctx: RouteCtx,
+  oauthAvailable: boolean,
+): Promise<boolean> {
   if (ctx.url.pathname !== SLACK_PATH) return false;
   if (ctx.method === "GET") {
     try {
@@ -13,9 +22,10 @@ export async function handleSlackIntegrationRoutes(ctx: RouteCtx): Promise<boole
       if (!integration) {
         send(ctx.res, 404, {
           error: { code: "NOT_FOUND", message: "Slack integration not found" },
+          oauthAvailable,
         });
       } else {
-        send(ctx.res, 200, integration);
+        send(ctx.res, 200, { ...integration, oauthAvailable });
       }
     } catch {
       sendInternalError(ctx.res);

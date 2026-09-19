@@ -14,6 +14,8 @@ export type SlackLifecycleConfig = {
   enabled: boolean;
   defaultChannel: string;
   notifications: SlackNotifications;
+  /** Fences worker-owned status to the installation loaded for this drain. */
+  installationId?: string | null;
 };
 
 /** Structural slice of control-plane state — kept local to avoid a circular import. */
@@ -64,6 +66,7 @@ export async function reconcileSlackSession(input: {
       event,
       session: input.session,
       channel: input.config.defaultChannel,
+      installationId: input.config.installationId ?? null,
       notifications: input.config.notifications,
       now: input.now,
       getDelivery: (id) => input.store.get(id),
@@ -164,6 +167,7 @@ export async function enqueueSlackSessionLifecycle(
       enabled: record.enabled,
       defaultChannel: record.defaultChannel,
       notifications: record.notifications,
+      installationId: record.installationId ?? null,
     },
     session: slackSessionSnapshot(state, session),
     now: state.now(),

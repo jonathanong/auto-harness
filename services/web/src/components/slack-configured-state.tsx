@@ -1,4 +1,6 @@
-import type { SlackIntegration } from "./slack-settings.ts";
+import { Alert } from "@auto-harness/ui";
+
+import { slackDeliveryFailureHint, type SlackIntegration } from "./slack-settings.ts";
 
 function slackDeliveryStateLabel(config?: SlackIntegration): string {
   if (!config) return "Not configured";
@@ -74,6 +76,19 @@ export function SlackConfiguredState({ config }: { config?: SlackIntegration }) 
         <p className="mt-2 text-xs text-muted-foreground" data-pw="slack-scopes-state">
           Granted scopes: {scopes}
         </p>
+      ) : null}
+      {config?.lastDeliveryFailure ? (
+        <Alert variant="danger" role="note" className="mt-3" data-pw="slack-last-delivery-failure">
+          <p className="font-medium" data-pw="slack-last-delivery-failure-message">
+            Last delivery failure ({new Date(config.lastDeliveryFailure.at).toLocaleString()}):{" "}
+            {config.lastDeliveryFailure.message}
+          </p>
+          {slackDeliveryFailureHint(config) ? (
+            <p className="mt-1" data-pw="slack-last-delivery-failure-hint">
+              {slackDeliveryFailureHint(config)}
+            </p>
+          ) : null}
+        </Alert>
       ) : null}
       <p className="mt-3 text-xs text-muted-foreground">
         Secret values are never returned, prefilled, logged, or cached. Enter them again for every

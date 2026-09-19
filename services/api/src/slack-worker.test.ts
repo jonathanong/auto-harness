@@ -6,7 +6,10 @@ import type {
   SlackOutboxStore,
   SlackTransport,
 } from "./slack-delivery-types.ts";
-import { DEFAULT_SLACK_NOTIFICATIONS } from "./slack-integration-types.ts";
+import {
+  DEFAULT_SLACK_NOTIFICATIONS,
+  type SlackDeliveryOutcome,
+} from "./slack-integration-types.ts";
 import { SlackLifecycleWorker } from "./slack-worker.ts";
 
 const initial = "2026-08-12T10:00:00.000Z";
@@ -64,6 +67,7 @@ const config = {
   enabled: true,
   defaultChannel: "C123",
   notifications: DEFAULT_SLACK_NOTIFICATIONS,
+  installationId: "installation-1",
 };
 
 const completed = {
@@ -174,6 +178,9 @@ describe("Slack lifecycle worker", () => {
     expect(() => new SlackLifecycleWorker({} as never, { maxOperationsPerTick: 0 })).toThrow(
       RangeError,
     );
+    expect(() => new SlackLifecycleWorker({} as never, { outcomeFlushTimeoutMs: 0 })).toThrow(
+      RangeError,
+    );
     const onError = vi.fn(() => {
       throw new Error("observer");
     });
@@ -237,6 +244,156 @@ describe("Slack lifecycle worker", () => {
     expect([...store.items.values()].filter(({ status }) => status === "sent")).toHaveLength(1);
   });
 
+  it("reports delivery outcomes for Settings without letting a throwing reporter block draining", async () => {
+    const store = new MemoryOutbox();
+    let clock = initial;
+    const outcomes: SlackDeliveryOutcome[] = [];
+    const recordDeliveryOutcome = async (outcome: SlackDeliveryOutcome) => {
+      outcomes.push(outcome);
+      // Delivery-status observability failing must never affect the outbox itself.
+      throw new Error("observability boom");
+    };
+    const deliver = vi
+      .fn<SlackTransport["deliver"]>()
+      .mockRejectedValueOnce(new Error("temporary"))
+      .mockImplementation(async (request) => ({
+        channel: request.channel,
+        messageTs: `ts-${request.idempotencyKey}`,
+      }));
+    const worker = new SlackLifecycleWorker(
+      {
+        store,
+        transport: { deliver },
+        getConfig: async () => config,
+        listSessions: async () => [completed],
+        recordDeliveryOutcome,
+      },
+      { now: () => clock, maxOperationsPerTick: 20 },
+    );
+    worker.start();
+    await worker.stop();
+    expect(outcomes).toEqual([
+      {
+        ok: false,
+        error: expect.stringContaining("temporary"),
+        at: initial,
+        installationId: "installation-1",
+      },
+    ]);
+
+    clock = "2026-08-12T10:01:00.000Z";
+    const restarted = new SlackLifecycleWorker(
+      {
+        store,
+        transport: { deliver },
+        getConfig: async () => config,
+        listSessions: async () => [completed],
+        recordDeliveryOutcome,
+      },
+      { now: () => clock },
+    );
+    restarted.start();
+    await restarted.stop();
+
+    expect(outcomes.filter((outcome) => outcome.ok)).toEqual([
+      { ok: true, at: clock, installationId: "installation-1" },
+    ]);
+    expect([...store.items.values()].every(({ status }) => status === "sent")).toBe(true);
+  });
+
+  it("reports the claimed row's installation rather than the currently loaded installation", async () => {
+    const store = new MemoryOutbox();
+    store.items.set("stale-delivery", {
+      id: "stale-delivery",
+      integrationId: "slack",
+      installationId: "installation-a",
+      sessionId: "session-from-a",
+      event: "session_created",
+      operation: "post-root",
+      channel: "C123",
+      text: "stale",
+      status: "pending",
+      attempts: 0,
+      maxAttempts: 8,
+      nextAttemptAt: initial,
+      createdAt: initial,
+      updatedAt: initial,
+    });
+    const recordDeliveryOutcome = vi.fn(async () => undefined);
+    const worker = new SlackLifecycleWorker(
+      {
+        store,
+        transport: { deliver: vi.fn().mockRejectedValue(new Error("old delivery failed")) },
+        getConfig: async () => ({ ...config, installationId: "installation-b" }),
+        listSessions: async () => [],
+        recordDeliveryOutcome,
+      },
+      { now: () => initial, maxOperationsPerTick: 1 },
+    );
+
+    await expect(worker.runOnce()).resolves.toBe(true);
+    expect(recordDeliveryOutcome).toHaveBeenCalledWith({
+      ok: false,
+      error: expect.stringContaining("old delivery failed"),
+      at: initial,
+      installationId: "installation-a",
+    });
+  });
+
+  it("retains one latest outcome per installation in a mixed-identity drain", async () => {
+    const store = new MemoryOutbox();
+    const delivery = (id: string, installationId: string): SlackDeliveryRecord => ({
+      id,
+      integrationId: "slack",
+      installationId,
+      sessionId: id,
+      event: "session_created",
+      operation: "post-root",
+      channel: "C123",
+      text: id,
+      status: "pending",
+      attempts: 0,
+      maxAttempts: 8,
+      nextAttemptAt: initial,
+      createdAt: initial,
+      updatedAt: initial,
+    });
+    store.items.set("current-b", delivery("current-b", "installation-b"));
+    store.items.set("stale-a", delivery("stale-a", "installation-a"));
+    const recordDeliveryOutcome = vi.fn(async () => undefined);
+    const deliver = vi
+      .fn<SlackTransport["deliver"]>()
+      .mockRejectedValueOnce(new Error("current delivery failed"))
+      .mockImplementation(async (request) => ({
+        channel: request.channel,
+        messageTs: `ts-${request.idempotencyKey}`,
+      }));
+    const worker = new SlackLifecycleWorker(
+      {
+        store,
+        transport: { deliver },
+        getConfig: async () => ({ ...config, installationId: "installation-b" }),
+        listSessions: async () => [],
+        recordDeliveryOutcome,
+      },
+      { now: () => initial, maxOperationsPerTick: 2 },
+    );
+
+    await expect(worker.runOnce()).resolves.toBe(true);
+    expect(recordDeliveryOutcome).toHaveBeenCalledTimes(2);
+    expect(recordDeliveryOutcome).toHaveBeenCalledWith({
+      ok: false,
+      error: expect.stringContaining("current delivery failed"),
+      at: initial,
+      installationId: "installation-b",
+    });
+    expect(recordDeliveryOutcome).toHaveBeenCalledWith({
+      ok: true,
+      at: initial,
+      installationId: "installation-a",
+    });
+  });
+
   it("runs a one-shot drain without starting the interval timer", async () => {
     const store = new MemoryOutbox();
     let release!: () => void;
@@ -262,5 +419,79 @@ describe("Slack lifecycle worker", () => {
     release();
     expect(await first).toBe(true);
     expect(deliver).toHaveBeenCalled();
+  });
+
+  it("waits for delivery outcome persistence before a one-shot drain returns", async () => {
+    const store = new MemoryOutbox();
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const recordDeliveryOutcome = vi.fn(async () => blocked);
+    const worker = new SlackLifecycleWorker(
+      {
+        store,
+        transport: {
+          deliver: async (request) => ({
+            channel: request.channel,
+            messageTs: `ts-${request.idempotencyKey}`,
+          }),
+        },
+        getConfig: async () => config,
+        listSessions: async () => [completed],
+        recordDeliveryOutcome,
+      },
+      { now: () => initial },
+    );
+    const run = worker.runOnce();
+    await vi.waitFor(() => expect(recordDeliveryOutcome).toHaveBeenCalledOnce());
+    let settled = false;
+    void run.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    release();
+    await expect(run).resolves.toBe(true);
+  });
+
+  it("bounds and coalesces delivery outcome persistence after draining the tick", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new MemoryOutbox();
+      const recordDeliveryOutcome = vi.fn(async () => new Promise<void>(() => undefined));
+      const deliver = vi.fn(async (request: { channel: string; idempotencyKey: string }) => ({
+        channel: request.channel,
+        messageTs: `ts-${request.idempotencyKey}`,
+      }));
+      const onError = vi.fn();
+      const worker = new SlackLifecycleWorker(
+        {
+          store,
+          transport: { deliver },
+          getConfig: async () => config,
+          listSessions: async () => [completed],
+          recordDeliveryOutcome,
+        },
+        { now: () => initial, outcomeFlushTimeoutMs: 5, onError },
+      );
+
+      const run = worker.runOnce();
+      await vi.waitFor(() => expect(recordDeliveryOutcome).toHaveBeenCalledOnce());
+      expect(deliver).toHaveBeenCalledTimes(4);
+      await vi.advanceTimersByTimeAsync(5);
+
+      await expect(run).resolves.toBe(true);
+      expect(recordDeliveryOutcome).toHaveBeenCalledWith({
+        ok: true,
+        at: initial,
+        installationId: "installation-1",
+      });
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "Slack delivery outcome persistence timed out" }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

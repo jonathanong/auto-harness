@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one route mock backs every Slack settings scenario. */
 import { expect, test } from "@playwright/test";
 
 const publicConfig = {
@@ -23,6 +24,7 @@ const publicConfig = {
   appId: "A01234567",
   grantedScopes: ["chat:write"],
   deliveryAvailable: false,
+  oauthAvailable: true,
   version: 1,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -37,7 +39,7 @@ test.describe("control plane Slack settings", () => {
         await route.fulfill(
           configured
             ? { status: 200, json: publicConfig }
-            : { status: 404, json: { error: { code: "NOT_FOUND" } } },
+            : { status: 404, json: { error: { code: "NOT_FOUND" }, oauthAvailable: true } },
         );
         return;
       }
@@ -211,5 +213,57 @@ test.describe("control plane Slack settings", () => {
     );
     await page.goto("/settings/slack");
     await expect(page).toHaveURL(/\/login\?returnTo=%2Fsettings%2Fslack$/);
+  });
+
+  test("disables Connect with Slack and explains why when OAuth app credentials are missing", async ({
+    page,
+  }) => {
+    await page.route("**/api/v1/integrations/slack", (route) =>
+      route.fulfill({
+        status: 404,
+        json: { error: { code: "NOT_FOUND" }, oauthAvailable: false },
+      }),
+    );
+
+    await page.goto("/settings/slack");
+    await expect(page.getByTestId("slack-connect")).toBeDisabled();
+    await expect(page.getByTestId("slack-oauth-unavailable-hint")).toContainText("not configured");
+  });
+
+  test("surfaces the most recent Slack delivery failure with an invite hint", async ({ page }) => {
+    await page.route("**/api/v1/integrations/slack", (route) =>
+      route.fulfill({
+        status: 200,
+        json: {
+          ...publicConfig,
+          lastDeliveryFailure: {
+            message: "Slack chat.postMessage failed: not_in_channel",
+            at: "2026-09-19T06:45:24.000Z",
+          },
+        },
+      }),
+    );
+
+    await page.goto("/settings/slack");
+    await expect(page.getByTestId("slack-last-delivery-failure-message")).toContainText(
+      "not_in_channel",
+    );
+    await expect(page.getByTestId("slack-last-delivery-failure-hint")).toContainText(`/invite`);
+    await expect(page.getByTestId("slack-last-delivery-failure-hint")).toContainText(
+      "destination channel",
+    );
+    await expect(page.getByTestId("slack-last-delivery-failure-hint")).not.toContainText(
+      publicConfig.defaultChannel,
+    );
+  });
+
+  test("clears the delivery failure banner once a later load reports success", async ({ page }) => {
+    await page.route("**/api/v1/integrations/slack", (route) =>
+      route.fulfill({ status: 200, json: publicConfig }),
+    );
+
+    await page.goto("/settings/slack");
+    await expect(page.getByTestId("slack-configured-state")).toBeVisible();
+    await expect(page.getByTestId("slack-last-delivery-failure")).toHaveCount(0);
   });
 });

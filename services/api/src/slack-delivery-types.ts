@@ -36,6 +36,8 @@ type SlackDeliveryStatus = "pending" | "delivering" | "sent" | "dead";
 export type SlackDeliveryRecord = {
   id: string;
   integrationId: "slack";
+  /** Installation that owned this operation when it was enqueued; absent on legacy rows. */
+  installationId?: string;
   sessionId: string;
   event: SlackLifecycleEvent;
   operation: SlackDeliveryOperation;

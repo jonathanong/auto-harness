@@ -12,12 +12,18 @@ type SlackOutboxOptions = {
   dependencyDelayMs?: number;
   baseRetryMs?: number;
   maxRetryMs?: number;
+  onSuccess?: (event: {
+    id: string;
+    operation: SlackDeliveryRecord["operation"];
+    installationId: string | null;
+  }) => void | Promise<void>;
   onFailure?: (event: {
     id: string;
     operation: SlackDeliveryRecord["operation"];
     status: "retried" | "dead";
     error: string;
-  }) => void;
+    installationId: string | null;
+  }) => void | Promise<void>;
 };
 
 /** Enqueues insert-only stable IDs, so replaying the same lifecycle event is idempotent. */
@@ -51,7 +57,7 @@ export async function processSlackOutboxOnce(
   const dependencies = await resolveDependencies(store, claimed);
   if (!dependencies.ready) {
     const dead = dependencies.dead;
-    await store.reschedule({
+    const rescheduled = await store.reschedule({
       id: claimed.id,
       leaseToken,
       status: dead ? "dead" : "pending",
@@ -60,13 +66,22 @@ export async function processSlackOutboxOnce(
       error: dependencies.error,
       now: current,
     });
-    return dead ? "dead" : "deferred";
+    return rescheduled && dead ? "dead" : "deferred";
   }
 
   try {
     const result = await transport.deliver(transportRequest(claimed, dependencies.root));
     if (!(await store.complete({ id: claimed.id, leaseToken, result, now: current }))) {
       throw new Error("Slack delivery lease was lost after transport success");
+    }
+    try {
+      await options.onSuccess?.({
+        id: claimed.id,
+        operation: claimed.operation,
+        installationId: claimed.installationId ?? null,
+      });
+    } catch {
+      // Observability cannot turn a completed delivery into a retry.
     }
     return "sent";
   } catch (cause) {
@@ -79,7 +94,7 @@ export async function processSlackOutboxOnce(
     );
     const nextAttemptAt = addMs(current, Math.max(backoffMs, retryAfterMsFrom(cause)));
     const error = errorMessage(cause);
-    await store.reschedule({
+    const rescheduled = await store.reschedule({
       id: claimed.id,
       leaseToken,
       status: dead ? "dead" : "pending",
@@ -88,13 +103,15 @@ export async function processSlackOutboxOnce(
       error,
       now: current,
     });
+    if (!rescheduled) return "deferred";
     const status = dead ? ("dead" as const) : ("retried" as const);
     try {
-      options.onFailure?.({
+      await options.onFailure?.({
         id: claimed.id,
         operation: claimed.operation,
         status,
         error,
+        installationId: claimed.installationId ?? null,
       });
     } catch {
       // Observability cannot block retry or dead-letter.

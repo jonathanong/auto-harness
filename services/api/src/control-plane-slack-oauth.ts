@@ -63,6 +63,10 @@ export async function installSlackOAuthIntegrationDurable(
     ...(input.exchange.botUserId ? { botUserId: input.exchange.botUserId } : {}),
     grantedScopes: input.exchange.scopes,
     installationId: current?.installationId ?? randomUUID(),
+    ...(current?.lastDeliveryFailure ? { lastDeliveryFailure: current.lastDeliveryFailure } : {}),
+    ...(current?.lastDeliveryOutcomeAt
+      ? { lastDeliveryOutcomeAt: current.lastDeliveryOutcomeAt }
+      : {}),
     version: (current?.version ?? 0) + 1,
     createdAt: current?.createdAt ?? at,
     updatedAt: at,
@@ -80,8 +84,10 @@ export async function installSlackOAuthIntegrationDurable(
         )
       : await state.storage.putSlackIntegration(record, input.expectedVersion);
   if (!stored) return slackConfigConflict();
-  state.slackIntegration = record;
-  return { ok: true, integration: await publicIntegration(state, record) };
+  const persisted = await state.storage.getSlackIntegration();
+  state.slackIntegration = persisted ? { ...persisted } : undefined;
+  if (!persisted) return { ok: false, error: "Slack integration not found" };
+  return { ok: true, integration: await publicIntegration(state, persisted) };
 }
 
 function validOAuthExchange(exchange: SlackOAuthExchange): boolean {

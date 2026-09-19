@@ -518,6 +518,8 @@ export async function createLambdaRuntime(
     worker: {
       // 4 * 10s Slack timeout stays inside the 60s cron budget after scheduler work.
       maxOperationsPerTick: 4,
+      // Delivery observability is best-effort and must not consume the cron budget.
+      outcomeFlushTimeoutMs: 250,
       onError: (error) => {
         console.error("slack delivery failed", error);
       },

@@ -9,15 +9,19 @@ import { apiFetch } from "../lib/client-api.ts";
 export function SlackOAuthConnection({
   config,
   pending,
+  oauthAvailable,
   onStart,
 }: {
   config?: SlackIntegration;
   pending: boolean;
+  /** Whether this environment has OAuth app credentials configured at all. */
+  oauthAvailable: boolean;
   onStart: () => void;
 }) {
   const [oauthPending, setOauthPending] = useState(false);
   const mounted = useRef(true);
   const oauthBusy = pending || oauthPending;
+  const oauthDisabled = oauthBusy || !oauthAvailable;
 
   useEffect(
     () => () => {
@@ -83,7 +87,7 @@ export function SlackOAuthConnection({
       <Button
         type="button"
         variant="outline"
-        disabled={oauthBusy}
+        disabled={oauthDisabled}
         data-pw={config?.installationMethod === "oauth" ? "slack-reconnect" : "slack-connect"}
         onClick={() => {
           dismissToast();
@@ -97,6 +101,13 @@ export function SlackOAuthConnection({
             ? "Reconnect with Slack"
             : "Connect with Slack"}
       </Button>
+      {oauthAvailable ? null : (
+        <p className="text-sm text-muted-foreground" data-pw="slack-oauth-unavailable-hint">
+          OAuth app credentials are not configured in this environment. Use the manual bot-token
+          form below, or configure a Slack app using the deployment-specific credential source in
+          docs/integrations.md.
+        </p>
+      )}
       <p className="text-sm text-muted-foreground" data-pw="slack-manual-path">
         Prefer to manage credentials yourself? Use the manual bot-token and signing-secret form
         below. Both connection methods remain available.

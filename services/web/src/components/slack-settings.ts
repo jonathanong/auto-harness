@@ -120,6 +120,17 @@ export function slackDeliveryWarning(config?: SlackIntegration): string | null {
   return "Slack is configured but delivery is unavailable. Lifecycle messages are not sent until this environment can decrypt the bot token and run the outbound worker.";
 }
 
+/**
+ * A short, actionable hint for a known Slack error code. `botUserId` is an id, not a
+ * handle — Slack never gives this API a bot display name — so the hint stays generic
+ * ("open that channel and run /invite") rather than fabricating an "@name" mention.
+ */
+export function slackDeliveryFailureHint(config: SlackIntegration): string | null {
+  const message = config.lastDeliveryFailure?.message;
+  if (!message?.includes("not_in_channel")) return null;
+  return "The bot is not in the destination channel yet — open that channel in Slack, run /invite, and add the bot.";
+}
+
 export function slackSaveSuccessMessage(config: SlackIntegration): string {
   if (!config.enabled) {
     return "Slack configuration saved. The integration is disabled; lifecycle messages will not be delivered until it is enabled.";

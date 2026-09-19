@@ -97,6 +97,27 @@ describe("Slack durable outbox", () => {
     );
   });
 
+  it("reports the claimed installation identity without letting observers affect delivery", async () => {
+    const store = new MemoryStore();
+    await store.enqueue({ ...record("owned-root"), installationId: "installation-a" });
+    const onSuccess = vi.fn(() => {
+      throw new Error("observer");
+    });
+
+    expect(
+      await processSlackOutboxOnce(
+        store,
+        { deliver: vi.fn().mockResolvedValue({ channel: "C123", messageTs: "ts-owned" }) },
+        { now: () => now, leaseToken: () => "owned-lease", onSuccess },
+      ),
+    ).toBe("sent");
+    expect(onSuccess).toHaveBeenCalledWith({
+      id: "owned-root",
+      operation: "post-root",
+      installationId: "installation-a",
+    });
+  });
+
   it("enqueues stable IDs idempotently and delivers an ordered thread", async () => {
     const store = new MemoryStore();
     const root = record("root");
@@ -347,7 +368,12 @@ describe("Slack durable outbox", () => {
       }),
     ).toBe("dead");
     expect(failures).toEqual([
-      expect.objectContaining({ id: "root", operation: "post-root", status: "dead" }),
+      expect.objectContaining({
+        id: "root",
+        operation: "post-root",
+        status: "dead",
+        installationId: null,
+      }),
     ]);
     expect(JSON.stringify(failures)).not.toContain("xoxb-");
     store.items.get("root")!.status = "pending";
@@ -386,6 +412,21 @@ describe("Slack durable outbox", () => {
       ),
     ).toBe("retried");
     expect(store.items.get("root")?.nextAttemptAt).toBe("2026-08-12T10:00:07.000Z");
+  });
+
+  it("does not report a transport failure after losing the delivery lease", async () => {
+    const store = new MemoryStore();
+    await store.enqueue(record("root"));
+    vi.spyOn(store, "reschedule").mockResolvedValue(false);
+    const onFailure = vi.fn();
+    expect(
+      await processSlackOutboxOnce(
+        store,
+        { deliver: vi.fn().mockRejectedValue(new Error("temporary")) },
+        { now: () => now, leaseToken: () => "lost-lease", onFailure },
+      ),
+    ).toBe("deferred");
+    expect(onFailure).not.toHaveBeenCalled();
   });
 
   it("ignores an invalid transport Retry-After delay", async () => {

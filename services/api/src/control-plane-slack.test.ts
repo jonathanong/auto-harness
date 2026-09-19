@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Slack configuration races share one durable storage fixture. */
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_SLACK_NOTIFICATIONS } from "@auto-harness/shared";
@@ -83,6 +84,84 @@ describe("Slack integration configuration", () => {
     ).toMatchObject({ ok: true, integration: { enabled: false, signingSecretConfigured: false } });
     expect(await second.deleteSlackIntegrationDurable()).toEqual({ ok: true });
     expect(await first.getSlackIntegrationDurable()).toBeNull();
+  });
+
+  it("preserves worker-owned delivery status in an update response", async () => {
+    const plane = new ControlPlane({ secretEncryptor: encryptor() });
+    await plane.createSlackIntegrationDurable(input());
+    Object.assign(plane.state.slackIntegration!, {
+      lastDeliveryFailure: { message: "temporary", at: "2026-08-10T00:01:00.000Z" },
+      lastDeliveryOutcomeAt: "2026-08-10T00:01:00.000Z",
+    });
+    const updated = await plane.updateSlackIntegrationDurable({ ...input(), enabled: false });
+    expect(updated).toMatchObject({
+      ok: true,
+      integration: {
+        lastDeliveryFailure: { message: "temporary", at: "2026-08-10T00:01:00.000Z" },
+      },
+    });
+    if (!updated.ok) throw new Error("Slack update failed");
+    expect(updated.integration).not.toHaveProperty("lastDeliveryOutcomeAt");
+    expect(plane.state.slackIntegration?.lastDeliveryOutcomeAt).toBe("2026-08-10T00:01:00.000Z");
+  });
+
+  it("re-reads worker-owned delivery status after durable update and patch writes", async () => {
+    for (const write of ["update", "patch"] as const) {
+      const durable = storage();
+      const plane = new ControlPlane({ storage: durable as never, secretEncryptor: encryptor() });
+      await plane.createSlackIntegrationDurable(input());
+      const put = durable.putSlackIntegration;
+      durable.putSlackIntegration = async (next, expectedVersion) => {
+        const stored = await put(next, expectedVersion);
+        if (stored && expectedVersion !== null) {
+          await put(
+            {
+              ...durable.snapshot()!,
+              lastDeliveryFailure: { message: `${write} raced`, at: "2026-08-10T00:02:00.000Z" },
+              lastDeliveryOutcomeAt: "2026-08-10T00:02:00.000Z",
+            },
+            next.version,
+          );
+        }
+        return stored;
+      };
+
+      const result =
+        write === "update"
+          ? await plane.updateSlackIntegrationDurable({ ...input(), enabled: false })
+          : await plane.patchSlackIntegrationDurable({ expectedVersion: 1, enabled: false });
+
+      expect(result).toMatchObject({
+        ok: true,
+        integration: {
+          lastDeliveryFailure: {
+            message: `${write} raced`,
+            at: "2026-08-10T00:02:00.000Z",
+          },
+        },
+      });
+      expect(plane.state.slackIntegration?.lastDeliveryOutcomeAt).toBe("2026-08-10T00:02:00.000Z");
+    }
+  });
+
+  it("reports a record removed immediately after a successful durable settings write", async () => {
+    for (const write of ["update", "patch"] as const) {
+      const durable = storage();
+      const plane = new ControlPlane({ storage: durable as never, secretEncryptor: encryptor() });
+      await plane.createSlackIntegrationDurable(input());
+      const current = durable.snapshot()!;
+      let reads = 0;
+      durable.getSlackIntegration = async () => (reads++ === 0 ? current : null);
+      durable.putSlackIntegration = async () => true;
+
+      const result =
+        write === "update"
+          ? await plane.updateSlackIntegrationDurable(input())
+          : await plane.patchSlackIntegrationDurable({ expectedVersion: 1, enabled: false });
+
+      expect(result).toEqual({ ok: false, error: "Slack integration not found" });
+      expect(plane.state.slackIntegration).toBeUndefined();
+    }
   });
 
   it("normalizes a legacy six-event notification payload", async () => {

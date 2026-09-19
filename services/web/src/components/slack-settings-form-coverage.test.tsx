@@ -53,6 +53,7 @@ describe("SlackSettingsForm", () => {
   it("hides the delivery warning when outbound delivery is available", () => {
     const view = mountForm(
       <SlackSettingsForm
+        oauthAvailable={true}
         initial={{ ...configured, deliveryAvailable: true, signingSecretConfigured: true }}
       />,
     );
@@ -63,7 +64,10 @@ describe("SlackSettingsForm", () => {
 
   it("does not promise delivery when the integration is disabled", () => {
     const view = mountForm(
-      <SlackSettingsForm initial={{ ...configured, enabled: false, deliveryAvailable: true }} />,
+      <SlackSettingsForm
+        oauthAvailable={true}
+        initial={{ ...configured, enabled: false, deliveryAvailable: true }}
+      />,
     );
     expect(field(view.container, "slack-delivery-state").textContent).toBe("Disabled");
     expect(field(view.container, "slack-delivery-warning").textContent).toContain("disabled");
@@ -82,7 +86,7 @@ describe("SlackSettingsForm", () => {
       json({ url: "https://slack.com/oauth/v2/authorize?state=test" }),
     );
     const assign = vi.spyOn(window.location, "assign").mockImplementation(() => undefined);
-    const view = mountForm(<SlackSettingsForm initial={oauth} />);
+    const view = mountForm(<SlackSettingsForm oauthAvailable={true} initial={oauth} />);
     expect(field(view.container, "form-slack-settings")).toBeTruthy();
     expect(field(view.container, "form-slack-manual-replace")).toBeTruthy();
     setValue(field<HTMLInputElement>(view.container, "slack-default-channel"), "#ops");
@@ -110,7 +114,7 @@ describe("SlackSettingsForm", () => {
 
   it("validates, creates, and surfaces save failures", async () => {
     createApiFake(json({ error: { message: "unavailable" } }, 503), json(configured));
-    const view = mountForm(<SlackSettingsForm />);
+    const view = mountForm(<SlackSettingsForm oauthAvailable={true} />);
     expect(field(view.container, "slack-delivery-warning").textContent).toContain(
       "outbound delivery is available",
     );
@@ -130,7 +134,7 @@ describe("SlackSettingsForm", () => {
 
   it("replaces and deletes an existing configuration", async () => {
     createApiFake(json({ ...configured, version: 2 }), json({}, 204));
-    const view = mountForm(<SlackSettingsForm initial={configured} />);
+    const view = mountForm(<SlackSettingsForm oauthAvailable={true} initial={configured} />);
     expect(field(view.container, "slack-delivery-state").textContent).toContain("unavailable");
     expect(field(view.container, "slack-delivery-warning").textContent).toContain(
       "configured but delivery is unavailable",
@@ -150,14 +154,14 @@ describe("SlackSettingsForm", () => {
       () => Promise.reject(new Error("offline")),
       () => Promise.reject(new Error("offline")),
     );
-    const createView = mountForm(<SlackSettingsForm />);
+    const createView = mountForm(<SlackSettingsForm oauthAvailable={true} />);
     fillCreate(createView);
     submit(field(createView.container, "form-slack-create"));
     await settle();
     expect(field(document.body, "slack-error").textContent).toContain("Unable to save");
     createView.unmount();
 
-    const deleteView = mountForm(<SlackSettingsForm initial={configured} />);
+    const deleteView = mountForm(<SlackSettingsForm oauthAvailable={true} initial={configured} />);
     press(field(deleteView.container, "slack-delete"));
     press(field(document, "slack-delete-confirm-submit"));
     await settle();
@@ -166,7 +170,7 @@ describe("SlackSettingsForm", () => {
 
   it("handles missing form controls and a rejected delete response", async () => {
     createApiFake(json({ error: { message: "delete rejected" } }, 409));
-    const missing = mountForm(<SlackSettingsForm />);
+    const missing = mountForm(<SlackSettingsForm oauthAvailable={true} />);
     field(missing.container, "slack-bot-token").remove();
     field(missing.container, "slack-signing-secret").remove();
     field(missing.container, "slack-default-channel").remove();
@@ -174,7 +178,9 @@ describe("SlackSettingsForm", () => {
     expect(field(missing.container, "slack-error").textContent).toContain("required");
     missing.unmount();
 
-    const configuredView = mountForm(<SlackSettingsForm initial={configured} />);
+    const configuredView = mountForm(
+      <SlackSettingsForm oauthAvailable={true} initial={configured} />,
+    );
     press(field(configuredView.container, "slack-delete"));
     press(field(document, "slack-delete-confirm-submit"));
     await settle();
@@ -188,7 +194,7 @@ describe("SlackSettingsForm", () => {
       () => new Promise<Response>((resolve) => (resolveSave = resolve)),
       () => new Promise<Response>((resolve) => (resolveDelete = resolve)),
     );
-    const saveView = mountForm(<SlackSettingsForm />);
+    const saveView = mountForm(<SlackSettingsForm oauthAvailable={true} />);
     fillCreate(saveView);
     submit(field(saveView.container, "form-slack-create"));
     saveView.unmount();
@@ -196,7 +202,7 @@ describe("SlackSettingsForm", () => {
     resolveSave(json(configured));
     await settle();
 
-    const deleteView = mountForm(<SlackSettingsForm initial={configured} />);
+    const deleteView = mountForm(<SlackSettingsForm oauthAvailable={true} initial={configured} />);
     press(field(deleteView.container, "slack-delete"));
     press(field(document, "slack-delete-confirm-submit"));
     deleteView.unmount();
@@ -208,7 +214,7 @@ describe("SlackSettingsForm", () => {
   it("does not toast a late error after the Slack form unmounts", async () => {
     let resolveSave!: (response: Response) => void;
     createApiFake(() => new Promise<Response>((resolve) => (resolveSave = resolve)));
-    const view = mountForm(<SlackSettingsForm />);
+    const view = mountForm(<SlackSettingsForm oauthAvailable={true} />);
     fillCreate(view);
     submit(field(view.container, "form-slack-create"));
     view.unmount();
@@ -220,7 +226,7 @@ describe("SlackSettingsForm", () => {
   it("does not toast a late delete HTTP error after unmount", async () => {
     let resolveDelete!: (response: Response) => void;
     createApiFake(() => new Promise<Response>((resolve) => (resolveDelete = resolve)));
-    const view = mountForm(<SlackSettingsForm initial={configured} />);
+    const view = mountForm(<SlackSettingsForm oauthAvailable={true} initial={configured} />);
     press(field(view.container, "slack-delete"));
     press(field(document, "slack-delete-confirm-submit"));
     view.unmount();
@@ -231,7 +237,7 @@ describe("SlackSettingsForm", () => {
 
   it("toasts a thrown save failure while the form is still mounted", async () => {
     createApiFake(() => Promise.reject("slack-offline"));
-    const view = mountForm(<SlackSettingsForm />);
+    const view = mountForm(<SlackSettingsForm oauthAvailable={true} />);
     fillCreate(view);
     submit(field(view.container, "form-slack-create"));
     await settle();
@@ -243,7 +249,7 @@ describe("SlackSettingsForm", () => {
 
   it("toasts a thrown delete failure while the form is still mounted", async () => {
     createApiFake(() => Promise.reject("slack-offline"));
-    const view = mountForm(<SlackSettingsForm initial={configured} />);
+    const view = mountForm(<SlackSettingsForm oauthAvailable={true} initial={configured} />);
     press(field(view.container, "slack-delete"));
     press(field(document, "slack-delete-confirm-submit"));
     await settle();
@@ -260,14 +266,14 @@ describe("SlackSettingsForm", () => {
       () => new Promise((_, reject) => (rejectSave = reject)),
       () => new Promise((_, reject) => (rejectDelete = reject)),
     );
-    const saveView = mountForm(<SlackSettingsForm />);
+    const saveView = mountForm(<SlackSettingsForm oauthAvailable={true} />);
     fillCreate(saveView);
     submit(field(saveView.container, "form-slack-create"));
     saveView.unmount();
     rejectSave("slack-offline");
     await settle();
 
-    const deleteView = mountForm(<SlackSettingsForm initial={configured} />);
+    const deleteView = mountForm(<SlackSettingsForm oauthAvailable={true} initial={configured} />);
     press(field(deleteView.container, "slack-delete"));
     press(field(document, "slack-delete-confirm-submit"));
     deleteView.unmount();
@@ -278,7 +284,10 @@ describe("SlackSettingsForm", () => {
 
   it("uses the create form key when a configured integration has no version", () => {
     const view = mountForm(
-      <SlackSettingsForm initial={{ ...configured, version: undefined as never }} />,
+      <SlackSettingsForm
+        oauthAvailable={true}
+        initial={{ ...configured, version: undefined as never }}
+      />,
     );
     expect(field(view.container, "form-slack-replace")).toBeTruthy();
     view.unmount();

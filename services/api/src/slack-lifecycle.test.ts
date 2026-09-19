@@ -36,11 +36,16 @@ describe("Slack lifecycle planning", () => {
       event: "session_created",
       session: base,
       channel: "C123",
+      installationId: "installation-1",
       notifications: DEFAULT_SLACK_NOTIFICATIONS,
       now: base.createdAt,
     });
     expect(created).toHaveLength(1);
-    expect(created[0]).toMatchObject({ id: "slack:session-1:thread", maxAttempts: 8 });
+    expect(created[0]).toMatchObject({
+      id: "slack:session-1:thread",
+      installationId: "installation-1",
+      maxAttempts: 8,
+    });
 
     const started = await planSlackLifecycle({
       event: "session_started",

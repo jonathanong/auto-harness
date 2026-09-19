@@ -9,6 +9,7 @@ import {
   listCustomWebhookIntegrations,
   putCustomWebhookIntegration,
   putSlackIntegration,
+  recordSlackDeliveryOutcome,
 } from "./plane-storage-integrations.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
@@ -69,6 +70,9 @@ describe("Slack integration storage failures", () => {
     expect(command.input.ConditionExpression).toBe(
       "attribute_exists(id) AND version = :expectedVersion",
     );
+    expect(command.input).not.toHaveProperty("Item");
+    expect(command.input.UpdateExpression).not.toContain("lastDeliveryFailure");
+    expect(command.input.UpdateExpression).not.toContain("lastDeliveryOutcomeAt");
   });
 
   it("propagates non-conditional put and delete failures", async () => {
@@ -95,7 +99,91 @@ describe("Slack integration storage failures", () => {
   });
 
   it("returns null when the Slack row is absent", async () => {
-    await expect(getSlackIntegration(ctx(vi.fn().mockResolvedValue({})))).resolves.toBeNull();
+    const send = vi.fn().mockResolvedValue({});
+    await expect(getSlackIntegration(ctx(send))).resolves.toBeNull();
+    const command = send.mock.calls[0]?.[0] as { input: { ConsistentRead?: boolean } };
+    expect(command.input.ConsistentRead).toBe(true);
+  });
+});
+
+describe("recordSlackDeliveryOutcome", () => {
+  it("sets lastDeliveryFailure on failure with no version fencing", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await recordSlackDeliveryOutcome(ctx(send), {
+      ok: false,
+      error: "Slack chat.postMessage failed: not_in_channel",
+      at: "2026-09-19T06:45:24.000Z",
+      installationId: "installation-1",
+    });
+    const command = send.mock.calls[0]?.[0] as {
+      input: {
+        Key?: unknown;
+        ConditionExpression?: string;
+        UpdateExpression?: string;
+        ExpressionAttributeValues?: Record<string, unknown>;
+      };
+    };
+    expect(command.input.Key).toEqual({ id: "slack" });
+    expect(command.input.ConditionExpression).toContain("lastDeliveryOutcomeAt < :at");
+    expect(command.input.ConditionExpression).toContain("installationId = :installationId");
+    expect(command.input.UpdateExpression).toBe(
+      "SET lastDeliveryFailure = :failure, lastDeliveryOutcomeAt = :at",
+    );
+    expect(command.input.ExpressionAttributeValues).toEqual({
+      ":at": "2026-09-19T06:45:24.000Z",
+      ":installationId": "installation-1",
+      ":failure": {
+        message: "Slack chat.postMessage failed: not_in_channel",
+        at: "2026-09-19T06:45:24.000Z",
+      },
+    });
+  });
+
+  it("removes lastDeliveryFailure on a success newer than the stored outcome", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await recordSlackDeliveryOutcome(ctx(send), {
+      ok: true,
+      at: "2026-09-19T06:46:00.000Z",
+      installationId: null,
+    });
+    const command = send.mock.calls[0]?.[0] as {
+      input: { ConditionExpression?: string; UpdateExpression?: string };
+    };
+    expect(command.input.ConditionExpression).toContain("lastDeliveryOutcomeAt = :at");
+    expect(command.input.ConditionExpression).toContain("attribute_not_exists(installationId)");
+    expect(command.input.UpdateExpression).toBe(
+      "SET lastDeliveryOutcomeAt = :at REMOVE lastDeliveryFailure",
+    );
+  });
+
+  it("swallows a conditional failure (missing row, or nothing to clear) as a no-op", async () => {
+    const conditional = { name: "ConditionalCheckFailedException" };
+    await expect(
+      recordSlackDeliveryOutcome(ctx(vi.fn().mockRejectedValue(conditional)), {
+        ok: true,
+        at: "2026-09-19T06:46:00.000Z",
+        installationId: null,
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      recordSlackDeliveryOutcome(ctx(vi.fn().mockRejectedValue(conditional)), {
+        ok: false,
+        error: "boom",
+        at: "2026-09-19T06:46:00.000Z",
+        installationId: null,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("propagates a non-conditional storage failure", async () => {
+    const failure = new Error("integrations unavailable");
+    await expect(
+      recordSlackDeliveryOutcome(ctx(vi.fn().mockRejectedValue(failure)), {
+        ok: true,
+        at: "2026-09-19T06:46:00.000Z",
+        installationId: null,
+      }),
+    ).rejects.toBe(failure);
   });
 });
 
