@@ -32,6 +32,7 @@ for (const [label, argv] of [
   ["host inventory get .", ["host", "inventory", "get", "."]],
   ["host inventory set ..", ["host", "inventory", "set", "..", "--file", "doc.json"]],
   ["host repo rm ..", ["host", "repo", "rm", "..", "repo-1"]],
+  ["host repo add .. (hostId)", ["host", "repo", "add", "..", "repo-1", "--path", "/x"]],
 ]) {
   test(`${label} is a usage error and sends nothing`, async () => {
     const { io, stderr } = makeIo({ env, files: { "doc.json": '{"version":1}' } });
@@ -39,6 +40,13 @@ for (const [label, argv] of [
     assert.match(stderr(), /hostId must not be "\." or "\.\."/);
   });
 }
+
+test("host repo add .. (repositoryId) is a usage error and sends nothing", async () => {
+  const { io, stderr } = makeIo({ env });
+  const exitCode = await main(["host", "repo", "add", "host-1", "..", "--path", "/x"], io);
+  assert.equal(exitCode, 2);
+  assert.match(stderr(), /repositoryId must not be "\." or "\.\."/);
+});
 
 test("host inventory get sends a percent-encoded dot id double-encoded, not resolved", async () => {
   const urls = [];
