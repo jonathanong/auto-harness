@@ -49,7 +49,7 @@ type HostProviderAccountConfig = {
 /** Runtime config after bootstrap (identity + host inventory from control plane). */
 export type DaemonConfig = {
   hostId: string;
-  /** Monotonic control-plane inventory version used to reject stale concurrent fetches. */
+  /** Server-managed optimistic-concurrency token; not daemon-effective configuration. */
   inventoryVersion?: number;
   apiUrl?: string;
   apiKey?: string;

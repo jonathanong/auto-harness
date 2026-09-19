@@ -52,10 +52,13 @@ export function emptyDaemonConfig(identity: HostIdentity): DaemonConfig {
   return config;
 }
 
-/** Stable fingerprint of host inventory for change detection. */
+/**
+ * Stable fingerprint of daemon-effective host inventory for change detection.
+ * `inventoryVersion` is deliberately excluded: each host registration advances that
+ * server-managed concurrency token, even when the effective inventory is unchanged.
+ */
 export function inventoryFingerprint(config: DaemonConfig): string {
   return JSON.stringify({
-    ...(config.inventoryVersion !== undefined ? { version: config.inventoryVersion } : {}),
     ...(config.setupScript !== undefined ? { setupScript: config.setupScript } : {}),
     ...(config.setupCacheInputs !== undefined ? { setupCacheInputs: config.setupCacheInputs } : {}),
     ...(config.setupCacheHostInputs !== undefined
