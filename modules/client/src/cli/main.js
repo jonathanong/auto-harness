@@ -3,6 +3,7 @@ import { runDoctor } from "./commands/doctor.js";
 import { runHost } from "./commands/host.js";
 import { runRepo } from "./commands/repo.js";
 import { runServiceAccount } from "./commands/service-account.js";
+import { runSession } from "./commands/session.js";
 import { runWhoami } from "./commands/whoami.js";
 import { GLOBAL_BOOLEAN_FLAGS, GLOBAL_VALUE_FLAGS } from "./config.js";
 import { reportError } from "./report-error.js";
@@ -61,6 +62,7 @@ export async function main(argv, io) {
     if (command === "host") return await runHost(rest, io);
     if (command === "repo") return await runRepo(rest, io);
     if (command === "service-account") return await runServiceAccount(rest, io);
+    if (command === "session") return await runSession(rest, io);
     io.stderr.write(usage());
     return 2;
   } catch (error) {

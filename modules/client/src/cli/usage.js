@@ -25,6 +25,11 @@ Usage:
   auto-harness service-account create --name <name> --role <role> [--bound-host <hostId>]
     [--repositories <id,id,...>] (--key-file <path> | --print-key) [--json]
   auto-harness service-account rm <id> [--json]
+  auto-harness session create --repo <repositoryId> (--provider <id|name> | --command <id|name>) --prompt <text>
+    [--timeout <seconds>] [--ref <ref>] [--concurrency-id <id>] [--wait [--wait-timeout <seconds>]] [--json]
+  auto-harness session get <sessionId> [--json]
+  auto-harness session logs <sessionId> [--limit N] [--cursor C] [--json]
+  auto-harness session cancel <sessionId> [--json]
   auto-harness help | --help | -h
 
 Configuration:
@@ -67,5 +72,9 @@ Examples:
   aws ssm get-parameter --name /auto-harness/admin-password --with-decryption \\
     --query Parameter.Value --output text \\
     | auto-harness --admin-password-stdin service-account create --name ci --role operator --print-key
+  auto-harness session create --repo repo-1 --command claude-print --prompt "Review the diff" --wait
+  auto-harness session get session-1
+  auto-harness session logs session-1 --limit 200
+  auto-harness session cancel session-1
 `;
 }
