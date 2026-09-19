@@ -55,6 +55,7 @@ export function emptyDaemonConfig(identity: HostIdentity): DaemonConfig {
 /** Stable fingerprint of host inventory for change detection. */
 export function inventoryFingerprint(config: DaemonConfig): string {
   return JSON.stringify({
+    ...(config.inventoryVersion !== undefined ? { version: config.inventoryVersion } : {}),
     ...(config.setupScript !== undefined ? { setupScript: config.setupScript } : {}),
     ...(config.setupCacheInputs !== undefined ? { setupCacheInputs: config.setupCacheInputs } : {}),
     ...(config.setupCacheHostInputs !== undefined

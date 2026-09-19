@@ -94,22 +94,37 @@ describe("DaemonLoop assignment inventory refresh races", () => {
     }
   });
 
-  it("does not let an older polled inventory overwrite a newer assignment refresh", async () => {
+  it("serializes full reloads and accepts a recreated inventory with a lower version", async () => {
     const { config: currentConfig, cleanup } = await makeRepo();
     try {
-      const staleConfig = { ...currentConfig, inventoryVersion: 1, repositories: [] };
+      const staleConfig = { ...currentConfig, inventoryVersion: 8, repositories: [] };
       const sent: HostToServerMessage[] = [];
       const transport = createAcknowledgingLoopbackTransport({
         sendToServer: (message) => sent.push(message),
       });
       const loop = new DaemonLoop({ config: staleConfig, transport });
       await loop.start();
+      let releaseOldReload!: () => void;
+      const oldReloadPending = new Promise<void>((resolve) => {
+        releaseOldReload = resolve;
+      });
+      let recreatedReloadStarted = false;
 
-      await loop.applyInventory(
-        { ...currentConfig, inventoryVersion: 3 },
-        { publishRegistration: false },
-      );
-      await loop.applyInventory({ ...currentConfig, inventoryVersion: 2, repositories: [] });
+      const oldReload = loop.reloadInventory(async () => {
+        await oldReloadPending;
+        return { ...currentConfig, inventoryVersion: 9, repositories: [] };
+      });
+      const recreatedReload = loop.reloadInventory(async () => {
+        recreatedReloadStarted = true;
+        return { ...currentConfig, inventoryVersion: 1 };
+      });
+      await Promise.resolve();
+      expect(recreatedReloadStarted).toBe(false);
+
+      releaseOldReload();
+      await oldReload;
+      await recreatedReload;
+      expect(recreatedReloadStarted).toBe(true);
       transport.deliver(assignment());
       await loop.waitForIdle();
 

@@ -133,6 +133,27 @@ describe("WorktreeManager", () => {
     expect(git.ensureWorktree).toHaveBeenCalled();
   });
 
+  it("stops candidate preparation when a newer roots fence lands", async () => {
+    const git = fakeGit();
+    const candidate = {
+      ...config,
+      repositories: [
+        config.repositories[0]!,
+        { id: "repo-2", path: "/repo-2", defaultBranch: "main", worktrees: [] },
+      ],
+    };
+    const manager = new WorktreeManager(config, git);
+    git.ensureRepo.mockImplementationOnce(async () => {
+      manager.setAllowedRootsPolicy(["/safe"]);
+    });
+
+    await expect(manager.ensureAll(candidate)).rejects.toThrow(
+      "host inventory changed during preparation",
+    );
+    expect(git.ensureRepo).toHaveBeenCalledTimes(1);
+    expect(git.ensureWorktree).not.toHaveBeenCalled();
+  });
+
   it("restores an inactive allowed-roots policy without retaining previous roots", () => {
     const mgr = new WorktreeManager(config, fakeGit());
     mgr.restoreAllowedRootsPolicy({ active: true, roots: ["/safe"] });

@@ -89,6 +89,7 @@ export async function applyDaemonInventory(
   register: (candidate: DaemonConfig) => Promise<void>,
   afterApply?: () => void,
   workspaces?: WorkspaceManager,
+  signal?: AbortSignal,
 ): Promise<void> {
   const previousSetupScript = config.setupScript;
   const previousInventoryVersion = config.inventoryVersion;
@@ -104,9 +105,13 @@ export async function applyDaemonInventory(
     // Validate and register the candidate without replacing the live config or
     // retained roots policy. Pending terminal hooks must remain fail-closed
     // until the control plane has accepted this registration.
-    await worktrees.ensureAll(next);
+    signal?.throwIfAborted();
+    await worktrees.ensureAll(next, signal);
+    signal?.throwIfAborted();
     await workspaces?.ensureAll(next);
+    signal?.throwIfAborted();
     await register(next);
+    signal?.throwIfAborted();
     if (next.setupScript === undefined) delete config.setupScript;
     else config.setupScript = next.setupScript;
     if (next.inventoryVersion === undefined) delete config.inventoryVersion;

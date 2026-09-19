@@ -299,7 +299,9 @@ describe("DaemonLoop reconnect", () => {
       await started;
       const blocked = loop.blockAssignmentsForInvalidInventory();
       failApply();
-      await expect(loop.waitForIdle()).rejects.toThrow("candidate validation failed");
+      await expect(loop.waitForIdle()).rejects.toThrow(
+        "inventory policy changed during assignment refresh",
+      );
       await blocked;
 
       expect(loop.isDraining()).toBe(true);

@@ -201,11 +201,8 @@ describe("startDaemon runtime wiring", () => {
     let fetches = 0;
     try {
       await startDaemon({
-        config: { ...config, apiUrl: `ws://127.0.0.1:${harness.port}/ws` },
-        identity: {
-          hostId: config.hostId,
-          apiUrl: `http://127.0.0.1:${harness.port}`,
-        },
+        config: { ...config, apiUrl: `http://127.0.0.1:${harness.port}` },
+        wsUrl: `ws://127.0.0.1:${harness.port}/ws`,
         inventoryPollMs: 5,
         runUntil: waitFor(() => harness.registrations >= 2),
         fetchFn: async () => {

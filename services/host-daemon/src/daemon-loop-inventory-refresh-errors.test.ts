@@ -58,6 +58,51 @@ describe("DaemonLoop assignment inventory refresh errors", () => {
     }
   });
 
+  it("bounds candidate validation and leaves the prior inventory live", async () => {
+    vi.useFakeTimers();
+    const { config, cleanup } = await makeRepo();
+    try {
+      const staleConfig = { ...config, repositories: [] };
+      const transport = createAcknowledgingLoopbackTransport({ sendToServer() {} });
+      const loop = new DaemonLoop({
+        config: staleConfig,
+        transport,
+        refreshInventory: async () => config,
+      });
+      await loop.start();
+      let validationStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        validationStarted = resolve;
+      });
+      const worktrees = (
+        loop as unknown as {
+          worktrees: {
+            ensureAll(candidate?: unknown, signal?: AbortSignal): Promise<void>;
+          };
+        }
+      ).worktrees;
+      worktrees.ensureAll = async (_candidate, signal) => {
+        validationStarted();
+        await new Promise<void>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+      };
+
+      transport.deliver(assignment());
+      await started;
+      const idle = expect(loop.waitForIdle()).rejects.toThrow(
+        "assignment inventory refresh timed out",
+      );
+      await vi.advanceTimersByTimeAsync(10_000);
+      await idle;
+
+      expect(staleConfig.repositories).toEqual([]);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("publishes a policy drain when the refreshed inventory is unsafe", async () => {
     const { config, cleanup } = await makeRepo();
     try {
@@ -74,13 +119,56 @@ describe("DaemonLoop assignment inventory refresh errors", () => {
       await loop.start();
 
       transport.deliver(assignment());
-      await expect(loop.waitForIdle()).rejects.toThrow("outside root");
+      await expect(loop.waitForIdle()).rejects.toThrow(
+        "inventory policy changed during assignment refresh",
+      );
 
       expect(loop.isDraining()).toBe(true);
       expect(sent.filter((message) => message.type === "host:register").at(-1)).toMatchObject({
         draining: true,
       });
       expect(sent.some((message) => message.type === "session:ack")).toBe(false);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("orders a policy failure before the next valid authoritative reload", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const sent: HostToServerMessage[] = [];
+      const transport = createAcknowledgingLoopbackTransport({
+        sendToServer: (message) => sent.push(message),
+      });
+      const loop = new DaemonLoop({ config: { ...config, repositories: [] }, transport });
+      await loop.start();
+      let releasePolicyFailure!: () => void;
+      const policyFailurePending = new Promise<void>((resolve) => {
+        releasePolicyFailure = resolve;
+      });
+      let validReloadStarted = false;
+      const failed = loop.reloadInventory(async () => {
+        await policyFailurePending;
+        throw new HostInventoryPolicyError("outside root", ["/allowed"]);
+      });
+      const valid = loop.reloadInventory(async () => {
+        validReloadStarted = true;
+        return { ...config, inventoryVersion: 1 };
+      });
+      await Promise.resolve();
+      expect(validReloadStarted).toBe(false);
+
+      const failedResult = expect(failed).rejects.toThrow("outside root");
+      releasePolicyFailure();
+      await failedResult;
+      await valid;
+
+      expect(validReloadStarted).toBe(true);
+      expect(loop.isDraining()).toBe(false);
+      expect(sent.filter((message) => message.type === "host:register").at(-1)).not.toHaveProperty(
+        "draining",
+      );
       loop.stop();
     } finally {
       cleanup();

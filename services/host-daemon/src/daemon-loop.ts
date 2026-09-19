@@ -353,6 +353,8 @@ export class DaemonLoop {
   private inventoryRefresh: Promise<void> | undefined;
   private inventoryRefreshController: AbortController | undefined;
   private inventoryRefreshWaiters = 0;
+  /** Serializes authoritative fetch + policy handling + application in request order. */
+  private inventoryReloadTail: Promise<void> = Promise.resolve();
   private inventoryApplyTail: Promise<void> = Promise.resolve();
   private advertisedProviderAccountReadiness = "";
   private runtime: HostRuntimeReport | undefined;
@@ -497,7 +499,7 @@ export class DaemonLoop {
   }
   async applyInventory(
     next: DaemonConfig,
-    options: { publishRegistration?: boolean } = {},
+    options: { publishRegistration?: boolean; signal?: AbortSignal } = {},
   ): Promise<void> {
     const apply = this.inventoryApplyTail.then(() => this.applyInventoryCandidate(next, options));
     this.inventoryApplyTail = apply.catch(() => undefined);
@@ -506,15 +508,9 @@ export class DaemonLoop {
 
   private async applyInventoryCandidate(
     next: DaemonConfig,
-    options: { publishRegistration?: boolean },
+    options: { publishRegistration?: boolean; signal?: AbortSignal },
   ): Promise<void> {
-    if (
-      next.inventoryVersion !== undefined &&
-      this.config.inventoryVersion !== undefined &&
-      next.inventoryVersion < this.config.inventoryVersion
-    ) {
-      return;
-    }
+    options.signal?.throwIfAborted();
     const wasPolicyBlocked = this.inventoryPolicyBlocked;
     const wasPolicyDrainPublished = this.inventoryPolicyDrainPublished;
     const policyGeneration = this.inventoryPolicyGeneration;
@@ -554,6 +550,7 @@ export class DaemonLoop {
           this.inventoryPolicyDrainPublished = false;
         },
         this.workspaces,
+        options.signal,
       );
       await this.expireSetupCache();
     } catch (error) {
@@ -567,14 +564,57 @@ export class DaemonLoop {
       throw error;
     }
   }
+  async reloadInventory(
+    loadInventory: (signal: AbortSignal) => Promise<DaemonConfig>,
+    options: {
+      publishRegistration?: boolean;
+      signal?: AbortSignal;
+      shouldApply?: (next: DaemonConfig) => boolean;
+    } = {},
+  ): Promise<DaemonConfig> {
+    const reload = this.inventoryReloadTail.then(async () => {
+      const signal = options.signal ?? new AbortController().signal;
+      signal.throwIfAborted();
+      try {
+        const next = options.signal
+          ? await this.waitForSignal(loadInventory(signal), signal)
+          : await loadInventory(signal);
+        signal.throwIfAborted();
+        if (options.shouldApply?.(next) === false) return next;
+        const apply = this.applyInventory(next, {
+          ...(options.publishRegistration === undefined
+            ? {}
+            : { publishRegistration: options.publishRegistration }),
+          signal,
+        });
+        if (options.signal) await this.waitForSignal(apply, signal);
+        else await apply;
+        return next;
+      } catch (error) {
+        if (error instanceof HostInventoryPolicyError) {
+          await this.blockAssignmentsForInvalidInventory(error.allowedRoots);
+        }
+        throw error;
+      }
+    });
+    this.inventoryReloadTail = reload.then(
+      () => undefined,
+      () => undefined,
+    );
+    return options.signal ? await this.waitForSignal(reload, options.signal) : await reload;
+  }
   async blockAssignmentsForInvalidInventory(allowedRoots?: readonly string[]): Promise<void> {
     this.inventoryPolicyGeneration += 1;
     this.worktrees.setAllowedRootsPolicy(allowedRoots);
     this.workspaces.setAllowedRootsPolicy(allowedRoots);
-    if (this.inventoryPolicyBlocked && this.inventoryPolicyDrainPublished) return;
+    const drainAlreadyPublished = this.inventoryPolicyBlocked && this.inventoryPolicyDrainPublished;
     // Set the local gate before network I/O so an already-connected peer cannot assign work in
     // the interval before its durable registration is marked draining.
     this.inventoryPolicyBlocked = true;
+    this.inventoryRefreshController?.abort(
+      new Error("inventory policy changed during assignment refresh"),
+    );
+    if (drainAlreadyPublished) return;
     try {
       await this.register();
     } catch (error) {
@@ -699,6 +739,9 @@ export class DaemonLoop {
 
   isDraining(): boolean {
     return this.draining || this.inventoryPolicyBlocked || this.isDrainingExternal?.() === true;
+  }
+  isInventoryPolicyBlocked(): boolean {
+    return this.inventoryPolicyBlocked;
   }
   inflightCount(): number {
     return this.inflight.size;
@@ -2054,18 +2097,10 @@ export class DaemonLoop {
           // Re-registering here would replace the socket and abort this still-unacknowledged
           // assignment. The periodic poll publishes the normal registration update; this path
           // only validates and adopts the inventory locally before acknowledging the work.
-          const next = await this.waitForSignal(
-            loadInventory(controller.signal),
-            controller.signal,
-          );
-          await this.applyInventory(next, {
+          await this.reloadInventory(loadInventory, {
             publishRegistration: false,
+            signal: controller.signal,
           });
-        } catch (error) {
-          if (error instanceof HostInventoryPolicyError) {
-            await this.blockAssignmentsForInvalidInventory(error.allowedRoots);
-          }
-          throw error;
         } finally {
           this.timers.clearTimeout(timeout);
         }

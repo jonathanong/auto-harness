@@ -103,7 +103,15 @@ export class WorktreeManager {
       : (this.config.allowedRoots ?? []);
   }
 
-  async ensureAll(candidate?: DaemonConfig): Promise<void> {
+  async ensureAll(candidate?: DaemonConfig, signal?: AbortSignal): Promise<void> {
+    const generation = this.inventoryGeneration;
+    const assertCurrent = () => {
+      signal?.throwIfAborted();
+      if (generation !== this.inventoryGeneration) {
+        throw new Error("host inventory changed during preparation");
+      }
+    };
+    assertCurrent();
     if (!candidate && this.allowedRootsPolicyActive && this.policyAllowedRoots.length === 0) {
       throw new Error("host inventory policy blocks execution");
     }
@@ -117,16 +125,23 @@ export class WorktreeManager {
     const roots =
       candidate === undefined ? this.effectiveAllowedRoots() : (candidate.allowedRoots ?? []);
     await assertDaemonPathsAllowed({ ...config, allowedRoots: roots });
+    assertCurrent();
     for (const repo of config.repositories) {
       const repositoryPath = await assertPathWithinAllowedRoots(repo.path, roots);
-      await this.git.ensureRepo(repositoryPath);
+      assertCurrent();
+      if (signal) await this.git.ensureRepo(repositoryPath, signal);
+      else await this.git.ensureRepo(repositoryPath);
+      assertCurrent();
       for (const wt of repo.worktrees) {
         const worktreePath = await assertPathWithinAllowedRoots(wt.path, roots);
+        assertCurrent();
         await this.git.ensureWorktree({
           repoPath: repositoryPath,
           worktreePath,
           branch: repo.defaultBranch,
+          ...(signal ? { signal } : {}),
         });
+        assertCurrent();
       }
     }
   }

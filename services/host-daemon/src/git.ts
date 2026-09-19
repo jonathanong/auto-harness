@@ -32,8 +32,13 @@ import { resetInitializedSubmodules } from "./git-worktree-reset.ts";
 import { type GitHubPullRefConfigs } from "./github-pull-ref-config.ts";
 
 export type GitClient = {
-  ensureRepo(path: string): Promise<void>;
-  ensureWorktree(opts: { repoPath: string; worktreePath: string; branch: string }): Promise<void>;
+  ensureRepo(path: string, signal?: AbortSignal): Promise<void>;
+  ensureWorktree(opts: {
+    repoPath: string;
+    worktreePath: string;
+    branch: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
   checkoutRef(opts: {
     cwd: string;
     repoPath: string;
@@ -74,36 +79,37 @@ export function createGitClient(
   }
 
   return {
-    async ensureRepo(path: string) {
-      const probe = await runGit(runner, path, ["rev-parse", "--is-inside-work-tree"]);
+    async ensureRepo(path: string, signal?: AbortSignal) {
+      const probe = await runGit(runner, path, ["rev-parse", "--is-inside-work-tree"], signal);
       if (probe.exitCode !== 0) {
         throw new Error(`Not a git repository: ${path}`);
       }
     },
 
-    async ensureWorktree({ repoPath, worktreePath, branch }) {
-      await this.ensureRepo(repoPath);
-      const list = await runGit(runner, repoPath, ["worktree", "list", "--porcelain"]);
+    async ensureWorktree({ repoPath, worktreePath, branch, signal }) {
+      await this.ensureRepo(repoPath, signal);
+      const list = await runGit(runner, repoPath, ["worktree", "list", "--porcelain"], signal);
+      signal?.throwIfAborted();
       const worktreeIdentity = await canonicalPath(resolve(repoPath, worktreePath));
+      signal?.throwIfAborted();
       if ((await listedWorktreePaths(list.stdout, repoPath)).has(worktreeIdentity)) {
         return;
       }
       // Always add detached so the branch can remain checked out in the main tree.
-      let tip = await runGit(runner, repoPath, ["rev-parse", "--verify", branch]);
+      let tip = await runGit(runner, repoPath, ["rev-parse", "--verify", branch], signal);
       if (tip.exitCode !== 0) {
-        tip = await runGit(runner, repoPath, ["rev-parse", "--verify", "HEAD"]);
+        tip = await runGit(runner, repoPath, ["rev-parse", "--verify", "HEAD"], signal);
       }
       if (tip.exitCode !== 0) {
         throw gitFailure(`Failed to resolve tip for worktree ${worktreePath}`, tip.stderr);
       }
       const sha = tip.stdout.trim();
-      const add = await runGit(runner, repoPath, [
-        "worktree",
-        "add",
-        "--detach",
-        worktreeIdentity,
-        sha,
-      ]);
+      const add = await runGit(
+        runner,
+        repoPath,
+        ["worktree", "add", "--detach", worktreeIdentity, sha],
+        signal,
+      );
       if (add.exitCode !== 0) {
         throw gitFailure(`Failed to create worktree at ${worktreeIdentity}`, add.stderr);
       }

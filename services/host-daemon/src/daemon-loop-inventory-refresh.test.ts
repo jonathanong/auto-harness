@@ -154,9 +154,12 @@ describe("DaemonLoop assignment inventory refresh", () => {
 
       transport.deliver(assignment());
       await started;
+      const idle = expect(loop.waitForIdle()).rejects.toThrow(
+        "inventory policy changed during assignment refresh",
+      );
       await loop.blockAssignmentsForInvalidInventory();
       finishValidation();
-      await loop.waitForIdle();
+      await idle;
 
       expect(loop.isDraining()).toBe(true);
       expect(sent.filter((message) => message.type === "host:register").at(-1)).toMatchObject({
