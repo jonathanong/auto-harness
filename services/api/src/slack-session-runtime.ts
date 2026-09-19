@@ -54,16 +54,15 @@ export async function reconcileSlackSession(input: {
   let created = 0;
   let existing = 0;
   for (const event of impliedEvents(input.session)) {
-    const result = await enqueueSlackDeliveries(
-      input.store,
-      planSlackLifecycle({
-        event,
-        session: input.session,
-        channel: input.config.defaultChannel,
-        notifications: input.config.notifications,
-        now: input.now,
-      }),
-    );
+    const plan = await planSlackLifecycle({
+      event,
+      session: input.session,
+      channel: input.config.defaultChannel,
+      notifications: input.config.notifications,
+      now: input.now,
+      getDelivery: (id) => input.store.get(id),
+    });
+    const result = await enqueueSlackDeliveries(input.store, plan);
     created += result.created;
     existing += result.existing;
   }

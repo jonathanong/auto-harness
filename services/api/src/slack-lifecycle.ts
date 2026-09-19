@@ -21,14 +21,32 @@ export function slackLifecycleEvent(
   return null;
 }
 
-export function planSlackLifecycle(input: {
+/**
+ * Ordering policy: within one session's thread, a lifecycle reply must never post while
+ * an *earlier* lifecycle reply for the same thread is still pending — otherwise a delay
+ * on one event (e.g. the root retrying `not_in_channel`) can let a later event's reply
+ * race ahead. Only "started" can precede a terminal reply (created always becomes the
+ * root or is skipped), so the terminal reply's `dependsOnId` chains to the started
+ * reply's deterministic id *when that reply exists*, found with a bounded point `get` —
+ * never a scan. Two cases must not wedge a terminal reply forever:
+ *   - Never created (onSessionStarted disabled, or the session was cancelled while
+ *     queued and never ran): the point `get` finds nothing, so this falls back to
+ *     depending on the thread root instead — identical to today's behavior.
+ *   - Dead (the started reply exhausted every attempt): it is superseded, not a
+ *     cascade — see the `isThreadRoot` branch in `resolveDependencies`
+ *     (slack-outbox.ts), which lets a terminal reply proceed once the thread root
+ *     itself is sent, rather than dying alongside a sibling that will never send.
+ * A dead *root*, by contrast, must still cascade: there is no thread to post into.
+ */
+export async function planSlackLifecycle(input: {
   event: SlackLifecycleEvent;
   session: SlackSessionSnapshot;
   channel: string;
   notifications: SlackNotifications;
   now: string;
   maxAttempts?: number;
-}): SlackDeliveryRecord[] {
+  getDelivery?: (id: string) => Promise<SlackDeliveryRecord | null>;
+}): Promise<SlackDeliveryRecord[]> {
   if (!enabled(input.event, input.notifications)) return [];
   const rootId = `slack:${input.session.id}:thread`;
   const base = {
@@ -56,6 +74,8 @@ export function planSlackLifecycle(input: {
   if (rootEvent === input.event) return [root];
 
   const replyId = `slack:${input.session.id}:${input.event}:reply`;
+  const replyDependsOnId =
+    input.event === "session_started" ? rootId : await precedingReplyDependency(input, rootId);
   const reply: SlackDeliveryRecord = {
     ...base,
     id: replyId,
@@ -63,7 +83,7 @@ export function planSlackLifecycle(input: {
     operation: "post-reply",
     text: formatSlackLifecycleMessage(input.event, input.session),
     threadRootId: rootId,
-    dependsOnId: rootId,
+    dependsOnId: replyDependsOnId,
   };
   if (input.event === "session_started") return [root, reply];
   return [
@@ -79,6 +99,19 @@ export function planSlackLifecycle(input: {
       dependsOnId: replyId,
     },
   ];
+}
+
+async function precedingReplyDependency(
+  input: {
+    session: SlackSessionSnapshot;
+    getDelivery?: (id: string) => Promise<SlackDeliveryRecord | null>;
+  },
+  rootId: string,
+): Promise<string> {
+  if (!input.getDelivery) return rootId;
+  const precedingReplyId = `slack:${input.session.id}:session_started:reply`;
+  const preceding = await input.getDelivery(precedingReplyId);
+  return preceding ? precedingReplyId : rootId;
 }
 
 function rootEventFor(input: {

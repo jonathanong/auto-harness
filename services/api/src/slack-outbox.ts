@@ -111,13 +111,24 @@ async function resolveDependencies(
   store: SlackOutboxStore,
   record: SlackDeliveryRecord,
 ): Promise<ResolvedDependencies> {
-  if (record.dependsOnId) {
-    const dependency = await store.get(record.dependsOnId);
+  const legacyStartedReply = await legacyStartedReplyDependency(store, record);
+  const dependencyId = legacyStartedReply?.id ?? record.dependsOnId;
+  if (dependencyId) {
+    const dependency = legacyStartedReply ?? (await store.get(dependencyId));
+    const isThreadRoot = dependencyId === record.threadRootId;
     if (dependency?.status === "dead") {
-      return { ready: false, dead: true, error: `dependency ${record.dependsOnId} is dead` };
-    }
-    if (dependency?.status !== "sent") {
-      return { ready: false, dead: false, error: `waiting for ${record.dependsOnId}` };
+      const isSupersededStartedReply =
+        record.operation === "post-reply" &&
+        dependency.operation === "post-reply" &&
+        dependency.event === "session_started";
+      if (isThreadRoot || !isSupersededStartedReply) {
+        return { ready: false, dead: true, error: `dependency ${dependencyId} is dead` };
+      }
+      // A dead "started" reply is superseded for its terminal reply only: the terminal
+      // operation still needs the thread root, while later operations such as the final
+      // root update must continue to cascade a dead dependency.
+    } else if (dependency?.status !== "sent") {
+      return { ready: false, dead: false, error: `waiting for ${dependencyId}` };
     }
   }
   if (!record.threadRootId) return { ready: true, root: null };
@@ -129,6 +140,21 @@ async function resolveDependencies(
     return { ready: false, dead: false, error: `waiting for ${record.threadRootId}` };
   }
   return { ready: true, root };
+}
+
+/** Existing terminal rows are insert-only and may predate started-reply ordering. */
+async function legacyStartedReplyDependency(
+  store: SlackOutboxStore,
+  record: SlackDeliveryRecord,
+): Promise<SlackDeliveryRecord | null> {
+  if (
+    record.operation !== "post-reply" ||
+    record.dependsOnId !== record.threadRootId ||
+    !["session_completed", "session_failed", "session_cancelled"].includes(record.event)
+  ) {
+    return null;
+  }
+  return store.get(`slack:${record.sessionId}:session_started:reply`);
 }
 
 function transportRequest(

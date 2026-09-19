@@ -222,6 +222,107 @@ describe("Slack durable outbox", () => {
     expect(store.items.get("update")?.status).toBe("dead");
   });
 
+  it("supersedes a dead sibling ordering dependency instead of cascading its death", async () => {
+    const store = new MemoryStore();
+    const root = {
+      ...record("root"),
+      status: "sent" as const,
+      remoteChannel: "C123",
+      remoteMessageTs: "ts-root",
+    };
+    store.items.set(root.id, root);
+    const deadSibling = {
+      ...record("started-reply", "post-reply"),
+      event: "session_started" as const,
+      status: "dead" as const,
+    };
+    store.items.set(deadSibling.id, deadSibling);
+    store.items.set("completed-reply", {
+      ...record("completed-reply", "post-reply"),
+      dependsOnId: deadSibling.id,
+      threadRootId: root.id,
+    });
+    const transport = {
+      deliver: vi.fn().mockResolvedValue({ channel: "C123", messageTs: "ts-completed" }),
+    };
+    expect(
+      await processSlackOutboxOnce(store, transport, { now: () => now, leaseToken: () => "lease" }),
+    ).toBe("sent");
+    expect(store.items.get("completed-reply")).toMatchObject({
+      status: "sent",
+      remoteMessageTs: "ts-completed",
+    });
+    expect(transport.deliver).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "completed-reply", threadTs: "ts-root" }),
+    );
+
+    store.items.set("dead-terminal-reply", {
+      ...record("dead-terminal-reply", "post-reply"),
+      status: "dead",
+    });
+    store.items.set("update-root", {
+      ...record("update-root", "update-root"),
+      dependsOnId: "dead-terminal-reply",
+      threadRootId: root.id,
+    });
+    expect(
+      await processSlackOutboxOnce(store, transport, {
+        now: () => now,
+        leaseToken: () => "update-lease",
+      }),
+    ).toBe("dead");
+    expect(store.items.get("update-root")).toMatchObject({
+      status: "dead",
+      lastError: "dependency dead-terminal-reply is dead",
+    });
+  });
+
+  it("enforces started-reply ordering for a terminal row queued before an upgrade", async () => {
+    const store = new MemoryStore();
+    const root = {
+      ...record("root"),
+      status: "sent" as const,
+      remoteChannel: "C123",
+      remoteMessageTs: "ts-root",
+    };
+    store.items.set(root.id, root);
+    const startedId = "slack:session-1:session_started:reply";
+    store.items.set(startedId, {
+      ...record(startedId, "post-reply"),
+      event: "session_started",
+      nextAttemptAt: "2026-08-12T11:00:00.000Z",
+      threadRootId: root.id,
+      dependsOnId: root.id,
+    });
+    store.items.set("legacy-terminal", {
+      ...record("legacy-terminal", "post-reply"),
+      event: "session_completed",
+      threadRootId: root.id,
+      dependsOnId: root.id,
+    });
+    const transport = {
+      deliver: vi.fn().mockResolvedValue({ channel: "C123", messageTs: "ts-terminal" }),
+    };
+
+    expect(
+      await processSlackOutboxOnce(store, transport, { now: () => now, leaseToken: () => "lease" }),
+    ).toBe("deferred");
+    expect(store.items.get("legacy-terminal")?.lastError).toBe(`waiting for ${startedId}`);
+    expect(transport.deliver).not.toHaveBeenCalled();
+
+    Object.assign(store.items.get(startedId)!, { status: "dead" });
+    store.items.get("legacy-terminal")!.nextAttemptAt = now;
+    expect(
+      await processSlackOutboxOnce(store, transport, {
+        now: () => now,
+        leaseToken: () => "retry-lease",
+      }),
+    ).toBe("sent");
+    expect(transport.deliver).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "legacy-terminal", threadTs: "ts-root" }),
+    );
+  });
+
   it("retries transport errors and dead-letters at the attempt ceiling", async () => {
     const store = new MemoryStore();
     await store.enqueue({ ...record("root"), maxAttempts: 2 });

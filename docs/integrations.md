@@ -287,7 +287,20 @@ from the durable session even when that worker has no in-memory history. The wor
 expired leases after a restart, retries with bounded exponential backoff, and dead-letters
 exhausted operations. A same-process sweep of queued/running sessions remains a safety net;
 cron does not have to observe the session as active to deliver it. Failed snapshots fetch
-stderr tails from durable logs when the process cache does not already have them. Replies depend on the sent root operation, while the final root update depends on the
+stderr tails from durable logs when the process cache does not already have them.
+
+**Reply ordering.** The "started" reply depends on the sent root operation. The terminal
+reply (completed/cancelled/failed) depends on the "started" reply instead of the root
+_whenever a started reply exists_ — found with a bounded point `get` on its deterministic
+id (`slack:<sessionId>:session_started:reply`), never a table scan — so a delayed root
+cannot let the terminal reply race ahead of "started" the way it once could. Two cases must
+not wedge the terminal reply forever: if the started reply was never created (its
+notification was disabled, or the session was cancelled while still queued and never ran),
+the point `get` finds nothing and the terminal reply depends on the root instead, same as
+before this ordering guarantee existed; if the started reply is later found `dead` (every
+attempt exhausted), it is treated as superseded rather than a cascade, so the terminal reply
+still only waits on the thread root. A dead _root_, by contrast, still cascades to every
+dependent — there is no thread to post into. The final root update always depends on the
 terminal reply. The HTTP transport deduplicates ambiguous in-process retries with that operation
 ID, including overlapping `deliver()` calls. Across Lambda invocations, delivery is
 at-least-once: operators should treat a duplicate lifecycle post after a lost lease as
