@@ -1,4 +1,4 @@
-const PROVIDERS = new Set(["claude", "codex", "gemini", "grok"]);
+const PROVIDERS = new Set(["claude", "codex", "cursor-agent", "gemini", "grok"]);
 
 type UsageLimitMatch = "adapter";
 

@@ -1,6 +1,6 @@
 import type { SessionUsage } from "@auto-harness/shared";
 
-export const CLI_PROVIDERS = ["claude", "codex", "gemini", "grok"] as const;
+export const CLI_PROVIDERS = ["claude", "codex", "cursor", "gemini", "grok"] as const;
 export type CliProvider = (typeof CLI_PROVIDERS)[number];
 
 export type JsonRecord = Record<string, unknown>;
@@ -82,6 +82,15 @@ function usageFields(provider: CliProvider): {
       cached: ["cachedContentTokenCount", "cachedInputTokens"],
       reasoning: ["thoughtsTokenCount", "reasoningTokens"],
       total: ["totalTokenCount", "totalTokens"],
+    };
+  }
+  if (provider === "cursor") {
+    return {
+      input: ["inputTokens"],
+      output: ["outputTokens"],
+      cached: ["cacheReadTokens"],
+      reasoning: ["reasoningTokens"],
+      total: ["totalTokens"],
     };
   }
   return {

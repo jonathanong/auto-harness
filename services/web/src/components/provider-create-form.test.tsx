@@ -116,9 +116,19 @@ describe("ProviderCreateForm", () => {
     setName(view, "codex");
     expectCommand(view, "codex-exec", "codex\nexec\n--json", true);
     setName(view, "cursor-agent");
-    expectCommand(view, "cursor-print", "cursor-agent\n--print\n--force", true);
+    expectCommand(
+      view,
+      "cursor-print",
+      "cursor-agent\n--print\n--force\n--output-format\njson",
+      true,
+    );
     setName(view, "cursor");
-    expectCommand(view, "cursor-print", "cursor-agent\n--print\n--force", true);
+    expectCommand(
+      view,
+      "cursor-print",
+      "cursor-agent\n--print\n--force\n--output-format\njson",
+      true,
+    );
     view.unmount();
   });
 

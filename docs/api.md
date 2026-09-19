@@ -1698,7 +1698,8 @@ name is updated.
 Dispatch never rewrites a Command's argv: it spawns exactly `argv`, plus the prompt when
 `appendPrompt` is set. Usage reporting and usage-limit detection read the CLI's structured
 output, so they only work when the Command itself requests it: `claude -p` / `--print`,
-`gemini -p` / `--prompt` and `grok -p` / `--single` need `--output-format json`, and
+`cursor-agent --print`, `gemini -p` / `--prompt`, and `grok -p` / `--single` need
+`--output-format json`, and
 `codex exec` needs `--json` (`services/host-daemon/src/usage-adapter.ts`). The catalog presets
 already include these flags. A Command without one still runs, but records no token usage, and
 its usage limits are never detected, so its provider account is never put on cooldown.

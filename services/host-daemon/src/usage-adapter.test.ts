@@ -24,6 +24,8 @@ describe("CLI provider identity", () => {
   it("resolves trusted catalog argv stems", () => {
     expect(executableStem("C:\\\\bin\\\\Claude.EXE")).toBe("claude");
     expect(resolveCliProvider(["/usr/local/bin/codex", "exec"])).toBe("codex");
+    expect(resolveCliProvider(["/usr/local/bin/cursor-agent", "--print"])).toBe("cursor");
+    expect(resolveCliProvider(["cursor"])).toBeUndefined();
     expect(resolveCliProvider(["echo", "hi"])).toBeUndefined();
     expect(resolveCliProvider([])).toBeUndefined();
   });
@@ -76,6 +78,82 @@ describe("parseCliUsage", () => {
         cachedInputTokens: "5",
       },
     });
+  });
+
+  it("parses Cursor's real result envelope and ignores cache writes", () => {
+    const output = JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: "hello world",
+      usage: {
+        inputTokens: 14615,
+        outputTokens: 26,
+        cacheReadTokens: 4352,
+        cacheWriteTokens: 7,
+      },
+    });
+    expect(
+      parseCliUsage({
+        argv: ["cursor-agent", "--print", "--force", "--output-format", "json"],
+        output,
+        observedAt,
+      }),
+    ).toEqual({
+      agentSummary: "hello world",
+      usage: {
+        kind: "cumulative",
+        sequence: 0,
+        source: "cli",
+        observedAt,
+        inputTokens: "14615",
+        outputTokens: "26",
+        cachedInputTokens: "4352",
+      },
+    });
+  });
+
+  it("requires Cursor print mode and its JSON output flag", () => {
+    const output = JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      usage: { inputTokens: 1 },
+    });
+    expect(parseCliUsage({ argv: ["cursor-agent", "--print"], output, observedAt })).toEqual({});
+    expect(
+      parseCliUsage({
+        argv: ["cursor-agent", "--output-format", "json"],
+        output,
+        observedAt,
+      }),
+    ).toEqual({});
+  });
+
+  it("rejects non-result Cursor envelopes", () => {
+    for (const envelope of [
+      { type: "message", subtype: "success", is_error: false },
+      { type: "result", subtype: 1, is_error: false },
+      { type: "result", subtype: "success", is_error: "false" },
+    ]) {
+      expect(
+        parseCliUsage({
+          argv: ["cursor-agent", "--print", "--output-format=json"],
+          output: JSON.stringify(envelope),
+          observedAt,
+        }),
+      ).toEqual({});
+    }
+  });
+
+  it("accepts a sparse Cursor result without inventing usage or a summary", () => {
+    expect(
+      parseCliUsage({
+        argv: ["cursor-agent", "--print", "--output-format", "json"],
+        output: JSON.stringify({ type: "result", subtype: "success", is_error: false }),
+        observedAt,
+      }),
+    ).toEqual({});
   });
 
   it("parses provider-specific Codex and Gemini envelopes", () => {
@@ -760,6 +838,33 @@ describe("UsageCapturingProcessRunner", () => {
       onChunk: () => undefined,
     });
     expect(result.usage?.observedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  });
+
+  it("captures Cursor usage from the merged process stream", async () => {
+    const inner: ProcessRunner = {
+      async run(options: RunProcessOptions): Promise<ProcessResult> {
+        options.onChunk({
+          stream: "stdout",
+          data: JSON.stringify({
+            type: "result",
+            subtype: "success",
+            is_error: false,
+            usage: { inputTokens: 9, outputTokens: 2, cacheReadTokens: 4 },
+          }),
+        });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    await expect(
+      new UsageCapturingProcessRunner(inner, () => observedAt).run({
+        argv: ["cursor-agent", "--print", "--output-format", "json"],
+        cwd: "/",
+        timeoutMs: 1_000,
+        onChunk: () => undefined,
+      }),
+    ).resolves.toMatchObject({
+      usage: { inputTokens: "9", outputTokens: "2", cachedInputTokens: "4" },
+    });
   });
 
   it("retains a complete structured envelope larger than 256 KiB", async () => {

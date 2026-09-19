@@ -52,7 +52,7 @@ export function catalogCommandDefaults(name: string): CatalogCommandDefaults | n
   if (key === "cursor") {
     return {
       commandName: "cursor-print",
-      argv: ["cursor-agent", "--print", "--force"],
+      argv: ["cursor-agent", "--print", "--force", "--output-format", "json"],
       appendPrompt: true,
       appendPromptSeparator: true,
     };

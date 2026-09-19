@@ -14,15 +14,15 @@ optional operator configuration and are never fetched from a vendor.
 The adapter's own capture buffer is bounded differently per provider. Codex's JSONL event stream is
 folded incrementally as PTY chunks arrive, so a long-running turn keeps yielding usage/usage-limit
 signal with no whole-output cap; only a single unterminated JSONL line is bounded, and an oversized
-one is dropped and resynced at the next newline. Claude, Gemini, and Grok still buffer their whole
-result envelope up to a fixed cap, but on overflow they retain a trailing window of that buffer
-instead of discarding it and giving up on the rest of the run.
+one is dropped and resynced at the next newline. Claude, Cursor, Gemini, and Grok still buffer
+their whole result envelope up to a fixed cap, but on overflow they retain a trailing window of
+that buffer instead of discarding it and giving up on the rest of the run.
 
 ## Structured session result
 
 The daemon snapshots the checkout's baseline `HEAD` after checkout and before setup, then builds a
 best-effort structured result after the primary command and terminal hook finish. Supported
-structured output adapters retain the final Claude `result`, Gemini `response`, Grok
+structured output adapters retain the final Claude or Cursor `result`, Gemini `response`, Grok
 `response`/`text`, or Codex `item.completed` agent message as the summary. No adapter derives a
 summary from arbitrary transcript text. If no structured summary is available, the daemon emits a
 deterministic harness summary from the terminal status and observed git/PR facts.
@@ -442,11 +442,13 @@ an ordinary `failed`, not `usage_limit`. No account is paused.
 
 Classification keys off a provider-backed assignment (`providerAccountId`), the spawned catalog
 executable (basename of `resolvedArgv[0]`), and an adapter-supported structured output mode. The
-currently supported adapter set is `claude`, `codex`, `gemini`, and `grok`; it validates each
-provider's terminal/error envelope before emitting `usageLimit`. A generic phrase such as `rate
-limit`, `too many requests`, or a bare `429` is **never** enough, even with a trusted executable
-and a non-zero exit. The adapter signal is also ignored on success, on unknown/providerless argv,
-and when the assignment has no `providerAccountId`.
+currently supported usage-limit adapter set is `claude`, `codex`, `gemini`, and `grok`; Cursor's
+structured success usage is supported, but its exhausted-account signal remains pending a real
+captured envelope. Each usage-limit adapter validates its provider's terminal/error envelope
+before emitting `usageLimit`. A generic phrase such as `rate limit`, `too many requests`, or a bare
+`429` is **never** enough, even with a trusted executable and a non-zero exit. The adapter signal is
+also ignored on success, on unknown/providerless argv, and when the assignment has no
+`providerAccountId`.
 
 The trusted surface is each CLI's own structured error envelope — never model/agent-generated
 content. For Codex this includes the sentence its own Rust CLI error path writes verbatim onto
