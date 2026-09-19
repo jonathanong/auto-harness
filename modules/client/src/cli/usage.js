@@ -18,6 +18,8 @@ Usage:
   auto-harness host repo add <hostId> <repositoryId> --path <path> [--worktree <id>=<path>]...
     [--default-branch <branch>] [--dry-run] [--json]
   auto-harness host repo rm <hostId> <repositoryId> [--dry-run] [--json]
+  auto-harness host smoke <hostId> --repo-path <path> --provider <id|name>
+    [--provider <id|name>]... [--timeout <seconds>] [--json]
   auto-harness repo add --name <name> --url <url> [--default-branch <branch>] [--json]
   auto-harness repo list [--limit N] [--cursor C] [--all] [--json]
   auto-harness repo rm <repositoryId> [--json]
@@ -63,6 +65,7 @@ Examples:
   auto-harness host inventory get host-1 --json > inventory.json
   auto-harness host repo add host-1 repo-1 --path /repos/repo-1
   auto-harness host repo rm host-1 repo-1 --dry-run
+  auto-harness host smoke host-1 --repo-path /repos/repo-1 --provider claude
   auto-harness repo add --name org/repo --url https://github.com/org/repo
   auto-harness repo list --all
   auto-harness repo rm repo-1

@@ -435,6 +435,81 @@ auto-harness host repo rm host-1 repo-1 --dry-run
 auto-harness host repo rm host-1 repo-1
 ```
 
+#### `auto-harness host smoke <hostId> --repo-path <path> --provider <id|name> [--provider <id|name>]... [--timeout <seconds>] [--json]`
+
+Proves a host can run a real provider-routed session end to end, then cleans up after itself —
+useful after standing up a new host, or after touching its execution profiles, without having to
+open the control plane UI. It never needs to be run against production to be trusted: the CI
+end-to-end suite (`e2e/control/cli-host-smoke.spec.ts`) exercises this exact command against a
+real API, a real in-process host daemon, and a real (`echo`-backed) provider on every change.
+
+**Preconditions this command cannot check itself:** `--repo-path` names a directory on the
+**host**, not on whatever machine runs this CLI — they may be different machines entirely — so
+this command never calls `existsSync` or otherwise inspects it locally. That path must already
+be a git repository with a clean `main` checkout, and its `.gitignore` must exclude
+`.worktrees/`, since this command attaches one worktree at `<repo-path>/.worktrees/<name>`,
+named after the throwaway repository. Worktree names are unique across the whole fleet, so each
+run uses a fresh name and concurrent smokes on different hosts never collide.
+
+What it does, in order, always tearing down in a `finally` no matter which step failed:
+
+1. **Create** a throwaway repository (`POST /repositories`) with a unique, valid (slug) name.
+   Its `url` is a syntactically valid but inert `https://example.test/<name>.git` placeholder —
+   the daemon dispatches sessions against the host-local path this same run attaches, never a
+   repository's `url`, so nothing ever needs to resolve or dial it.
+2. **Attach** it to `<hostId>`'s inventory via the same `attachRepository` read-modify-write
+   `host repo add` uses, with one worktree named after the repository.
+3. **For each `--provider`, in order** (accepts an id or a name, exactly like `session create`):
+   create a session targeting it with the prompt `Reply with exactly: <MARKER>` (`MARKER` is
+   random and unique per run), wait for it, then fetch one page of its logs. A provider `PASS`es
+   only if the session `completed` with `exitCode` `0` **and** its stdout contains `MARKER`.
+   - **The host racing its own inventory poll:** a host only learns about a newly attached
+     repository through its own periodic poll — there is no push-on-write — so the very first
+     session against the repository this command _just_ attached routinely loses that race in
+     any real deployment, not only here: the host rejects it with a `setup_failed` session whose
+     `errorMessage` is exactly `Unknown repository: <id>` (`services/host-daemon/src/
+worktree-manager.ts`), which the control plane never retries on its own. This command
+     recognizes that one exact, unambiguous shape and retries with it doubling backoff (up to 5
+     attempts, capped at 16s between attempts) — bounded by the same `--timeout` deadline as
+     everything else — before giving up and reporting it like any other failure. Any other
+     `setup_failed` (a real checkout/setup problem) is never retried.
+   - **Usage limits:** the control plane does not fail a session whose provider account hit its
+     usage limit — it requeues the session (`errorCode: "usage_limit"`) and puts the account on
+     cooldown instead (see `services/api/src/session-transition-planner.ts`'s
+     `planUsageLimit()`). This command checks for that on every poll (not only a status change,
+     since a requeued session's status can go right back to `"queued"` with no visible
+     transition) and fails that one provider immediately with "provider account hit its usage
+     limit" — it never sits out the rest of `--timeout` waiting for a cooldown to end.
+   - **On timeout**, the session is cancelled (this command owns it) and the provider fails with
+     a hint keyed off its last status: stuck in `queued` usually means no online host advertises
+     a ready execution profile for that provider's account (`HARNESS_EXECUTION_PROFILES`), or
+     nothing is running the scheduler.
+   - **A genuine polling failure** (a `getSession` network error or a `5xx`, not the usage-limit
+     or setup-failure shapes above) fails only that one provider with `session_wait_failed` — it
+     never aborts the run, so every remaining `--provider` still gets its own attempt. The
+     session is left for teardown's own safety net to cancel.
+4. **Teardown**, always: cancel any session this run created that isn't already terminal, detach
+   the repository (only if it was actually attached), then `DELETE` it. The delete retries a `409`
+   (the worktree/host-inventory projection the delete guard reads can lag the detach write
+   teardown just made) and a transient failure (`5xx`, or a network/timeout error) a few times
+   with a short backoff before giving up; once a transient failure has actually happened, a later
+   `404` is treated as success (the delete most likely landed and the response never arrived). If
+   a session could not be cancelled (anything other than a `409`, which just means it was already
+   terminal), or the repository is left behind, this command exits `1` and prints the exact
+   `session cancel` and/or `host repo rm`/`repo rm` commands needed to finish cleanup by hand.
+
+Exit `0` only when every provider passed **and** teardown itself succeeded; `1` otherwise (a
+malformed invocation is the usual usage-error exit `2`, before any of this runs). Progress
+(`ok`/`FAIL` per step) goes to stderr as it happens; stdout stays a clean final summary — one
+`PASS`/`FAIL` line per provider plus an overall line — or, with `--json`, the full structured
+result (`hostId`, `repositoryId`, `providers[]`, `teardown` — including any `uncancelledSessionIds`
+— `ok`).
+
+```sh
+auto-harness host smoke host-1 --repo-path /repos/repo-1 --provider claude
+auto-harness host smoke host-1 --repo-path /repos/repo-1 --provider claude --provider codex --timeout 600
+```
+
 ### `auto-harness repo <subcommand>`
 
 Repository CRUD, straight against the same routes `auto-harness api` would hit.
