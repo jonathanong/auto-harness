@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { emptyDaemonConfig, HostInventoryPolicyError } from "./bootstrap.ts";
+import type { DaemonConfig } from "./config-types.ts";
 import { startInventoryPoll } from "./start-daemon.ts";
 
 const identity = { hostId: "host-1", apiUrl: "http://control.test", logLevel: "info" as const };
@@ -11,6 +12,41 @@ afterEach(() => {
 });
 
 describe("inventory poll boundary coverage", () => {
+  it("deduplicates identical polls inside the shared reload coordinator", async () => {
+    vi.useFakeTimers();
+    const config = emptyDaemonConfig(identity);
+    const applyInventory = vi.fn(async (_next: DaemonConfig) => {});
+    const reloadInventory = vi.fn(
+      async (
+        loadInventory: (signal: AbortSignal) => Promise<DaemonConfig>,
+        shouldApply: (next: DaemonConfig) => boolean,
+      ) => {
+        const next = await loadInventory(new AbortController().signal);
+        if (shouldApply(next)) await applyInventory(next);
+        return next;
+      },
+    );
+    const fetchFn = vi.fn(async () =>
+      Response.json({
+        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main", worktrees: [] }],
+      }),
+    );
+    const stop = startInventoryPoll({
+      config,
+      identity,
+      applyInventory,
+      reloadInventory,
+      pollMs: 10,
+      fetchFn,
+      log: () => undefined,
+      error: () => undefined,
+    });
+    await vi.advanceTimersByTimeAsync(20);
+    expect(reloadInventory).toHaveBeenCalledTimes(2);
+    expect(applyInventory).toHaveBeenCalledTimes(1);
+    await stop();
+  });
+
   it("uses global fetch when no override is supplied", async () => {
     vi.useFakeTimers();
     const fetchFn = vi.fn(async () => Response.json({ repositories: [], commandProfiles: {} }));

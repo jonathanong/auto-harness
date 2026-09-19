@@ -24,6 +24,7 @@ export function httpBaseFromApiUrl(apiUrl: string): string {
 
 export type FetchHostInventoryDeps = {
   fetchFn?: typeof fetch;
+  signal?: AbortSignal;
 };
 
 /** A fetched inventory is syntactically valid but unsafe under its allowed-roots policy. */
@@ -54,6 +55,7 @@ export function emptyDaemonConfig(identity: HostIdentity): DaemonConfig {
 /** Stable fingerprint of host inventory for change detection. */
 export function inventoryFingerprint(config: DaemonConfig): string {
   return JSON.stringify({
+    ...(config.inventoryVersion !== undefined ? { version: config.inventoryVersion } : {}),
     ...(config.setupScript !== undefined ? { setupScript: config.setupScript } : {}),
     ...(config.setupCacheInputs !== undefined ? { setupCacheInputs: config.setupCacheInputs } : {}),
     ...(config.setupCacheHostInputs !== undefined
@@ -82,7 +84,10 @@ export async function fetchHostInventory(
   if (identity.apiKey) {
     headers.authorization = `Bearer ${identity.apiKey}`;
   }
-  const res = await fetchFn(url, { headers });
+  const res = await fetchFn(url, {
+    headers,
+    ...(deps.signal ? { signal: deps.signal } : {}),
+  });
   if (res.status === 404) {
     return emptyDaemonConfig(identity);
   }

@@ -34,11 +34,9 @@ async function fetchStdout(client, sessionId) {
 
 /**
  * Runs one `--provider`'s end-to-end smoke session: resolve the target, then hand off to
- * `runSessionAttempts` (create + wait, with a narrow, bounded retry for one specific
- * "host hasn't caught up with the repo it just attached" failure — a host's cached inventory
- * only refreshes on its own periodic poll, there is no push-on-write, and `host smoke` attaches
- * its own throwaway repository immediately before creating a session against it, which races
- * that poll in any real deployment, not only in a fast test), then check its logs. Always
+ * `runSessionAttempts` (one create + wait), then check its logs. The daemon refreshes stale
+ * inventory before acknowledging an assignment, so a just-attached repository needs no
+ * client-side retry. Always
  * resolves to an outcome object — `{ provider, pass, ... }` — never throws or rejects, so a
  * bad `--provider` value or a mid-poll network blip fails only *this* provider rather than
  * aborting the ones after it; `host-smoke.js`'s loop relies on that to keep going.

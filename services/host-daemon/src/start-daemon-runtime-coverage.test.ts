@@ -51,6 +51,38 @@ describe("startDaemon runtime wiring", () => {
     }
   });
 
+  it("wires direct config identity into assignment inventory refresh", async () => {
+    const harness = await acceptingServer();
+    const config = emptyDaemonConfig({
+      hostId: "host-refresh",
+      apiUrl: `http://127.0.0.1:${harness.port}`,
+    });
+    let fetches = 0;
+    const daemon = await startDaemon({
+      config,
+      wsUrl: `ws://127.0.0.1:${harness.port}/ws`,
+      inventoryPollMs: 0,
+      fetchFn: async () => {
+        fetches += 1;
+        return Response.json({ version: 1, repositories: [] });
+      },
+    });
+    try {
+      const refreshInventory = (
+        daemon.loop as unknown as {
+          refreshInventory: (signal: AbortSignal) => Promise<{ inventoryVersion?: number }>;
+        }
+      ).refreshInventory;
+      await expect(refreshInventory(new AbortController().signal)).resolves.toMatchObject({
+        inventoryVersion: 1,
+      });
+      expect(fetches).toBe(1);
+    } finally {
+      daemon.loop.stop();
+      await harness.close();
+    }
+  });
+
   it("does not invent a terminal disposition when its ACK is lost during shutdown", async () => {
     const server = createServer();
     const wss = new WebSocketServer({ server, path: "/ws" });
@@ -169,11 +201,8 @@ describe("startDaemon runtime wiring", () => {
     let fetches = 0;
     try {
       await startDaemon({
-        config: { ...config, apiUrl: `ws://127.0.0.1:${harness.port}/ws` },
-        identity: {
-          hostId: config.hostId,
-          apiUrl: `http://127.0.0.1:${harness.port}`,
-        },
+        config: { ...config, apiUrl: `http://127.0.0.1:${harness.port}` },
+        wsUrl: `ws://127.0.0.1:${harness.port}/ws`,
         inventoryPollMs: 5,
         runUntil: waitFor(() => harness.registrations >= 2),
         fetchFn: async () => {

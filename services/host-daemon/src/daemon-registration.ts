@@ -89,8 +89,10 @@ export async function applyDaemonInventory(
   register: (candidate: DaemonConfig) => Promise<void>,
   afterApply?: () => void,
   workspaces?: WorkspaceManager,
+  signal?: AbortSignal,
 ): Promise<void> {
   const previousSetupScript = config.setupScript;
+  const previousInventoryVersion = config.inventoryVersion;
   const previousSetupCacheInputs = config.setupCacheInputs;
   const previousSetupCacheHostInputs = config.setupCacheHostInputs;
   const previousAllowedRoots = config.allowedRoots;
@@ -103,11 +105,17 @@ export async function applyDaemonInventory(
     // Validate and register the candidate without replacing the live config or
     // retained roots policy. Pending terminal hooks must remain fail-closed
     // until the control plane has accepted this registration.
-    await worktrees.ensureAll(next);
+    signal?.throwIfAborted();
+    await worktrees.ensureAll(next, signal);
+    signal?.throwIfAborted();
     await workspaces?.ensureAll(next);
+    signal?.throwIfAborted();
     await register(next);
+    signal?.throwIfAborted();
     if (next.setupScript === undefined) delete config.setupScript;
     else config.setupScript = next.setupScript;
+    if (next.inventoryVersion === undefined) delete config.inventoryVersion;
+    else config.inventoryVersion = next.inventoryVersion;
     if (next.setupCacheInputs === undefined) delete config.setupCacheInputs;
     else config.setupCacheInputs = next.setupCacheInputs;
     if (next.setupCacheHostInputs === undefined) delete config.setupCacheHostInputs;
@@ -126,6 +134,8 @@ export async function applyDaemonInventory(
   } catch (err) {
     if (previousSetupScript === undefined) delete config.setupScript;
     else config.setupScript = previousSetupScript;
+    if (previousInventoryVersion === undefined) delete config.inventoryVersion;
+    else config.inventoryVersion = previousInventoryVersion;
     if (previousSetupCacheInputs === undefined) delete config.setupCacheInputs;
     else config.setupCacheInputs = previousSetupCacheInputs;
     if (previousSetupCacheHostInputs === undefined) delete config.setupCacheHostInputs;

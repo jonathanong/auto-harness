@@ -12,15 +12,9 @@ import { API_BASE } from "../harness-endpoints.ts";
 const API = API_BASE;
 const CLI_PATH = fileURLToPath(new URL("../../modules/client/src/cli/index.js", import.meta.url));
 
-// A real deployment's host only learns about a newly attached repository through its own
-// periodic inventory poll (there is no push-on-write; see start-daemon.ts's
-// `startInventoryPoll`) — so this daemon is started *before* the CLI runs, exactly like a real
-// already-running host, and `host smoke`'s own bounded setup-failure retry (see
-// host-smoke-session-attempt.js) is what makes the very first session survive racing that poll.
-// A 2s poll is a realistic operator-configurable value that reliably exercises (and passes
-// through) that retry within this spec's own timeouts, rather than papering over the race by
-// starting the daemon only once the attach is already visible.
-const DAEMON_INVENTORY_POLL_MS = 2_000;
+// Disable the periodic poll so attach -> immediate assignment can pass only through the daemon's
+// assignment-scoped refresh. Starting the daemon before `host smoke` preserves the production race.
+const DAEMON_INVENTORY_POLL_MS = 0;
 
 async function git(cwd: string, args: string[]): Promise<void> {
   const result = await runCommand("git", args, { cwd });
@@ -57,9 +51,8 @@ async function enableSessionLogUploadAlways(request: APIRequestContext): Promise
 
 /** Local/e2e never auto-assigns a *queued* session on its own timer — every other real-daemon
  * spec here nudges the scheduler the same way. (A session's own creation does trigger one
- * best-effort assignment attempt immediately, which is exactly what races the daemon's stale
- * inventory the first time; this nudge is what picks up `host smoke`'s bounded *retry* session
- * once the daemon has actually caught up.) */
+ * best-effort assignment attempt immediately, which is exactly what exercises the daemon's
+ * assignment-scoped inventory refresh; this nudge remains the missed-dispatch repair path.) */
 function startSchedulerNudge(request: APIRequestContext) {
   let stopped = false;
   const interval = setInterval(() => {

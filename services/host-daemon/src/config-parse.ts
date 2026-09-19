@@ -16,6 +16,7 @@ import type {
 } from "./config-types.ts";
 import { isForeignWindowsAbsolutePath } from "./allowed-roots.ts";
 import { assignSetupCacheHostInputs, assignSetupCacheInputs } from "./config-setup-cache.ts";
+import { assignInventoryVersion } from "./config-version.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -170,6 +171,7 @@ export function parseDaemonConfig(
     repositories: raw.repositories.map((r, i) => parseRepository(r, i)),
     providerAccounts: parseProviderAccounts(raw.providerAccounts),
   };
+  assignInventoryVersion(config, raw.version);
   if (raw.setupScript !== undefined) {
     if (typeof raw.setupScript !== "string") {
       throw new TypeError("setupScript must be a string");

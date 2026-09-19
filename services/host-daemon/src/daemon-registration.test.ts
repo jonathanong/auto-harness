@@ -360,9 +360,15 @@ describe("daemon registration", () => {
   });
 
   it("restores the prior inventory when registration fails", async () => {
-    const config = { hostId: "h", repositories: [], providerAccounts: [] };
+    const config = {
+      hostId: "h",
+      inventoryVersion: 5,
+      repositories: [],
+      providerAccounts: [],
+    };
     const next = {
       ...config,
+      inventoryVersion: 6,
       setupScript: "new setup",
       repositories: [{ id: "next", path: "/next", defaultBranch: "main", worktrees: [] }],
     };
@@ -382,6 +388,7 @@ describe("daemon registration", () => {
       ),
     ).rejects.toThrow("registration failed");
     expect(config.repositories).toEqual([]);
+    expect(config.inventoryVersion).toBe(5);
     expect(config).not.toHaveProperty("setupScript");
     expect(inventoryChanges).toEqual(["changed", "changed"]);
   });

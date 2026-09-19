@@ -58,6 +58,12 @@ type InventoryPollOptions = {
   config: DaemonConfig;
   identity: HostIdentity;
   applyInventory: (next: DaemonConfig) => Promise<void>;
+  /** Serialize the authoritative fetch and apply with assignment-scoped reloads. */
+  reloadInventory?: (
+    loadInventory: (signal: AbortSignal) => Promise<DaemonConfig>,
+    shouldApply: (next: DaemonConfig) => boolean,
+  ) => Promise<DaemonConfig>;
+  isPolicyBlocked?: () => boolean;
   pollMs: number;
   log: (line: string) => void;
   error: (line: string) => void;
@@ -174,10 +180,20 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
     inFlight = true;
     const poll = (async () => {
       try {
-        const next = await fetchHostInventory(
-          options.identity,
-          options.fetchFn ? { fetchFn: options.fetchFn } : {},
-        );
+        const loadInventory = (signal?: AbortSignal) =>
+          fetchHostInventory(options.identity, {
+            ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
+            ...(signal ? { signal } : {}),
+          });
+        const next = options.reloadInventory
+          ? await options.reloadInventory(
+              (signal) => loadInventory(signal),
+              (candidate) =>
+                inventoryFingerprint(candidate) !== lastFp ||
+                policyBlocked ||
+                options.isPolicyBlocked?.() === true,
+            )
+          : await loadInventory();
         const fp = inventoryFingerprint(next);
         if (fp === lastFp && !policyBlocked) {
           // A successful poll, even one that finds nothing changed, ends whatever
@@ -186,7 +202,7 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
           failureLog.reset();
           return;
         }
-        await options.applyInventory(next);
+        if (!options.reloadInventory) await options.applyInventory(next);
         lastFp = fp;
         policyBlocked = false;
         failureLog.reset();
@@ -199,10 +215,12 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
           // persisted root policy rejects this host's currently configured paths. The loop
           // keeps polling; a valid subsequent document is applied and re-registers normally.
           policyBlocked = true;
-          try {
-            await options.blockAssignments?.(err.allowedRoots);
-          } catch (blockError) {
-            options.error(`inventory policy drain failed: ${thrownMessage(blockError)}`);
+          if (!options.reloadInventory) {
+            try {
+              await options.blockAssignments?.(err.allowedRoots);
+            } catch (blockError) {
+              options.error(`inventory policy drain failed: ${thrownMessage(blockError)}`);
+            }
           }
         }
         const message = failureLog.next(`inventory poll failed: ${thrownMessage(err)}`);
@@ -277,6 +295,15 @@ async function connectDaemon(
   const childEnvSource = options.childEnvSource ?? process.env;
   const githubApp = loadGitHubAppConfig(childEnvSource);
   const executionProfiles = loadExecutionProfiles(childEnvSource);
+  const identity =
+    options.identity ??
+    (options.config.apiUrl
+      ? {
+          hostId: options.config.hostId,
+          apiUrl: options.config.apiUrl,
+          ...(options.config.apiKey ? { apiKey: options.config.apiKey } : {}),
+        }
+      : undefined);
   const transport = createWsTransport({
     url: wsUrl,
     hostId: options.config.hostId,
@@ -291,6 +318,15 @@ async function connectDaemon(
   const loop = new DaemonLoop({
     config: options.config,
     transport,
+    ...(identity
+      ? {
+          refreshInventory: (signal: AbortSignal) =>
+            fetchHostInventory(identity, {
+              ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
+              signal,
+            }),
+        }
+      : {}),
     onLog: log,
     ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
     executionProfiles,
@@ -343,12 +379,23 @@ function startOptionalInventoryPoll(
   error: (line: string) => void,
 ): () => Promise<void> {
   const pollMs = options.inventoryPollMs ?? 15_000;
-  if (pollMs <= 0 || !options.identity) return noopInventoryPollStop;
+  const identity =
+    options.identity ??
+    (options.config.apiUrl
+      ? {
+          hostId: options.config.hostId,
+          apiUrl: options.config.apiUrl,
+          ...(options.config.apiKey ? { apiKey: options.config.apiKey } : {}),
+        }
+      : undefined);
+  if (pollMs <= 0 || !identity) return noopInventoryPollStop;
   return startInventoryPoll({
     config: options.config,
-    identity: options.identity,
+    identity,
     applyInventory: (next) => loop.applyInventory(next),
-    blockAssignments: (allowedRoots) => loop.blockAssignmentsForInvalidInventory(allowedRoots),
+    reloadInventory: (loadInventory, shouldApply) =>
+      loop.reloadInventory(loadInventory, { shouldApply }),
+    isPolicyBlocked: () => loop.isInventoryPolicyBlocked(),
     pollMs,
     log,
     error,
