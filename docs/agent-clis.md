@@ -321,3 +321,115 @@ auto-harness host smoke <hostId> --repo-path <path> --provider <id|name> [--prov
 a marker, and always detaches and deletes the repository afterwards — exit `0` only if every
 provider passes. `--repo-path` must be an existing git repository on the host with a clean `main`
 checkout (and `.worktrees/` ignored).
+
+## Usage limits
+
+AI CLIs run out of plan/rate quota. The host daemon only ever reports a usage limit when a
+**provider-aware adapter validates the CLI's own structured result** — free-form stdout/stderr is
+never quota evidence, even when it contains an obvious phrase like "rate limit". Full policy and
+the untrusted-vs-trusted-surface reasoning live in
+[host-daemon.md#usage-limits-ai-vendor--cli-quotas](host-daemon.md#usage-limits-ai-vendor--cli-quotas);
+this section is the operator-facing summary, keyed to the same four CLIs as the rest of this page.
+
+**Detection only works when the argv the daemon actually spawns carries the preset's
+structured-output flag** — `--output-format json` for claude/grok, `--json` for `codex exec`
+(`hasStructuredOutputMode` in [`usage-adapter.ts`](../services/host-daemon/src/usage-adapter.ts)
+checks `resolvedArgv` at execution time, whatever produced it). A Command whose stored `argv`
+omits that flag (or a CLI upgrade that changes its non-JSON error text) never classifies a usage
+limit and never cools down an account, regardless of exit code or CLI text — an ordinary `failed`
+session, same as an unrecognized executable.
+
+**How each CLI signals it** (adapters: [`usage-adapter.ts`](../services/host-daemon/src/usage-adapter.ts),
+[`usage-adapter-codex.ts`](../services/host-daemon/src/usage-adapter-codex.ts),
+[`usage-adapter-grok.ts`](../services/host-daemon/src/usage-adapter-grok.ts)):
+
+- **Claude** — either a structured `error.type`/`code`/`status` of `rate_limit_error`,
+  `usage_limit`, or `insufficient_quota`, **or** the CLI's own account-level plan quota
+  (5h/weekly/model-specific caps), which is enforced client-side and carries no API error at all:
+  the result envelope's `terminal_reason` field reads `"budget_exhausted"` while `subtype` can
+  still say `"success"`.
+- **Codex** — the sentence codex-cli's own error path writes verbatim, never model-authored, onto
+  a top-level `{"type":"error"}.message` or `turn.failed.error.message`. Captured verbatim from a
+  real out-of-usage account (2026-09-19, codex-cli 0.154.0): `"You've hit your usage limit. Visit
+https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 19th, 2026
+1:15 AM."` codex-cli has emitted roughly seven variants of this sentence with different trailing
+  clauses — the adapter matches only the fixed lead-in (`you've hit your usage limit`), not a
+  suffix.
+- **Grok** — a top-level `{"type":"error","message":"…"}` envelope with no structured code. HTTP
+  429 (plan/team rate limit) writes one of three "you've hit/reached…" sentences. A **separate**
+  HTTP 402 path — the account's Grok Build credit balance, not a rate limit — writes a different
+  sentence instead. Captured verbatim from a real out-of-usage account (2026-09-19, grok 1.0.30):
+  `"Internal error: {\n  \"message\": \"API error (status 402 Payment Required): Grok Build usage
+balance exhausted\", \"http_status\": 402\n}"`. Grok's CLI also re-prints that same failure a
+  second time as plain text, whose embedded object happens to parse as JSON but has neither `type`
+  nor `status` — the adapter only ever trusts a candidate carrying `type`/`status`/`response`/
+  `text`, so that re-print can neither manufacture nor mask a usage-limit signal.
+- **Gemini** (installed on some hosts but has no catalog preset — see the top of this page) —
+  `error.status`/`error.code` of `RESOURCE_EXHAUSTED`, or that token as a whole word in
+  `error.message`.
+- **Cursor — not detected, and its token usage is not recorded either.** `usage-adapter-shared.ts`'s
+  `CLI_PROVIDERS` list is `claude`, `codex`, `gemini`, `grok`; `cursor-agent` is absent, so
+  `resolveCliProvider` never matches it and `parseCliUsage` returns `{}` unconditionally for any
+  cursor-agent output — a real 402/429 failure would never cool down the account, and even a
+  **successful** run's real token counts are silently dropped. Confirmed against a real successful
+  `cursor-agent --print --force --output-format json` capture (2026-09-10 build), whose envelope
+  already carries usage: `{"type":"result","subtype":"success","is_error":false,"result":"hello
+world","usage":{"inputTokens":14615,"outputTokens":26,"cacheReadTokens":4352,
+"cacheWriteTokens":0}}`. That success shape is the starting point for a future cursor adapter —
+  its error envelope shape is not documented here because it has not been captured; do not guess
+  it. Regression fixtures for all of the above, including this cursor gap, are pinned in
+  [`usage-adapter-real-incident.test.ts`](../services/host-daemon/src/usage-adapter-real-incident.test.ts).
+
+**What the control plane does** once the daemon reports `status: failed`, `errorCode:
+"usage_limit"` (`session-transition-planner.ts`'s `planUsageLimit`): the assigned Provider Account
+is paused globally — `usageLimitedUntil = now + usageLimitCooldownSeconds` (default 5 hours,
+`GET/POST/PATCH /provider-accounts` — see [api.md](api.md#post-provider-accounts)) — the worktree
+is released, and the session is **requeued** (never failed outright) with `errorCode:
+"usage_limit"`, immediately trying the next eligible account or an explicit fallback target if one
+exists. A providerless target has no account to cool down but still suppresses that target index
+and falls through the same way.
+
+**How an operator sees it:**
+
+- The Provider Account's health shows a cooldown badge (`modules/ui`'s
+  `provider-account-health.tsx`) while `usageLimitedUntil` is in the future; `GET
+/provider-accounts/:id` also reports `lastUsageLimitedAt` (when it was last hit — this never
+  clears itself) alongside it. `DELETE /provider-accounts/:id/usage-limit` clears an active
+  cooldown early and re-triggers scheduling.
+- A session that is still `queued` while requeuing shows `errorCode: "usage_limit"` — but this is
+  transient, not a durable audit trail: the very next assignment (to another account, or a
+  fallback) explicitly clears `errorCode` as part of picking up the new attempt
+  (`control-plane-assign.ts`'s `delete session.errorCode`, and the durable path's `REMOVE …
+errorCode`). A session that eventually **completes** via fallback will _not_ show
+  `errorCode: "usage_limit"` afterwards, even though it hit one along the way — the durable proof
+  at that point is the Provider Account's cooldown fields, plus the session's `resolvedRoute`
+  having advanced past the original provider target to the fallback's `commandId`/`targetIndex`.
+  A session that exhausts every account and every fallback before its queue deadline instead fails
+  terminally with `errorCode: "queue_expired"` (`session-transition-planner.ts`'s
+  `planQueueExpired`), which overwrites whatever `errorCode` the session carried while queued —
+  so a `usage_limit` earlier in that session's life leaves no trace on the session record at all
+  once it queue-expires; only the Provider Account's cooldown fields still show it happened.
+
+**Running the opt-in regression spec:** [`e2e/real-cli/usage-limit.spec.ts`](../e2e/real-cli/usage-limit.spec.ts)
+drives this whole path for real, for each of `claude`/`codex`/`grok` named in
+`HARNESS_REAL_CLI_EXHAUSTED` (comma list) — never `cursor`, since there is nothing for it to
+detect. Like the other `e2e/real-cli/*.spec.ts` specs it only registers under `HARNESS_REAL_CLI`
+and skips any CLI `hasCli()` can't find; unlike them it drives the whole flow over the API only (no
+browser), because the interesting assertions are on the Provider Account and session records, not
+on-screen text. **Only opt a CLI into `HARNESS_REAL_CLI_EXHAUSTED` when that account is genuinely
+out of usage right now** — the whole point is a real 402/429-shaped failure, and running it against
+an account with quota left will just fail the test once the "provider" attempt succeeds instead of
+failing over. In a single worktree:
+
+```bash
+HARNESS_REAL_CLI=1 HARNESS_REAL_CLI_EXHAUSTED=codex,grok pnpm test:e2e:real-cli -- e2e/real-cli/usage-limit.spec.ts
+```
+
+Across concurrent worktrees, use the worktree-scoped port block instead (see
+[e2e.md#isolated-focused-control-runs](e2e.md#isolated-focused-control-runs)) so this run's
+DynamoDB Local container and ports never collide with another worktree's:
+
+```bash
+HARNESS_REAL_CLI=1 HARNESS_REAL_CLI_EXHAUSTED=codex,grok \
+  node scripts/worktree-e2e-env.mts --run -- --project=real-cli e2e/real-cli/usage-limit.spec.ts --workers=1
+```
