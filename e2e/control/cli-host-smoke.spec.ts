@@ -13,7 +13,7 @@ test.describe("cli host smoke", () => {
   }) => {
     const fixture = await setupSmokeFixture(request, "echo", ["echo"]);
     try {
-      const result = await runSmokeCli(fixture, request, "echo");
+      const result = await runSmokeCli(fixture.hostId, fixture.repoPath, fixture.providerId);
       const parsed = JSON.parse(result.stdout);
       expect(parsed.ok, result.stderr).toBe(true);
       expect(parsed.providers).toHaveLength(1);
@@ -31,7 +31,7 @@ test.describe("cli host smoke", () => {
       expect(inventory.repositories).toEqual([]);
       expect(inventory.providerAccounts).toEqual([{ providerAccountId: fixture.accountId }]);
     } finally {
-      fixture.cleanupTempDir();
+      await fixture.cleanup();
     }
   });
 
@@ -40,7 +40,7 @@ test.describe("cli host smoke", () => {
   }) => {
     const fixture = await setupSmokeFixture(request, "false", ["false"]);
     try {
-      const result = await runSmokeCli(fixture, request, "false");
+      const result = await runSmokeCli(fixture.hostId, fixture.repoPath, fixture.providerId);
       const parsed = JSON.parse(result.stdout);
       expect(parsed.ok).toBe(false);
       expect(parsed.providers[0].pass).toBe(false);
@@ -51,7 +51,7 @@ test.describe("cli host smoke", () => {
       const { items } = (await reposRes.json()) as { items: Array<{ id: string }> };
       expect(items.some((repo) => repo.id === parsed.repositoryId)).toBe(false);
     } finally {
-      fixture.cleanupTempDir();
+      await fixture.cleanup();
     }
   });
 });

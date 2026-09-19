@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { expect, type APIRequestContext, test } from "@playwright/test";
@@ -11,6 +11,16 @@ import { API_BASE } from "../harness-endpoints.ts";
 
 const API = API_BASE;
 const CLI_PATH = fileURLToPath(new URL("../../modules/client/src/cli/index.js", import.meta.url));
+
+// A real deployment's host only learns about a newly attached repository through its own
+// periodic inventory poll (there is no push-on-write; see start-daemon.ts's
+// `startInventoryPoll`) — so this daemon is started *before* the CLI runs, exactly like a real
+// already-running host, and `host smoke`'s own bounded setup-failure retry (see
+// host-smoke-session-attempt.js) is what makes the very first session survive racing that poll.
+// A 2s poll is a realistic operator-configurable value that reliably exercises (and passes
+// through) that retry within this spec's own timeouts, rather than papering over the race by
+// starting the daemon only once the attach is already visible.
+const DAEMON_INVENTORY_POLL_MS = 2_000;
 
 async function git(cwd: string, args: string[]): Promise<void> {
   const result = await runCommand("git", args, { cwd });
@@ -45,6 +55,11 @@ async function enableSessionLogUploadAlways(request: APIRequestContext): Promise
   throw new Error("session-log-settings upload always: version conflict retries exhausted");
 }
 
+/** Local/e2e never auto-assigns a *queued* session on its own timer — every other real-daemon
+ * spec here nudges the scheduler the same way. (A session's own creation does trigger one
+ * best-effort assignment attempt immediately, which is exactly what races the daemon's stale
+ * inventory the first time; this nudge is what picks up `host smoke`'s bounded *retry* session
+ * once the daemon has actually caught up.) */
 function startSchedulerNudge(request: APIRequestContext) {
   let stopped = false;
   const interval = setInterval(() => {
@@ -56,36 +71,21 @@ function startSchedulerNudge(request: APIRequestContext) {
   };
 }
 
-/** Polls the control plane's own inventory record — authoritative the instant `host smoke`'s
- * `PUT` commits, no daemon involved — until it sees the repository attached, or throws once
- * `timeoutMs` elapses (a stuck attach step should fail the test loudly, not hang it). */
-async function waitForAttachedRepository(
-  request: APIRequestContext,
-  hostId: string,
-  timeoutMs: number,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const res = await request.get(`${API}/api/v1/hosts/${hostId}/inventory`);
-    const inventory = (await res.json()) as { repositories?: unknown[] };
-    if ((inventory.repositories ?? []).length > 0) return;
-    if (Date.now() >= deadline) {
-      throw new Error(`host ${hostId} never showed an attached repository within ${timeoutMs}ms`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-}
-
 /** Creates a Provider whose default Command runs `argv`, a bound ProviderAccount attached to
- * `hostId`'s inventory, and a clean temp git repo with `.worktrees/` gitignored — everything
- * `host smoke` itself does not create. */
+ * `hostId`'s inventory, a clean temp git repo with `.worktrees/` gitignored, and a real,
+ * already-running host daemon for it — everything `host smoke` itself does not create. Points
+ * `HARNESS_EXECUTION_PROFILES` at a directory under this fixture's own temp root, never the
+ * real home: `echo`/`false` need no provider credentials, unlike the real-CLI specs this
+ * mirrors. */
 export async function setupSmokeFixture(request: APIRequestContext, tag: string, argv: string[]) {
   const hostId = `pw-smoke-${tag}-${test.info().parallelIndex}-${Date.now()}`;
   const name = `smoke-e2e-${tag}-${test.info().parallelIndex}-${Date.now()}`;
   const root = mkdtempSync(join(tmpdir(), `pw-cli-host-smoke-${tag}-`));
   const repoPath = join(root, "repo");
+  const home = join(root, "home");
 
   mkdirSync(repoPath);
+  mkdirSync(home);
   await git(repoPath, ["init"]);
   await git(repoPath, ["config", "user.email", "pw@pw"]);
   await git(repoPath, ["config", "user.name", "pw"]);
@@ -124,52 +124,45 @@ export async function setupSmokeFixture(request: APIRequestContext, tag: string,
   expect(inventoryRes.ok(), await inventoryRes.text()).toBeTruthy();
 
   const profilePath = join(root, "execution-profiles.json");
-  writeFileSync(profilePath, JSON.stringify({ accounts: { [account.id]: { home: homedir() } } }));
+  writeFileSync(profilePath, JSON.stringify({ accounts: { [account.id]: { home } } }));
+  const config = await fetchHostInventory({ hostId, apiUrl: API });
+  const daemon = await startDaemon({
+    config,
+    identity: { hostId, apiUrl: API },
+    log: (line) => console.log(`[daemon:${tag}]`, line),
+    error: (line) => console.log(`[daemon:${tag}:ERR]`, line),
+    inventoryPollMs: DAEMON_INVENTORY_POLL_MS,
+    childEnvSource: { ...process.env, HARNESS_EXECUTION_PROFILES: profilePath },
+  });
+  const stopNudge = startSchedulerNudge(request);
 
   return {
     hostId,
     providerId: provider.id,
     accountId: account.id,
     repoPath,
-    profilePath,
-    cleanupTempDir() {
+    async cleanup() {
+      stopNudge();
+      await daemon.stop();
       rmSync(root, { recursive: true, force: true });
     },
   };
 }
 
-/**
- * Runs the real CLI binary as a subprocess (never the API key, always against the e2e stack)
- * and, concurrently, brings up the host daemon — but only *after* `host smoke`'s own attach
- * step has actually committed. The daemon otherwise only learns about a newly attached
- * repository through its own periodic poll (there is no push-on-write; see
- * `services/host-daemon/src/start-daemon.ts`'s `startInventoryPoll`), and `host smoke` attaches
- * its own throwaway repository *after* a real daemon would already be running (its id does not
- * exist until the CLI itself creates it) — a daemon that connects with stale inventory rejects
- * the very next assignment with "Unknown repository" (`worktree-manager.ts`), which is not
- * retried (`services/api/src/session-transition-planner.ts` has no infra-retry classification
- * for it). Waiting for the attach to land in the control plane's own inventory record before
- * ever starting the daemon means its *first* config fetch is already correct — no poll, no
- * race: the session simply stays `queued` (the normal "no host yet" case) until this daemon
- * connects and registers, whose registration event assigns it correctly the first time.
- */
-export async function runSmokeCli(
-  fixture: Awaited<ReturnType<typeof setupSmokeFixture>>,
-  request: APIRequestContext,
-  tag: string,
-) {
+/** Runs the real CLI binary as a subprocess — never the API key, always against the e2e stack. */
+export function runSmokeCli(hostId: string, repoPath: string, providerId: string) {
   const { HARNESS_API_KEY: _key, HARNESS_API_KEY_FILE: _keyFile, ...cleanEnv } = process.env;
-  const cliPromise = runCommand(
+  return runCommand(
     "node",
     [
       CLI_PATH,
       "host",
       "smoke",
-      fixture.hostId,
+      hostId,
       "--repo-path",
-      fixture.repoPath,
+      repoPath,
       "--provider",
-      fixture.providerId,
+      providerId,
       "--timeout",
       "45",
       "--api-url",
@@ -179,21 +172,4 @@ export async function runSmokeCli(
     ],
     { env: cleanEnv },
   );
-
-  const stopNudge = startSchedulerNudge(request);
-  await waitForAttachedRepository(request, fixture.hostId, 30_000);
-  const config = await fetchHostInventory({ hostId: fixture.hostId, apiUrl: API });
-  const daemon = await startDaemon({
-    config,
-    log: (line) => console.log(`[daemon:${tag}]`, line),
-    error: (line) => console.log(`[daemon:${tag}:ERR]`, line),
-    childEnvSource: { ...process.env, HARNESS_EXECUTION_PROFILES: fixture.profilePath },
-  });
-
-  try {
-    return await cliPromise;
-  } finally {
-    stopNudge();
-    await daemon.stop();
-  }
 }

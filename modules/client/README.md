@@ -462,6 +462,16 @@ What it does, in order, always tearing down in a `finally` no matter which step 
    create a session targeting it with the prompt `Reply with exactly: <MARKER>` (`MARKER` is
    random and unique per run), wait for it, then fetch one page of its logs. A provider `PASS`es
    only if the session `completed` with `exitCode` `0` **and** its stdout contains `MARKER`.
+   - **The host racing its own inventory poll:** a host only learns about a newly attached
+     repository through its own periodic poll — there is no push-on-write — so the very first
+     session against the repository this command _just_ attached routinely loses that race in
+     any real deployment, not only here: the host rejects it with a `setup_failed` session whose
+     `errorMessage` is exactly `Unknown repository: <id>` (`services/host-daemon/src/
+worktree-manager.ts`), which the control plane never retries on its own. This command
+     recognizes that one exact, unambiguous shape and retries with it doubling backoff (up to 5
+     attempts, capped at 16s between attempts) — bounded by the same `--timeout` deadline as
+     everything else — before giving up and reporting it like any other failure. Any other
+     `setup_failed` (a real checkout/setup problem) is never retried.
    - **Usage limits:** the control plane does not fail a session whose provider account hit its
      usage limit — it requeues the session (`errorCode: "usage_limit"`) and puts the account on
      cooldown instead (see `services/api/src/session-transition-planner.ts`'s
