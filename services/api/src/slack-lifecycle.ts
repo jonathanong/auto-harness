@@ -42,6 +42,7 @@ export async function planSlackLifecycle(input: {
   event: SlackLifecycleEvent;
   session: SlackSessionSnapshot;
   channel: string;
+  installationId?: string | null;
   notifications: SlackNotifications;
   now: string;
   maxAttempts?: number;
@@ -51,6 +52,7 @@ export async function planSlackLifecycle(input: {
   const rootId = `slack:${input.session.id}:thread`;
   const base = {
     integrationId: "slack" as const,
+    ...(input.installationId ? { installationId: input.installationId } : {}),
     sessionId: input.session.id,
     channel: input.channel,
     status: "pending" as const,

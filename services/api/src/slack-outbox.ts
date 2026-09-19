@@ -12,11 +12,17 @@ type SlackOutboxOptions = {
   dependencyDelayMs?: number;
   baseRetryMs?: number;
   maxRetryMs?: number;
+  onSuccess?: (event: {
+    id: string;
+    operation: SlackDeliveryRecord["operation"];
+    installationId: string | null;
+  }) => void | Promise<void>;
   onFailure?: (event: {
     id: string;
     operation: SlackDeliveryRecord["operation"];
     status: "retried" | "dead";
     error: string;
+    installationId: string | null;
   }) => void | Promise<void>;
 };
 
@@ -68,6 +74,15 @@ export async function processSlackOutboxOnce(
     if (!(await store.complete({ id: claimed.id, leaseToken, result, now: current }))) {
       throw new Error("Slack delivery lease was lost after transport success");
     }
+    try {
+      await options.onSuccess?.({
+        id: claimed.id,
+        operation: claimed.operation,
+        installationId: claimed.installationId ?? null,
+      });
+    } catch {
+      // Observability cannot turn a completed delivery into a retry.
+    }
     return "sent";
   } catch (cause) {
     const attempts = claimed.attempts + 1;
@@ -96,6 +111,7 @@ export async function processSlackOutboxOnce(
         operation: claimed.operation,
         status,
         error,
+        installationId: claimed.installationId ?? null,
       });
     } catch {
       // Observability cannot block retry or dead-letter.

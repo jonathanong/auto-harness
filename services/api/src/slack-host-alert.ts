@@ -30,11 +30,13 @@ export function planHostOfflineAlert(input: {
   reason: string;
   lastHeartbeatAt: string;
   channel: string;
+  installationId?: string;
   now: string;
 }): SlackDeliveryRecord {
   return {
     id: `slack:host:${input.hostId}:offline:${input.lastHeartbeatAt}`,
     integrationId: "slack",
+    ...(input.installationId ? { installationId: input.installationId } : {}),
     sessionId: `host:${input.hostId}`,
     event: "host_offline",
     operation: "post-root",
@@ -70,6 +72,7 @@ async function plannedHostOfflineAlert(
   return planHostOfflineAlert({
     ...input,
     channel: record.defaultChannel,
+    ...(record.installationId ? { installationId: record.installationId } : {}),
     now: state.now(),
   });
 }

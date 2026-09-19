@@ -100,6 +100,13 @@ export class SlackLifecycleWorker {
         this.dependencies.transport,
         {
           now: this.now,
+          onSuccess: (event) => {
+            latestOutcome = {
+              ok: true,
+              at: this.now(),
+              installationId: event.installationId,
+            };
+          },
           onFailure: (event) => {
             this.report(
               new Error(`slack ${event.operation} ${event.status} ${event.id}: ${event.error}`),
@@ -108,18 +115,11 @@ export class SlackLifecycleWorker {
               ok: false,
               error: event.error,
               at: this.now(),
-              installationId: config.installationId ?? null,
+              installationId: event.installationId,
             };
           },
         },
       );
-      if (result === "sent") {
-        latestOutcome = {
-          ok: true,
-          at: this.now(),
-          installationId: config.installationId ?? null,
-        };
-      }
       if (result === "idle") break;
     }
     if (latestOutcome) await this.recordOutcome(latestOutcome);

@@ -12,6 +12,7 @@ function delivery(id: string): SlackDeliveryRecord {
   return {
     id,
     integrationId: "slack",
+    installationId: "installation-1",
     sessionId: "session-1",
     event: "session_created",
     operation: "post-root",
@@ -50,7 +51,11 @@ describe("Dynamo Slack delivery outbox", () => {
       leaseToken: "lease-1",
       leaseExpiresAt: "2026-08-12T10:00:30.000Z",
     });
-    expect(first).toMatchObject({ status: "delivering", leaseToken: "lease-1" });
+    expect(first).toMatchObject({
+      installationId: "installation-1",
+      status: "delivering",
+      leaseToken: "lease-1",
+    });
     expect(
       await store.complete({
         id: "delivery-1",

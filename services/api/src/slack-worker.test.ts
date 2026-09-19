@@ -301,6 +301,45 @@ describe("Slack lifecycle worker", () => {
     expect([...store.items.values()].every(({ status }) => status === "sent")).toBe(true);
   });
 
+  it("reports the claimed row's installation rather than the currently loaded installation", async () => {
+    const store = new MemoryOutbox();
+    store.items.set("stale-delivery", {
+      id: "stale-delivery",
+      integrationId: "slack",
+      installationId: "installation-a",
+      sessionId: "session-from-a",
+      event: "session_created",
+      operation: "post-root",
+      channel: "C123",
+      text: "stale",
+      status: "pending",
+      attempts: 0,
+      maxAttempts: 8,
+      nextAttemptAt: initial,
+      createdAt: initial,
+      updatedAt: initial,
+    });
+    const recordDeliveryOutcome = vi.fn(async () => undefined);
+    const worker = new SlackLifecycleWorker(
+      {
+        store,
+        transport: { deliver: vi.fn().mockRejectedValue(new Error("old delivery failed")) },
+        getConfig: async () => ({ ...config, installationId: "installation-b" }),
+        listSessions: async () => [],
+        recordDeliveryOutcome,
+      },
+      { now: () => initial, maxOperationsPerTick: 1 },
+    );
+
+    await expect(worker.runOnce()).resolves.toBe(true);
+    expect(recordDeliveryOutcome).toHaveBeenCalledWith({
+      ok: false,
+      error: expect.stringContaining("old delivery failed"),
+      at: initial,
+      installationId: "installation-a",
+    });
+  });
+
   it("runs a one-shot drain without starting the interval timer", async () => {
     const store = new MemoryOutbox();
     let release!: () => void;

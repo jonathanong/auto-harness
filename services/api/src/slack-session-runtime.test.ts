@@ -244,6 +244,33 @@ describe("Slack session lifecycle reconciliation", () => {
     expect(store.items.size).toBe(0);
   });
 
+  it("stamps writer-enqueued deliveries with the durable installation identity", async () => {
+    const store = new InsertStore();
+    const plane = createControlPlaneState({
+      storage: {
+        enqueue: store.enqueue.bind(store),
+        get: store.get.bind(store),
+        getSlackIntegration: async () => ({
+          id: "slack",
+          type: "slack",
+          defaultChannel: "#ops",
+          enabled: true,
+          notifications: DEFAULT_SLACK_NOTIFICATIONS,
+          installationId: "installation-1",
+          botToken: "xoxb-test",
+          createdAt: now,
+          updatedAt: now,
+        }),
+      } as never,
+    });
+
+    await enqueueSlackSessionLifecycle(plane, session("queued"));
+
+    expect([...store.items.values()]).toEqual([
+      expect.objectContaining({ installationId: "installation-1" }),
+    ]);
+  });
+
   it("hydrates failed-session stderr tails from gzip log objects", async () => {
     const store = new InsertStore();
     const plane = createControlPlaneState({

@@ -56,7 +56,10 @@ describe("host offline Slack alerts", () => {
   it("enqueues when Slack host-offline alerts are enabled", async () => {
     const enqueue = vi.fn(async () => "created" as const);
     await enqueueHostOfflineAlert(
-      alertState({ enqueue, getSlackIntegration: async () => slackRecord() }),
+      alertState({
+        enqueue,
+        getSlackIntegration: async () => slackRecord({ installationId: "installation-1" }),
+      }),
       {
         hostId: "host-1",
         reason: "stale",
@@ -64,6 +67,9 @@ describe("host offline Slack alerts", () => {
       },
     );
     expect(enqueue).toHaveBeenCalledOnce();
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ installationId: "installation-1" }),
+    );
 
     const disabled = alertState({
       enqueue,
