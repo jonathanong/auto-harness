@@ -4,7 +4,7 @@ import type { ArchiveMetadata, ArchiveObject } from "./control-plane-types.ts";
 import type { SessionArchiveReadResponse } from "@auto-harness/shared";
 import type { ArchiveWriteResult } from "./archive-writer.ts";
 import { persistExpiredArchive, archiveRetentionElapsed } from "./control-plane-archive-expire.ts";
-import { readSessionLogObjects } from "./session-log-objects.ts";
+import { readSessionLogObjects, serializeLogRecordLine } from "./session-log-objects.ts";
 import {
   archiveGeneration,
   isCompleteStoredArchive,
@@ -294,9 +294,7 @@ async function archiveBody(state: ControlPlaneState, sessionId: string): Promise
       logs = [];
     }
   }
-  const body = logs
-    .map(({ timestamp, stream, content }) => JSON.stringify({ timestamp, stream, content }))
-    .join("\n");
+  const body = logs.map(serializeLogRecordLine).join("\n");
   return body ? `${body}\n` : "";
 }
 
