@@ -14,6 +14,8 @@ export type SlackLifecycleConfig = {
   enabled: boolean;
   defaultChannel: string;
   notifications: SlackNotifications;
+  /** Fences worker-owned status to the installation loaded for this drain. */
+  installationId?: string | null;
 };
 
 /** Structural slice of control-plane state — kept local to avoid a circular import. */

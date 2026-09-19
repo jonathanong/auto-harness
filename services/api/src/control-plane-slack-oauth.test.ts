@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- OAuth validation and durable race cases share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_SLACK_NOTIFICATIONS } from "@auto-harness/shared";
@@ -90,6 +91,51 @@ describe("Slack OAuth installation", () => {
     if (!reconnected.ok) throw new Error("Slack OAuth reconnect failed");
     expect(reconnected.integration).not.toHaveProperty("lastDeliveryOutcomeAt");
     expect(plane.state.slackIntegration?.lastDeliveryOutcomeAt).toBe("2026-08-10T00:01:00.000Z");
+  });
+
+  it("re-reads worker-owned delivery status after a durable OAuth write", async () => {
+    let record: SlackIntegrationRecord | undefined;
+    const storage = {
+      getSlackIntegration: async () => record ?? null,
+      putSlackIntegration: async (next: SlackIntegrationRecord) => {
+        record = {
+          ...next,
+          lastDeliveryFailure: { message: "oauth raced", at: "2026-08-10T00:02:00.000Z" },
+          lastDeliveryOutcomeAt: "2026-08-10T00:02:00.000Z",
+        };
+        return true;
+      },
+    };
+    const plane = new ControlPlane({ storage: storage as never, secretEncryptor: encryptor() });
+
+    const result = await plane.installSlackOAuthIntegrationDurable(input() as never);
+
+    expect(result).toMatchObject({
+      ok: true,
+      integration: {
+        lastDeliveryFailure: {
+          message: "oauth raced",
+          at: "2026-08-10T00:02:00.000Z",
+        },
+      },
+    });
+    expect(plane.state.slackIntegration?.lastDeliveryOutcomeAt).toBe("2026-08-10T00:02:00.000Z");
+  });
+
+  it("reports an installation removed immediately after a successful durable OAuth write", async () => {
+    const plane = new ControlPlane({
+      storage: {
+        getSlackIntegration: async () => null,
+        putSlackIntegration: async () => true,
+      } as never,
+      secretEncryptor: encryptor(),
+    });
+
+    await expect(plane.installSlackOAuthIntegrationDurable(input() as never)).resolves.toEqual({
+      ok: false,
+      error: "Slack integration not found",
+    });
+    expect(plane.state.slackIntegration).toBeUndefined();
   });
 
   it("fences stale versions, identity changes, and failed durable compares", async () => {

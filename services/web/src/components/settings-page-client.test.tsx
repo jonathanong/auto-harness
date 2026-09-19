@@ -12,6 +12,7 @@ import {
   mountForm,
 } from "../../test-helpers/form-test-helpers.tsx";
 import { safeSettingsReturnPath, SettingsPageClient } from "./settings-page-client.tsx";
+import { DEFAULT_SLACK_NOTIFICATIONS } from "./slack-settings.ts";
 
 async function settle(): Promise<void> {
   await act(async () => {
@@ -25,7 +26,7 @@ const publicConfigFixture = {
   type: "slack",
   defaultChannel: "#harness",
   enabled: true,
-  notifications: { onSessionCreated: true },
+  notifications: DEFAULT_SLACK_NOTIFICATIONS,
   botTokenConfigured: true,
   signingSecretConfigured: true,
   installationMethod: "manual",
@@ -61,22 +62,15 @@ describe("SettingsPageClient", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         json({
-          id: "slack",
-          type: "slack",
+          ...publicConfigFixture,
           defaultChannel: "#ops",
-          enabled: true,
           notifications: {
+            ...DEFAULT_SLACK_NOTIFICATIONS,
             onSessionStarted: true,
             onSessionCompleted: true,
             onSessionFailed: true,
-            onApprovalRequired: true,
           },
-          botTokenConfigured: true,
-          signingSecretConfigured: false,
-          deliveryAvailable: false,
           version: 2,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
         }),
       ),
     );
@@ -85,13 +79,32 @@ describe("SettingsPageClient", () => {
     expect(field(configured.container, "form-slack-replace")).toBeTruthy();
   });
 
+  it("rejects malformed successful Slack responses", async () => {
+    for (const body of [
+      {},
+      { ...publicConfigFixture, version: "one" },
+      { ...publicConfigFixture, version: 0 },
+      { ...publicConfigFixture, notifications: {} },
+      { ...publicConfigFixture, grantedScopes: ["chat:write", 1] },
+      { ...publicConfigFixture, lastDeliveryFailure: { message: "boom" } },
+    ]) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(body)));
+      const view = mountForm(<SettingsPageClient />);
+      await settle();
+      expect(field(view.container, "slack-settings-error")).toBeTruthy();
+      view.unmount();
+    }
+  });
+
   it("disables Connect with Slack when unavailable, and enables it when available", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ oauthAvailable: false }, 404)));
-    const unavailable = mountForm(<SettingsPageClient />);
-    await settle();
-    expect(field<HTMLButtonElement>(unavailable.container, "slack-connect").disabled).toBe(true);
-    expect(field(unavailable.container, "slack-oauth-unavailable-hint")).toBeTruthy();
-    unavailable.unmount();
+    for (const oauthAvailable of [false, "false"]) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ oauthAvailable }, 404)));
+      const unavailable = mountForm(<SettingsPageClient />);
+      await settle();
+      expect(field<HTMLButtonElement>(unavailable.container, "slack-connect").disabled).toBe(true);
+      expect(field(unavailable.container, "slack-oauth-unavailable-hint")).toBeTruthy();
+      unavailable.unmount();
+    }
 
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ oauthAvailable: true }, 404)));
     const available = mountForm(<SettingsPageClient />);
@@ -155,6 +168,9 @@ describe("SettingsPageClient", () => {
     );
     expect(field(view.container, "slack-last-delivery-failure-hint").textContent).toContain(
       "/invite",
+    );
+    expect(field(view.container, "slack-last-delivery-failure-hint").textContent).not.toContain(
+      "#harness",
     );
   });
 

@@ -13,9 +13,8 @@ type SettingsState =
   | { kind: "error" };
 
 /**
- * A response with no body (or one that fails to parse) degrades to an empty object rather
- * than throwing, so a malformed or legacy fixture response disables the OAuth button
- * instead of failing the whole settings page load.
+ * A response with no body (or one that fails to parse) degrades to an empty object. The
+ * caller accepts that for an unconfigured 404, while successful responses are validated.
  */
 async function readJsonBody(response: Response): Promise<Record<string, unknown>> {
   try {
@@ -28,7 +27,59 @@ async function readJsonBody(response: Response): Promise<Record<string, unknown>
 
 /** Present on every GET, configured or not — see local-routes-slack-integration.ts. */
 function readOAuthAvailable(body: Record<string, unknown>): boolean {
-  return Boolean(body.oauthAvailable);
+  return body.oauthAvailable === true;
+}
+
+const notificationKeys = [
+  "onSessionCreated",
+  "onSessionStarted",
+  "onSessionCompleted",
+  "onSessionFailed",
+  "onSessionCancelled",
+  "onScheduleCompleted",
+  "onHostOffline",
+] as const;
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+function isPublicSlackIntegration(body: Record<string, unknown>): body is PublicSlackIntegration {
+  const notifications = body.notifications as Record<string, unknown> | null;
+  const failure = body.lastDeliveryFailure as Record<string, unknown> | null;
+  return (
+    body.id === "slack" &&
+    body.type === "slack" &&
+    typeof body.defaultChannel === "string" &&
+    typeof body.enabled === "boolean" &&
+    typeof notifications === "object" &&
+    notifications !== null &&
+    notificationKeys.every((key) => typeof notifications[key] === "boolean") &&
+    typeof body.botTokenConfigured === "boolean" &&
+    typeof body.signingSecretConfigured === "boolean" &&
+    (body.installationMethod === "manual" || body.installationMethod === "oauth") &&
+    typeof body.inboundAvailable === "boolean" &&
+    typeof body.deliveryAvailable === "boolean" &&
+    typeof body.version === "number" &&
+    Number.isSafeInteger(body.version) &&
+    body.version >= 1 &&
+    typeof body.createdAt === "string" &&
+    typeof body.updatedAt === "string" &&
+    typeof body.oauthAvailable === "boolean" &&
+    isOptionalString(body.installationId) &&
+    isOptionalString(body.workspaceId) &&
+    isOptionalString(body.workspaceName) &&
+    isOptionalString(body.appId) &&
+    isOptionalString(body.botUserId) &&
+    (body.grantedScopes === undefined ||
+      (Array.isArray(body.grantedScopes) &&
+        body.grantedScopes.every((scope) => typeof scope === "string"))) &&
+    (failure === undefined ||
+      (typeof failure === "object" &&
+        failure !== null &&
+        typeof failure.message === "string" &&
+        typeof failure.at === "string"))
+  );
 }
 
 export function SettingsPageClient() {
@@ -83,9 +134,13 @@ export function SettingsPageClient() {
           return;
         }
         const body = await readJsonBody(response);
+        if (!isPublicSlackIntegration(body)) {
+          setState({ kind: "error" });
+          return;
+        }
         setState({
           kind: "ready",
-          integration: body as PublicSlackIntegration,
+          integration: body,
           oauthAvailable: readOAuthAvailable(body),
         });
       })

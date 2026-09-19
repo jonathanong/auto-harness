@@ -250,6 +250,9 @@ test.describe("control plane Slack settings", () => {
     );
     await expect(page.getByTestId("slack-last-delivery-failure-hint")).toContainText(`/invite`);
     await expect(page.getByTestId("slack-last-delivery-failure-hint")).toContainText(
+      "destination channel",
+    );
+    await expect(page.getByTestId("slack-last-delivery-failure-hint")).not.toContainText(
       publicConfig.defaultChannel,
     );
   });

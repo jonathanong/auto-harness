@@ -128,7 +128,7 @@ export function slackDeliveryWarning(config?: SlackIntegration): string | null {
 export function slackDeliveryFailureHint(config: SlackIntegration): string | null {
   const message = config.lastDeliveryFailure?.message;
   if (!message?.includes("not_in_channel")) return null;
-  return `The bot is not in ${config.defaultChannel} yet — open that channel in Slack, run /invite, and add the bot.`;
+  return "The bot is not in the destination channel yet — open that channel in Slack, run /invite, and add the bot.";
 }
 
 export function slackSaveSuccessMessage(config: SlackIntegration): string {

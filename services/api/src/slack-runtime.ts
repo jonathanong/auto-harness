@@ -71,6 +71,7 @@ async function loadSlackLifecycleConfig(plane: ControlPlane): Promise<SlackLifec
         enabled: record.enabled,
         defaultChannel: record.defaultChannel,
         notifications: record.notifications,
+        installationId: record.installationId ?? null,
       }
     : null;
 }

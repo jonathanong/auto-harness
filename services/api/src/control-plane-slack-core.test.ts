@@ -111,9 +111,14 @@ describe("Slack control-plane durability", () => {
   it("rejects invalid patches and persists accepted durable settings without leaking secrets", async () => {
     const stored = await record();
     let writes = 0;
+    let current = stored;
     const storage = {
-      getSlackIntegration: async () => ({ ...stored }),
-      putSlackIntegration: async () => ++writes === 1,
+      getSlackIntegration: async () => ({ ...current }),
+      putSlackIntegration: async (next: SlackIntegrationRecord) => {
+        if (++writes !== 1) return false;
+        current = next;
+        return true;
+      },
     };
     const plane = new ControlPlane({ storage: storage as never, secretEncryptor: encryptor() });
     expect(await plane.patchSlackIntegrationDurable({ expectedVersion: 7 })).toMatchObject({

@@ -4,6 +4,7 @@ import type {
   SlackTransport,
 } from "./slack-delivery-types.ts";
 import type { SlackLifecycleConfig } from "./slack-session-runtime.ts";
+import type { SlackDeliveryOutcome } from "./slack-integration-types.ts";
 import { reconcileSlackSession } from "./slack-session-runtime.ts";
 import { processSlackOutboxOnce } from "./slack-outbox.ts";
 
@@ -12,6 +13,7 @@ const DEFAULT_SLACK_WORKER_INTERVAL_MS = 1_000;
 export type SlackLifecycleWorkerOptions = {
   intervalMs?: number;
   maxOperationsPerTick?: number;
+  outcomeFlushTimeoutMs?: number;
   now?: () => string;
   onError?: (error: unknown) => void;
 };
@@ -22,9 +24,7 @@ type SlackLifecycleWorkerDependencies = {
   getConfig: () => Promise<SlackLifecycleConfig | null>;
   listSessions: () => Promise<SlackSessionSnapshot[]>;
   /** Surfaces the most recent delivery failure on Settings; see slack-runtime.ts. */
-  recordDeliveryOutcome?: (
-    outcome: { ok: true; at: string } | { ok: false; error: string; at: string },
-  ) => Promise<void>;
+  recordDeliveryOutcome?: (outcome: SlackDeliveryOutcome) => Promise<void>;
 };
 
 /** Polling runtime around the durable outbox. Local and cron inject the HTTP transport. */
@@ -32,6 +32,7 @@ export class SlackLifecycleWorker {
   private readonly dependencies: SlackLifecycleWorkerDependencies;
   private readonly intervalMs: number;
   private readonly maxOperationsPerTick: number;
+  private readonly outcomeFlushTimeoutMs: number;
   private readonly now: () => string;
   private readonly onError: ((error: unknown) => void) | undefined;
   private timer: ReturnType<typeof setInterval> | undefined;
@@ -45,6 +46,7 @@ export class SlackLifecycleWorker {
     this.dependencies = dependencies;
     this.intervalMs = options.intervalMs ?? DEFAULT_SLACK_WORKER_INTERVAL_MS;
     this.maxOperationsPerTick = options.maxOperationsPerTick ?? 100;
+    this.outcomeFlushTimeoutMs = options.outcomeFlushTimeoutMs ?? 250;
     this.now = options.now ?? (() => new Date().toISOString());
     this.onError = options.onError;
     if (!Number.isFinite(this.intervalMs) || this.intervalMs <= 0) {
@@ -52,6 +54,9 @@ export class SlackLifecycleWorker {
     }
     if (!Number.isInteger(this.maxOperationsPerTick) || this.maxOperationsPerTick <= 0) {
       throw new RangeError("Slack worker maxOperationsPerTick must be a positive integer");
+    }
+    if (!Number.isFinite(this.outcomeFlushTimeoutMs) || this.outcomeFlushTimeoutMs <= 0) {
+      throw new RangeError("Slack worker outcomeFlushTimeoutMs must be a positive finite number");
     }
   }
 
@@ -88,34 +93,58 @@ export class SlackLifecycleWorker {
     for (const session of await this.dependencies.listSessions()) {
       await reconcileSlackSession({ store: this.dependencies.store, config, session, now });
     }
+    let latestOutcome: SlackDeliveryOutcome | undefined;
     for (let count = 0; count < this.maxOperationsPerTick; count += 1) {
       const result = await processSlackOutboxOnce(
         this.dependencies.store,
         this.dependencies.transport,
         {
           now: this.now,
-          onFailure: async (event) => {
+          onFailure: (event) => {
             this.report(
               new Error(`slack ${event.operation} ${event.status} ${event.id}: ${event.error}`),
             );
-            await this.recordOutcome({ ok: false, error: event.error });
+            latestOutcome = {
+              ok: false,
+              error: event.error,
+              at: this.now(),
+              installationId: config.installationId ?? null,
+            };
           },
         },
       );
-      if (result === "sent") await this.recordOutcome({ ok: true });
-      if (result === "idle") return;
+      if (result === "sent") {
+        latestOutcome = {
+          ok: true,
+          at: this.now(),
+          installationId: config.installationId ?? null,
+        };
+      }
+      if (result === "idle") break;
     }
+    if (latestOutcome) await this.recordOutcome(latestOutcome);
   }
 
-  /** Await persistence before a one-shot worker returns, while isolating storage failures. */
-  private async recordOutcome(outcome: { ok: true } | { ok: false; error: string }): Promise<void> {
+  /** Coalesced best-effort status cannot extend a bounded worker tick indefinitely. */
+  private async recordOutcome(outcome: SlackDeliveryOutcome): Promise<void> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      const at = this.now();
-      await this.dependencies.recordDeliveryOutcome?.(
-        outcome.ok ? { ok: true, at } : { ok: false, error: outcome.error, at },
-      );
-    } catch {
-      // See above: never let this block the outbox.
+      const write = this.dependencies.recordDeliveryOutcome?.(outcome);
+      if (!write) return;
+      await Promise.race([
+        write,
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error("Slack delivery outcome persistence timed out")),
+            this.outcomeFlushTimeoutMs,
+          );
+          timeout.unref();
+        }),
+      ]);
+    } catch (error) {
+      this.report(error);
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
   }
 

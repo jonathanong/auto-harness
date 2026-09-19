@@ -6,6 +6,7 @@ import type { SecretEncryptor } from "./secret-crypto.ts";
 import type { SlackDeliveryRecord, SlackOutboxStore } from "./slack-delivery-types.ts";
 import {
   DEFAULT_SLACK_NOTIFICATIONS,
+  type SlackDeliveryOutcome,
   type SlackIntegrationRecord,
 } from "./slack-integration-types.ts";
 import { gzipLogRecords } from "./session-log-objects.ts";
@@ -78,6 +79,7 @@ function slackRecord(): SlackIntegrationRecord {
     enabled: true,
     notifications: DEFAULT_SLACK_NOTIFICATIONS,
     signingSecretConfigured: false,
+    installationId: "installation-1",
     version: 1,
     createdAt: now,
     updatedAt: now,
@@ -130,15 +132,11 @@ describe("Slack production runtime", () => {
 
   it("delivers through the HTTP transport when the bot token can be decrypted", async () => {
     const store = new MemoryOutbox();
-    const outcomes: Array<{ ok: boolean; error?: string; at: string }> = [];
+    const outcomes: SlackDeliveryOutcome[] = [];
     const plane = new ControlPlane({
       storage: Object.assign(store, {
         getSlackIntegration: async () => slackRecord(),
-        recordSlackDeliveryOutcome: async (outcome: {
-          ok: boolean;
-          error?: string;
-          at: string;
-        }) => {
+        recordSlackDeliveryOutcome: async (outcome: SlackDeliveryOutcome) => {
           outcomes.push(outcome);
         },
         listAllSessions: async () => [
@@ -189,7 +187,7 @@ describe("Slack production runtime", () => {
       text: expect.stringContaining("auto-harness"),
     });
     // A successful send is reported to the durable Slack record for Settings to read.
-    expect(outcomes).toEqual([{ ok: true, at: now }]);
+    expect(outcomes).toEqual([{ ok: true, at: now, installationId: "installation-1" }]);
   });
 
   it("falls back to in-memory Slack config and skips disabled integrations", async () => {

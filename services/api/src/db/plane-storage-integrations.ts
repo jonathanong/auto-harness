@@ -16,7 +16,11 @@ export async function getSlackIntegration(
   ctx: PlaneStorageCtx,
 ): Promise<SlackIntegrationRecord | null> {
   const response = await ctx.doc.send(
-    new GetCommand({ TableName: ctx.tables.integrations, Key: { id: "slack" } }),
+    new GetCommand({
+      TableName: ctx.tables.integrations,
+      Key: { id: "slack" },
+      ConsistentRead: true,
+    }),
   );
   return (response.Item as SlackIntegrationRecord | undefined) ?? null;
 }
@@ -154,23 +158,35 @@ export async function recordSlackDeliveryOutcome(
   outcome: SlackDeliveryOutcome,
 ): Promise<void> {
   try {
+    const installationCondition =
+      outcome.installationId === null
+        ? "attribute_not_exists(installationId)"
+        : "installationId = :installationId";
     await ctx.doc.send(
       new UpdateCommand({
         TableName: ctx.tables.integrations,
         Key: { id: "slack" },
         ConditionExpression: outcome.ok
-          ? "attribute_exists(id) AND (attribute_not_exists(lastDeliveryOutcomeAt) OR lastDeliveryOutcomeAt < :at OR (lastDeliveryOutcomeAt = :at AND attribute_exists(lastDeliveryFailure)))"
-          : "attribute_exists(id) AND (attribute_not_exists(lastDeliveryOutcomeAt) OR lastDeliveryOutcomeAt < :at)",
+          ? `attribute_exists(id) AND ${installationCondition} AND (attribute_not_exists(lastDeliveryOutcomeAt) OR lastDeliveryOutcomeAt < :at OR (lastDeliveryOutcomeAt = :at AND attribute_exists(lastDeliveryFailure)))`
+          : `attribute_exists(id) AND ${installationCondition} AND (attribute_not_exists(lastDeliveryOutcomeAt) OR lastDeliveryOutcomeAt < :at)`,
         ...(outcome.ok
           ? {
               UpdateExpression: "SET lastDeliveryOutcomeAt = :at REMOVE lastDeliveryFailure",
-              ExpressionAttributeValues: { ":at": outcome.at },
+              ExpressionAttributeValues: {
+                ":at": outcome.at,
+                ...(outcome.installationId === null
+                  ? {}
+                  : { ":installationId": outcome.installationId }),
+              },
             }
           : {
               UpdateExpression: "SET lastDeliveryFailure = :failure, lastDeliveryOutcomeAt = :at",
               ExpressionAttributeValues: {
                 ":at": outcome.at,
                 ":failure": { message: outcome.error, at: outcome.at },
+                ...(outcome.installationId === null
+                  ? {}
+                  : { ":installationId": outcome.installationId }),
               },
             }),
       }),

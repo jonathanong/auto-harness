@@ -43,8 +43,8 @@ export type SlackIntegrationRecord = {
 /** Outcome of one durable delivery attempt, recorded on the integration row so Settings
  * can show *why* Slack isn't working without querying the deliveries table. */
 export type SlackDeliveryOutcome =
-  | { ok: true; at: string }
-  | { ok: false; error: string; at: string };
+  | { ok: true; at: string; installationId: string | null }
+  | { ok: false; error: string; at: string; installationId: string | null };
 
 export type PublicSlackIntegration = Omit<
   SlackIntegrationRecord,

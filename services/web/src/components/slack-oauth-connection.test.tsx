@@ -178,5 +178,8 @@ describe("SlackOAuthConnection", () => {
     expect(field(view.container, "slack-oauth-unavailable-hint").textContent).toContain(
       "not configured",
     );
+    expect(field(view.container, "slack-oauth-unavailable-hint").textContent).not.toMatch(
+      /HARNESS_SLACK_APP(?:_SSM_PARAM)?/,
+    );
   });
 });

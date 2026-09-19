@@ -104,8 +104,8 @@ export function SlackOAuthConnection({
       {oauthAvailable ? null : (
         <p className="text-sm text-muted-foreground" data-pw="slack-oauth-unavailable-hint">
           OAuth app credentials are not configured in this environment. Use the manual bot-token
-          form below, or configure a Slack app and set{" "}
-          <code className="text-xs">HARNESS_SLACK_APP</code> (see docs/integrations.md).
+          form below, or configure a Slack app using the deployment-specific credential source in
+          docs/integrations.md.
         </p>
       )}
       <p className="text-sm text-muted-foreground" data-pw="slack-manual-path">
