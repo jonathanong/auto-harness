@@ -1691,12 +1691,13 @@ an invalid executable reference, returns `400 VALIDATION_ERROR`.
 Existing catalog rows are not rewritten; name validation applies when a Command is created or its
 name is updated.
 
-For compatibility with provider commands stored before structured usage reporting,
-dispatch upgrades only recognized native forms that have no explicit output setting:
-`claude -p` / `--print`, `gemini -p` / `--prompt`, and `grok -p` / `--single` receive
-`--output-format json`; `codex exec` receives `--json`. This happens in the resolved
-execution argv so quota routing continues to receive vendor envelopes. Commands with an explicit
-format or an unrecognized executable remain operator-authored and unchanged.
+Dispatch never rewrites a Command's argv: it spawns exactly `argv`, plus the prompt when
+`appendPrompt` is set. Usage reporting and usage-limit detection read the CLI's structured
+output, so they only work when the Command itself requests it: `claude -p` / `--print`,
+`gemini -p` / `--prompt` and `grok -p` / `--single` need `--output-format json`, and
+`codex exec` needs `--json` (`services/host-daemon/src/usage-adapter.ts`). The catalog presets
+already include these flags. A Command without one still runs, but records no token usage, and
+its usage limits are never detected, so its provider account is never put on cooldown.
 
 `appendPromptSeparator` controls whether a `--` element is inserted before the appended
 prompt: `[...command.argv, "--", prompt]` vs `[...command.argv, prompt]`
