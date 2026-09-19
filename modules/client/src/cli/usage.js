@@ -16,6 +16,7 @@ Usage:
   auto-harness host inventory get <hostId> [--json]
   auto-harness host inventory set <hostId> --file <path|->
   auto-harness host repo rm <hostId> <repositoryId> [--dry-run] [--json]
+  auto-harness repo add --name <name> --url <url> [--default-branch <branch>] [--json]
   auto-harness repo list [--limit N] [--cursor C] [--all] [--json]
   auto-harness repo rm <repositoryId> [--json]
   auto-harness service-account list [--limit N] [--cursor C] [--all] [--json]
@@ -54,6 +55,7 @@ Examples:
   auto-harness host drain host-1
   auto-harness host inventory get host-1 --json > inventory.json
   auto-harness host repo rm host-1 repo-1 --dry-run
+  auto-harness repo add --name org/repo --url https://github.com/org/repo
   auto-harness repo list --all
   auto-harness repo rm repo-1
   auto-harness service-account list
