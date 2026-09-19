@@ -65,7 +65,7 @@ it("starts the lifecycle worker with durable storage and an injected transport",
   });
   try {
     expect(server.slackWorker).toBeDefined();
-    await eventually(() => deliver.mock.calls.length === 2);
+    await server.slackWorker?.stop();
     expect(deliver.mock.calls.map(([request]) => request.operation)).toEqual([
       "post-root",
       "post-reply",
@@ -74,11 +74,3 @@ it("starts the lifecycle worker with durable storage and an injected transport",
     await server.close();
   }
 });
-
-async function eventually(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  throw new Error("Slack worker did not drain in time");
-}

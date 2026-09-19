@@ -70,6 +70,9 @@ describe("Slack integration storage failures", () => {
     expect(command.input.ConditionExpression).toBe(
       "attribute_exists(id) AND version = :expectedVersion",
     );
+    expect(command.input).not.toHaveProperty("Item");
+    expect(command.input.UpdateExpression).not.toContain("lastDeliveryFailure");
+    expect(command.input.UpdateExpression).not.toContain("lastDeliveryOutcomeAt");
   });
 
   it("propagates non-conditional put and delete failures", async () => {
@@ -117,9 +120,12 @@ describe("recordSlackDeliveryOutcome", () => {
       };
     };
     expect(command.input.Key).toEqual({ id: "slack" });
-    expect(command.input.ConditionExpression).toBe("attribute_exists(id)");
-    expect(command.input.UpdateExpression).toBe("SET lastDeliveryFailure = :failure");
+    expect(command.input.ConditionExpression).toContain("lastDeliveryOutcomeAt < :at");
+    expect(command.input.UpdateExpression).toBe(
+      "SET lastDeliveryFailure = :failure, lastDeliveryOutcomeAt = :at",
+    );
     expect(command.input.ExpressionAttributeValues).toEqual({
+      ":at": "2026-09-19T06:45:24.000Z",
       ":failure": {
         message: "Slack chat.postMessage failed: not_in_channel",
         at: "2026-09-19T06:45:24.000Z",
@@ -127,16 +133,16 @@ describe("recordSlackDeliveryOutcome", () => {
     });
   });
 
-  it("removes lastDeliveryFailure on success only when one exists", async () => {
+  it("removes lastDeliveryFailure on a success newer than the stored outcome", async () => {
     const send = vi.fn().mockResolvedValue({});
     await recordSlackDeliveryOutcome(ctx(send), { ok: true, at: "2026-09-19T06:46:00.000Z" });
     const command = send.mock.calls[0]?.[0] as {
       input: { ConditionExpression?: string; UpdateExpression?: string };
     };
-    expect(command.input.ConditionExpression).toBe(
-      "attribute_exists(id) AND attribute_exists(lastDeliveryFailure)",
+    expect(command.input.ConditionExpression).toContain("lastDeliveryOutcomeAt = :at");
+    expect(command.input.UpdateExpression).toBe(
+      "SET lastDeliveryOutcomeAt = :at REMOVE lastDeliveryFailure",
     );
-    expect(command.input.UpdateExpression).toBe("REMOVE lastDeliveryFailure");
   });
 
   it("swallows a conditional failure (missing row, or nothing to clear) as a no-op", async () => {

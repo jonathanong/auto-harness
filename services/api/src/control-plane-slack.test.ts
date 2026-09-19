@@ -85,6 +85,25 @@ describe("Slack integration configuration", () => {
     expect(await first.getSlackIntegrationDurable()).toBeNull();
   });
 
+  it("preserves worker-owned delivery status in an update response", async () => {
+    const plane = new ControlPlane({ secretEncryptor: encryptor() });
+    await plane.createSlackIntegrationDurable(input());
+    Object.assign(plane.state.slackIntegration!, {
+      lastDeliveryFailure: { message: "temporary", at: "2026-08-10T00:01:00.000Z" },
+      lastDeliveryOutcomeAt: "2026-08-10T00:01:00.000Z",
+    });
+    const updated = await plane.updateSlackIntegrationDurable({ ...input(), enabled: false });
+    expect(updated).toMatchObject({
+      ok: true,
+      integration: {
+        lastDeliveryFailure: { message: "temporary", at: "2026-08-10T00:01:00.000Z" },
+      },
+    });
+    if (!updated.ok) throw new Error("Slack update failed");
+    expect(updated.integration).not.toHaveProperty("lastDeliveryOutcomeAt");
+    expect(plane.state.slackIntegration?.lastDeliveryOutcomeAt).toBe("2026-08-10T00:01:00.000Z");
+  });
+
   it("normalizes a legacy six-event notification payload", async () => {
     const { onHostOffline: _onHostOffline, ...legacyNotifications } = DEFAULT_SLACK_NOTIFICATIONS;
     const plane = new ControlPlane({ secretEncryptor: encryptor() });

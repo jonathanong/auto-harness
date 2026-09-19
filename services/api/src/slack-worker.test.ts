@@ -318,4 +318,38 @@ describe("Slack lifecycle worker", () => {
     expect(await first).toBe(true);
     expect(deliver).toHaveBeenCalled();
   });
+
+  it("waits for delivery outcome persistence before a one-shot drain returns", async () => {
+    const store = new MemoryOutbox();
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const recordDeliveryOutcome = vi.fn(async () => blocked);
+    const worker = new SlackLifecycleWorker(
+      {
+        store,
+        transport: {
+          deliver: async (request) => ({
+            channel: request.channel,
+            messageTs: `ts-${request.idempotencyKey}`,
+          }),
+        },
+        getConfig: async () => config,
+        listSessions: async () => [completed],
+        recordDeliveryOutcome,
+      },
+      { now: () => initial },
+    );
+    const run = worker.runOnce();
+    await vi.waitFor(() => expect(recordDeliveryOutcome).toHaveBeenCalledOnce());
+    let settled = false;
+    void run.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    release();
+    await expect(run).resolves.toBe(true);
+  });
 });

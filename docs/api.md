@@ -477,10 +477,14 @@ notification settings, requires the positive version read by the client, and nev
 credentials. `GET` returns no token,
 signing secret, or ciphertext: only redacted configured flags plus installation
 method, optional workspace/app/bot-user/scope metadata, `inboundAvailable`, and
-`deliveryAvailable`. `installationMethod` is required. `DELETE` returns `204`. `deliveryAvailable` is true only when this
-environment can decrypt the bot token and run the outbound worker; otherwise the
-control plane reports configured-but-unavailable and does not imply that messages
-will be sent.
+`deliveryAvailable`. `installationMethod` is required. The `200` and `404` `GET`
+responses also include `oauthAvailable`, including the error returned before an integration
+is configured, so clients can disable OAuth setup when this deployment has no Slack
+app credentials. A configured integration may include `lastDeliveryFailure` with a
+sanitized `message` and timestamp; the field is removed after a later delivery
+succeeds. `DELETE` returns `204`. `deliveryAvailable` is true only when this environment
+can decrypt the bot token and run the outbound worker; otherwise the control plane
+reports configured-but-unavailable and does not imply that messages will be sent.
 The response also includes an opaque `installationId` when present; clients must retain and echo
 it as `expectedInstallationId` when starting an OAuth reconnect. It is an identity fence, not a
 credential.

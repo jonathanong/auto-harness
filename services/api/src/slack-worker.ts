@@ -94,21 +94,20 @@ export class SlackLifecycleWorker {
         this.dependencies.transport,
         {
           now: this.now,
-          onFailure: (event) => {
+          onFailure: async (event) => {
             this.report(
               new Error(`slack ${event.operation} ${event.status} ${event.id}: ${event.error}`),
             );
-            void this.recordOutcome({ ok: false, error: event.error });
+            await this.recordOutcome({ ok: false, error: event.error });
           },
         },
       );
-      if (result === "sent") void this.recordOutcome({ ok: true });
+      if (result === "sent") await this.recordOutcome({ ok: true });
       if (result === "idle") return;
     }
   }
 
-  /** Delivery-status observability cannot block retry or dead-letter (mirrors the outbox's
-   * own `onFailure` swallow in slack-outbox.ts), so this is fire-and-forget from the tick. */
+  /** Await persistence before a one-shot worker returns, while isolating storage failures. */
   private async recordOutcome(outcome: { ok: true } | { ok: false; error: string }): Promise<void> {
     try {
       const at = this.now();

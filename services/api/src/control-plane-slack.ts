@@ -102,15 +102,21 @@ export async function updateSlackIntegrationDurable(
     ? await state.storage.getSlackIntegration()
     : state.slackIntegration;
   if (!current) return { ok: false, error: "Slack integration not found" };
-  const record = await makeManualSlackRecord(
-    input,
-    encryptor,
-    current.createdAt,
-    current.version + 1,
-    state.now(),
-    current.installationId,
-    await resolveManualSlackIdentity(state, input),
-  );
+  const record = {
+    ...(await makeManualSlackRecord(
+      input,
+      encryptor,
+      current.createdAt,
+      current.version + 1,
+      state.now(),
+      current.installationId,
+      await resolveManualSlackIdentity(state, input),
+    )),
+    ...(current.lastDeliveryFailure ? { lastDeliveryFailure: current.lastDeliveryFailure } : {}),
+    ...(current.lastDeliveryOutcomeAt
+      ? { lastDeliveryOutcomeAt: current.lastDeliveryOutcomeAt }
+      : {}),
+  };
   if (!state.storage) {
     state.slackIntegration = record;
     return { ok: true, integration: await publicIntegration(state, record) };

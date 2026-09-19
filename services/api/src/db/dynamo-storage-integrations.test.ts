@@ -94,4 +94,56 @@ describe("DynamoDB Slack integration storage", () => {
 
     expect(await ctx.storage.deleteSlackIntegration(1)).toBe(true);
   });
+
+  it("keeps worker outcomes across stale settings writes and ignores older outcomes", async () => {
+    if (!ctx.storage) return;
+    const record = {
+      id: "slack" as const,
+      type: "slack" as const,
+      encryptedConfig: "ciphertext-only",
+      defaultChannel: "C0123ABCDE",
+      enabled: true,
+      notifications: {
+        onSessionCreated: true,
+        onSessionStarted: true,
+        onSessionCompleted: true,
+        onSessionFailed: true,
+        onSessionCancelled: true,
+        onScheduleCompleted: false,
+      },
+      signingSecretConfigured: false,
+      version: 1,
+      createdAt: "2026-08-10T00:00:00.000Z",
+      updatedAt: "2026-08-10T00:00:00.000Z",
+    };
+    expect(await ctx.storage.putSlackIntegration(record, null)).toBe(true);
+    const beforeFailure = await ctx.storage.getSlackIntegration();
+    await ctx.storage.recordSlackDeliveryOutcome({
+      ok: false,
+      error: "new failure",
+      at: "2026-08-10T00:03:00.000Z",
+    });
+    expect(await ctx.storage.putSlackIntegration({ ...beforeFailure!, version: 2 }, 1)).toBe(true);
+    expect((await ctx.storage.getSlackIntegration())?.lastDeliveryFailure?.message).toBe(
+      "new failure",
+    );
+
+    const beforeSuccess = await ctx.storage.getSlackIntegration();
+    await ctx.storage.recordSlackDeliveryOutcome({ ok: true, at: "2026-08-10T00:04:00.000Z" });
+    await ctx.storage.recordSlackDeliveryOutcome({
+      ok: false,
+      error: "equal-time stale failure",
+      at: "2026-08-10T00:04:00.000Z",
+    });
+    await ctx.storage.recordSlackDeliveryOutcome({
+      ok: false,
+      error: "older stale failure",
+      at: "2026-08-10T00:02:00.000Z",
+    });
+    expect(await ctx.storage.putSlackIntegration({ ...beforeSuccess!, version: 3 }, 2)).toBe(true);
+    const final = await ctx.storage.getSlackIntegration();
+    expect(final?.lastDeliveryFailure).toBeUndefined();
+    expect(final?.lastDeliveryOutcomeAt).toBe("2026-08-10T00:04:00.000Z");
+    expect(await ctx.storage.deleteSlackIntegration(3)).toBe(true);
+  });
 });

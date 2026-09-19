@@ -71,6 +71,27 @@ describe("Slack OAuth installation", () => {
     expect(plane.state.slackIntegration).not.toHaveProperty("botUserId");
   });
 
+  it("preserves worker-owned delivery status across an OAuth reconnect", async () => {
+    const plane = new ControlPlane({ secretEncryptor: encryptor() });
+    await plane.installSlackOAuthIntegrationDurable(input() as never);
+    Object.assign(plane.state.slackIntegration!, {
+      lastDeliveryFailure: { message: "temporary", at: "2026-08-10T00:01:00.000Z" },
+      lastDeliveryOutcomeAt: "2026-08-10T00:01:00.000Z",
+    });
+    const reconnected = await plane.installSlackOAuthIntegrationDurable(
+      input({ expectedVersion: 1 }) as never,
+    );
+    expect(reconnected).toMatchObject({
+      ok: true,
+      integration: {
+        lastDeliveryFailure: { message: "temporary", at: "2026-08-10T00:01:00.000Z" },
+      },
+    });
+    if (!reconnected.ok) throw new Error("Slack OAuth reconnect failed");
+    expect(reconnected.integration).not.toHaveProperty("lastDeliveryOutcomeAt");
+    expect(plane.state.slackIntegration?.lastDeliveryOutcomeAt).toBe("2026-08-10T00:01:00.000Z");
+  });
+
   it("fences stale versions, identity changes, and failed durable compares", async () => {
     const plane = new ControlPlane({ secretEncryptor: encryptor() });
     await plane.installSlackOAuthIntegrationDurable(input() as never);

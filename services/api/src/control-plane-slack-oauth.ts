@@ -63,6 +63,10 @@ export async function installSlackOAuthIntegrationDurable(
     ...(input.exchange.botUserId ? { botUserId: input.exchange.botUserId } : {}),
     grantedScopes: input.exchange.scopes,
     installationId: current?.installationId ?? randomUUID(),
+    ...(current?.lastDeliveryFailure ? { lastDeliveryFailure: current.lastDeliveryFailure } : {}),
+    ...(current?.lastDeliveryOutcomeAt
+      ? { lastDeliveryOutcomeAt: current.lastDeliveryOutcomeAt }
+      : {}),
     version: (current?.version ?? 0) + 1,
     createdAt: current?.createdAt ?? at,
     updatedAt: at,

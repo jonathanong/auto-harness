@@ -388,6 +388,21 @@ describe("Slack durable outbox", () => {
     expect(store.items.get("root")?.nextAttemptAt).toBe("2026-08-12T10:00:07.000Z");
   });
 
+  it("does not report a transport failure after losing the delivery lease", async () => {
+    const store = new MemoryStore();
+    await store.enqueue(record("root"));
+    vi.spyOn(store, "reschedule").mockResolvedValue(false);
+    const onFailure = vi.fn();
+    expect(
+      await processSlackOutboxOnce(
+        store,
+        { deliver: vi.fn().mockRejectedValue(new Error("temporary")) },
+        { now: () => now, leaseToken: () => "lost-lease", onFailure },
+      ),
+    ).toBe("deferred");
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+
   it("ignores an invalid transport Retry-After delay", async () => {
     const store = new MemoryStore();
     await store.enqueue(record("root"));

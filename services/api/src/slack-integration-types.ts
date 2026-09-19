@@ -33,6 +33,8 @@ export type SlackIntegrationRecord = {
    * versa.
    */
   lastDeliveryFailure?: { message: string; at: string };
+  /** Internal ordering fence for worker-owned delivery status. Never exposed publicly. */
+  lastDeliveryOutcomeAt?: string;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -44,7 +46,10 @@ export type SlackDeliveryOutcome =
   | { ok: true; at: string }
   | { ok: false; error: string; at: string };
 
-export type PublicSlackIntegration = Omit<SlackIntegrationRecord, "encryptedConfig"> & {
+export type PublicSlackIntegration = Omit<
+  SlackIntegrationRecord,
+  "encryptedConfig" | "lastDeliveryOutcomeAt"
+> & {
   botTokenConfigured: true;
   deliveryAvailable: boolean;
   installationMethod: "manual" | "oauth";
@@ -68,7 +73,12 @@ export function toPublicSlackIntegration(
   record: SlackIntegrationRecord,
   deliveryAvailable = false,
 ): PublicSlackIntegration {
-  const { encryptedConfig: _encryptedConfig, notifications, ...publicRecord } = record;
+  const {
+    encryptedConfig: _encryptedConfig,
+    lastDeliveryOutcomeAt: _lastDeliveryOutcomeAt,
+    notifications,
+    ...publicRecord
+  } = record;
   return {
     ...publicRecord,
     notifications: normalizeSlackNotifications(notifications),

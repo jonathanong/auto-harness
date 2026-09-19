@@ -17,7 +17,7 @@ type SlackOutboxOptions = {
     operation: SlackDeliveryRecord["operation"];
     status: "retried" | "dead";
     error: string;
-  }) => void;
+  }) => void | Promise<void>;
 };
 
 /** Enqueues insert-only stable IDs, so replaying the same lifecycle event is idempotent. */
@@ -51,7 +51,7 @@ export async function processSlackOutboxOnce(
   const dependencies = await resolveDependencies(store, claimed);
   if (!dependencies.ready) {
     const dead = dependencies.dead;
-    await store.reschedule({
+    const rescheduled = await store.reschedule({
       id: claimed.id,
       leaseToken,
       status: dead ? "dead" : "pending",
@@ -60,7 +60,7 @@ export async function processSlackOutboxOnce(
       error: dependencies.error,
       now: current,
     });
-    return dead ? "dead" : "deferred";
+    return rescheduled && dead ? "dead" : "deferred";
   }
 
   try {
@@ -79,7 +79,7 @@ export async function processSlackOutboxOnce(
     );
     const nextAttemptAt = addMs(current, Math.max(backoffMs, retryAfterMsFrom(cause)));
     const error = errorMessage(cause);
-    await store.reschedule({
+    const rescheduled = await store.reschedule({
       id: claimed.id,
       leaseToken,
       status: dead ? "dead" : "pending",
@@ -88,9 +88,10 @@ export async function processSlackOutboxOnce(
       error,
       now: current,
     });
+    if (!rescheduled) return "deferred";
     const status = dead ? ("dead" as const) : ("retried" as const);
     try {
-      options.onFailure?.({
+      await options.onFailure?.({
         id: claimed.id,
         operation: claimed.operation,
         status,

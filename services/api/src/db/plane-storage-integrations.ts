@@ -41,23 +41,24 @@ export async function putSlackIntegration(
                     : "installationId = :expectedInstallationId",
                 ]),
           ].join(" AND ");
-    await ctx.doc.send(
-      new PutCommand({
-        TableName: ctx.tables.integrations,
-        Item: record,
-        ConditionExpression: condition,
-        ...(expectedVersion === null
-          ? {}
-          : {
-              ExpressionAttributeValues: {
-                ":expectedVersion": expectedVersion,
-                ...(expectedInstallationId === undefined || expectedInstallationId === null
-                  ? {}
-                  : { ":expectedInstallationId": expectedInstallationId }),
-              },
-            }),
-      }),
-    );
+    if (expectedVersion === null) {
+      await ctx.doc.send(
+        new PutCommand({
+          TableName: ctx.tables.integrations,
+          Item: record,
+          ConditionExpression: condition,
+        }),
+      );
+    } else {
+      await ctx.doc.send(
+        new UpdateCommand({
+          TableName: ctx.tables.integrations,
+          Key: { id: record.id },
+          ConditionExpression: condition,
+          ...slackIntegrationUpdate(record, expectedVersion, expectedInstallationId),
+        }),
+      );
+    }
     return true;
   } catch (error) {
     if (
@@ -70,6 +71,53 @@ export async function putSlackIntegration(
     }
     throw error;
   }
+}
+
+const SLACK_OPTIONAL_FIELDS = [
+  "workspaceId",
+  "workspaceName",
+  "appId",
+  "botUserId",
+  "grantedScopes",
+  "installationId",
+] as const;
+
+/** Updates settings-owned fields only; worker-owned delivery outcome fields stay untouched. */
+function slackIntegrationUpdate(
+  record: SlackIntegrationRecord,
+  expectedVersion: number,
+  expectedInstallationId: string | null | undefined,
+): {
+  UpdateExpression: string;
+  ExpressionAttributeNames: Record<string, string>;
+  ExpressionAttributeValues: Record<string, unknown>;
+} {
+  const names: Record<string, string> = {};
+  const values: Record<string, unknown> = {
+    ":expectedVersion": expectedVersion,
+    ...(typeof expectedInstallationId === "string"
+      ? { ":expectedInstallationId": expectedInstallationId }
+      : {}),
+  };
+  const set: string[] = [];
+  const remove: string[] = [];
+  for (const [field, value] of Object.entries(record)) {
+    if (field === "id" || field === "lastDeliveryFailure" || field === "lastDeliveryOutcomeAt")
+      continue;
+    names[`#${field}`] = field;
+    values[`:${field}`] = value;
+    set.push(`#${field} = :${field}`);
+  }
+  for (const field of SLACK_OPTIONAL_FIELDS) {
+    if (field in record) continue;
+    names[`#${field}`] = field;
+    remove.push(`#${field}`);
+  }
+  return {
+    UpdateExpression: `SET ${set.join(", ")}${remove.length ? ` REMOVE ${remove.join(", ")}` : ""}`,
+    ExpressionAttributeNames: names,
+    ExpressionAttributeValues: values,
+  };
 }
 export async function deleteSlackIntegration(
   ctx: PlaneStorageCtx,
@@ -98,10 +146,8 @@ export async function deleteSlackIntegration(
   }
 }
 /**
- * Narrow, version-independent update: it neither reads nor bumps `version`, so it never
- * races or conflicts with a concurrent settings-form CAS write through
- * `putSlackIntegration`. A missing row (integration deleted) or, on success, nothing to
- * clear both fail the condition and are treated as a no-op rather than an error.
+ * Narrow, version-independent update: it neither reads nor bumps `version`, and its
+ * monotonic timestamp fence prevents a delayed older outcome from replacing a newer one.
  */
 export async function recordSlackDeliveryOutcome(
   ctx: PlaneStorageCtx,
@@ -113,13 +159,17 @@ export async function recordSlackDeliveryOutcome(
         TableName: ctx.tables.integrations,
         Key: { id: "slack" },
         ConditionExpression: outcome.ok
-          ? "attribute_exists(id) AND attribute_exists(lastDeliveryFailure)"
-          : "attribute_exists(id)",
+          ? "attribute_exists(id) AND (attribute_not_exists(lastDeliveryOutcomeAt) OR lastDeliveryOutcomeAt < :at OR (lastDeliveryOutcomeAt = :at AND attribute_exists(lastDeliveryFailure)))"
+          : "attribute_exists(id) AND (attribute_not_exists(lastDeliveryOutcomeAt) OR lastDeliveryOutcomeAt < :at)",
         ...(outcome.ok
-          ? { UpdateExpression: "REMOVE lastDeliveryFailure" }
+          ? {
+              UpdateExpression: "SET lastDeliveryOutcomeAt = :at REMOVE lastDeliveryFailure",
+              ExpressionAttributeValues: { ":at": outcome.at },
+            }
           : {
-              UpdateExpression: "SET lastDeliveryFailure = :failure",
+              UpdateExpression: "SET lastDeliveryFailure = :failure, lastDeliveryOutcomeAt = :at",
               ExpressionAttributeValues: {
+                ":at": outcome.at,
                 ":failure": { message: outcome.error, at: outcome.at },
               },
             }),
