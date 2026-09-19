@@ -7,6 +7,7 @@ import { expect, type APIRequestContext, type Page } from "@playwright/test";
 import { fetchHostInventory } from "../../services/host-daemon/src/bootstrap.ts";
 import { startDaemon } from "../../services/host-daemon/src/start-daemon.ts";
 import { runCommandOk } from "../../scripts/lib/run-command.mts";
+import { encodeSessionTargetOptionValue } from "../../services/web/src/session-target.ts";
 import { API_BASE } from "../harness-endpoints.ts";
 
 const API = API_BASE;
@@ -75,6 +76,9 @@ export async function runRealCliSession(opts: {
 }): Promise<void> {
   const { page, request, providerName, argv, appendPrompt, expectStdout } = opts;
   const appendPromptSeparator = opts.appendPromptSeparator ?? true;
+  // Provider and command names are unique, and an isolated e2e stack keeps its DynamoDB
+  // container across runs, so a fixed `claude` name would fail every run after the first.
+  const catalogName = `${providerName}-${Date.now()}`;
   const hostId = `pw-real-${providerName}-${Date.now()}`;
   const repoId = `pw-real-repo-${providerName}-${Date.now()}`;
   const wtId = `wt-${Date.now()}`;
@@ -94,7 +98,7 @@ export async function runRealCliSession(opts: {
     await git(repo, ["branch", "-M", "main"]);
 
     const providerRes = await request.post(`${API}/api/v1/providers`, {
-      data: { name: providerName },
+      data: { name: catalogName },
     });
     expect(providerRes.ok(), `create provider failed: ${await providerRes.text()}`).toBeTruthy();
     const provider = await providerRes.json();
@@ -103,7 +107,7 @@ export async function runRealCliSession(opts: {
 
     const commandRes = await request.post(`${API}/api/v1/commands`, {
       data: {
-        name: `${providerName}-print`,
+        name: `${catalogName}-print`,
         argv,
         appendPrompt,
         appendPromptSeparator,
@@ -169,11 +173,14 @@ export async function runRealCliSession(opts: {
     await page.goto("/sessions/new");
     await expect(page.getByTestId("create-session-target")).toBeEnabled({ timeout: 15_000 });
     await page.getByTestId("create-session-repository-id").selectOption(repositoryId);
+    // Select by value, not label: a provider option's label is only the provider's name, which
+    // does not identify it once earlier runs have left other providers behind.
     await page
       .getByTestId("create-session-target")
-      .selectOption({ label: `${providerName} — e2e` });
+      .selectOption(encodeSessionTargetOptionValue({ kind: "provider", id: provider.id }));
     await page.getByTestId("create-session-prompt").fill(REAL_CLI_PROMPT);
-    await page.getByTestId("create-session-timeout").fill("240");
+    await page.getByTestId("create-session-timeout").selectOption("custom");
+    await page.getByTestId("create-session-timeout-custom").fill("240");
     await page.getByTestId("create-session-submit").click();
 
     await expect(page.getByTestId("page-session-detail")).toBeVisible({ timeout: 15_000 });

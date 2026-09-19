@@ -15,7 +15,7 @@ test.describe("real CLI: codex", () => {
     page,
     request,
   }) => {
-    // Empirically verified (see docs/agent-e2e-testing.md §5.2): no sandbox/approval flag
+    // Empirically verified (see docs/host-daemon-e2e-testing.md §5.2): no sandbox/approval flag
     // needed for a reply-only prompt; stdout includes codex's own session banner/token
     // count around the reply, hence the substring match in expectStdout rather than exact.
     await runRealCliSession({
