@@ -8,13 +8,13 @@ Design details: [aws.md](aws.md), [host-daemon.md](host-daemon.md), [plan.md](pl
 
 ## Prerequisites
 
-| Piece                                | Need                                                                     |
-| ------------------------------------ | ------------------------------------------------------------------------ |
-| Node.js ≥ 22.18                      | monorepo tooling + **native TypeScript type stripping** (no `tsc` build) |
-| pnpm                                 | workspaces (`packageManager` in root `package.json`)                     |
-| Docker                               | **DynamoDB Local** for local API paths                                   |
-| Git 2.36+                            | worktrees and checkout recovery                                          |
-| AI CLIs (optional for real sessions) | Codex / Claude / etc. on the agent host                                  |
+| Piece                                | Need                                                                                        |
+| ------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Node.js ≥ 22.18                      | monorepo tooling + **native TypeScript type stripping** (no `tsc` build)                    |
+| pnpm                                 | workspaces (`packageManager` in root `package.json`)                                        |
+| Docker                               | **DynamoDB Local** for local API paths                                                      |
+| Git 2.36+                            | worktrees and checkout recovery                                                             |
+| AI CLIs (optional for real sessions) | claude / codex / cursor-agent / grok on the agent host — see [agent-clis.md](agent-clis.md) |
 
 ```bash
 pnpm install
@@ -49,8 +49,8 @@ Short checklist:
    host slots, repositories, and providers (operators create sessions; they
    do not Add host), then persist agents with
    `pnpm local:daemon install-service` per
-   [deploy-host-daemon.md](deploy-host-daemon.md). Codex is `codex exec --json`,
-   not `-p`.
+   [deploy-host-daemon.md](deploy-host-daemon.md). See [agent-clis.md](agent-clis.md) for the
+   exact non-interactive argv each provider CLI needs.
 
 See [aws.md](aws.md), [auth.md](auth.md), [security.md](security.md).
 

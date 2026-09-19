@@ -21,6 +21,7 @@ What Auto Harness is, what it does and does not, and why: root [README](../READM
 | [github.md](github.md)                                               | Dependabot, PR labels, actionlint, pr-shepherd CodeRabbit   |
 | [AGENTS.md](../AGENTS.md)                                            | Contributor contract: no docstring-coverage gate (#558)     |
 | [setup.md](setup.md)                                                 | Install, AWS deploy overview, VPS agent production shape    |
+| [agent-clis.md](agent-clis.md)                                       | Install/log in/wire claude, codex, cursor-agent, grok       |
 | [cli.md](cli.md)                                                     | `auto-harness-agent` commands                               |
 | [harness.md](harness.md)                                             | Repo harness hookup examples, requirements                  |
 | [GitHub dispatch action](../actions/dispatch/README.md)              | Fire-and-forget session dispatch from GitHub Actions        |

@@ -131,7 +131,10 @@ pnpm local:daemon uninstall-service
 ### Provider execution profiles (required for provider-backed dispatch)
 
 Every provider account attached to this host needs an entry in `HARNESS_EXECUTION_PROFILES` before
-the daemon will assign it a session. Without it, the daemon still connects, registers, and reports
+the daemon will assign it a session. See [agent-clis.md](agent-clis.md) for the full path — per-CLI
+install/login, creating the Provider/Command/Provider Account, and this file's exact shape — this
+section covers hardening and multi-account/production detail. Without it, the daemon still
+connects, registers, and reports
 `gitReady: true` — dispatch silently queues with no ACK and no control-plane error until the
 session's own `queueExpiresAt` (default 8 days) fails it out from under you with
 `errorCode: queue_expired`. This exact case (no account has an advertised-ready profile) is silent

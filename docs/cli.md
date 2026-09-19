@@ -40,7 +40,9 @@ pnpm local:cli-e2e
 
 Agent process env: `HARNESS_HOST_ID`, `HARNESS_API_URL`, optional `HARNESS_API_KEY`. Optional
 `HARNESS_EXECUTION_PROFILES` points at a daemon-local JSON file of per-account CLI homes
-(credentials never leave the host). For `install-service`, use an absolute profile path; relative
+(credentials never leave the host) — see [agent-clis.md](agent-clis.md) for the exact file shape,
+what the daemon does with each `home`, and the queued-forever failure mode when an account has no
+entry. For `install-service`, use an absolute profile path; relative
 paths are refused rather than being tied to the supervisor working directory. Unknown top-level
 or per-profile JSON keys are rejected. Optional
 `HARNESS_MAX_CONCURRENT_ASSIGNMENTS` overrides the
@@ -246,11 +248,16 @@ longer carries a `commandProfiles` field at all (removed; it never resolved anyt
 D4 landed):
 
 ```bash
-POST /api/v1/providers            # {name} — creates the provider AND its default command
+POST /api/v1/providers            # {name} — does NOT create a default command (see below)
 POST /api/v1/provider-accounts    # {providerId, label, maxConcurrentSessions?}
 POST /api/v1/commands             # {name, argv, appendPrompt, providerId} — providerId: null for standalone
 GET  /api/v1/session-targets      # unified picker: Providers + Commands (including providerless)
 ```
+
+`POST /providers` only ever creates the provider row; the control-plane UI's "Add provider"
+dialog creates the provider, then its command, then links `defaultCommandId` in one submit — a
+script needs the same three calls. See [agent-clis.md](agent-clis.md) for the exact sequence and
+per-CLI argv (`claude`, `codex`, `cursor-agent`, `grok`).
 
 `POST /api/v1/sessions`/`schedules` take a `target` and ordered `fallbacks`: `{ providerId }`
 uses that provider's healthy attached account pool; `{ commandId }` uses that exact command,
