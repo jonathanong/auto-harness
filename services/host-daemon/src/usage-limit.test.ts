@@ -59,11 +59,6 @@ describe("detectUsageLimit", () => {
         expected: "adapter",
       },
       {
-        argv: ["cursor-agent"],
-        adapterUsageLimit: true,
-        expected: "adapter",
-      },
-      {
         argv: ["codex"],
         adapterUsageLimit: true,
         expected: "adapter",
