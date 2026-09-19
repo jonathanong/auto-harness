@@ -296,4 +296,50 @@ describe("session log objects", () => {
       "archive",
     ]);
   });
+
+  it("assigns positional seq to a legacy archive in the exact pre-fix production shape", async () => {
+    // Matches the verified production archive: every line is exactly
+    // {timestamp, stream, content} -- no seq, no dropped.
+    const lines = Array.from({ length: 9 }, (_, i) =>
+      JSON.stringify({
+        timestamp: `2026-01-01T00:00:0${i}.000Z`,
+        stream: i % 2 === 0 ? "stdout" : "stderr",
+        content: `line-${i}`,
+      }),
+    );
+    const objects = new Map([["sessions/legacy/logs.jsonl.gz", gzipJsonlLines(lines)]]);
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => undefined,
+        listKeys: async (prefix) => [...objects.keys()].filter((key) => key.startsWith(prefix)),
+        getGzipObject: async (key) => objects.get(key),
+      },
+    });
+    const records = await readSessionLogObjects(state, "legacy");
+    expect(records?.map((record) => record.seq)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(records?.map((record) => record.content)).toEqual(
+      Array.from({ length: 9 }, (_, i) => `line-${i}`),
+    );
+
+    const filtered = await readSessionLogObjects(state, "legacy", { stream: "stdout", limit: 2 });
+    expect(filtered?.map((record) => record.seq)).toEqual([0, 2]);
+    expect(filtered?.every((record) => record.stream === "stdout")).toBe(true);
+
+    const newest = await readSessionLogObjects(state, "legacy", { order: "desc", limit: 3 });
+    expect(newest?.map((record) => record.seq)).toEqual([6, 7, 8]);
+  });
+
+  it("does not loosen validation for log parts: a well-formed line with no seq is still rejected", async () => {
+    // Same shape as the legacy archive fixture above -- valid timestamp/stream/content, no
+    // seq -- but this time as a log *part*. The strict parser (parts, and the structural
+    // check in putSessionLogArchive) must keep dropping it; only the whole-archive read path
+    // synthesizes a seq.
+    const legacyShapedLine = gzipJsonlLines([
+      JSON.stringify({ timestamp: "2026-01-01T00:00:00.000Z", stream: "stdout", content: "x" }),
+    ]);
+    expect(parseGzipJsonlLogs("sess", legacyShapedLine)).toEqual([]);
+    await expect(
+      putSessionLogPart(createControlPlaneState(), "sess", 1, 1, legacyShapedLine),
+    ).rejects.toThrow("empty log part");
+  });
 });

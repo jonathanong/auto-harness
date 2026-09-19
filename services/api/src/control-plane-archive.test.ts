@@ -1,5 +1,9 @@
 /* eslint-disable max-lines -- archive retry regressions cover durable and in-memory fences. */
+import { gzipSync } from "node:zlib";
+
 import { describe, expect, it, vi } from "vitest";
+
+import { gzipJsonlLines } from "@auto-harness/shared";
 
 import {
   archiveSessionLogs,
@@ -8,6 +12,8 @@ import {
   retrySessionArchiveIfNeeded,
 } from "./control-plane-archive.ts";
 import { createControlPlaneState, settleStorage, trackLogPersist } from "./control-plane-state.ts";
+import { getLogsDurable } from "./control-plane-durable-read-runtime.ts";
+import type { ArchiveWriteResult } from "./archive-writer.ts";
 
 describe("archive retry state", () => {
   it("treats a throwing listLogs as an empty archive body", async () => {
@@ -1486,5 +1492,119 @@ describe("archive retry state", () => {
     ).resolves.toBe(0);
     expect(uploaded).toEqual([]);
     expect(state.archives.get(key)?.retryOrder).toBe("new-claim");
+  });
+});
+
+describe("archive body includes seq for legacy readability", () => {
+  it("writes seq (and dropped when present) into the archive body", async () => {
+    let uploadedBody = "";
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async ({ body }) => {
+          uploadedBody = body;
+          return { versionId: "seq-v1" };
+        },
+      },
+    });
+    state.logs.set("has-seq", [
+      {
+        sessionId: "has-seq",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        stream: "stdout",
+        content: "hello",
+        seq: 5,
+        timestampSeq: "2026-01-01T00:00:00.000Z#0000000005",
+        dropped: 2,
+      },
+    ]);
+    await archiveSessionLogs(state, "has-seq");
+    expect(uploadedBody).toBe(
+      '{"timestamp":"2026-01-01T00:00:00.000Z","stream":"stdout","content":"hello","seq":5,"dropped":2}\n',
+    );
+  });
+
+  it("round-trips through the real archive path: getLogsDurable returns every record with its seq", async () => {
+    const stored = new Map<string, Buffer>();
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async ({ key, body }): Promise<ArchiveWriteResult> => {
+          stored.set(key, gzipSync(Buffer.from(body)));
+          return { versionId: "round-trip-v1" };
+        },
+        listKeys: async (prefix) => [...stored.keys()].filter((key) => key.startsWith(prefix)),
+        getGzipObject: async (key) => stored.get(key),
+      },
+    });
+    state.logs.set("round-trip", [
+      {
+        sessionId: "round-trip",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        stream: "stdout",
+        content: "a",
+        seq: 1,
+        timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+      },
+      {
+        sessionId: "round-trip",
+        timestamp: "2026-01-01T00:00:01.000Z",
+        stream: "stderr",
+        content: "b",
+        seq: 2,
+        timestampSeq: "2026-01-01T00:00:01.000Z#0000000002",
+        dropped: 3,
+      },
+    ]);
+    await archiveSessionLogs(state, "round-trip");
+    // The recent-log rows are pruned once archival completes, as they are in production --
+    // only the archive object remains.
+    state.logs.delete("round-trip");
+    const records = await getLogsDurable(state, "round-trip");
+    expect(records.map(({ content, seq, dropped }) => ({ content, seq, dropped }))).toEqual([
+      { content: "a", seq: 1, dropped: undefined },
+      { content: "b", seq: 2, dropped: 3 },
+    ]);
+  });
+
+  it("does not expire a session whose only remaining transcript is a legacy seq-less archive", async () => {
+    const key = "sessions/legacy-retain/logs.jsonl.gz";
+    const legacyBody = gzipJsonlLines([
+      JSON.stringify({
+        timestamp: "2026-01-01T00:00:00.000Z",
+        stream: "stdout",
+        content: "legacy",
+      }),
+    ]);
+    const stored = new Map<string, Buffer>([[key, legacyBody]]);
+    let uploadedBody: string | undefined;
+    const state = createControlPlaneState({
+      now: () => "2026-01-08T00:00:00.000Z",
+      archiveWriter: {
+        putArchive: async ({ body }) => {
+          uploadedBody = body;
+          return { versionId: "healed-v1" };
+        },
+        listKeys: async (prefix) => [...stored.keys()].filter((k) => k.startsWith(prefix)),
+        getGzipObject: async (k) => stored.get(k),
+      },
+    });
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "claim-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await retrySessionArchiveIfNeeded(state, "legacy-retain", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    // Before this fix, the legacy line parsed to zero records, archiveBody saw an empty
+    // body, and retention-elapsed + "no logs remain" (from the same broken reader) marked
+    // the archive expired -- discarding a transcript that genuinely still existed in S3.
+    expect(state.archives.get(key)?.status).toBe("complete");
+    expect(uploadedBody).toContain('"seq":0');
   });
 });

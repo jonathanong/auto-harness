@@ -49,6 +49,14 @@ Do **not** use S3 multipart upload for these parts: minimum part size is **5 MB*
 part. Staging is ordinary `PutObject` of gzip members; the host concatenates (gzip members may be
 concatenated, or recompressed as one member) into the final key.
 
+Every JSONL line, in both parts and the final archive, is `{timestamp, stream, content, seq,
+dropped?}` (Invariant 5) -- the same shape `gzipLogRecords`/`serializeLogRecordLine` produce.
+Cron can also write the terminal archive itself (from durable log rows or leftover parts, via
+`archiveBody`) when the host never finishes concatenating. A small number of archives written
+before `seq` was added to that path predate this shape; readers assign each such line a `seq`
+from its position in the file (already chronological) rather than dropping it, so those archives
+still read back in full.
+
 The host PUTs parts and the terminal archive over REST (`PUT /sessions/:id/log-parts` and
 `PUT /sessions/:id/log-archive`) with the attempt-scoped session API key. That avoids a
 presigned URL that expires mid-session and keeps S3 off the WebSocket Lambda. REST has
