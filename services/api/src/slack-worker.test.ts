@@ -340,6 +340,60 @@ describe("Slack lifecycle worker", () => {
     });
   });
 
+  it("retains one latest outcome per installation in a mixed-identity drain", async () => {
+    const store = new MemoryOutbox();
+    const delivery = (id: string, installationId: string): SlackDeliveryRecord => ({
+      id,
+      integrationId: "slack",
+      installationId,
+      sessionId: id,
+      event: "session_created",
+      operation: "post-root",
+      channel: "C123",
+      text: id,
+      status: "pending",
+      attempts: 0,
+      maxAttempts: 8,
+      nextAttemptAt: initial,
+      createdAt: initial,
+      updatedAt: initial,
+    });
+    store.items.set("current-b", delivery("current-b", "installation-b"));
+    store.items.set("stale-a", delivery("stale-a", "installation-a"));
+    const recordDeliveryOutcome = vi.fn(async () => undefined);
+    const deliver = vi
+      .fn<SlackTransport["deliver"]>()
+      .mockRejectedValueOnce(new Error("current delivery failed"))
+      .mockImplementation(async (request) => ({
+        channel: request.channel,
+        messageTs: `ts-${request.idempotencyKey}`,
+      }));
+    const worker = new SlackLifecycleWorker(
+      {
+        store,
+        transport: { deliver },
+        getConfig: async () => ({ ...config, installationId: "installation-b" }),
+        listSessions: async () => [],
+        recordDeliveryOutcome,
+      },
+      { now: () => initial, maxOperationsPerTick: 2 },
+    );
+
+    await expect(worker.runOnce()).resolves.toBe(true);
+    expect(recordDeliveryOutcome).toHaveBeenCalledTimes(2);
+    expect(recordDeliveryOutcome).toHaveBeenCalledWith({
+      ok: false,
+      error: expect.stringContaining("current delivery failed"),
+      at: initial,
+      installationId: "installation-b",
+    });
+    expect(recordDeliveryOutcome).toHaveBeenCalledWith({
+      ok: true,
+      at: initial,
+      installationId: "installation-a",
+    });
+  });
+
   it("runs a one-shot drain without starting the interval timer", async () => {
     const store = new MemoryOutbox();
     let release!: () => void;

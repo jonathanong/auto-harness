@@ -93,7 +93,7 @@ export class SlackLifecycleWorker {
     for (const session of await this.dependencies.listSessions()) {
       await reconcileSlackSession({ store: this.dependencies.store, config, session, now });
     }
-    let latestOutcome: SlackDeliveryOutcome | undefined;
+    const latestOutcomes = new Map<string | null, SlackDeliveryOutcome>();
     for (let count = 0; count < this.maxOperationsPerTick; count += 1) {
       const result = await processSlackOutboxOnce(
         this.dependencies.store,
@@ -101,38 +101,46 @@ export class SlackLifecycleWorker {
         {
           now: this.now,
           onSuccess: (event) => {
-            latestOutcome = {
+            const outcome: SlackDeliveryOutcome = {
               ok: true,
               at: this.now(),
               installationId: event.installationId,
             };
+            latestOutcomes.set(outcome.installationId, outcome);
           },
           onFailure: (event) => {
             this.report(
               new Error(`slack ${event.operation} ${event.status} ${event.id}: ${event.error}`),
             );
-            latestOutcome = {
+            const outcome: SlackDeliveryOutcome = {
               ok: false,
               error: event.error,
               at: this.now(),
               installationId: event.installationId,
             };
+            latestOutcomes.set(outcome.installationId, outcome);
           },
         },
       );
       if (result === "idle") break;
     }
-    if (latestOutcome) await this.recordOutcome(latestOutcome);
+    await this.recordOutcomes([...latestOutcomes.values()]);
   }
 
   /** Coalesced best-effort status cannot extend a bounded worker tick indefinitely. */
-  private async recordOutcome(outcome: SlackDeliveryOutcome): Promise<void> {
+  private async recordOutcomes(outcomes: SlackDeliveryOutcome[]): Promise<void> {
+    const record = this.dependencies.recordDeliveryOutcome;
+    if (!record || outcomes.length === 0) return;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      const write = this.dependencies.recordDeliveryOutcome?.(outcome);
-      if (!write) return;
       await Promise.race([
-        write,
+        Promise.allSettled(
+          outcomes.map((outcome) => Promise.resolve().then(() => record(outcome))),
+        ).then((results) => {
+          for (const result of results) {
+            if (result.status === "rejected") this.report(result.reason);
+          }
+        }),
         new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(
             () => reject(new Error("Slack delivery outcome persistence timed out")),
