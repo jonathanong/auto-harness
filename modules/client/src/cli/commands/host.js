@@ -4,6 +4,7 @@ import { runHostInventory } from "./host-inventory.js";
 import { runHostList } from "./host-list.js";
 import { runHostRepo } from "./host-repo.js";
 import { runHostResume } from "./host-resume.js";
+import { runHostSmoke } from "./host-smoke.js";
 
 const USAGE = `usage: auto-harness host <subcommand> ...
   auto-harness host list [--online | --offline] [--limit N] [--cursor C] [--all] [--json]
@@ -13,7 +14,9 @@ const USAGE = `usage: auto-harness host <subcommand> ...
   auto-harness host inventory set <hostId> --file <path|->
   auto-harness host repo add <hostId> <repositoryId> --path <path> [--worktree <id>=<path>]...
     [--default-branch <branch>] [--dry-run] [--json]
-  auto-harness host repo rm <hostId> <repositoryId> [--dry-run] [--json]`;
+  auto-harness host repo rm <hostId> <repositoryId> [--dry-run] [--json]
+  auto-harness host smoke <hostId> --repo-path <path> --provider <id|name>
+    [--provider <id|name>]... [--timeout <seconds>] [--json]`;
 
 /** Dispatches `host <subcommand>` to its own module — mirrors `main.js`'s own dispatch. */
 export async function runHost(argv, io) {
@@ -23,5 +26,6 @@ export async function runHost(argv, io) {
   if (subcommand === "resume") return runHostResume(rest, io);
   if (subcommand === "inventory") return runHostInventory(rest, io);
   if (subcommand === "repo") return runHostRepo(rest, io);
+  if (subcommand === "smoke") return runHostSmoke(rest, io);
   throw new CliUsageError(USAGE);
 }
