@@ -118,8 +118,21 @@ describe("Slack HTTP transport", () => {
       messageTs: "1.0",
     });
     expect(fetchImpl).toHaveBeenCalledTimes(3);
-    expect(JSON.parse(fetchImpl.mock.calls[1]![1].body)).toMatchObject({ thread_ts: "1.0" });
-    expect(JSON.parse(fetchImpl.mock.calls[2]![1].body)).toMatchObject({ ts: "1.0" });
+    expect(JSON.parse(fetchImpl.mock.calls[0]![1].body)).toMatchObject({
+      unfurl_links: false,
+      unfurl_media: false,
+    });
+    expect(JSON.parse(fetchImpl.mock.calls[1]![1].body)).toMatchObject({
+      thread_ts: "1.0",
+      unfurl_links: false,
+      unfurl_media: false,
+    });
+    const updateBody = JSON.parse(fetchImpl.mock.calls[2]![1].body) as Record<string, unknown>;
+    // chat.update does not document unfurl_links/unfurl_media; suppressing the unfurl on
+    // the original post is what prevents Slack's async unfurl from clobbering this edit.
+    expect(updateBody).toMatchObject({ ts: "1.0" });
+    expect(updateBody).not.toHaveProperty("unfurl_links");
+    expect(updateBody).not.toHaveProperty("unfurl_media");
 
     let release!: () => void;
     const blocked = new Promise<void>((resolve) => {
