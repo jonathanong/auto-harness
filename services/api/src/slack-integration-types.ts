@@ -24,10 +24,25 @@ export type SlackIntegrationRecord = {
   grantedScopes?: string[];
   /** Opaque identity for this singleton installation; absent on legacy rows. */
   installationId?: string;
+  /**
+   * The most recent delivery failure, cleared on the next successful delivery. `message`
+   * is always the outbox row's already-sanitized `lastError` (never a token or secret —
+   * `slackError()` in slack-http-transport.ts never includes the bot token). Written by a
+   * narrow, unconditioned-on-version update (`recordSlackDeliveryOutcome`) so an operator
+   * editing settings concurrently never loses this write to a version conflict, and vice
+   * versa.
+   */
+  lastDeliveryFailure?: { message: string; at: string };
   version: number;
   createdAt: string;
   updatedAt: string;
 };
+
+/** Outcome of one durable delivery attempt, recorded on the integration row so Settings
+ * can show *why* Slack isn't working without querying the deliveries table. */
+export type SlackDeliveryOutcome =
+  | { ok: true; at: string }
+  | { ok: false; error: string; at: string };
 
 export type PublicSlackIntegration = Omit<SlackIntegrationRecord, "encryptedConfig"> & {
   botTokenConfigured: true;

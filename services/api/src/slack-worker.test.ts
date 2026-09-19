@@ -237,6 +237,61 @@ describe("Slack lifecycle worker", () => {
     expect([...store.items.values()].filter(({ status }) => status === "sent")).toHaveLength(1);
   });
 
+  it("reports delivery outcomes for Settings without letting a throwing reporter block draining", async () => {
+    const store = new MemoryOutbox();
+    let clock = initial;
+    const outcomes: Array<{ ok: boolean; error?: string; at: string }> = [];
+    const recordDeliveryOutcome = async (outcome: { ok: boolean; error?: string; at: string }) => {
+      outcomes.push(outcome);
+      // Delivery-status observability failing must never affect the outbox itself.
+      throw new Error("observability boom");
+    };
+    const deliver = vi
+      .fn<SlackTransport["deliver"]>()
+      .mockRejectedValueOnce(new Error("temporary"))
+      .mockImplementation(async (request) => ({
+        channel: request.channel,
+        messageTs: `ts-${request.idempotencyKey}`,
+      }));
+    const worker = new SlackLifecycleWorker(
+      {
+        store,
+        transport: { deliver },
+        getConfig: async () => config,
+        listSessions: async () => [completed],
+        recordDeliveryOutcome,
+      },
+      { now: () => clock, maxOperationsPerTick: 20 },
+    );
+    worker.start();
+    await worker.stop();
+    expect(outcomes).toEqual([
+      { ok: false, error: expect.stringContaining("temporary"), at: initial },
+    ]);
+
+    clock = "2026-08-12T10:01:00.000Z";
+    const restarted = new SlackLifecycleWorker(
+      {
+        store,
+        transport: { deliver },
+        getConfig: async () => config,
+        listSessions: async () => [completed],
+        recordDeliveryOutcome,
+      },
+      { now: () => clock },
+    );
+    restarted.start();
+    await restarted.stop();
+
+    expect(outcomes.filter((outcome) => outcome.ok)).toEqual([
+      { ok: true, at: clock },
+      { ok: true, at: clock },
+      { ok: true, at: clock },
+      { ok: true, at: clock },
+    ]);
+    expect([...store.items.values()].every(({ status }) => status === "sent")).toBe(true);
+  });
+
   it("runs a one-shot drain without starting the interval timer", async () => {
     const store = new MemoryOutbox();
     let release!: () => void;

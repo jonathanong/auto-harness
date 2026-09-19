@@ -192,6 +192,12 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return integrations.deleteSlackIntegration(this.ctx, expectedVersion);
   }
 
+  recordSlackDeliveryOutcome(
+    outcome: import("../slack-integration-types.ts").SlackDeliveryOutcome,
+  ): Promise<void> {
+    return integrations.recordSlackDeliveryOutcome(this.ctx, outcome);
+  }
+
   putSlackOAuthState(record: import("../slack-oauth-types.ts").SlackOAuthStateRecord) {
     return slackInbound.putSlackOAuthState(this.ctx, record);
   }

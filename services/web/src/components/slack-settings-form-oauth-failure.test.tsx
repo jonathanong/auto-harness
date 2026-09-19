@@ -34,7 +34,7 @@ const oauth: SlackIntegration = {
 describe("Slack OAuth delivery settings failure", () => {
   it("keeps a mounted PATCH failure adjacent to the delivery form", async () => {
     createApiFake(() => Promise.reject(new Error("offline")));
-    const view = mountForm(<SlackSettingsForm initial={oauth} />);
+    const view = mountForm(<SlackSettingsForm oauthAvailable={true} initial={oauth} />);
     submit(field(view.container, "form-slack-settings"));
     await act(async () => Promise.resolve());
     await act(async () => Promise.resolve());
@@ -50,7 +50,7 @@ describe("Slack OAuth delivery settings failure", () => {
 
   it("keeps an OAuth PATCH HTTP failure adjacent to the delivery form", async () => {
     createApiFake(json({ error: { message: "settings changed concurrently" } }, 409));
-    const view = mountForm(<SlackSettingsForm initial={oauth} />);
+    const view = mountForm(<SlackSettingsForm oauthAvailable={true} initial={oauth} />);
     submit(field(view.container, "form-slack-settings"));
     await act(async () => Promise.resolve());
     await act(async () => Promise.resolve());
@@ -60,7 +60,7 @@ describe("Slack OAuth delivery settings failure", () => {
   });
 
   it("keeps manual replacement validation errors in the manual form", () => {
-    const view = mountForm(<SlackSettingsForm initial={oauth} />);
+    const view = mountForm(<SlackSettingsForm oauthAvailable={true} initial={oauth} />);
     submit(field(view.container, "form-slack-manual-replace"));
     expect(field(view.container, "slack-manual-error").textContent).toContain("Bot token");
     expect(
@@ -70,7 +70,7 @@ describe("Slack OAuth delivery settings failure", () => {
 
   it("keeps a mounted manual replacement HTTP failure in the manual form", async () => {
     createApiFake(json({ error: { message: "manual replacement rejected" } }, 409));
-    const view = mountForm(<SlackSettingsForm initial={oauth} />);
+    const view = mountForm(<SlackSettingsForm oauthAvailable={true} initial={oauth} />);
     setValue(field<HTMLInputElement>(view.container, "slack-bot-token"), "xoxb-1234567890-test");
     submit(field(view.container, "form-slack-manual-replace"));
     await act(async () => Promise.resolve());

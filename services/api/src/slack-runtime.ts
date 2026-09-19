@@ -53,6 +53,7 @@ export function createSlackLifecycleWorker(
       transport,
       getConfig: () => loadSlackLifecycleConfig(plane),
       listSessions: () => listSlackSessionSnapshots(plane, trackedActive),
+      recordDeliveryOutcome: (outcome) => storage.recordSlackDeliveryOutcome(outcome),
     },
     options.worker,
   );

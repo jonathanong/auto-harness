@@ -47,7 +47,22 @@ export type PublicSlackIntegration = {
   inboundAvailable: boolean;
   /** False when config exists but this environment cannot actually send. */
   deliveryAvailable: boolean;
+  /**
+   * The most recent delivery failure (never a secret — the outbox's own sanitized
+   * `lastError`), cleared once a later delivery succeeds. Absent when the integration
+   * has never failed to deliver, or has recovered since.
+   */
+  lastDeliveryFailure?: { message: string; at: string };
   version: number;
   createdAt: string;
   updatedAt: string;
 };
+
+/**
+ * Whether this environment has Slack OAuth app credentials configured at all (client
+ * ID/secret/signing secret), independent of whether an integration has been installed
+ * yet. Present on every `GET /api/v1/integrations/slack` response, including 404 when
+ * unconfigured, so the "Connect with Slack" button can be disabled up front instead of
+ * only failing after a click.
+ */
+export type SlackOAuthAvailability = { oauthAvailable: boolean };

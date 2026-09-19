@@ -20,7 +20,14 @@ import { SlackManualReplacementForm } from "./slack-manual-replacement-form.tsx"
 import { SlackOAuthConnection } from "./slack-oauth-connection.tsx";
 import { apiFetch } from "../lib/client-api.ts";
 
-export function SlackSettingsForm({ initial }: { initial?: SlackIntegration }) {
+export function SlackSettingsForm({
+  initial,
+  oauthAvailable,
+}: {
+  initial?: SlackIntegration;
+  /** Whether this environment has OAuth app credentials configured at all. */
+  oauthAvailable: boolean;
+}) {
   const router = useRouter();
   const [config, setConfig] = useState<SlackIntegration | undefined>(initial);
   const [pending, start] = useTransition();
@@ -103,6 +110,7 @@ export function SlackSettingsForm({ initial }: { initial?: SlackIntegration }) {
         <SlackOAuthConnection
           config={config}
           pending={pending}
+          oauthAvailable={oauthAvailable}
           onStart={() => {
             setDeliveryError(null);
             setManualError(null);

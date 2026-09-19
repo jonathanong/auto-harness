@@ -310,4 +310,34 @@ describe("Slack integration routes", () => {
     };
     expect((await invoke(deleteThrown, "DELETE")).status).toBe(500);
   });
+
+  it("reports OAuth availability on every GET, configured or not", async () => {
+    const credentials = { clientId: "id", clientSecret: "secret", signingSecret: "a".repeat(32) };
+    const unavailablePlane = new ControlPlane({ secretEncryptor: encryptor() });
+    const unavailableHandler = createLocalApp({
+      plane: unavailablePlane,
+      authMode: "disabled",
+    }).handler;
+    expect(
+      await invokeHandler(unavailableHandler, "GET", "/api/v1/integrations/slack"),
+    ).toMatchObject({ status: 404, json: { oauthAvailable: false } });
+    await invokeHandler(unavailableHandler, "POST", "/api/v1/integrations/slack", body());
+    expect(
+      await invokeHandler(unavailableHandler, "GET", "/api/v1/integrations/slack"),
+    ).toMatchObject({ status: 200, json: { oauthAvailable: false } });
+
+    const availablePlane = new ControlPlane({ secretEncryptor: encryptor() });
+    const availableHandler = createLocalApp({
+      plane: availablePlane,
+      authMode: "disabled",
+      slackAppCredentials: credentials,
+    }).handler;
+    expect(
+      await invokeHandler(availableHandler, "GET", "/api/v1/integrations/slack"),
+    ).toMatchObject({ status: 404, json: { oauthAvailable: true } });
+    await invokeHandler(availableHandler, "POST", "/api/v1/integrations/slack", body());
+    expect(
+      await invokeHandler(availableHandler, "GET", "/api/v1/integrations/slack"),
+    ).toMatchObject({ status: 200, json: { oauthAvailable: true } });
+  });
 });

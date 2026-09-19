@@ -8,9 +8,28 @@ import { SlackSettingsForm } from "./slack-settings-form.tsx";
 
 type SettingsState =
   | { kind: "loading" }
-  | { kind: "ready"; integration?: PublicSlackIntegration }
+  | { kind: "ready"; integration?: PublicSlackIntegration; oauthAvailable: boolean }
   | { kind: "forbidden" }
   | { kind: "error" };
+
+/**
+ * A response with no body (or one that fails to parse) degrades to an empty object rather
+ * than throwing, so a malformed or legacy fixture response disables the OAuth button
+ * instead of failing the whole settings page load.
+ */
+async function readJsonBody(response: Response): Promise<Record<string, unknown>> {
+  try {
+    const body: unknown = await response.json();
+    return body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Present on every GET, configured or not — see local-routes-slack-integration.ts. */
+function readOAuthAvailable(body: Record<string, unknown>): boolean {
+  return Boolean(body.oauthAvailable);
+}
 
 export function SettingsPageClient() {
   const [state, setState] = useState<SettingsState>({ kind: "loading" });
@@ -53,14 +72,22 @@ export function SettingsPageClient() {
           return;
         }
         if (response.status === 404) {
-          setState({ kind: "ready" });
+          setState({
+            kind: "ready",
+            oauthAvailable: readOAuthAvailable(await readJsonBody(response)),
+          });
           return;
         }
         if (!response.ok) {
           setState({ kind: "error" });
           return;
         }
-        setState({ kind: "ready", integration: (await response.json()) as PublicSlackIntegration });
+        const body = await readJsonBody(response);
+        setState({
+          kind: "ready",
+          integration: body as PublicSlackIntegration,
+          oauthAvailable: readOAuthAvailable(body),
+        });
       })
       .catch(() => {
         if (active) setState({ kind: "error" });
@@ -96,7 +123,10 @@ export function SettingsPageClient() {
   }
   return (
     <div className="space-y-6" data-pw="slack-settings-section">
-      <SlackSettingsForm {...(state.integration ? { initial: state.integration } : {})} />
+      <SlackSettingsForm
+        {...(state.integration ? { initial: state.integration } : {})}
+        oauthAvailable={state.oauthAvailable}
+      />
     </div>
   );
 }

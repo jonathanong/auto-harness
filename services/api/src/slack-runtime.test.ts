@@ -130,9 +130,17 @@ describe("Slack production runtime", () => {
 
   it("delivers through the HTTP transport when the bot token can be decrypted", async () => {
     const store = new MemoryOutbox();
+    const outcomes: Array<{ ok: boolean; error?: string; at: string }> = [];
     const plane = new ControlPlane({
       storage: Object.assign(store, {
         getSlackIntegration: async () => slackRecord(),
+        recordSlackDeliveryOutcome: async (outcome: {
+          ok: boolean;
+          error?: string;
+          at: string;
+        }) => {
+          outcomes.push(outcome);
+        },
         listAllSessions: async () => [
           {
             id: "session-1",
@@ -180,6 +188,8 @@ describe("Slack production runtime", () => {
       channel: "C123",
       text: expect.stringContaining("auto-harness"),
     });
+    // A successful send is reported to the durable Slack record for Settings to read.
+    expect(outcomes).toEqual([{ ok: true, at: now }]);
   });
 
   it("falls back to in-memory Slack config and skips disabled integrations", async () => {

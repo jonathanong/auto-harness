@@ -267,7 +267,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     if (await handleProviderAccountRoutes(ctx)) return;
     if (await handleCommandRoutes(ctx)) return;
     if (await handleSlackOAuthStartRoute(ctx, slackRoutes)) return;
-    if (await handleSlackIntegrationRoutes(ctx)) return;
+    if (await handleSlackIntegrationRoutes(ctx, Boolean(slackRoutes.credentials))) return;
     if (await handleCustomWebhookConfigRoutes(ctx)) return;
     if (await handleGitHubIngressConfigRoutes(ctx)) return;
     if (await handleSessionLogSettingsRoutes(ctx)) return;

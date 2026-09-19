@@ -21,6 +21,10 @@ type SlackLifecycleWorkerDependencies = {
   transport: SlackTransport;
   getConfig: () => Promise<SlackLifecycleConfig | null>;
   listSessions: () => Promise<SlackSessionSnapshot[]>;
+  /** Surfaces the most recent delivery failure on Settings; see slack-runtime.ts. */
+  recordDeliveryOutcome?: (
+    outcome: { ok: true; at: string } | { ok: false; error: string; at: string },
+  ) => Promise<void>;
 };
 
 /** Polling runtime around the durable outbox. Local and cron inject the HTTP transport. */
@@ -94,10 +98,25 @@ export class SlackLifecycleWorker {
             this.report(
               new Error(`slack ${event.operation} ${event.status} ${event.id}: ${event.error}`),
             );
+            void this.recordOutcome({ ok: false, error: event.error });
           },
         },
       );
+      if (result === "sent") void this.recordOutcome({ ok: true });
       if (result === "idle") return;
+    }
+  }
+
+  /** Delivery-status observability cannot block retry or dead-letter (mirrors the outbox's
+   * own `onFailure` swallow in slack-outbox.ts), so this is fire-and-forget from the tick. */
+  private async recordOutcome(outcome: { ok: true } | { ok: false; error: string }): Promise<void> {
+    try {
+      const at = this.now();
+      await this.dependencies.recordDeliveryOutcome?.(
+        outcome.ok ? { ok: true, at } : { ok: false, error: outcome.error, at },
+      );
+    } catch {
+      // See above: never let this block the outbox.
     }
   }
 

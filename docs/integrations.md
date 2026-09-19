@@ -122,6 +122,24 @@ The response also includes an opaque `installationId` when present; clients must
 it as `expectedInstallationId` when starting an OAuth reconnect. It is an identity fence, not a
 credential.
 
+Two more fields are present on every `GET`, including the `404` returned when nothing is
+configured yet, since both answer questions the Settings page must show before an operator
+does anything:
+
+- `oauthAvailable` (`boolean`) — whether this environment has OAuth app credentials
+  configured at all (see [Delivery and installation setup](#delivery-and-installation-setup)
+  above), resolved once at cold start rather than read from SSM/env per request. The
+  Settings page disables **Connect with Slack** and shows a hint instead of only failing
+  the click with a toast when this is `false`.
+- `lastDeliveryFailure` (`{ message: string; at: string } | undefined`, only once an
+  integration exists) — the most recent delivery failure recorded by the outbox worker
+  (`recordSlackDeliveryOutcome`, a narrow update independent of `version`, so it never
+  conflicts with a concurrent settings save), cleared the next time any delivery succeeds.
+  `message` is always the outbox row's own sanitized `lastError` — never a token or secret.
+  The Settings page renders it under **Configured state** and, for a `not_in_channel`
+  failure, adds a hint to invite the bot into the configured channel (Slack's API returns
+  only a bot user _id_, never a display name, so the hint cannot @-mention the bot by name).
+
 #### `PUT /api/v1/integrations/slack`
 
 Update Slack configuration. **Admin only.**

@@ -1,7 +1,13 @@
 /* eslint-disable max-lines -- integration CAS and deletion-marker write fence stay co-located. */
-import { DeleteCommand, GetCommand, PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DeleteCommand,
+  GetCommand,
+  PutCommand,
+  ScanCommand,
+  UpdateCommand,
+} from "@aws-sdk/lib-dynamodb";
 
-import type { SlackIntegrationRecord } from "../slack-integration-types.ts";
+import type { SlackDeliveryOutcome, SlackIntegrationRecord } from "../slack-integration-types.ts";
 import type { CustomWebhookIntegrationRecord, PlaneStorageCtx } from "./plane-storage-types.ts";
 import { isConditionalTransactionFailed, nextPageKey } from "./plane-storage-types.ts";
 import { ownedWrite, type OwnedDeletionMarker } from "./plane-storage-deletion-markers.ts";
@@ -91,6 +97,39 @@ export async function deleteSlackIntegration(
     throw error;
   }
 }
+/**
+ * Narrow, version-independent update: it neither reads nor bumps `version`, so it never
+ * races or conflicts with a concurrent settings-form CAS write through
+ * `putSlackIntegration`. A missing row (integration deleted) or, on success, nothing to
+ * clear both fail the condition and are treated as a no-op rather than an error.
+ */
+export async function recordSlackDeliveryOutcome(
+  ctx: PlaneStorageCtx,
+  outcome: SlackDeliveryOutcome,
+): Promise<void> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.integrations,
+        Key: { id: "slack" },
+        ConditionExpression: outcome.ok
+          ? "attribute_exists(id) AND attribute_exists(lastDeliveryFailure)"
+          : "attribute_exists(id)",
+        ...(outcome.ok
+          ? { UpdateExpression: "REMOVE lastDeliveryFailure" }
+          : {
+              UpdateExpression: "SET lastDeliveryFailure = :failure",
+              ExpressionAttributeValues: {
+                ":failure": { message: outcome.error, at: outcome.at },
+              },
+            }),
+      }),
+    );
+  } catch (error) {
+    if (!isConditionalFailure(error)) throw error;
+  }
+}
+
 export async function getCustomWebhookIntegration(
   ctx: PlaneStorageCtx,
   id: string,

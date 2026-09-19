@@ -42,7 +42,12 @@ describe("SlackOAuthConnection", () => {
     const assign = vi.spyOn(window.location, "assign").mockImplementation(() => undefined);
     const onStart = vi.fn();
     const view = mountForm(
-      <SlackOAuthConnection config={config} pending={false} onStart={onStart} />,
+      <SlackOAuthConnection
+        oauthAvailable={true}
+        config={config}
+        pending={false}
+        onStart={onStart}
+      />,
     );
     press(field(view.container, "slack-reconnect"));
     await settle();
@@ -59,7 +64,12 @@ describe("SlackOAuthConnection", () => {
     const onStart = vi.fn();
     createApiFake(json({ url: "https://evil.example/authorize" }));
     const invalid = mountForm(
-      <SlackOAuthConnection config={config} pending={false} onStart={onStart} />,
+      <SlackOAuthConnection
+        oauthAvailable={true}
+        config={config}
+        pending={false}
+        onStart={onStart}
+      />,
     );
     press(field(invalid.container, "slack-reconnect"));
     await settle();
@@ -68,7 +78,12 @@ describe("SlackOAuthConnection", () => {
 
     createApiFake(json({ error: { message: "unavailable" } }, 503));
     const failed = mountForm(
-      <SlackOAuthConnection config={config} pending={false} onStart={onStart} />,
+      <SlackOAuthConnection
+        oauthAvailable={true}
+        config={config}
+        pending={false}
+        onStart={onStart}
+      />,
     );
     press(field(failed.container, "slack-reconnect"));
     await settle();
@@ -77,7 +92,12 @@ describe("SlackOAuthConnection", () => {
 
     createApiFake(() => Promise.reject(new Error("offline")));
     const offline = mountForm(
-      <SlackOAuthConnection config={config} pending={false} onStart={onStart} />,
+      <SlackOAuthConnection
+        oauthAvailable={true}
+        config={config}
+        pending={false}
+        onStart={onStart}
+      />,
     );
     press(field(offline.container, "slack-reconnect"));
     await settle();
@@ -88,7 +108,12 @@ describe("SlackOAuthConnection", () => {
     let resolve!: (response: Response) => void;
     createApiFake(() => new Promise<Response>((next) => (resolve = next)));
     const view = mountForm(
-      <SlackOAuthConnection config={config} pending={false} onStart={vi.fn()} />,
+      <SlackOAuthConnection
+        oauthAvailable={true}
+        config={config}
+        pending={false}
+        onStart={vi.fn()}
+      />,
     );
     press(field(view.container, "slack-reconnect"));
     expect(field<HTMLButtonElement>(view.container, "slack-reconnect").disabled).toBe(true);
@@ -101,7 +126,9 @@ describe("SlackOAuthConnection", () => {
   it("starts a first connection with default settings and a null version fence", async () => {
     const api = createApiFake(json({ url: "https://slack.com/oauth/v2/authorize?state=first" }));
     const assign = vi.spyOn(window.location, "assign").mockImplementation(() => undefined);
-    const view = mountForm(<SlackOAuthConnection pending={false} onStart={vi.fn()} />);
+    const view = mountForm(
+      <SlackOAuthConnection oauthAvailable={true} pending={false} onStart={vi.fn()} />,
+    );
     expect(field(view.container, "slack-connect").textContent).toContain("Connect with Slack");
     press(field(view.container, "slack-connect"));
     await settle();
@@ -117,7 +144,9 @@ describe("SlackOAuthConnection", () => {
   it("does not show invalid-response or network-error toasts after unmount", async () => {
     let resolveInvalid!: (response: Response) => void;
     createApiFake(() => new Promise<Response>((resolve) => (resolveInvalid = resolve)));
-    const invalid = mountForm(<SlackOAuthConnection pending={false} onStart={vi.fn()} />);
+    const invalid = mountForm(
+      <SlackOAuthConnection oauthAvailable={true} pending={false} onStart={vi.fn()} />,
+    );
     press(field(invalid.container, "slack-connect"));
     invalid.unmount();
     resolveInvalid(json({ url: null }));
@@ -126,11 +155,28 @@ describe("SlackOAuthConnection", () => {
 
     let rejectNetwork!: (error: Error) => void;
     createApiFake(() => new Promise<Response>((_resolve, reject) => (rejectNetwork = reject)));
-    const offline = mountForm(<SlackOAuthConnection pending={false} onStart={vi.fn()} />);
+    const offline = mountForm(
+      <SlackOAuthConnection oauthAvailable={true} pending={false} onStart={vi.fn()} />,
+    );
     press(field(offline.container, "slack-connect"));
     offline.unmount();
     rejectNetwork(new Error("offline"));
     await settle();
     expect(document.body.textContent ?? "").not.toContain("Unable to start");
+  });
+
+  it("disables the button and shows a hint when OAuth app credentials are not configured", () => {
+    const view = mountForm(
+      <SlackOAuthConnection
+        config={config}
+        pending={false}
+        oauthAvailable={false}
+        onStart={vi.fn()}
+      />,
+    );
+    expect(field<HTMLButtonElement>(view.container, "slack-reconnect").disabled).toBe(true);
+    expect(field(view.container, "slack-oauth-unavailable-hint").textContent).toContain(
+      "not configured",
+    );
   });
 });
