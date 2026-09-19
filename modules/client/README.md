@@ -533,3 +533,65 @@ KEY=$(auto-harness service-account create --name ci --role operator --print-key)
 ```sh
 auto-harness service-account rm svc-1
 ```
+
+### `auto-harness session <subcommand>`
+
+Session lifecycle for the operator CLI. `--provider`/`--command` accept either a catalog id or a
+name — see below.
+
+#### `auto-harness session create --repo <repositoryId> (--provider <id|name> | --command <id|name>) --prompt <text> [--timeout <seconds>] [--ref <ref>] [--concurrency-id <id>] [--wait [--wait-timeout <seconds>]] [--json]`
+
+`POST /sessions`. Exactly one of `--provider`/`--command` is required. Each accepts either a
+catalog id or a name: the CLI lists the relevant catalog once and checks for an exact id match;
+on a miss it sends the value as `providerName`/`commandName` and lets `createSession()`'s own
+name resolution handle it — so an unresolvable or ambiguous name fails with the same
+`AutoHarnessError` (`UNKNOWN_PROVIDER_NAME`, `AMBIGUOUS_PROVIDER_NAME`, ...) documented above,
+never a separate "unknown id" error. `--timeout` defaults to `600` seconds (matching the
+create-session form's own default) since the server requires it but sets no default itself; the
+server's own ceiling (7 days) is enforced there, not duplicated here.
+
+With `--wait`, polls the new session until it reaches a terminal status (`completed`, `failed`,
+`cancelled`, or `timed_out`), printing each status change to **stderr** so stdout stays the final
+session record. `--wait-timeout <seconds>` bounds the wait (default: the session's own
+`--timeout`); on expiry the CLI prints that the session is still running and its id, then exits 1
+— it never cancels the session. Exit 0 only when the session `completed` with `exitCode` exactly
+`0`; every other terminal status, or a wait timeout, exits 1.
+
+```sh
+auto-harness session create --repo repo-1 --command claude-print --prompt "Review the diff" --wait
+```
+
+#### `auto-harness session get <sessionId> [--json]`
+
+`GET /sessions/<id>`, via the library's `getSession()`. Prints one line: id, status, and — only
+when present — `exitCode`, `errorCode`, `errorMessage` (session records use `errorCode`/
+`errorMessage`, never a top-level `error`, and `completedAt`, never `finishedAt`). `--json` prints
+the full record, including `result.summary` when the session set one.
+
+```sh
+auto-harness session get session-1
+```
+
+#### `auto-harness session logs <sessionId> [--limit N] [--cursor C] [--json]`
+
+`GET /sessions/<id>/logs` — a bounded page, printed once; this command never loops over every
+page (see `docs/plan.md` invariant 13). Unlike `repo list`/`host list`, the logs endpoint has no
+`nextCursor`; its only continuation knob is `since`, a whole ISO-8601 timestamp (exclusive),
+which this CLI exposes as `--cursor` for a pagination vocabulary consistent with the other list
+commands. A full page (`items.length === limit`, default `1000`) prints a hint to pass the last
+line's own timestamp as the next `--cursor` — which, because `since` excludes an entire
+timestamp rather than one row, also skips any other record sharing that exact timestamp. This is
+the bounded contract the endpoint offers today; there is no exact row cursor over REST.
+
+```sh
+auto-harness session logs session-1 --limit 200
+```
+
+#### `auto-harness session cancel <sessionId> [--json]`
+
+`POST /sessions/<id>/cancel`, via the library's `cancelSession()`. Prints the same one-line
+summary as `session get`.
+
+```sh
+auto-harness session cancel session-1
+```
