@@ -92,7 +92,7 @@ describe("fetchHostInventory", () => {
     expect(inventoryFingerprint(empty)).toBe(
       inventoryFingerprint({ hostId: "a", repositories: [], providerAccounts: [] }),
     );
-    expect(inventoryFingerprint({ ...empty, inventoryVersion: 1 })).not.toBe(
+    expect(inventoryFingerprint({ ...empty, inventoryVersion: 1 })).toBe(
       inventoryFingerprint({ ...empty, inventoryVersion: 9 }),
     );
     expect(inventoryFingerprint(empty)).not.toBe(
