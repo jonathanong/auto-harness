@@ -131,9 +131,12 @@ appendPromptSeparator: true
 **Watch out for:** without `--force`/`-f`, `cursor-agent --print` still stops to ask for tool-call
 approval — which hangs a non-interactive session waiting on input that will never arrive; the
 preset already includes it. Unlike the other three presets, this one does not request
-`--output-format json` — Cursor's non-interactive output stays plain text unless a custom Command
-adds `--output-format json` itself (Cursor is also not one of the executables that dispatch
-upgrades to a JSON envelope automatically; see `POST /commands` in [api.md](api.md)).
+`--output-format json`, so Cursor's non-interactive output stays plain text. There's also no
+fallback here: dispatch has a compatibility path that adds an output-format flag to an
+older-style `claude -p`/`--print` or `grok -p`/`--single` Command that has no explicit output
+setting (`codex exec` similarly gets `--json`) — but `cursor-agent` isn't one of the recognized
+forms, so a Cursor Command always needs `--output-format json` added explicitly if you want
+machine-parseable output (see `POST /commands` in [api.md](api.md)).
 
 ## Grok
 
