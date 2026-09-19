@@ -1,6 +1,9 @@
-/** Shared fixture for the `host repo rm` test files. Deliberately not named `*.test.js` — the
- * test script globs `test/*.test.js`, and a helper matching that pattern would both run as its
- * own (empty) test file and, worse, re-run any tests defined in whichever file imports it. */
+/** Shared fixture for the `host repo rm`/`host repo add` test files — `repo-a`/`repo-b` are
+ * already attached (useful for both "detach me" and "already attached, refuse to overwrite"
+ * cases); a test that attaches a new repository picks an id such as `repo-c` that is absent
+ * here. Deliberately not named `*.test.js` — the test script globs `test/*.test.js`, and a
+ * helper matching that pattern would both run as its own (empty) test file and, worse, re-run
+ * any tests defined in whichever file imports it. */
 export function makeRecord() {
   return {
     hostId: "host-1",

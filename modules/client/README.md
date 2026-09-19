@@ -375,6 +375,36 @@ Because the write replaces the whole record, omitting `providerAccounts` wipes t
 provider routing — always build the new document from a fresh `inventory get --json`, editing
 only what you mean to change.
 
+#### `auto-harness host repo add <hostId> <repositoryId> --path <path> [--worktree <id>=<path>]... [--default-branch <branch>] [--dry-run] [--json]`
+
+Attaches an already-registered repository (create it first with `auto-harness repo add`) to a
+host's inventory — the counterpart of `host repo rm`. Same safe read-modify-write shape:
+
+1. `GET /repositories/<repositoryId>` — a 404 fails with a clear message naming the id.
+   `--default-branch` defaults to that repository's own `defaultBranch` when omitted.
+2. `GET` the host's inventory. If this repository id is already attached, it fails (exit 1)
+   naming the path it is attached at — this command never overwrites an existing attachment;
+   remove it first with `host repo rm`.
+3. `--dry-run` prints what would be attached and exits without writing.
+4. Otherwise builds the new document as the record exactly as read, with the new entry appended
+   to `repositories` and the read `version` kept — every other field, including
+   `providerAccounts`, is preserved untouched.
+5. On a `409` (someone else wrote first) it re-reads and re-applies, up to 3 attempts total. If
+   the repository is now attached at the same path, that is treated as convergence (another
+   writer already did what this call wanted) rather than an error; a different path fails,
+   naming what is actually attached. Any other error status is not retried.
+6. On success it prints what was attached and the version transition (e.g. `version 29 → 30`).
+
+`--worktree <id>=<path>` is repeatable and adds one worktree entry per occurrence (split on the
+first `=`, so a path containing `=` still parses); a malformed value or a repeated id is a usage
+error (exit 2) before any request is made. Each becomes `{ id, name: id, path, labels: [] }` —
+`name` mirrors `id`, and the worktree's own name/slug shape is validated server-side.
+
+```sh
+auto-harness host repo add host-1 repo-1 --path /repos/repo-1 --dry-run
+auto-harness host repo add host-1 repo-1 --path /repos/repo-1 --worktree wt-1=/repos/repo-1/wt-1
+```
+
 #### `auto-harness host repo rm <hostId> <repositoryId> [--dry-run] [--json]`
 
 Detaches one repository from a host. This exists because the only prior way to do it was to

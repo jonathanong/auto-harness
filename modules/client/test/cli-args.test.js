@@ -62,3 +62,29 @@ test("rejects an unknown flag without leaking an inline value", () => {
 test("requires a value for a value flag", () => {
   assert.throws(() => parseFlags(["--api-url"], { valueFlags: ["--api-url"] }), CliUsageError);
 });
+
+test("collects every occurrence of a repeatable flag into an array, in order", () => {
+  const { flags } = parseFlags(["--worktree", "a=/a", "--worktree", "b=/b"], {
+    repeatableFlags: ["--worktree"],
+  });
+  assert.deepEqual(flags["--worktree"], ["a=/a", "b=/b"]);
+});
+
+test("a repeatable flag not given at all is undefined, not an empty array", () => {
+  const { flags } = parseFlags([], { repeatableFlags: ["--worktree"] });
+  assert.equal(flags["--worktree"], undefined);
+});
+
+test("supports --worktree=value inline form, mixed with the separate-argument form", () => {
+  const { flags } = parseFlags(["--worktree=a=/a", "--worktree", "b=/b"], {
+    repeatableFlags: ["--worktree"],
+  });
+  assert.deepEqual(flags["--worktree"], ["a=/a", "b=/b"]);
+});
+
+test("requires a value for a repeatable flag", () => {
+  assert.throws(
+    () => parseFlags(["--worktree"], { repeatableFlags: ["--worktree"] }),
+    CliUsageError,
+  );
+});

@@ -11,6 +11,8 @@ const USAGE = `usage: auto-harness host <subcommand> ...
   auto-harness host resume <hostId> [--json]
   auto-harness host inventory get <hostId> [--json]
   auto-harness host inventory set <hostId> --file <path|->
+  auto-harness host repo add <hostId> <repositoryId> --path <path> [--worktree <id>=<path>]...
+    [--default-branch <branch>] [--dry-run] [--json]
   auto-harness host repo rm <hostId> <repositoryId> [--dry-run] [--json]`;
 
 /** Dispatches `host <subcommand>` to its own module — mirrors `main.js`'s own dispatch. */
