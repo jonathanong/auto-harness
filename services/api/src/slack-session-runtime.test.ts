@@ -14,13 +14,17 @@ import {
 
 const now = "2026-08-12T10:00:00.000Z";
 
-class InsertStore implements Pick<SlackOutboxStore, "enqueue"> {
+class InsertStore implements Pick<SlackOutboxStore, "enqueue" | "get"> {
   readonly items = new Map<string, SlackDeliveryRecord>();
 
   async enqueue(record: SlackDeliveryRecord) {
     if (this.items.has(record.id)) return "exists" as const;
     this.items.set(record.id, structuredClone(record));
     return "created" as const;
+  }
+
+  async get(id: string) {
+    return structuredClone(this.items.get(id) ?? null);
   }
 }
 
@@ -245,6 +249,7 @@ describe("Slack session lifecycle reconciliation", () => {
     const plane = createControlPlaneState({
       storage: {
         enqueue: store.enqueue.bind(store),
+        get: store.get.bind(store),
         getSlackIntegration: async () => ({
           id: "slack",
           type: "slack",
@@ -288,6 +293,7 @@ describe("Slack session lifecycle reconciliation", () => {
       },
       storage: {
         enqueue: store.enqueue.bind(store),
+        get: store.get.bind(store),
         getSlackIntegration: async () => ({
           id: "slack",
           type: "slack",

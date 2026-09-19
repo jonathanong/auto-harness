@@ -22,6 +22,10 @@ class Outbox {
     this.items.set(record.id, structuredClone(record));
     return "created" as const;
   }
+
+  async get(id: string) {
+    return structuredClone(this.items.get(id) ?? null);
+  }
 }
 
 function failedHandoff(errorCode: "checkout_fetch_failed" | "host_lost"): SessionRecord {
@@ -77,6 +81,7 @@ function coldState(stored: SessionRecord, outbox: Outbox, expire = false) {
       return true;
     },
     enqueue: outbox.enqueue.bind(outbox),
+    get: outbox.get.bind(outbox),
     getSlackIntegration: async () => ({
       id: "slack",
       type: "slack",

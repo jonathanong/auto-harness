@@ -222,6 +222,37 @@ describe("Slack durable outbox", () => {
     expect(store.items.get("update")?.status).toBe("dead");
   });
 
+  it("supersedes a dead sibling ordering dependency instead of cascading its death", async () => {
+    const store = new MemoryStore();
+    const root = {
+      ...record("root"),
+      status: "sent" as const,
+      remoteChannel: "C123",
+      remoteMessageTs: "ts-root",
+    };
+    store.items.set(root.id, root);
+    const deadSibling = { ...record("started-reply", "post-reply"), status: "dead" as const };
+    store.items.set(deadSibling.id, deadSibling);
+    store.items.set("completed-reply", {
+      ...record("completed-reply", "post-reply"),
+      dependsOnId: deadSibling.id,
+      threadRootId: root.id,
+    });
+    const transport = {
+      deliver: vi.fn().mockResolvedValue({ channel: "C123", messageTs: "ts-completed" }),
+    };
+    expect(
+      await processSlackOutboxOnce(store, transport, { now: () => now, leaseToken: () => "lease" }),
+    ).toBe("sent");
+    expect(store.items.get("completed-reply")).toMatchObject({
+      status: "sent",
+      remoteMessageTs: "ts-completed",
+    });
+    expect(transport.deliver).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "completed-reply", threadTs: "ts-root" }),
+    );
+  });
+
   it("retries transport errors and dead-letters at the attempt ceiling", async () => {
     const store = new MemoryStore();
     await store.enqueue({ ...record("root"), maxAttempts: 2 });

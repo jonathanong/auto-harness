@@ -31,8 +31,8 @@ describe("Slack lifecycle planning", () => {
     expect(slackLifecycleEvent("running", "queued")).toBeNull();
   });
 
-  it("plans stable ordered root, reply, and terminal update IDs", () => {
-    const created = planSlackLifecycle({
+  it("plans stable ordered root, reply, and terminal update IDs", async () => {
+    const created = await planSlackLifecycle({
       event: "session_created",
       session: base,
       channel: "C123",
@@ -42,7 +42,7 @@ describe("Slack lifecycle planning", () => {
     expect(created).toHaveLength(1);
     expect(created[0]).toMatchObject({ id: "slack:session-1:thread", maxAttempts: 8 });
 
-    const started = planSlackLifecycle({
+    const started = await planSlackLifecycle({
       event: "session_started",
       session: { ...base, status: "running" },
       channel: "C123",
@@ -56,7 +56,7 @@ describe("Slack lifecycle planning", () => {
     ]);
     expect(started[1]).toMatchObject({ dependsOnId: started[0].id, maxAttempts: 3 });
 
-    const completed = planSlackLifecycle({
+    const completed = await planSlackLifecycle({
       event: "session_completed",
       session: { ...base, status: "completed" },
       channel: "C123",
@@ -69,9 +69,12 @@ describe("Slack lifecycle planning", () => {
       "update-root",
     ]);
     expect(completed[2].dependsOnId).toBe(completed[1].id);
+    // No getDelivery lookup was supplied, so the terminal reply falls back to the
+    // thread root — the same default behavior as before this change.
+    expect(completed[1].dependsOnId).toBe(completed[0].id);
   });
 
-  it("honors every notification flag", () => {
+  it("honors every notification flag", async () => {
     for (const event of [
       "session_created",
       "session_started",
@@ -80,7 +83,7 @@ describe("Slack lifecycle planning", () => {
       "session_cancelled",
     ] as const) {
       expect(
-        planSlackLifecycle({
+        await planSlackLifecycle({
           event,
           session: base,
           channel: "C123",
@@ -101,7 +104,7 @@ describe("Slack lifecycle planning", () => {
       ...DEFAULT_SLACK_NOTIFICATIONS,
       onSessionCreated: false,
     };
-    const started = planSlackLifecycle({
+    const started = await planSlackLifecycle({
       event: "session_started",
       session: { ...base, status: "running" },
       channel: "C123",
@@ -112,7 +115,7 @@ describe("Slack lifecycle planning", () => {
     expect(started[0]).toMatchObject({ event: "session_started", operation: "post-root" });
     expect(started[0].text).toContain("Session started");
 
-    const terminalOnly = planSlackLifecycle({
+    const terminalOnly = await planSlackLifecycle({
       event: "session_failed",
       session: { ...base, status: "failed" },
       channel: "C123",
@@ -123,7 +126,7 @@ describe("Slack lifecycle planning", () => {
     expect(terminalOnly[0]).toMatchObject({ event: "session_failed", operation: "post-root" });
     expect(terminalOnly[0].text).toContain("Session failed");
 
-    const completedWithoutStart = planSlackLifecycle({
+    const completedWithoutStart = await planSlackLifecycle({
       event: "session_completed",
       session: { ...base, status: "completed" },
       channel: "C123",
@@ -136,7 +139,7 @@ describe("Slack lifecycle planning", () => {
       operation: "post-root",
     });
 
-    const startedThenTerminal = planSlackLifecycle({
+    const startedThenTerminal = await planSlackLifecycle({
       event: "session_completed",
       session: { ...base, status: "completed", startedAt: base.createdAt },
       channel: "C123",
