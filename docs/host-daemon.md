@@ -204,7 +204,10 @@ empty list and is reconciled the same way.
 - Resolve absolute paths
 - Validate unique worktree ids, non-overlapping paths, non-empty `hostId`
 - Expose immutable config snapshot to other modules
-- Load daemon-local execution profiles from `HARNESS_EXECUTION_PROFILES` (JSON). Each profile is
+- Load daemon-local execution profiles from `HARNESS_EXECUTION_PROFILES` (JSON). See
+  [agent-clis.md](agent-clis.md) for the end-to-end walkthrough (per-CLI setup, wiring a Provider
+  Account into this file, and the queued-forever failure mode) — the rest of this bullet and the
+  troubleshooting entry below cover the daemon-internal detail. Each profile is
   keyed by Provider Account ID and owns that account's CLI home and extra environment. Extra env
   may not set `HOME` or `USERPROFILE`; the isolated profile home always wins. `install-service`
   persists `HARNESS_EXECUTION_PROFILES` and `HARNESS_MAX_CONCURRENT_ASSIGNMENTS` in the service
