@@ -484,19 +484,26 @@ worktree-manager.ts`), which the control plane never retries on its own. This co
      a hint keyed off its last status: stuck in `queued` usually means no online host advertises
      a ready execution profile for that provider's account (`HARNESS_EXECUTION_PROFILES`), or
      nothing is running the scheduler.
+   - **A genuine polling failure** (a `getSession` network error or a `5xx`, not the usage-limit
+     or setup-failure shapes above) fails only that one provider with `session_wait_failed` — it
+     never aborts the run, so every remaining `--provider` still gets its own attempt. The
+     session is left for teardown's own safety net to cancel.
 4. **Teardown**, always: cancel any session this run created that isn't already terminal, detach
-   the repository (only if it was actually attached), then `DELETE` it. The delete is
-   dependency-guarded server-side, and the worktree/host-inventory projection it checks can lag
-   the detach write teardown just made, so a `409` there is retried a few times with a short
-   backoff before giving up. If teardown itself fails, this command exits `1` and prints the
-   leftover repository id plus the exact `host repo rm`/`repo rm` commands to finish cleanup by
-   hand.
+   the repository (only if it was actually attached), then `DELETE` it. The delete retries a `409`
+   (the worktree/host-inventory projection the delete guard reads can lag the detach write
+   teardown just made) and a transient failure (`5xx`, or a network/timeout error) a few times
+   with a short backoff before giving up; once a transient failure has actually happened, a later
+   `404` is treated as success (the delete most likely landed and the response never arrived). If
+   a session could not be cancelled (anything other than a `409`, which just means it was already
+   terminal), or the repository is left behind, this command exits `1` and prints the exact
+   `session cancel` and/or `host repo rm`/`repo rm` commands needed to finish cleanup by hand.
 
 Exit `0` only when every provider passed **and** teardown itself succeeded; `1` otherwise (a
 malformed invocation is the usual usage-error exit `2`, before any of this runs). Progress
 (`ok`/`FAIL` per step) goes to stderr as it happens; stdout stays a clean final summary — one
 `PASS`/`FAIL` line per provider plus an overall line — or, with `--json`, the full structured
-result (`hostId`, `repositoryId`, `providers[]`, `teardown`, `ok`).
+result (`hostId`, `repositoryId`, `providers[]`, `teardown` — including any `uncancelledSessionIds`
+— `ok`).
 
 ```sh
 auto-harness host smoke host-1 --repo-path /repos/repo-1 --provider claude

@@ -91,6 +91,16 @@ export async function runProviderSmoke({
       message: outcome.message,
     };
   }
+  if (outcome.kind === "session_wait_failed") {
+    step(io, false, `provider ${providerRef}: session wait failed: ${outcome.message}`);
+    return {
+      provider: providerRef,
+      pass: false,
+      reason: "session_wait_failed",
+      sessionId: outcome.sessionId,
+      message: outcome.message,
+    };
+  }
   if (outcome.kind === "usage_limit") {
     await cancelForOutcome(client, io, outcome.sessionId, activeSessionIds);
     const message = "provider account hit its usage limit";

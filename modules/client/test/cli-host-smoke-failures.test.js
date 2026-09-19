@@ -54,7 +54,7 @@ test("session create fails: attach is still detached and the repo still deleted"
   assert.ok(!calls.some((call) => call.includes("/cancel"))); // no session was ever created
 });
 
-test("wait throws (network failure mid-poll): session is still cancelled by teardown's safety net", async () => {
+test("wait throws (network failure mid-poll): only that provider fails, session still cancelled by teardown's safety net", async () => {
   let getCalls = 0;
   const { fetch, calls, state } = makeSmokeFetch({
     getSession: () => {
@@ -62,13 +62,52 @@ test("wait throws (network failure mid-poll): session is still cancelled by tear
       throw new Error("network down");
     },
   });
-  const { io, stdout } = makeIo({ env, fetch });
+  const { io, stdout, stderr } = makeIo({ env, fetch });
   const exitCode = await main(BASE_ARGV, io);
   assert.equal(exitCode, 1);
   assert.equal(getCalls, 1);
-  assert.match(stdout(), /FAIL {2}setup: network down/);
+  assert.equal(stdout().includes("FAIL  setup:"), false); // not a top-level setup failure
+  assert.match(stderr(), /provider claude: session wait failed: network down/);
+  assert.match(stdout(), /FAIL {2}claude: network down/);
   assert.deepEqual(state.cancelledSessionIds, ["session-1"]);
   assert.ok(calls.includes("DELETE /api/v1/repositories/repo-1"));
+});
+
+test("wait throws mid-poll on one provider: the next --provider still runs and passes", async () => {
+  let attempts = 0;
+  const { fetch } = makeSmokeFetch({
+    providers: [
+      { id: "prov-1", name: "claude" },
+      { id: "prov-2", name: "codex" },
+    ],
+    getSession: (sessionId, session) => {
+      if (session?.target?.providerId === "prov-1") {
+        attempts += 1;
+        throw new Error("network down");
+      }
+      return Response.json({ id: sessionId, status: "completed", exitCode: 0 });
+    },
+  });
+  const { io, stdout } = makeIo({ env, fetch });
+  const exitCode = await main(
+    [
+      "host",
+      "smoke",
+      "host-1",
+      "--repo-path",
+      "/repos/x",
+      "--provider",
+      "claude",
+      "--provider",
+      "codex",
+    ],
+    io,
+  );
+  assert.equal(exitCode, 1);
+  assert.equal(attempts, 1);
+  assert.match(stdout(), /FAIL {2}claude: network down/);
+  assert.match(stdout(), /PASS {2}codex/);
+  assert.match(stdout(), /1\/2 providers passed/);
 });
 
 test("logs fetch fails after a completed session: nothing left to cancel, repo still deleted", async () => {

@@ -84,69 +84,85 @@ export async function setupSmokeFixture(request: APIRequestContext, tag: string,
   const repoPath = join(root, "repo");
   const home = join(root, "home");
 
-  mkdirSync(repoPath);
-  mkdirSync(home);
-  await git(repoPath, ["init"]);
-  await git(repoPath, ["config", "user.email", "pw@pw"]);
-  await git(repoPath, ["config", "user.name", "pw"]);
-  writeFileSync(join(repoPath, ".gitignore"), ".worktrees/\n");
-  writeFileSync(join(repoPath, "README"), `${tag}\n`);
-  await git(repoPath, ["add", "."]);
-  await git(repoPath, ["commit", "-m", "init"]);
-  await git(repoPath, ["branch", "-M", "main"]);
-
-  const providerRes = await request.post(`${API}/api/v1/providers`, { data: { name } });
-  expect(providerRes.ok(), await providerRes.text()).toBeTruthy();
-  const provider = await providerRes.json();
-
-  await enableSessionLogUploadAlways(request);
-
-  const commandRes = await request.post(`${API}/api/v1/commands`, {
-    data: { name: `${name}-cmd`, argv, appendPrompt: true, providerId: provider.id },
-  });
-  expect(commandRes.ok(), await commandRes.text()).toBeTruthy();
-  const command = await commandRes.json();
-
-  const patchRes = await request.patch(`${API}/api/v1/providers/${provider.id}`, {
-    data: { defaultCommandId: command.id },
-  });
-  expect(patchRes.ok(), await patchRes.text()).toBeTruthy();
-
-  const accountRes = await request.post(`${API}/api/v1/provider-accounts`, {
-    data: { providerId: provider.id, label: "e2e" },
-  });
-  expect(accountRes.ok(), await accountRes.text()).toBeTruthy();
-  const account = await accountRes.json();
-
-  const inventoryRes = await request.put(`${API}/api/v1/hosts/${hostId}/inventory`, {
-    data: { repositories: [], providerAccounts: [{ providerAccountId: account.id }] },
-  });
-  expect(inventoryRes.ok(), await inventoryRes.text()).toBeTruthy();
-
-  const profilePath = join(root, "execution-profiles.json");
-  writeFileSync(profilePath, JSON.stringify({ accounts: { [account.id]: { home } } }));
-  const config = await fetchHostInventory({ hostId, apiUrl: API });
-  const daemon = await startDaemon({
-    config,
-    identity: { hostId, apiUrl: API },
-    log: (line) => console.log(`[daemon:${tag}]`, line),
-    error: (line) => console.log(`[daemon:${tag}:ERR]`, line),
-    inventoryPollMs: DAEMON_INVENTORY_POLL_MS,
-    childEnvSource: { ...process.env, HARNESS_EXECUTION_PROFILES: profilePath },
-  });
-  const stopNudge = startSchedulerNudge(request);
-
-  return {
-    hostId,
-    providerId: provider.id,
-    accountId: account.id,
-    repoPath,
-    async cleanup() {
-      stopNudge();
-      await daemon.stop();
-      rmSync(root, { recursive: true, force: true });
-    },
+  let daemon: Awaited<ReturnType<typeof startDaemon>> | undefined;
+  let stopNudge: (() => void) | undefined;
+  let cleanedUp = false;
+  // Built before any resource below is created, and safe to call more than once, so both the
+  // catch below (setup failed partway) and the spec's own `finally` (setup succeeded) can call
+  // it — same shutdown order as orchestration.spec.ts's `stopDaemon`/`rmSync` finally: stop
+  // taking new work (the nudge), stop the daemon, then reclaim the filesystem last.
+  const cleanup = async () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    stopNudge?.();
+    await daemon?.stop();
+    rmSync(root, { recursive: true, force: true });
   };
+
+  try {
+    mkdirSync(repoPath);
+    mkdirSync(home);
+    await git(repoPath, ["init"]);
+    await git(repoPath, ["config", "user.email", "pw@pw"]);
+    await git(repoPath, ["config", "user.name", "pw"]);
+    writeFileSync(join(repoPath, ".gitignore"), ".worktrees/\n");
+    writeFileSync(join(repoPath, "README"), `${tag}\n`);
+    await git(repoPath, ["add", "."]);
+    await git(repoPath, ["commit", "-m", "init"]);
+    await git(repoPath, ["branch", "-M", "main"]);
+
+    const providerRes = await request.post(`${API}/api/v1/providers`, { data: { name } });
+    expect(providerRes.ok(), await providerRes.text()).toBeTruthy();
+    const provider = await providerRes.json();
+
+    await enableSessionLogUploadAlways(request);
+
+    const commandRes = await request.post(`${API}/api/v1/commands`, {
+      data: { name: `${name}-cmd`, argv, appendPrompt: true, providerId: provider.id },
+    });
+    expect(commandRes.ok(), await commandRes.text()).toBeTruthy();
+    const command = await commandRes.json();
+
+    const patchRes = await request.patch(`${API}/api/v1/providers/${provider.id}`, {
+      data: { defaultCommandId: command.id },
+    });
+    expect(patchRes.ok(), await patchRes.text()).toBeTruthy();
+
+    const accountRes = await request.post(`${API}/api/v1/provider-accounts`, {
+      data: { providerId: provider.id, label: "e2e" },
+    });
+    expect(accountRes.ok(), await accountRes.text()).toBeTruthy();
+    const account = await accountRes.json();
+
+    const inventoryRes = await request.put(`${API}/api/v1/hosts/${hostId}/inventory`, {
+      data: { repositories: [], providerAccounts: [{ providerAccountId: account.id }] },
+    });
+    expect(inventoryRes.ok(), await inventoryRes.text()).toBeTruthy();
+
+    const profilePath = join(root, "execution-profiles.json");
+    writeFileSync(profilePath, JSON.stringify({ accounts: { [account.id]: { home } } }));
+    const config = await fetchHostInventory({ hostId, apiUrl: API });
+    daemon = await startDaemon({
+      config,
+      identity: { hostId, apiUrl: API },
+      log: (line) => console.log(`[daemon:${tag}]`, line),
+      error: (line) => console.log(`[daemon:${tag}:ERR]`, line),
+      inventoryPollMs: DAEMON_INVENTORY_POLL_MS,
+      childEnvSource: { ...process.env, HARNESS_EXECUTION_PROFILES: profilePath },
+    });
+    stopNudge = startSchedulerNudge(request);
+
+    return {
+      hostId,
+      providerId: provider.id,
+      accountId: account.id,
+      repoPath,
+      cleanup,
+    };
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
 }
 
 /** Runs the real CLI binary as a subprocess — never the API key, always against the e2e stack. */

@@ -128,7 +128,13 @@ export async function runHostSmoke(argv, io) {
           activeSessionIds,
           sleep,
         })
-      : { ok: true, cancelledSessionIds: [], detached: false, repositoryDeleted: false };
+      : {
+          ok: true,
+          cancelledSessionIds: [],
+          uncancelledSessionIds: [],
+          detached: false,
+          repositoryDeleted: false,
+        };
   }
 
   const ok = !setupError && providerResults.every((provider) => provider.pass) && teardownResult.ok;

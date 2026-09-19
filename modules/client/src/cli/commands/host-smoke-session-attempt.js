@@ -30,7 +30,13 @@ function isUnknownRepositorySetupFailure(session) {
  * exponential backoff, bounded by the same overall `timeoutSeconds` deadline as everything
  * else — but only for that one exact, unambiguous failure signature. Every other terminal shape
  * (a real setup/session failure, `usage_limit`, a genuine timeout, a `createSession` rejection)
- * returns immediately, unretried. Resolves to `{ kind: "create_failed", message }` or
+ * returns immediately, unretried. A `waitForSmokeSession` rejection (a genuine `getSession`
+ * failure — network error, 5xx — not a `UsageLimitSignal`, which it already converts) is caught
+ * here too: it is not one of the narrow shapes above, and letting it propagate would abort every
+ * remaining `--provider` in `host-smoke.js`'s loop and get misreported as a top-level
+ * `setupError`. The created session's id is deliberately left in `activeSessionIds` (never
+ * removed on this path) so `teardownSmoke`'s own safety net cancels it. Resolves to
+ * `{ kind: "create_failed", message }`, `{ kind: "session_wait_failed", sessionId, message }`, or
  * `{ kind, session, sessionId }` where `kind` is `waitForSmokeSession`'s own
  * `"usage_limit" | "timeout" | "terminal"`.
  */
@@ -63,13 +69,18 @@ export async function runSessionAttempts({
     activeSessionIds.add(created.id);
     step(io, true, `provider ${providerRef}: created session ${created.id}`);
 
-    const outcome = await waitForSmokeSession(client, created.id, {
-      timeoutMs: Math.max(1, deadline - now()),
-      intervalMs,
-      sleep,
-      now,
-      onStatus: (status) => io.stderr.write(`  session ${created.id}: ${status}\n`),
-    });
+    let outcome;
+    try {
+      outcome = await waitForSmokeSession(client, created.id, {
+        timeoutMs: Math.max(1, deadline - now()),
+        intervalMs,
+        sleep,
+        now,
+        onStatus: (status) => io.stderr.write(`  session ${created.id}: ${status}\n`),
+      });
+    } catch (error) {
+      return { kind: "session_wait_failed", sessionId: created.id, message: error.message };
+    }
     if (outcome.kind === "terminal") activeSessionIds.delete(created.id);
 
     const retryable =
