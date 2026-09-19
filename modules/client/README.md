@@ -409,6 +409,19 @@ auto-harness host repo rm host-1 repo-1
 
 Repository CRUD, straight against the same routes `auto-harness api` would hit.
 
+#### `auto-harness repo add --name <name> --url <url> [--default-branch <branch>] [--json]`
+
+`POST /repositories`. The response is the created repository record itself — there is no
+`{ repository }` wrapper, matching the shape `GET /repositories/<id>` returns — so `--json`
+prints it verbatim. Human output is one line, `<id>  <name>`, mirroring `repo list`'s per-line
+format. `--default-branch` defaults server-side to `main` when omitted. The server also enforces
+uniqueness and URL/name format; a rejected value comes back as the normal `error:` line (exit 1)
+rather than a client-side re-check.
+
+```sh
+auto-harness repo add --name org/repo --url https://github.com/org/repo
+```
+
 #### `auto-harness repo list [--limit N] [--cursor C] [--all] [--json]`
 
 `GET /repositories`, printing one line per repository (id, name, and status/url when present).
