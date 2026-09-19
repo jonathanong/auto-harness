@@ -308,4 +308,80 @@ describe("Slack session lifecycle reconciliation", () => {
     });
     await expect(enqueueSlackSessionLifecycle(plane, session("failed"))).resolves.toBeUndefined();
   });
+
+  function planeWithRepositoryLookup(
+    store: InsertStore,
+    getRepository: () => Promise<{ id: string; name: string } | null>,
+  ) {
+    return createControlPlaneState({
+      storage: {
+        enqueue: store.enqueue.bind(store),
+        get: store.get.bind(store),
+        getSlackIntegration: async () => ({
+          id: "slack",
+          type: "slack",
+          defaultChannel: "#ops",
+          enabled: true,
+          notifications: DEFAULT_SLACK_NOTIFICATIONS,
+          botToken: "xoxb-test",
+          createdAt: now,
+          updatedAt: now,
+        }),
+        getRepository,
+      } as never,
+    });
+  }
+
+  it("hydrates a cold repository-name cache before enqueueing (the production terminal-message bug)", async () => {
+    const store = new InsertStore();
+    let repositoryReads = 0;
+    const plane = planeWithRepositoryLookup(store, async () => {
+      repositoryReads += 1;
+      return { id: "repo-1", name: "auto-harness" };
+    });
+    expect(plane.repositories.has("repo-1")).toBe(false);
+
+    const completed = { ...session("completed"), completedAt: now, exitCode: 0 };
+    await enqueueSlackSessionLifecycle(plane, completed);
+
+    expect(repositoryReads).toBe(1);
+    expect(plane.repositories.get("repo-1")).toMatchObject({ name: "auto-harness" });
+    const texts = [...store.items.values()].map((item) => item.text).join("\n");
+    expect(texts).toContain("auto-harness");
+    expect(texts).not.toContain("repo-1");
+
+    // A later write for a repository already cached must not pay for another read.
+    await enqueueSlackSessionLifecycle(plane, { ...completed, status: "failed" as const });
+    expect(repositoryReads).toBe(1);
+  });
+
+  it("degrades to the repository id, without losing the notification, when the lookup throws", async () => {
+    const store = new InsertStore();
+    const plane = planeWithRepositoryLookup(store, () => {
+      throw new Error("dynamo down");
+    });
+    await expect(
+      enqueueSlackSessionLifecycle(plane, {
+        ...session("completed"),
+        completedAt: now,
+        exitCode: 0,
+      }),
+    ).resolves.toBeUndefined();
+    const texts = [...store.items.values()].map((item) => item.text).join("\n");
+    expect(texts).toContain("repo-1");
+    expect(plane.repositories.has("repo-1")).toBe(false);
+  });
+
+  it("degrades to the repository id when the repository no longer exists", async () => {
+    const store = new InsertStore();
+    const plane = planeWithRepositoryLookup(store, async () => null);
+    await enqueueSlackSessionLifecycle(plane, {
+      ...session("completed"),
+      completedAt: now,
+      exitCode: 0,
+    });
+    const texts = [...store.items.values()].map((item) => item.text).join("\n");
+    expect(texts).toContain("repo-1");
+    expect(plane.repositories.has("repo-1")).toBe(false);
+  });
 });

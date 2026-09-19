@@ -105,12 +105,33 @@ async function postToSlack(
   return { channel: payload.channel, messageTs: payload.ts };
 }
 
-function slackBody(request: SlackTransportRequest): Record<string, string> {
+type SlackChatPayload = {
+  channel: string;
+  text: string;
+  thread_ts?: string;
+  ts?: string;
+  unfurl_links?: boolean;
+  unfurl_media?: boolean;
+};
+
+/**
+ * Slack asynchronously unfurls a link into a preview card after `chat.postMessage`
+ * returns, and that unfurl rewrites the message from Slack's own stored original — which
+ * can clobber a `chat.update` made in the brief window before the unfurl lands (observed
+ * ~0.6s after post in production, with every message carrying an identical, noisy
+ * CloudFront link-preview card). `chat.update` does not document `unfurl_links` or
+ * `unfurl_media` (verified against https://docs.slack.dev/reference/methods/chat.update,
+ * which lists no unfurl parameters, unlike https://docs.slack.dev/reference/methods/chat.postMessage),
+ * so the only lever is suppressing the unfurl at the original post: once none is
+ * scheduled, there is nothing left to race a later edit.
+ */
+function slackBody(request: SlackTransportRequest): SlackChatPayload {
   return {
     channel: request.channel,
     text: request.text,
     ...(request.threadTs ? { thread_ts: request.threadTs } : {}),
     ...(request.messageTs ? { ts: request.messageTs } : {}),
+    ...(request.operation === "update-root" ? {} : { unfurl_links: false, unfurl_media: false }),
   };
 }
 

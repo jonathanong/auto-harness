@@ -19,6 +19,7 @@ export type SlackLifecycleConfig = {
 /** Structural slice of control-plane state — kept local to avoid a circular import. */
 type SlackSessionStorage = SlackOutboxStore & {
   getSlackIntegration?: () => Promise<SlackIntegrationRecord | null>;
+  getRepository?: (id: string) => Promise<{ id: string; name: string } | null>;
   listLogs?: (
     sessionId: string,
     consistentRead?: boolean,
@@ -31,11 +32,16 @@ type SlackSessionLogCache = {
   set(id: string, records: ReadonlyArray<{ stream: string; content: string }>): unknown;
 };
 
+type SlackSessionRepositoryCache = {
+  get(id: string): { name: string } | undefined;
+  set(id: string, value: { name: string }): unknown;
+};
+
 type SlackSessionWriterState = {
   storage: SlackSessionStorage | undefined;
   slackIntegration: SlackIntegrationRecord | undefined;
   now: () => string;
-  repositories: { get(id: string): { name: string } | undefined };
+  repositories: SlackSessionRepositoryCache;
   logs: SlackSessionLogCache;
   publicBaseUrl: string;
 };
@@ -112,6 +118,33 @@ async function ensureFailedSessionLogsLoaded(
 }
 
 /**
+ * `slackSessionSnapshot` reads the repository name from this in-memory cache only, so a
+ * cold container — e.g. a host-report terminal write, minutes after session creation, on
+ * a different Lambda instance than the one that cached it at session-create time — falls
+ * back to the repository id instead of its name (seen in production: the terminal message
+ * read the id while the root, cached earlier, still showed the name). Mirrors the cron
+ * worker's own hydration (`hydrateSlackSnapshotInputs` in slack-runtime.ts) with the same
+ * bounded point read, only performed when the cache actually misses. A failed read
+ * degrades to the repository id in the snapshot rather than losing the whole notification,
+ * matching the philosophy already documented above for the failed-session stderr tail.
+ */
+async function ensureRepositoryLoaded(
+  state: SlackSessionWriterState,
+  storage: SlackSessionStorage,
+  repositoryId: string,
+): Promise<void> {
+  if (state.repositories.get(repositoryId) || typeof storage.getRepository !== "function") {
+    return;
+  }
+  try {
+    const repository = await storage.getRepository(repositoryId);
+    if (repository) state.repositories.set(repository.id, repository);
+  } catch {
+    return;
+  }
+}
+
+/**
  * REST/WS/cron session writers enqueue here so a short-lived session is in the
  * outbox even if another worker never observed it as queued/running.
  */
@@ -124,6 +157,7 @@ export async function enqueueSlackSessionLifecycle(
   const record = await loadSlackRecord(state, storage);
   if (!record?.enabled) return;
   await ensureFailedSessionLogsLoaded(state, storage, session);
+  await ensureRepositoryLoaded(state, storage, session.repositoryId);
   await reconcileSlackSession({
     store: storage,
     config: {
