@@ -1,6 +1,6 @@
 {
   "name": "auto-harness-client",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Dependency-free client for the Auto Harness automation API",
   "license": "MIT",
   "repository": {
