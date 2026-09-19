@@ -21,8 +21,11 @@ export async function createSmokeRepository(client, randomHex) {
 }
 
 /**
- * The inventory entry `host smoke` attaches via `attachRepository` — one worktree, `smoke-1`,
- * under `<repoPath>/.worktrees/smoke-1`. `repoPath` is a path on the HOST, which may be a
+ * The inventory entry `host smoke` attaches via `attachRepository` — one worktree, named after
+ * the throwaway repository (`smoke-<hex>`), under `<repoPath>/.worktrees/<that name>`. Worktree
+ * names are one namespace across every host (`services/api/src/control-plane-worktree-names.ts`),
+ * so a fixed name would make two concurrent smokes on different hosts, or a leftover smoke
+ * worktree anywhere in the fleet, reject this attach. `repoPath` is a path on the HOST, which may be a
  * different machine from wherever this CLI runs, so this never joins it with `node:path` (whose
  * separator would be wrong for a remote host) or checks it exists — see `host-smoke.js`'s usage
  * text and the README for the preconditions this command cannot verify itself: `repoPath` must
@@ -35,7 +38,12 @@ export function smokeInventoryEntry(repository, repoPath) {
     path: repoPath,
     defaultBranch: repository.defaultBranch ?? "main",
     worktrees: [
-      { id: "smoke-1", name: "smoke-1", path: `${repoPath}/.worktrees/smoke-1`, labels: [] },
+      {
+        id: repository.name,
+        name: repository.name,
+        path: `${repoPath}/.worktrees/${repository.name}`,
+        labels: [],
+      },
     ],
   };
 }

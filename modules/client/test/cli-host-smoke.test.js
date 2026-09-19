@@ -67,7 +67,9 @@ test("--json prints a structured result", async () => {
   assert.equal(parsed.teardown.repositoryDeleted, true);
 });
 
-test("attaches one worktree, smoke-1, at <repo-path>/.worktrees/smoke-1", async () => {
+test("attaches one worktree named after the throwaway repository, never a fixed name", async () => {
+  // Worktree names are one namespace across every host, so a fixed name like `smoke-1` would
+  // make two concurrent smokes on different hosts reject each other's attach.
   let putBody;
   const { fetch } = makeSmokeFetch({
     putInventory: (body, inventory) => {
@@ -77,8 +79,15 @@ test("attaches one worktree, smoke-1, at <repo-path>/.worktrees/smoke-1", async 
   });
   const { io } = makeIo({ env, fetch });
   await main(BASE_ARGV, io);
+  const [worktree] = putBody.repositories[0].worktrees;
+  assert.match(worktree.name, /^smoke-[0-9a-f]{12}$/);
   assert.deepEqual(putBody.repositories[0].worktrees, [
-    { id: "smoke-1", name: "smoke-1", path: "/repos/x/.worktrees/smoke-1", labels: [] },
+    {
+      id: worktree.name,
+      name: worktree.name,
+      path: `/repos/x/.worktrees/${worktree.name}`,
+      labels: [],
+    },
   ]);
 });
 

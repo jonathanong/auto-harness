@@ -447,8 +447,9 @@ real API, a real in-process host daemon, and a real (`echo`-backed) provider on 
 **host**, not on whatever machine runs this CLI — they may be different machines entirely — so
 this command never calls `existsSync` or otherwise inspects it locally. That path must already
 be a git repository with a clean `main` checkout, and its `.gitignore` must exclude
-`.worktrees/`, since this command attaches one worktree, `smoke-1`, at
-`<repo-path>/.worktrees/smoke-1`.
+`.worktrees/`, since this command attaches one worktree at `<repo-path>/.worktrees/<name>`,
+named after the throwaway repository. Worktree names are unique across the whole fleet, so each
+run uses a fresh name and concurrent smokes on different hosts never collide.
 
 What it does, in order, always tearing down in a `finally` no matter which step failed:
 
@@ -457,7 +458,7 @@ What it does, in order, always tearing down in a `finally` no matter which step 
    the daemon dispatches sessions against the host-local path this same run attaches, never a
    repository's `url`, so nothing ever needs to resolve or dial it.
 2. **Attach** it to `<hostId>`'s inventory via the same `attachRepository` read-modify-write
-   `host repo add` uses, with one worktree (`smoke-1`).
+   `host repo add` uses, with one worktree named after the repository.
 3. **For each `--provider`, in order** (accepts an id or a name, exactly like `session create`):
    create a session targeting it with the prompt `Reply with exactly: <MARKER>` (`MARKER` is
    random and unique per run), wait for it, then fetch one page of its logs. A provider `PASS`es
