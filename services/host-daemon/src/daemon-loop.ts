@@ -61,6 +61,7 @@ import {
   type GitHubAppConfig,
 } from "./github-app.ts";
 import { SecretRedactingProcessRunner } from "./secret-redacting-runner.ts";
+import { HostInventoryPolicyError } from "./bootstrap.ts";
 export type { DaemonTransport } from "./daemon-transport-types.ts";
 export type DaemonLoopOptions = {
   config: DaemonConfig;
@@ -71,6 +72,8 @@ export type DaemonLoopOptions = {
   childEnvSource?: NodeJS.ProcessEnv;
   /** Daemon-local execution profiles keyed by provider account. */
   executionProfiles?: ExecutionProfiles;
+  /** Fetch the current authoritative inventory when an assignment names an unknown target. */
+  refreshInventory?: (signal: AbortSignal) => Promise<DaemonConfig>;
   githubApp?: GitHubAppConfig;
   /** Host-owned directory for last-successful setup fingerprints. */
   setupCacheDir?: string;
@@ -244,6 +247,7 @@ const DEFAULT_PENDING_STATUS_MAX_COUNT = 500;
 const DEFAULT_STATUS_RETRIES_PER_TICK = 20;
 const DEFAULT_PENDING_TERMINAL_HOOK_HANDOFF_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_PENDING_TERMINAL_HOOK_HANDOFF_MAX_COUNT = 500;
+const DEFAULT_ASSIGNMENT_INVENTORY_REFRESH_TIMEOUT_MS = 10_000;
 
 function inflightKey(sessionId: string, attemptId: string): string {
   return `${sessionId}\0${attemptId}`;
@@ -312,6 +316,8 @@ export class DaemonLoop {
   private inventoryPolicyBlocked = false;
   /** Tracks whether the control plane has acknowledged the policy drain registration. */
   private inventoryPolicyDrainPublished = false;
+  /** Distinguishes a newer fail-closed policy fence from an inventory apply's snapshot. */
+  private inventoryPolicyGeneration = 0;
   /** Set before a drain write so reconnect registration cannot reopen capacity. */
   private drainRequested = false;
   /** Stop awaiting recoverable delivery while graceful shutdown is in progress. */
@@ -343,6 +349,11 @@ export class DaemonLoop {
   private readonly childEnvSource: NodeJS.ProcessEnv;
   private readonly executionProfiles: ExecutionProfiles;
   private readonly githubApp: GitHubAppConfig | undefined;
+  private readonly refreshInventory: ((signal: AbortSignal) => Promise<DaemonConfig>) | undefined;
+  private inventoryRefresh: Promise<void> | undefined;
+  private inventoryRefreshController: AbortController | undefined;
+  private inventoryRefreshWaiters = 0;
+  private inventoryApplyTail: Promise<void> = Promise.resolve();
   private advertisedProviderAccountReadiness = "";
   private runtime: HostRuntimeReport | undefined;
   private connectionEvents: { stop: () => void } | undefined;
@@ -381,6 +392,7 @@ export class DaemonLoop {
     this.childEnvSource = options.childEnvSource ?? process.env;
     this.runtime = options.runtime;
     this.executionProfiles = options.executionProfiles ?? emptyExecutionProfiles();
+    this.refreshInventory = options.refreshInventory;
     this.githubApp =
       options.githubApp ?? loadGitHubAppConfig(options.childEnvSource ?? process.env);
     const innerCommandRunner =
@@ -483,9 +495,29 @@ export class DaemonLoop {
     await this.register();
     this.armKeepaliveStallTimer();
   }
-  async applyInventory(next: DaemonConfig): Promise<void> {
+  async applyInventory(
+    next: DaemonConfig,
+    options: { publishRegistration?: boolean } = {},
+  ): Promise<void> {
+    const apply = this.inventoryApplyTail.then(() => this.applyInventoryCandidate(next, options));
+    this.inventoryApplyTail = apply.catch(() => undefined);
+    return await apply;
+  }
+
+  private async applyInventoryCandidate(
+    next: DaemonConfig,
+    options: { publishRegistration?: boolean },
+  ): Promise<void> {
+    if (
+      next.inventoryVersion !== undefined &&
+      this.config.inventoryVersion !== undefined &&
+      next.inventoryVersion < this.config.inventoryVersion
+    ) {
+      return;
+    }
     const wasPolicyBlocked = this.inventoryPolicyBlocked;
     const wasPolicyDrainPublished = this.inventoryPolicyDrainPublished;
+    const policyGeneration = this.inventoryPolicyGeneration;
     const previousRootsPolicy = this.worktrees.getAllowedRootsPolicy();
     // Validate the candidate inventory against its own roots. The prior fence
     // remains represented by `inventoryPolicyBlocked`, which refuses new
@@ -496,12 +528,26 @@ export class DaemonLoop {
         next,
         this.worktrees,
         async (candidate) => {
+          if (options.publishRegistration === false) return;
+          // A policy failure discovered while candidate validation awaited must
+          // win over this older ready snapshot.
+          if (this.inventoryPolicyGeneration !== policyGeneration) return;
           // Advertise the validated inventory as available while retaining the local
           // assignment fence until that registration has been durably handed off.
           // A peer can otherwise queue an assignment while send() is still pending.
           await this.register({ config: candidate, inventoryPolicyBlocked: false });
         },
         () => {
+          // An assignment-time refresh deliberately skips registration because
+          // replacing the socket would abort that still-unacknowledged assignment.
+          // It must not clear a policy fence that was already published (or that
+          // appeared while validation awaited filesystem work); only a matching
+          // ready registration may release that remote drain state.
+          if (
+            options.publishRegistration === false ||
+            this.inventoryPolicyGeneration !== policyGeneration
+          )
+            return;
           this.worktrees.clearAllowedRootsPolicy();
           this.workspaces.clearAllowedRootsPolicy();
           this.inventoryPolicyBlocked = false;
@@ -511,13 +557,18 @@ export class DaemonLoop {
       );
       await this.expireSetupCache();
     } catch (error) {
-      this.worktrees.restoreAllowedRootsPolicy(previousRootsPolicy);
-      this.inventoryPolicyBlocked = wasPolicyBlocked;
-      this.inventoryPolicyDrainPublished = wasPolicyDrainPublished;
+      // Do not roll back a newer fail-closed fence installed while validation
+      // was awaiting filesystem work.
+      if (this.inventoryPolicyGeneration === policyGeneration) {
+        this.worktrees.restoreAllowedRootsPolicy(previousRootsPolicy);
+        this.inventoryPolicyBlocked = wasPolicyBlocked;
+        this.inventoryPolicyDrainPublished = wasPolicyDrainPublished;
+      }
       throw error;
     }
   }
   async blockAssignmentsForInvalidInventory(allowedRoots?: readonly string[]): Promise<void> {
+    this.inventoryPolicyGeneration += 1;
     this.worktrees.setAllowedRootsPolicy(allowedRoots);
     this.workspaces.setAllowedRootsPolicy(allowedRoots);
     if (this.inventoryPolicyBlocked && this.inventoryPolicyDrainPublished) return;
@@ -1888,6 +1939,15 @@ export class DaemonLoop {
         // Confirm assignment before any retained worktree claim can delay it;
         // the fences below still prevent its runner from touching the target
         // until the predecessor has released.
+        try {
+          await this.refreshAssignmentInventory(msg, controller.signal);
+        } catch (error) {
+          if (controller.signal.aborted) return;
+          throw error;
+        }
+        // Inventory validation can race a policy poll. Do not acknowledge work
+        // after that poll has fenced this host, even when the target now exists.
+        if (this.isDraining()) return;
         if (!(await this.acknowledgeAssignment(msg, controller.signal))) return;
         // A replacement for this logical session must first settle its old
         // retry disposition. That releases the preceding retained claim and
@@ -1935,6 +1995,126 @@ export class DaemonLoop {
       if (this.inflight.get(key) === entry) this.inflight.delete(key);
       this.scheduleQueuedExecution();
     }
+  }
+
+  private assignmentTargetKnown(
+    msg: Extract<HostWireMessage, { type: "session:assign" }>,
+  ): boolean {
+    if ((msg.sessionType as string | undefined) === "workspace") return true;
+    return (
+      msg.repositoryId !== null &&
+      this.worktrees.hasAssignmentTarget(msg.repositoryId, msg.worktreeId)
+    );
+  }
+
+  /**
+   * Close the attach-to-assign race before acknowledging durable ownership.
+   * A missing or failed refresh deliberately leaves the assignment unacknowledged;
+   * the control plane's existing acknowledgement deadline can then recover it
+   * without replaying a command that may already have started.
+   */
+  private async refreshAssignmentInventory(
+    msg: Extract<HostWireMessage, { type: "session:assign" }>,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const loadInventory = this.refreshInventory;
+    if (this.assignmentTargetKnown(msg) || !loadInventory) return;
+    signal.throwIfAborted();
+    const joinedExistingRefresh = this.inventoryRefresh !== undefined;
+    await this.waitForInventoryRefresh(this.runInventoryRefresh(loadInventory), signal);
+    signal.throwIfAborted();
+    // A second attachment can land after a shared refresh took its snapshot. The caller whose
+    // target is still absent gets one fresh load of its own instead of waiting for the ack
+    // deadline and scheduler repair. This remains bounded even if the target was removed again.
+    if (joinedExistingRefresh && !this.assignmentTargetKnown(msg)) {
+      await this.waitForInventoryRefresh(this.runInventoryRefresh(loadInventory), signal);
+      signal.throwIfAborted();
+    }
+    if (!this.assignmentTargetKnown(msg)) {
+      throw new Error(
+        `assignment target is absent from refreshed host inventory: ${msg.repositoryId ?? "workspace"}/${msg.worktreeId ?? "main"}`,
+      );
+    }
+  }
+
+  private runInventoryRefresh(
+    loadInventory: (signal: AbortSignal) => Promise<DaemonConfig>,
+  ): Promise<void> {
+    let refresh = this.inventoryRefresh;
+    if (!refresh) {
+      refresh = (async () => {
+        const controller = new AbortController();
+        this.inventoryRefreshController = controller;
+        const timeout = this.timers.setTimeout(
+          () => controller.abort(new Error("assignment inventory refresh timed out")),
+          DEFAULT_ASSIGNMENT_INVENTORY_REFRESH_TIMEOUT_MS,
+        );
+        try {
+          // The control plane selected this target from the same authoritative inventory.
+          // Re-registering here would replace the socket and abort this still-unacknowledged
+          // assignment. The periodic poll publishes the normal registration update; this path
+          // only validates and adopts the inventory locally before acknowledging the work.
+          const next = await this.waitForSignal(
+            loadInventory(controller.signal),
+            controller.signal,
+          );
+          await this.applyInventory(next, {
+            publishRegistration: false,
+          });
+        } catch (error) {
+          if (error instanceof HostInventoryPolicyError) {
+            await this.blockAssignmentsForInvalidInventory(error.allowedRoots);
+          }
+          throw error;
+        } finally {
+          this.timers.clearTimeout(timeout);
+        }
+      })();
+      this.inventoryRefresh = refresh;
+      void refresh.then(
+        () => {
+          if (this.inventoryRefresh === refresh) {
+            this.inventoryRefresh = undefined;
+            this.inventoryRefreshController = undefined;
+          }
+        },
+        () => {
+          if (this.inventoryRefresh === refresh) {
+            this.inventoryRefresh = undefined;
+            this.inventoryRefreshController = undefined;
+          }
+        },
+      );
+    }
+    return refresh;
+  }
+
+  private async waitForInventoryRefresh(
+    refresh: Promise<void>,
+    signal: AbortSignal,
+  ): Promise<void> {
+    this.inventoryRefreshWaiters += 1;
+    try {
+      await this.waitForSignal(refresh, signal);
+    } finally {
+      this.inventoryRefreshWaiters -= 1;
+      if (
+        signal.aborted &&
+        this.inventoryRefreshWaiters === 0 &&
+        this.inventoryRefresh === refresh
+      ) {
+        this.inventoryRefreshController?.abort(signal.reason);
+      }
+    }
+  }
+
+  private async waitForSignal<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+    signal.throwIfAborted();
+    return await new Promise<T>((resolve, reject) => {
+      const aborted = () => reject(signal.reason);
+      signal.addEventListener("abort", aborted, { once: true });
+      void work.then(resolve, reject).finally(() => signal.removeEventListener("abort", aborted));
+    });
   }
 
   private confirmDrain(): void {

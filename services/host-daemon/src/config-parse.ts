@@ -170,6 +170,9 @@ export function parseDaemonConfig(
     repositories: raw.repositories.map((r, i) => parseRepository(r, i)),
     providerAccounts: parseProviderAccounts(raw.providerAccounts),
   };
+  if (typeof raw.version === "number" && Number.isInteger(raw.version) && raw.version >= 0) {
+    config.inventoryVersion = raw.version;
+  }
   if (raw.setupScript !== undefined) {
     if (typeof raw.setupScript !== "string") {
       throw new TypeError("setupScript must be a string");

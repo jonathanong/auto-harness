@@ -277,6 +277,15 @@ async function connectDaemon(
   const childEnvSource = options.childEnvSource ?? process.env;
   const githubApp = loadGitHubAppConfig(childEnvSource);
   const executionProfiles = loadExecutionProfiles(childEnvSource);
+  const identity =
+    options.identity ??
+    (options.config.apiUrl
+      ? {
+          hostId: options.config.hostId,
+          apiUrl: options.config.apiUrl,
+          ...(options.config.apiKey ? { apiKey: options.config.apiKey } : {}),
+        }
+      : undefined);
   const transport = createWsTransport({
     url: wsUrl,
     hostId: options.config.hostId,
@@ -291,6 +300,15 @@ async function connectDaemon(
   const loop = new DaemonLoop({
     config: options.config,
     transport,
+    ...(identity
+      ? {
+          refreshInventory: (signal: AbortSignal) =>
+            fetchHostInventory(identity, {
+              ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
+              signal,
+            }),
+        }
+      : {}),
     onLog: log,
     ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
     executionProfiles,

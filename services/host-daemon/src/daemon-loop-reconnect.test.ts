@@ -263,6 +263,56 @@ describe("DaemonLoop reconnect", () => {
     }
   });
 
+  it("serializes a new policy fence behind a failing assignment refresh", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const sent: HostToServerMessage[] = [];
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => void sent.push(message),
+      });
+      const loop = new DaemonLoop({
+        config: { ...config, repositories: [] },
+        transport,
+        refreshInventory: async () => config,
+      });
+      await loop.start();
+      let failApply!: () => void;
+      const applyFailure = new Promise<void>((resolve) => {
+        failApply = resolve;
+      });
+      let applyStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        applyStarted = resolve;
+      });
+      const worktrees = (
+        loop as unknown as {
+          worktrees: { ensureAll(next?: unknown): Promise<void> };
+        }
+      ).worktrees;
+      worktrees.ensureAll = async () => {
+        applyStarted();
+        await applyFailure;
+        throw new Error("candidate validation failed");
+      };
+
+      transport.deliver(assignMessage("policy-during-failed-refresh"));
+      await started;
+      const blocked = loop.blockAssignmentsForInvalidInventory();
+      failApply();
+      await expect(loop.waitForIdle()).rejects.toThrow("candidate validation failed");
+      await blocked;
+
+      expect(loop.isDraining()).toBe(true);
+      expect(sent.filter((message) => message.type === "host:register").at(-1)).toMatchObject({
+        draining: true,
+      });
+      expect(sent.some((message) => message.type === "session:ack")).toBe(false);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("keeps the local inventory fence until the ready registration finishes", async () => {
     const { config, cleanup } = await makeRepo();
     try {

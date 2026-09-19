@@ -135,6 +135,15 @@ export class WorktreeManager {
     return this.busy.has(worktreeId);
   }
 
+  /** Whether the live inventory can satisfy this repository assignment target. */
+  hasAssignmentTarget(repositoryId: string, worktreeId: string | null): boolean {
+    const repository = this.config.repositories.find((candidate) => candidate.id === repositoryId);
+    if (!repository) return false;
+    return (
+      worktreeId === null || repository.worktrees.some((worktree) => worktree.id === worktreeId)
+    );
+  }
+
   private claimedResult(
     repository: RepositoryConfig,
     worktree: WorktreeConfig,
