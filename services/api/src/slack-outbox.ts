@@ -115,13 +115,16 @@ async function resolveDependencies(
     const dependency = await store.get(record.dependsOnId);
     const isThreadRoot = record.dependsOnId === record.threadRootId;
     if (dependency?.status === "dead") {
-      if (isThreadRoot) {
+      const isSupersededStartedReply =
+        record.operation === "post-reply" &&
+        dependency.operation === "post-reply" &&
+        dependency.event === "session_started";
+      if (isThreadRoot || !isSupersededStartedReply) {
         return { ready: false, dead: true, error: `dependency ${record.dependsOnId} is dead` };
       }
-      // A dead *sibling* ordering dependency (e.g. a "started" reply that exhausted
-      // every attempt) is superseded, not a cascade: this record still only needs the
-      // thread root to post into, so it proceeds via the threadRootId check below
-      // instead of wedging behind a reply that will never send.
+      // A dead "started" reply is superseded for its terminal reply only: the terminal
+      // operation still needs the thread root, while later operations such as the final
+      // root update must continue to cascade a dead dependency.
     } else if (dependency?.status !== "sent") {
       return { ready: false, dead: false, error: `waiting for ${record.dependsOnId}` };
     }

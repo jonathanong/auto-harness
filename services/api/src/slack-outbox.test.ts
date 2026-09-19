@@ -231,7 +231,11 @@ describe("Slack durable outbox", () => {
       remoteMessageTs: "ts-root",
     };
     store.items.set(root.id, root);
-    const deadSibling = { ...record("started-reply", "post-reply"), status: "dead" as const };
+    const deadSibling = {
+      ...record("started-reply", "post-reply"),
+      event: "session_started" as const,
+      status: "dead" as const,
+    };
     store.items.set(deadSibling.id, deadSibling);
     store.items.set("completed-reply", {
       ...record("completed-reply", "post-reply"),
@@ -251,6 +255,26 @@ describe("Slack durable outbox", () => {
     expect(transport.deliver).toHaveBeenCalledWith(
       expect.objectContaining({ idempotencyKey: "completed-reply", threadTs: "ts-root" }),
     );
+
+    store.items.set("dead-terminal-reply", {
+      ...record("dead-terminal-reply", "post-reply"),
+      status: "dead",
+    });
+    store.items.set("update-root", {
+      ...record("update-root", "update-root"),
+      dependsOnId: "dead-terminal-reply",
+      threadRootId: root.id,
+    });
+    expect(
+      await processSlackOutboxOnce(store, transport, {
+        now: () => now,
+        leaseToken: () => "update-lease",
+      }),
+    ).toBe("dead");
+    expect(store.items.get("update-root")).toMatchObject({
+      status: "dead",
+      lastError: "dependency dead-terminal-reply is dead",
+    });
   });
 
   it("retries transport errors and dead-letters at the attempt ceiling", async () => {
