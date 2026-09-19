@@ -37,16 +37,16 @@ describe("catalogCommandDefaults", () => {
     expect(catalogCommandDefaults("codex")?.argv).toContain("--json");
   });
 
-  it("returns the same cursor-agent --print --force defaults for cursor and cursor-agent", () => {
+  it("returns the same structured cursor-agent defaults for cursor and cursor-agent", () => {
     const cursor = {
       commandName: "cursor-print",
-      argv: ["cursor-agent", "--print", "--force"],
+      argv: ["cursor-agent", "--print", "--force", "--output-format", "json"],
       appendPrompt: true,
       appendPromptSeparator: true,
     };
     expect(catalogCommandDefaults("cursor")).toEqual(cursor);
     expect(catalogCommandDefaults("cursor-agent")).toEqual(cursor);
-    expect(catalogCommandDefaults("cursor")?.argv.includes("--output-format")).toBe(false);
+    expect(catalogCommandDefaults("cursor")?.argv.includes("--output-format")).toBe(true);
   });
 
   it("returns null for unknown provider names", () => {

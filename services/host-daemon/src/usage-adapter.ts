@@ -8,6 +8,7 @@ import {
   type RunProcessOptions,
 } from "./executor.ts";
 import { createCodexUsageStream, parseCodexRecords } from "./usage-adapter-codex.ts";
+import { parseCursorRecord } from "./usage-adapter-cursor.ts";
 import { parseGrokRecords } from "./usage-adapter-grok.ts";
 import { jsonLines, jsonObject, jsonObjects } from "./usage-adapter-json.ts";
 import {
@@ -35,7 +36,8 @@ export function executableStem(command: string | undefined): string {
 
 export function resolveCliProvider(argv: readonly string[]): CliProvider | undefined {
   const stem = executableStem(argv[0]);
-  return CLI_PROVIDERS.find((name) => name === stem);
+  if (stem === "cursor-agent") return "cursor";
+  return CLI_PROVIDERS.find((name) => name !== "cursor" && name === stem);
 }
 
 /**
@@ -58,6 +60,7 @@ export function parseCliUsage(input: {
   const envelope = jsonObject(input.output);
   if (!envelope) return {};
   if (provider === "claude") return parseClaudeRecord(envelope, input.observedAt);
+  if (provider === "cursor") return parseCursorRecord(envelope, input.observedAt);
   return parseGeminiRecord(envelope, input.observedAt);
 }
 
@@ -167,6 +170,8 @@ function hasStructuredOutputMode(provider: CliProvider, argv: readonly string[])
       );
     case "codex":
       return argv.includes("exec") && hasOption(argv, "--json");
+    case "cursor":
+      return argv.includes("--print") && hasOption(argv, "--output-format", "json");
     case "gemini":
       return (
         (argv.includes("-p") || argv.includes("--prompt")) &&

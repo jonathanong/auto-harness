@@ -118,12 +118,10 @@ describe("real capture 2026-09-19: codex-cli 0.154.0 out of usage (turn.failed)"
   });
 });
 
-describe("real capture 2026-09-19: cursor-agent has no usage-limit adapter", () => {
-  // Real SUCCESS output from cursor-agent 2026.09.10-fd3934a --output-format json (this
-  // account has usage remaining). Pins the documented gap (docs/agent-clis.md's "Usage
-  // limits" section): cursor-agent is not in usage-adapter-shared.ts's CLI_PROVIDERS, so its
-  // real token usage below is silently dropped even on success, and a usage-limit failure
-  // would never be detected either.
+describe("real capture 2026-09-19: cursor-agent success", () => {
+  // Real output from cursor-agent 2026.09.10-fd3934a. The account still had usage when this
+  // was captured, so the exhausted-account envelope is intentionally covered separately once
+  // it can be captured rather than inferred from model-authored text or another provider.
   const argv = ["cursor-agent", "--print", "--force", "--output-format", "json", "--", PROMPT];
   const stdout = JSON.stringify({
     type: "result",
@@ -137,22 +135,19 @@ describe("real capture 2026-09-19: cursor-agent has no usage-limit adapter", () 
     usage: { inputTokens: 14615, outputTokens: 26, cacheReadTokens: 4352, cacheWriteTokens: 0 },
   });
 
-  it("is not a recognized provider, so real token usage on success is silently dropped", () => {
-    expect(resolveCliProvider(argv)).toBeUndefined();
-    expect(parseCliUsage({ argv, output: stdout, observedAt })).toEqual({});
-  });
-
-  it("would never classify as a usage limit, even on a hypothetical failed exit with an adapter signal", () => {
-    // No real cursor error envelope exists to derive `adapterUsageLimit` from — there is no
-    // adapter. This isolates the other gate: detectUsageLimit refuses unconditionally because
-    // "cursor-agent" is absent from usage-limit.ts's own PROVIDERS set.
-    expect(
-      detectUsageLimit({
-        argv,
-        failed: true,
-        providerAccountId: "acct-cursor-1",
-        adapterUsageLimit: true,
-      }),
-    ).toBeUndefined();
+  it("records the real token fields and provider-authored summary", () => {
+    expect(resolveCliProvider(argv)).toBe("cursor");
+    expect(parseCliUsage({ argv, output: stdout, observedAt })).toEqual({
+      agentSummary: "hello world",
+      usage: {
+        kind: "cumulative",
+        sequence: 0,
+        source: "cli",
+        observedAt,
+        inputTokens: "14615",
+        outputTokens: "26",
+        cachedInputTokens: "4352",
+      },
+    });
   });
 });

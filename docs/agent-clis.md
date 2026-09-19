@@ -123,19 +123,18 @@ cursor-agent status --format json
 **Preset** (`cursor-print`):
 
 ```text
-argv: ["cursor-agent", "--print", "--force"]
+argv: ["cursor-agent", "--print", "--force", "--output-format", "json"]
 appendPrompt: true
 appendPromptSeparator: true
 ```
 
 **Watch out for:** without `--force`/`-f`, `cursor-agent --print` still stops to ask for tool-call
 approval — which hangs a non-interactive session waiting on input that will never arrive; the
-preset already includes it. Unlike the other three presets, this one does not request
-`--output-format json`, so Cursor's non-interactive output stays plain text. Dispatch never adds
-an output flag to any Command: every CLI's structured output has to be requested in the
-Command's own argv (see `POST /commands` in [api.md](api.md)). Adding `--output-format json` to a
-Cursor Command makes its output machine-parseable, but the host daemon has no Cursor adapter, so
-it still records no token usage and detects no usage limits.
+preset already includes it. The preset also requests `--output-format json`, which lets the host
+daemon record Cursor's structured token counts. Dispatch never adds an output flag to any
+Command: every CLI's structured output has to be requested in the Command's own argv (see
+`POST /commands` in [api.md](api.md)). Existing Cursor Commands created before this flag was added
+must be updated explicitly; custom command argv remains operator-owned.
 
 ## Grok
 
@@ -297,9 +296,9 @@ to check readiness without a live session, are in
 temporary git repo and a real in-process daemon:
 [`e2e/real-cli/claude-print.spec.ts`](../e2e/real-cli/claude-print.spec.ts),
 [`codex-exec.spec.ts`](../e2e/real-cli/codex-exec.spec.ts), and
-[`grok-print.spec.ts`](../e2e/real-cli/grok-print.spec.ts) — there is no `cursor-agent` spec yet,
-so verify Cursor by hand with the steps above, or add one following the other three as a
-template. Each spec skips itself when its CLI isn't installed
+[`cursor-print.spec.ts`](../e2e/real-cli/cursor-print.spec.ts), and
+[`grok-print.spec.ts`](../e2e/real-cli/grok-print.spec.ts). Each spec skips itself when its CLI
+isn't installed
 (see `test:e2e:real-cli` in the root `package.json` and [e2e.md](e2e.md)). Run one CLI's spec:
 
 ```bash
@@ -332,7 +331,7 @@ the untrusted-vs-trusted-surface reasoning live in
 this section is the operator-facing summary, keyed to the same four CLIs as the rest of this page.
 
 **Detection only works when the argv the daemon actually spawns carries the preset's
-structured-output flag** — `--output-format json` for claude/grok, `--json` for `codex exec`
+structured-output flag** — `--output-format json` for claude/cursor/grok, `--json` for `codex exec`
 (`hasStructuredOutputMode` in [`usage-adapter.ts`](../services/host-daemon/src/usage-adapter.ts)
 checks `resolvedArgv` at execution time, whatever produced it). A Command whose stored `argv`
 omits that flag (or a CLI upgrade that changes its non-JSON error text) never classifies a usage
@@ -367,17 +366,15 @@ balance exhausted\", \"http_status\": 402\n}"`. Grok's CLI also re-prints that s
 - **Gemini** (installed on some hosts but has no catalog preset — see the top of this page) —
   `error.status`/`error.code` of `RESOURCE_EXHAUSTED`, or that token as a whole word in
   `error.message`.
-- **Cursor — not detected, and its token usage is not recorded either.** `usage-adapter-shared.ts`'s
-  `CLI_PROVIDERS` list is `claude`, `codex`, `gemini`, `grok`; `cursor-agent` is absent, so
-  `resolveCliProvider` never matches it and `parseCliUsage` returns `{}` unconditionally for any
-  cursor-agent output — a real 402/429 failure would never cool down the account, and even a
-  **successful** run's real token counts are silently dropped. Confirmed against a real successful
-  `cursor-agent --print --force --output-format json` capture (2026-09-10 build), whose envelope
-  already carries usage: `{"type":"result","subtype":"success","is_error":false,"result":"hello
-world","usage":{"inputTokens":14615,"outputTokens":26,"cacheReadTokens":4352,
-"cacheWriteTokens":0}}`. That success shape is the starting point for a future cursor adapter —
-  its error envelope shape is not documented here because it has not been captured; do not guess
-  it. Regression fixtures for all of the above, including this cursor gap, are pinned in
+- **Cursor** — a structured result envelope carries `inputTokens`, `outputTokens`,
+  `cacheReadTokens`, and `cacheWriteTokens`. The adapter records cache reads as cached input and
+  leaves cache writes unmapped because the provider-neutral usage contract has no cache-write
+  field. Confirmed against a real successful `cursor-agent --print --force --output-format json`
+  capture (2026-09-10 build): `{"type":"result","subtype":"success","is_error":false,
+"result":"hello world","usage":{"inputTokens":14615,"outputTokens":26,
+"cacheReadTokens":4352,"cacheWriteTokens":0}}`. Usage-limit classification is derived only from
+  Cursor's real structured exhausted-account envelope; it is never guessed from generic output.
+  Regression fixtures for all of the above are pinned in
   [`usage-adapter-real-incident.test.ts`](../services/host-daemon/src/usage-adapter-real-incident.test.ts).
 
 **What the control plane does** once the daemon reports `status: failed`, `errorCode:
