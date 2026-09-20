@@ -153,6 +153,24 @@ describe("deploymentConfig", () => {
     ).toThrow("HARNESS_API_SENTRY_DSN");
   });
 
+  it("requires all AWS DSNs when Sentry is explicitly enabled", () => {
+    const base = {
+      AWS_REGION: "us-west-2",
+      HARNESS_DEPLOY_ENVIRONMENT: "production",
+      HARNESS_SENTRY_ENABLED: " 1 ",
+    };
+    expect(() => deploymentConfig("deploy", base)).toThrow("HARNESS_SENTRY_ENABLED=1");
+    const dsn = "https://abc123@o1.ingest.sentry.io/450";
+    expect(
+      deploymentConfig("deploy", {
+        ...base,
+        HARNESS_API_SENTRY_DSN: dsn,
+        HARNESS_WEB_SENTRY_DSN_CLIENT: dsn,
+        HARNESS_WEB_SENTRY_DSN_SERVER: dsn,
+      }),
+    ).toMatchObject({ apiSentryDsn: dsn });
+  });
+
   it("parses alarm subscribers, defaulting to none", () => {
     const base = { AWS_REGION: "us-west-2", HARNESS_DEPLOY_ENVIRONMENT: "review" };
 

@@ -184,15 +184,12 @@ Two deliberate limits:
   debug-only and never deployed to AWS (see the repo invariant) — but the local-development.md
   table lists these vars alongside the other four as if they have equivalent reach, which they
   don't.
-- **No sourcemap upload or release tracking.** Neither `next.config.ts` (`services/web`,
-  `services/host-pane`) wraps its config in `withSentryConfig`, and
-  `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_RELEASE` appear nowhere in the repo.
-  The web app ships as a `DockerImageFunction`, so any upload step would have to live in the
-  Docker build — it isn't there either. Consequence: Sentry events carry minified/unsymbolicated
-  browser stack traces with no release or commit association. (The API/Cron/WebSocket Lambda
-  bundling does set `sourceMap: true` in `runtime-stack.ts`, but that's local esbuild output for
-  stack-trace readability in CloudWatch Logs, not a Sentry release upload — no auth token or
-  org/project is configured for Node either.)
+- **Host-pane installation remains operator-owned.** `pnpm sentry:sourcemaps host-pane` builds
+  the exact local production artifact, uploads its maps under the immutable Git release, and
+  deletes the maps. This repository still has no command that installs or restarts a persistent
+  host-pane server, so the operator must run that artifact through the existing host-local
+  service boundary. The AWS control-plane web path has no such gap: `pnpm deploy:aws` performs
+  the upload inside its exact Docker image build when `HARNESS_SENTRY_ENABLED=1`.
 - **Silent 500s.** Some route handlers catch an error and return a 500 without logging it at all,
   so the failure never reaches CloudWatch either — Sentry and structured logs both miss it. This
   is a pattern to watch for in review, not a single known site: one instance recently cost a live

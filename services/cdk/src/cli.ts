@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { App, RemovalPolicy } from "aws-cdk-lib";
 import { Platform } from "aws-cdk-lib/aws-ecr-assets";
 import * as lambda from "aws-cdk-lib/aws-lambda";
@@ -9,6 +10,7 @@ import {
   type SessionPriorityIndexStage,
 } from "./foundation-stack.ts";
 import { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
+import { resolveSentryRelease, sentryEnabled } from "./sentry-release.ts";
 import { AutoHarnessWebStack } from "./web-stack.ts";
 
 function contextString(app: App, key: string): string | undefined {
@@ -52,6 +54,11 @@ function existingGsiNamesByTable(
 }
 
 const app = new App();
+const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
+const sentryIsEnabled = sentryEnabled();
+const sentryRelease = resolveSentryRelease(process.env, () =>
+  execFileSync("git", ["rev-parse", "HEAD"], { cwd: repositoryRoot, encoding: "utf8" }),
+);
 const tablePrefix = contextString(app, "tablePrefix") ?? "AutoHarness";
 const dataRemovalPolicy = removalPolicy(contextString(app, "removalPolicy"));
 const archiveBucketName = contextString(app, "archiveBucketName");
@@ -98,7 +105,17 @@ const web = new AutoHarnessWebStack(app, contextString(app, "webStackName") ?? "
   cloudFrontIngressSecret: runtime.resources.cloudFrontIngressSecret,
   imageCode: lambda.DockerImageCode.fromImageAsset(
     fileURLToPath(new URL("../../..", import.meta.url)),
-    { file: "services/web/Dockerfile.aws", platform: Platform.LINUX_ARM64 },
+    {
+      buildArgs: {
+        HARNESS_SENTRY_RELEASE: sentryRelease ?? "",
+        HARNESS_SENTRY_UPLOAD: sentryIsEnabled ? "1" : "0",
+      },
+      ...(sentryIsEnabled
+        ? { buildSecrets: { SENTRY_AUTH_TOKEN: "env=HARNESS_SENTRY_UPLOAD_TOKEN" } }
+        : {}),
+      file: "services/web/Dockerfile.aws",
+      platform: Platform.LINUX_ARM64,
+    },
   ),
   restApiUrl: runtime.resources.restApiUrl,
   websocketUrl: runtime.resources.websocketUrl,

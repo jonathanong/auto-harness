@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 import { securityHeaders, wsOrigin } from "@auto-harness/shared";
 
@@ -81,4 +82,27 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+const uploadSourceMaps = process.env.HARNESS_SENTRY_UPLOAD === "1";
+const sentryRelease = process.env.HARNESS_SENTRY_RELEASE;
+if (uploadSourceMaps && !/^[0-9a-f]{40}$/u.test(sentryRelease ?? "")) {
+  throw new Error("HARNESS_SENTRY_RELEASE must be an immutable 40-character Git SHA");
+}
+
+export default uploadSourceMaps
+  ? withSentryConfig(nextConfig, {
+      org: "vouchington",
+      project: "auto-harness-control-plane-web",
+      release: {
+        name: sentryRelease,
+        setCommits: {
+          commit: sentryRelease!,
+          ignoreEmpty: true,
+          ignoreMissing: true,
+          repo: "jonathanong/auto-harness",
+        },
+      },
+      silent: true,
+      sourcemaps: { deleteSourcemapsAfterUpload: true },
+      telemetry: false,
+    })
+  : nextConfig;

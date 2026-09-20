@@ -14,6 +14,28 @@ AWS releases use the account-backed gate in [deploy-aws.md](deploy-aws.md#gates)
 Deployment is always manual and operator-run — no CI workflow deploys to AWS or a host on merge
 or release.
 
+### Optional Sentry
+
+Sentry is disabled unless the operator explicitly opts in. The independent
+OpenTofu root is in [`opentofu/sentry`](../opentofu/sentry/README.md); it has a
+remote backend supplied at `tofu init` time and must be applied separately with
+an operator-approved saved plan. After applying it, load one environment's
+public DSNs into the normal deploy environment and deploy as usual:
+
+```bash
+eval "$(HARNESS_DEPLOY_ENVIRONMENT=production pnpm --silent sentry:dsn)"
+pnpm deploy:aws
+pnpm deploy:host
+```
+
+With `HARNESS_SENTRY_ENABLED=1`, the AWS deploy path requires the matching API
+and control-plane web DSNs. The host DSN is consumed by `deploy:host` through
+the existing persisted service environment. The opted-in AWS deploy uploads the
+control-plane web maps from inside its exact Docker build using the current Git
+SHA; a failed upload stops deployment. The host pane has a separate explicit
+local production-build step (`pnpm sentry:sourcemaps host-pane`). In both cases
+the upload token never enters a runtime environment or artifact.
+
 Pre-deploy E2E (prove the stack before any cloud claim): [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).  
 Day-to-day local commands: [local-development.md](local-development.md).  
 Install overview: [setup.md](setup.md).  

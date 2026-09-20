@@ -22,6 +22,10 @@ coverage/
 /blob-report/
 /playwright/.cache/
 cdk.out/
+.terraform/
+*.tfplan
+*.tfstate
+*.tfstate.*
 
 # Raster images are never committed — screenshots belong in PR descriptions, not the repo.
 # UI icons must be SVGs, which this rule doesn't touch.

@@ -3,9 +3,10 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-const awsScript = new URL("deploy-aws.sh", import.meta.url).pathname;
+const awsScript = fileURLToPath(new URL("deploy-aws.sh", import.meta.url));
 const aws = readFileSync(awsScript, "utf8");
 const temporaryDirectories: string[] = [];
 
@@ -173,6 +174,17 @@ esac`,
 }
 
 describe("deployment wrapper contracts", () => {
+  it("treats a padded Sentry opt-in as enabled", () => {
+    const fixture = fakeEnvironment();
+    baseFakes(fixture.bin);
+    const result = run(awsScript, [], fixture, { HARNESS_SENTRY_ENABLED: " 1 " });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "HARNESS_SENTRY_ENABLED=1 requires HARNESS_SENTRY_UPLOAD_TOKEN",
+    );
+  });
+
   it("keeps the AWS wrapper valid Bash", () => {
     expect(spawnSync("bash", ["-n", awsScript]).status).toBe(0);
     expect(aws).toContain('export AWS_PAGER=""');

@@ -79,7 +79,7 @@ Operators use the web UI. Pipelines and bots use the API. Your agents run on mac
 
 ## Learn more
 
-Everything operational and technical is under **[docs/](docs/README.md)**—setup, API, security, architecture, and the rest. Repo harness hookup examples: **[docs/harness.md](docs/harness.md)**. Why this shape: **[docs/why.md](docs/why.md)**.
+Everything operational and technical is under **[docs/](docs/README.md)**—setup, API, security, architecture, and the rest. Repo harness hookup examples: **[docs/harness.md](docs/harness.md)**. Why this shape: **[docs/why.md](docs/why.md)**. Optional Sentry projects and environment keys live in the independent **[OpenTofu Sentry root](opentofu/sentry/README.md)**.
 
 **Contributors / agents:** monorepo conventions live in **[AGENTS.md](AGENTS.md)** (`pnpm check` runs the full gate).
 
