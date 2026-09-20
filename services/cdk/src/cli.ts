@@ -98,7 +98,17 @@ const web = new AutoHarnessWebStack(app, contextString(app, "webStackName") ?? "
   cloudFrontIngressSecret: runtime.resources.cloudFrontIngressSecret,
   imageCode: lambda.DockerImageCode.fromImageAsset(
     fileURLToPath(new URL("../../..", import.meta.url)),
-    { file: "services/web/Dockerfile.aws", platform: Platform.LINUX_ARM64 },
+    {
+      buildArgs: {
+        HARNESS_SENTRY_RELEASE: process.env.HARNESS_SENTRY_RELEASE ?? "",
+        HARNESS_SENTRY_UPLOAD: process.env.HARNESS_SENTRY_ENABLED === "1" ? "1" : "0",
+      },
+      ...(process.env.HARNESS_SENTRY_ENABLED === "1"
+        ? { buildSecrets: { SENTRY_AUTH_TOKEN: "env=HARNESS_SENTRY_UPLOAD_TOKEN" } }
+        : {}),
+      file: "services/web/Dockerfile.aws",
+      platform: Platform.LINUX_ARM64,
+    },
   ),
   restApiUrl: runtime.resources.restApiUrl,
   websocketUrl: runtime.resources.websocketUrl,

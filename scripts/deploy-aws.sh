@@ -55,6 +55,13 @@ git fetch origin main
 previous_head="$(git rev-parse HEAD)"
 git merge --ff-only origin/main
 synced_head="$(git rev-parse HEAD)"
+if [[ "${HARNESS_SENTRY_ENABLED:-0}" == "1" ]]; then
+  if [[ -z "${HARNESS_SENTRY_UPLOAD_TOKEN:-}" ]]; then
+    echo "HARNESS_SENTRY_ENABLED=1 requires HARNESS_SENTRY_UPLOAD_TOKEN for the exact web image build." >&2
+    exit 1
+  fi
+  export HARNESS_SENTRY_RELEASE="$synced_head"
+fi
 if [[ "$synced_head" != "$(git rev-parse origin/main)" ]]; then
   echo "deploy:aws refuses a local main that is ahead of or diverged from origin/main" >&2
   exit 1

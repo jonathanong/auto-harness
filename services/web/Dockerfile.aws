@@ -3,8 +3,16 @@ WORKDIR /build
 RUN npm install --global --ignore-scripts corepack@0.34.6 && corepack enable
 COPY . .
 RUN pnpm install --filter @auto-harness/web... --frozen-lockfile
+ARG HARNESS_SENTRY_RELEASE
+ARG HARNESS_SENTRY_UPLOAD=0
+ENV HARNESS_SENTRY_RELEASE=$HARNESS_SENTRY_RELEASE HARNESS_SENTRY_UPLOAD=$HARNESS_SENTRY_UPLOAD
 ENV HARNESS_WEB_CLOUD=1
-RUN pnpm --filter @auto-harness/web build
+RUN --mount=type=secret,id=SENTRY_AUTH_TOKEN,required=false \
+    if [ "$HARNESS_SENTRY_UPLOAD" = "1" ]; then \
+      test -s /run/secrets/SENTRY_AUTH_TOKEN; \
+      export SENTRY_AUTH_TOKEN="$(cat /run/secrets/SENTRY_AUTH_TOKEN)"; \
+    fi; \
+    pnpm --filter @auto-harness/web build
 
 FROM node:26.8.2-bookworm-slim
 COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.0.0 /lambda-adapter /opt/extensions/lambda-adapter

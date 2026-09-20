@@ -35,5 +35,5 @@
     },
   },
   "ignore": ["**/test-helpers/**"],
-  "ignoreBinaries": ["lychee", "systemd-analyze"],
+  "ignoreBinaries": ["lychee", "systemd-analyze", "tofu"],
 }
