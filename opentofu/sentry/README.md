@@ -24,9 +24,9 @@ unconfigured: provide the approved remote backend settings with
 ```sh
 cd opentofu/sentry
 tofu init -backend-config=backend.hcl
-SENTRY_AUTH_TOKEN=... tofu plan -out=sentry.plan
+SENTRY_AUTH_TOKEN=... tofu plan -out=sentry.tfplan
 # Review the saved plan and authorize this exact file before applying it.
-SENTRY_AUTH_TOKEN=... tofu apply sentry.plan
+SENTRY_AUTH_TOKEN=... tofu apply sentry.tfplan
 ```
 
 The repository does not run `tofu apply` automatically. Render runtime DSN

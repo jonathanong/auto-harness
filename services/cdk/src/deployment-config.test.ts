@@ -157,7 +157,7 @@ describe("deploymentConfig", () => {
     const base = {
       AWS_REGION: "us-west-2",
       HARNESS_DEPLOY_ENVIRONMENT: "production",
-      HARNESS_SENTRY_ENABLED: "1",
+      HARNESS_SENTRY_ENABLED: " 1 ",
     };
     expect(() => deploymentConfig("deploy", base)).toThrow("HARNESS_SENTRY_ENABLED=1");
     const dsn = "https://abc123@o1.ingest.sentry.io/450";

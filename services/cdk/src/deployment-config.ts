@@ -1,5 +1,7 @@
 import { inspectSentryDsn } from "@auto-harness/shared";
 
+import { sentryEnabled } from "./sentry-release.ts";
+
 export type DeploymentOperation = "deploy" | "purge" | "teardown" | "update";
 
 export type DeploymentConfig = {
@@ -84,7 +86,7 @@ export function deploymentConfig(
   const apiSentryDsn = optionalDsn(env, "HARNESS_API_SENTRY_DSN");
   const webSentryDsnClient = optionalDsn(env, "HARNESS_WEB_SENTRY_DSN_CLIENT");
   const webSentryDsnServer = optionalDsn(env, "HARNESS_WEB_SENTRY_DSN_SERVER");
-  if (env.HARNESS_SENTRY_ENABLED?.trim() === "1") {
+  if (sentryEnabled(env)) {
     if (!apiSentryDsn || !webSentryDsnClient || !webSentryDsnServer) {
       throw new Error(
         "HARNESS_SENTRY_ENABLED=1 requires HARNESS_API_SENTRY_DSN, HARNESS_WEB_SENTRY_DSN_CLIENT, and HARNESS_WEB_SENTRY_DSN_SERVER",

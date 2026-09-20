@@ -39,6 +39,11 @@ done
 
 export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-west-2}}"
 export HARNESS_DEPLOY_ENVIRONMENT="${HARNESS_DEPLOY_ENVIRONMENT:-production}"
+# Match the TypeScript deployment paths: only a trimmed literal 1 enables Sentry.
+sentry_enabled="${HARNESS_SENTRY_ENABLED:-}"
+sentry_enabled="${sentry_enabled#"${sentry_enabled%%[![:space:]]*}"}"
+sentry_enabled="${sentry_enabled%"${sentry_enabled##*[![:space:]]}"}"
+export HARNESS_SENTRY_ENABLED="$sentry_enabled"
 # AWS CLI v2 pages long JSON through less on a TTY; deploy must print and continue.
 export AWS_PAGER=""
 
@@ -55,7 +60,7 @@ git fetch origin main
 previous_head="$(git rev-parse HEAD)"
 git merge --ff-only origin/main
 synced_head="$(git rev-parse HEAD)"
-if [[ "${HARNESS_SENTRY_ENABLED:-0}" == "1" ]]; then
+if [[ "$sentry_enabled" == "1" ]]; then
   if [[ -z "${HARNESS_SENTRY_UPLOAD_TOKEN:-}" ]]; then
     echo "HARNESS_SENTRY_ENABLED=1 requires HARNESS_SENTRY_UPLOAD_TOKEN for the exact web image build." >&2
     exit 1

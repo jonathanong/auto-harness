@@ -46,6 +46,7 @@ export function renderedDsnExports(environment: string, outputs: PublicDsns): st
     `export HARNESS_HOST_SENTRY_DSN=${shellQuote(selected["auto-harness-host-plane-backend"])};`,
     `export HARNESS_HOST_PANE_SENTRY_DSN_CLIENT=${shellQuote(hostPane)};`,
     `export HARNESS_HOST_PANE_SENTRY_DSN_SERVER=${shellQuote(hostPane)};`,
+    `export HARNESS_DEPLOY_ENVIRONMENT=${shellQuote(environment)};`,
     "export HARNESS_SENTRY_ENABLED='1';",
   ];
 }

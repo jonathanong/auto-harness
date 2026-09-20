@@ -22,6 +22,7 @@ describe("renderedDsnExports", () => {
       `export HARNESS_HOST_SENTRY_DSN='${dsn("3")}';`,
       `export HARNESS_HOST_PANE_SENTRY_DSN_CLIENT='${dsn("4")}';`,
       `export HARNESS_HOST_PANE_SENTRY_DSN_SERVER='${dsn("4")}';`,
+      "export HARNESS_DEPLOY_ENVIRONMENT='staging';",
       "export HARNESS_SENTRY_ENABLED='1';",
     ]);
   });
