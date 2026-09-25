@@ -7,6 +7,7 @@ import {
 } from "./allowed-roots.ts";
 import type { DaemonConfig, RepositoryConfig, WorktreeConfig } from "./config.ts";
 import type { GitClient } from "./git.ts";
+import { FULL_COMMIT_ID } from "./git-ref-resolution.ts";
 
 export type ClaimedWorktree = {
   hostSetupScript?: string;
@@ -37,8 +38,6 @@ const mainWorktree = (repository: RepositoryConfig): WorktreeConfig => ({
   path: repository.path,
   labels: [],
 });
-
-const FULL_COMMIT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 
 function sameOptionalString(left: string | undefined, right: string | undefined): boolean {
   return (left ?? "") === (right ?? "");
@@ -429,6 +428,7 @@ export class WorktreeManager {
     claimed: ClaimedWorktree,
     ref: string | undefined,
     signal?: AbortSignal,
+    onWarning?: (message: string) => void,
   ): Promise<string | undefined> {
     await claimed.currentExecutionTarget?.();
     const target = ref ?? claimed.repository.defaultBranch;
@@ -437,6 +437,7 @@ export class WorktreeManager {
       repoPath: claimed.repository.path,
       ref: target,
       ...(signal ? { signal } : {}),
+      ...(onWarning ? { onWarning } : {}),
     });
     return baseline && FULL_COMMIT_ID.test(baseline) ? baseline : undefined;
   }

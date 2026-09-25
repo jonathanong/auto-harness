@@ -243,6 +243,19 @@ export async function runGit(
   };
 }
 
+/** Configured remote names in `git remote` order; empty when listing fails. */
+export async function listConfiguredRemotes(
+  runner: ProcessRunner,
+  cwd: string,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  const listed = await runGit(runner, cwd, ["remote"], signal);
+  if (listed.exitCode !== 0) {
+    return [];
+  }
+  return listed.stdout.split(/\r?\n/).filter((remote) => remote.length > 0);
+}
+
 export async function refetchConfiguredRemotes(
   runner: ProcessRunner,
   cwd: string,
@@ -250,11 +263,7 @@ export async function refetchConfiguredRemotes(
   throwOnFetchFailure = false,
   onFetchFailure?: (error: CheckoutFetchError) => void,
 ): Promise<boolean> {
-  const listed = await runGit(runner, cwd, ["remote"], signal);
-  if (listed.exitCode !== 0) {
-    return false;
-  }
-  const remotes = listed.stdout.split(/\r?\n/).filter((remote) => remote.length > 0);
+  const remotes = await listConfiguredRemotes(runner, cwd, signal);
   if (remotes.length === 0) {
     return false;
   }

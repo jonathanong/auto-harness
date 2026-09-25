@@ -37,6 +37,32 @@ describe("SessionRunner lifecycle transcript", () => {
     expect(result.logs.some((chunk) => chunk.content.includes("secret prompt"))).toBe(false);
   });
 
+  it("reports the resolved commit and checkout warnings for a worktree ref", async () => {
+    const sha = "728430f4".padEnd(40, "0");
+    const { sessionRunner } = setup(
+      {
+        async run() {
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+      {
+        async checkoutRef({ onWarning }) {
+          onWarning?.("Warning: fetch failed before resolving ref main");
+          return sha;
+        },
+      },
+    );
+    const result = await sessionRunner.run(baseAssign());
+    const system = result.logs
+      .filter((chunk) => chunk.stream === "system")
+      .map((chunk) => chunk.content);
+    expect(system.slice(2, 5)).toEqual([
+      "Checking out ref main...",
+      "Warning: fetch failed before resolving ref main",
+      `Checked out ref main at ${sha}`,
+    ]);
+  });
+
   it("describes missing exit codes and the actual terminal status", async () => {
     const { sessionRunner } = setup({
       async run() {

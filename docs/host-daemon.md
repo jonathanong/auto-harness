@@ -559,7 +559,27 @@ reason for operators but refuses assignments and is excluded by the scheduler.
 For a worktree session, the daemon resolves its `ref` to a commit before
 forcefully detaching `HEAD`, so branch names, SHAs, lightweight tags, and
 annotated tags all land on the exact target commit even when a prior session
-modified tracked files. The force checkout does not broadly clean untracked
+modified tracked files. Resolution order:
+
+- A full 40- or 64-hex commit SHA resolves locally with no network round trip; the daemon
+  runs `git fetch --all --tags` only if that commit is missing.
+- Any other ref (branch, tag, short SHA) always runs `git fetch --all --tags` first, then
+  prefers the freshly fetched remote-tracking branch `refs/remotes/<remote>/<ref>` (trying
+  `origin` first, then the other configured remotes). Worktrees share the pool checkout's
+  local branches, which are usually stale, so a branch ref such as `main` means the remote
+  tip, not the pool's local `main`. Without a matching remote-tracking branch (tags,
+  local-only branches, revision syntax such as `main~1`), `<ref>` itself is resolved.
+- If that fetch exits nonzero but the ref still resolves, checkout continues and the
+  transcript records a `Warning: fetch failed …` line naming the possibly stale source and
+  commit. If nothing resolves, or the fetch process itself cannot run, the session fails with
+  `checkout_fetch_failed`.
+
+The transcript's `Checked out ref <ref> at <sha>` line records the commit actually checked
+out.
+
+Main-checkout (scheduled) sessions are different: they `git switch` the operator's live
+checkout to the local branch and never reset or fast-forward it, so a stale local branch
+stays stale there. The daemon fetches only when that local branch does not exist yet. The force checkout does not broadly clean untracked
 paths. Before checkout, it aborts interrupted merge, rebase, apply, cherry-pick,
 and revert operations and clears tracked-file `assume-unchanged` and `skip-worktree`
 flags. It first inspects index flags with `git ls-files -v -z`, preserves the raw path bytes

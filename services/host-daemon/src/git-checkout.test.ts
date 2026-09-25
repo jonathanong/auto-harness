@@ -25,6 +25,25 @@ function resolvesCommit(ref: string, sha = "abc") {
   };
 }
 
+/** A branch ref fetches first, then resolves the fresh `origin` remote-tracking tip. */
+function resolvesBranch(ref: string, sha = "abc") {
+  return [
+    { match: ["fetch", "--all", "--tags"], exitCode: 0 },
+    { match: ["remote"], exitCode: 0, stdout: "origin\n" },
+    resolvesCommit(`refs/remotes/origin/${ref}`, sha),
+  ];
+}
+
+function missesRemoteBranch(ref: string) {
+  return [
+    { match: ["remote"], exitCode: 0, stdout: "origin\n" },
+    {
+      match: ["rev-parse", "--verify", "--end-of-options", `refs/remotes/origin/${ref}^{commit}`],
+      exitCode: 1,
+    },
+  ];
+}
+
 function fetchesSubmodules(exitCode = 0, stderr = "") {
   return { match: ["fetch", "--recurse-submodules"], exitCode, stderr };
 }
@@ -316,7 +335,7 @@ describe("createGitClient checkout and revParse", () => {
     const git = createGitClient(
       scripted([
         ...resetsPriorState(),
-        resolvesCommit("main", "abc123"),
+        ...resolvesBranch("main", "abc123"),
         { match: ["switch", "--discard-changes", "--detach", "abc123"], exitCode: 0 },
         hardReset("abc123"),
         syncsSubmodules(),
@@ -333,13 +352,7 @@ describe("createGitClient checkout and revParse", () => {
     const git = createGitClient(
       scripted([
         ...resetsPriorState(),
-        {
-          match: ["rev-parse", "--verify", "--end-of-options", "main^{commit}"],
-          exitCode: 1,
-          stderr: "no",
-        },
-        { match: ["fetch", "--all", "--tags"], exitCode: 0 },
-        resolvesCommit("main"),
+        ...resolvesBranch("main"),
         {
           match: ["switch", "--discard-changes", "--detach", "abc"],
           exitCode: 1,
@@ -357,15 +370,13 @@ describe("createGitClient checkout and revParse", () => {
     await git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
   });
 
-  it("retries ref resolution after a failed fetch because partial fetches may succeed", async () => {
+  it("resolves a branch after a failed fetch because partial fetches may succeed", async () => {
+    const warnings: string[] = [];
     const git = createGitClient(
       scripted([
         ...resetsPriorState(),
-        {
-          match: ["rev-parse", "--verify", "--end-of-options", "main^{commit}"],
-          exitCode: 1,
-        },
         { match: ["fetch", "--all", "--tags"], exitCode: 1, stderr: "temporary failure" },
+        ...missesRemoteBranch("main"),
         resolvesCommit("main", "partial-sha"),
         { match: ["switch", "--discard-changes", "--detach", "partial-sha"], exitCode: 0 },
         hardReset("partial-sha"),
@@ -377,8 +388,16 @@ describe("createGitClient checkout and revParse", () => {
       ]),
     );
     await expect(
-      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" }),
+      git.checkoutRef({
+        cwd: checkoutCwd,
+        repoPath: checkoutRepo,
+        ref: "main",
+        onWarning: (warning) => warnings.push(warning),
+      }),
     ).resolves.toBe("partial-sha");
+    expect(warnings).toEqual([
+      "Warning: fetch failed before resolving ref main; using possibly stale main at partial-sha: temporary failure",
+    ]);
   });
 
   it("checkoutRef fetches an exact GitHub pull-request ref without shared FETCH_HEAD", async () => {
@@ -924,7 +943,7 @@ describe("createGitClient checkout and revParse", () => {
     const git = createGitClient(
       scripted([
         ...resetsPriorState(),
-        resolvesCommit("main"),
+        ...resolvesBranch("main"),
         {
           match: ["switch", "--discard-changes", "--detach", "abc"],
           exitCode: 1,
@@ -955,7 +974,7 @@ describe("createGitClient checkout and revParse", () => {
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
-        resolvesCommit("main"),
+        ...resolvesBranch("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
         { match: ["reset", "--hard", "abc"], exitCode: 1, stderr: "reset failed" },
         { match: ["fsck", "--connectivity-only", "abc"], exitCode: 0 },
@@ -1000,12 +1019,8 @@ describe("createGitClient checkout and revParse", () => {
       createGitClient(
         scripted([
           ...resetsPriorState(),
-          {
-            match: ["rev-parse", "--verify", "--end-of-options", "bad^{commit}"],
-            exitCode: 1,
-            stderr: "e",
-          },
           { match: ["fetch", "--all", "--tags"], exitCode: 0 },
+          ...missesRemoteBranch("bad"),
           {
             match: ["rev-parse", "--verify", "--end-of-options", "bad^{commit}"],
             exitCode: 1,
@@ -1022,13 +1037,7 @@ describe("createGitClient checkout and revParse", () => {
   ])(
     "brands thrown %s fetch errors while resolving a checkout ref",
     async (_kind, thrown, detail) => {
-      const base = scripted([
-        ...resetsPriorState(),
-        {
-          match: ["rev-parse", "--verify", "--end-of-options", "main^{commit}"],
-          exitCode: 1,
-        },
-      ]);
+      const base = scripted([...resetsPriorState()]);
       const runner = {
         async run(options: Parameters<typeof base.run>[0]) {
           if (options.argv[1] === "fetch") throw thrown;
@@ -1051,11 +1060,8 @@ describe("createGitClient checkout and revParse", () => {
       createGitClient(
         scripted([
           ...resetsPriorState(),
-          {
-            match: ["rev-parse", "--verify", "--end-of-options", "main^{commit}"],
-            exitCode: 1,
-          },
           { match: ["fetch", "--all", "--tags"], exitCode: 1, stderr: "partial failure" },
+          ...missesRemoteBranch("main"),
           {
             match: ["rev-parse", "--verify", "--end-of-options", "main^{commit}"],
             exitCode: 1,
@@ -1069,6 +1075,8 @@ describe("createGitClient checkout and revParse", () => {
     const git = createGitClient(
       scripted([
         ...resetsPriorState(),
+        { match: ["fetch", "--all", "--tags"], exitCode: 0 },
+        ...missesRemoteBranch("v1.2.3"),
         resolvesCommit("v1.2.3", "commit-sha"),
         {
           match: ["switch", "--discard-changes", "--detach", "commit-sha"],
@@ -1092,7 +1100,7 @@ describe("createGitClient checkout and revParse", () => {
     const git = createGitClient(
       scripted([
         ...resetsPriorState(),
-        resolvesCommit("main"),
+        ...resolvesBranch("main"),
         {
           match: ["switch", "--discard-changes", "--detach", "abc"],
           exitCode: 1,
@@ -1128,7 +1136,7 @@ describe("createGitClient checkout and revParse", () => {
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
-        resolvesCommit("main"),
+        ...resolvesBranch("main"),
         {
           match: ["switch", "--discard-changes", "--detach", "abc"],
           exitCode: 1,
@@ -1150,7 +1158,7 @@ describe("createGitClient checkout and revParse", () => {
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
-        resolvesCommit("main"),
+        ...resolvesBranch("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 1, stderr: "s" },
         { match: ["checkout", "--force", "--detach", "abc"], exitCode: 1, stderr: "c" },
         { match: ["fsck", "--connectivity-only", "abc"], exitCode: 1, stderr: "missing tree" },
@@ -1174,7 +1182,7 @@ describe("createGitClient checkout and revParse", () => {
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
-        resolvesCommit("main"),
+        ...resolvesBranch("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 1 },
         { match: ["checkout", "--force", "--detach", "abc"], exitCode: 1 },
         { match: ["fsck", "--connectivity-only", "abc"], exitCode: 1 },
@@ -1199,7 +1207,7 @@ describe("createGitClient checkout and revParse", () => {
       createGitClient(
         scripted([
           ...resetsPriorState(),
-          resolvesCommit("main"),
+          ...resolvesBranch("main"),
           { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 1 },
           { match: ["checkout", "--force", "--detach", "abc"], exitCode: 1 },
           { match: ["fsck", "--connectivity-only", "abc"], exitCode: 1 },
@@ -1215,7 +1223,7 @@ describe("createGitClient checkout and revParse", () => {
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
-        resolvesCommit("main"),
+        ...resolvesBranch("main"),
         {
           match: ["switch", "--discard-changes", "--detach", "abc"],
           exitCode: 1,
@@ -1253,7 +1261,7 @@ describe("createGitClient checkout and revParse", () => {
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
-        resolvesCommit("main"),
+        ...resolvesBranch("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
         hardReset("abc"),
         syncsSubmodules(),
@@ -1276,7 +1284,7 @@ describe("createGitClient checkout and revParse", () => {
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
-        resolvesCommit("main"),
+        ...resolvesBranch("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
         hardReset("abc"),
         syncsSubmodules(),
@@ -1294,7 +1302,7 @@ describe("createGitClient checkout and revParse", () => {
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
-        resolvesCommit("main"),
+        ...resolvesBranch("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
         hardReset("abc"),
         syncsSubmodules(),
@@ -1311,7 +1319,7 @@ describe("createGitClient checkout and revParse", () => {
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
-        resolvesCommit("main"),
+        ...resolvesBranch("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
         hardReset("abc"),
         syncsSubmodules(),
@@ -1328,7 +1336,7 @@ describe("createGitClient checkout and revParse", () => {
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
-        resolvesCommit("main"),
+        ...resolvesBranch("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
         hardReset("abc"),
         syncsSubmodules(1, "fatal: client_secret=SYNCSECRET"),
@@ -1383,19 +1391,7 @@ describe("createGitClient checkout and revParse", () => {
       ref: "main",
       signal: controller.signal,
     });
-    expect(seen).toEqual([
-      controller.signal,
-      controller.signal,
-      controller.signal,
-      controller.signal,
-      controller.signal,
-      controller.signal,
-      controller.signal,
-      controller.signal,
-      controller.signal,
-      controller.signal,
-      controller.signal,
-      controller.signal,
-    ]);
+    // A branch ref adds `fetch --all --tags` and `git remote` before resolution.
+    expect(seen).toEqual(Array.from({ length: 14 }, () => controller.signal));
   });
 });

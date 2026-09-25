@@ -27,7 +27,7 @@ export function baseAssign(over: Partial<SessionAssign> = {}): SessionAssign {
   };
 }
 
-export function setup(runner: ProcessRunner) {
+export function setup(runner: ProcessRunner, gitOverrides: Partial<GitClient> = {}) {
   const config = parseDaemonConfig({
     hostId: "a1",
     repositories: [
@@ -46,6 +46,7 @@ export function setup(runner: ProcessRunner) {
     checkoutRef: async () => undefined,
     prepareMainCheckout: async () => undefined,
     revParse: async () => "deadbeef",
+    ...gitOverrides,
   };
   const worktrees = new WorktreeManager(config, git);
   const hooks: string[] = [];

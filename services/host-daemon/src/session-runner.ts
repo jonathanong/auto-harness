@@ -224,11 +224,16 @@ export class SessionRunner {
           if (mainClaimed) {
             baseline = await this.deps.worktrees.prepareMainCheckout(claimed, assign.ref, signal);
           } else {
-            baseline = await this.deps.worktrees.prepareCheckout(claimed, assign.ref, signal);
+            baseline = await this.deps.worktrees.prepareCheckout(
+              claimed,
+              assign.ref,
+              signal,
+              (warning) => streamer.write("system", warning),
+            );
           }
           streamer.write(
             "system",
-            `Checked out ref ${assign.ref ?? claimed.repository.defaultBranch}`,
+            `Checked out ref ${checkoutRef}${baseline === undefined ? "" : ` at ${baseline}`}`,
           );
         } catch (err) {
           // A checkout can reject because its git child was aborted. Preserve the
