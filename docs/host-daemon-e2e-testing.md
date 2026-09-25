@@ -298,7 +298,7 @@ done
 | Assign    | one item for `$SID` / `wt-1` / your `hostId`                                                                                           |
 | Terminal  | `status: "completed"`, `exitCode: 0`                                                                                                   |
 | Logs      | `GET /api/v1/sessions/$SID/logs` has system lines (claim, checkout, spawn) + stdout                                                    |
-| Agent log | lines like `Claimed worktree`, `Checked out ref main`, `Spawning: echo …`                                                              |
+| Agent log | lines like `Claimed worktree`, `Checked out ref main at <sha>`, `Spawning: echo …`                                                     |
 
 ### 5.2 Real CLI (preferred pre-deploy) — Grok example
 

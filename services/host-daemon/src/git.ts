@@ -20,6 +20,7 @@ import {
   type GitHubPullRequestFetch,
 } from "./git-github-pull-ref.ts";
 import { mainCheckoutDirtyEntries } from "./git-main-checkout-status.ts";
+import { resolveCheckoutRef } from "./git-ref-resolution.ts";
 import {
   claimedLinkedWorktree,
   checkoutDetached,
@@ -44,6 +45,8 @@ export type GitClient = {
     repoPath: string;
     ref: string;
     signal?: AbortSignal;
+    /** Receives non-fatal checkout diagnostics, such as a tolerated fetch failure. */
+    onWarning?: (message: string) => void;
   }): Promise<string | undefined>;
   prepareMainCheckout(opts: { cwd: string; ref: string; signal?: AbortSignal }): Promise<void>;
   revParse(cwd: string, rev: string, signal?: AbortSignal): Promise<string>;
@@ -115,7 +118,7 @@ export function createGitClient(
       }
     },
 
-    async checkoutRef({ cwd, repoPath, ref, signal }) {
+    async checkoutRef({ cwd, repoPath, ref, signal, onWarning }) {
       const isPullRequestRef = isGitHubPullRequestRef(ref);
       const pullCheckoutEnvironment = isPullRequestRef
         ? isolatedPullCheckoutEnvironment()
@@ -182,38 +185,9 @@ export function createGitClient(
         if (isPullRequestRef && pullRequestFetch === null) {
           throw new Error(`Failed to fetch GitHub pull-request ref ${ref}`);
         }
-        let resolved = isPullRequestRef
-          ? undefined
-          : await runGit(
-              runner,
-              cwd,
-              ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`],
-              signal,
-            );
-        if (resolved !== undefined && resolved.exitCode !== 0) {
-          let fetched: Awaited<ReturnType<typeof runGit>>;
-          try {
-            fetched = await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
-          } catch (error) {
-            throw checkoutFetchFailure(
-              `Failed to fetch ref ${ref}`,
-              error instanceof Error ? error.message : String(error),
-            );
-          }
-          resolved = await runGit(
-            runner,
-            cwd,
-            ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`],
-            signal,
-          );
-          if (fetched.exitCode !== 0 && resolved.exitCode !== 0) {
-            throw checkoutFetchFailure(`Failed to fetch ref ${ref}`, fetched.stderr);
-          }
-        }
-        if (resolved !== undefined && resolved.exitCode !== 0) {
-          throw gitFailure(`Failed to resolve ref ${ref}`, resolved.stderr);
-        }
-        sha = isPullRequestRef ? pullRequestFetch!.sha : resolved!.stdout.trim();
+        sha = isPullRequestRef
+          ? pullRequestFetch!.sha
+          : await resolveCheckoutRef(runner, cwd, ref, signal, onWarning);
         if (isPullRequestRef) {
           const materialized = await materializeGitHubPullRequestRef(
             runner,
