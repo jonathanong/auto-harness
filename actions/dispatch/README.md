@@ -5,7 +5,8 @@ continues a prior session on its pinned host. The same action also owns the auth
 account's principal session drain for a single repository. It never lists or individually cancels
 sessions in GitHub Actions: the control plane owns that durable work. Replace `<sha>` below with a
 reviewed full commit SHA from `main`, then deliberately update it when adopting a newer revision. Do
-not use the moving `main` ref.
+not use the moving `main` ref. Prefer the commit of a
+[`vX.Y.Z` actions release](../../docs/release-actions.md) and add its `# vX.Y.Z` comment to the pin.
 
 ```yaml
 - uses: jonathanong/auto-harness/actions/dispatch@<sha>

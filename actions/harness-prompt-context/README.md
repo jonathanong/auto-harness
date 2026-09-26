@@ -12,7 +12,8 @@ received a non-bot commit — the loop-breaker a Dependabot re-dispatch needs, s
 mints a fresh head-sha concurrency id that the dispatch action's own dedup can't see across.
 
 Replace `<sha>` below with a reviewed full commit SHA from `main`, then deliberately update it
-when adopting a newer revision. Do not use the moving `main` ref.
+when adopting a newer revision. Do not use the moving `main` ref. Prefer the commit of a
+[`vX.Y.Z` actions release](../../docs/release-actions.md) and add its `# vX.Y.Z` comment to the pin.
 
 ```yaml
 permissions:

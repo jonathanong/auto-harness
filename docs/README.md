@@ -18,6 +18,7 @@ What Auto Harness is, what it does and does not, and why: root [README](../READM
 | [deploy-host-daemon.md](deploy-host-daemon.md)                       | VPS agent install / update / teardown                       |
 | [setup-scripts.md](setup-scripts.md)                                 | Trusted setup scripts: execution contract, do's and don'ts  |
 | [release-client.md](release-client.md)                               | Manual npm client publish, tag, and GitHub Release          |
+| [release-actions.md](release-actions.md)                             | Manual `vX.Y.Z` tag and GitHub Release for the Actions      |
 | [github.md](github.md)                                               | Dependabot, PR labels, actionlint, pr-shepherd CodeRabbit   |
 | [AGENTS.md](../AGENTS.md)                                            | Contributor contract: no docstring-coverage gate (#558)     |
 | [setup.md](setup.md)                                                 | Install, AWS deploy overview, VPS agent production shape    |

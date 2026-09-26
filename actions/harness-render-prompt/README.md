@@ -7,7 +7,8 @@ a merge-authority postlude. The companion script ships inside this action's own 
 only the template.
 
 Replace `<sha>` below with a reviewed full commit SHA from `main`, then deliberately update it
-when adopting a newer revision. Do not use the moving `main` ref.
+when adopting a newer revision. Do not use the moving `main` ref. Prefer the commit of a
+[`vX.Y.Z` actions release](../../docs/release-actions.md) and add its `# vX.Y.Z` comment to the pin.
 
 ```yaml
 - name: Render the dispatch prompt
