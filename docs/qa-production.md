@@ -304,8 +304,7 @@ Do not read `web.md`. Follow nav labels.
    - name `claude`; default command name e.g. `claude-print`; argv one token
      per line: `claude`, `-p`, `--output-format`, `json`; append-prompt on
    - name `grok`; default command name e.g. `grok-print`; argv one token
-     per line: `grok`, `--always-approve`, `--max-turns`, `3`, `--output-format`,
-     `json`, `-p`
+     per line: `grok`, `--always-approve`, `--output-format`, `json`, `-p`
      (`-p` / `--single` takes the prompt as its option value).
      Append-prompt **on**, append-prompt separator **off** — a `--`
      before the prompt makes grok 1.0.5 exit 2 with `a value is required

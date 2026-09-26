@@ -158,7 +158,7 @@ grok -p "reply with exactly: OK" --output-format json
 **Preset** (`grok-print`):
 
 ```text
-argv: ["grok", "--always-approve", "--max-turns", "3", "--output-format", "json", "-p"]
+argv: ["grok", "--always-approve", "--output-format", "json", "-p"]
 appendPrompt: true
 appendPromptSeparator: false
 ```
