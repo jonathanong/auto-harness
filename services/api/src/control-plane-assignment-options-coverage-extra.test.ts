@@ -5,7 +5,8 @@ import { providerAccountLeaseConcurrencyId } from "@auto-harness/shared";
 
 import { assignQueued, assignQueuedDurable } from "./control-plane-assign.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { slackOutboxStub } from "../test-helpers/slack-outbox-test-stub.ts";
+import { createControlPlaneState, settleStorage } from "./control-plane-state.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -280,6 +281,26 @@ describe("assignment optional-field coverage", () => {
     await expect(assignQueuedDurable(state)).resolves.toEqual([]);
     expect(expired).toMatchObject({ concurrencyId: "lock" });
     expect(state.sessions.get("s")).toMatchObject({ status: "failed", errorCode: "queue_expired" });
+  });
+
+  it("enqueues the Slack failure lifecycle for a durable queue expiry", async () => {
+    const state = providerState();
+    state.sessions.set("s", session({ queueExpiresAt: "2025-01-01T00:00:00.000Z" }));
+    const slack = slackOutboxStub();
+    setDurableReadStorage(state, { ...slack.storage, expireQueuedSession: async () => true });
+    await expect(assignQueuedDurable(state)).resolves.toEqual([]);
+    await settleStorage(state);
+    expect(slack.ids()).toContain("slack:s:session_failed:reply");
+  });
+
+  it("does not announce an expiry that lost the durable fence", async () => {
+    const state = providerState();
+    state.sessions.set("s", session({ queueExpiresAt: "2025-01-01T00:00:00.000Z" }));
+    const slack = slackOutboxStub();
+    setDurableReadStorage(state, { ...slack.storage, expireQueuedSession: async () => false });
+    await expect(assignQueuedDurable(state)).resolves.toEqual([]);
+    await settleStorage(state);
+    expect(slack.ids()).toEqual([]);
   });
 
   it("keeps a future pin when durable clearing loses the fence", async () => {

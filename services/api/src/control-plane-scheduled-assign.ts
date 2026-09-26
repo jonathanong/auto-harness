@@ -4,7 +4,7 @@ import { hasHostCapability, type HostWireMessage } from "@auto-harness/shared";
 import type { SessionRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { toPublic } from "./control-plane-state.ts";
+import { noteSlackSessionLifecycle, toPublic } from "./control-plane-state.ts";
 import { buildProviderCatalog } from "./control-plane-session-target.ts";
 import { orderedQueuedSessions } from "./control-plane-ordering.ts";
 import {
@@ -319,7 +319,10 @@ async function expireScheduledQueued(
       completedAt: now,
       ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
     });
-    if (expired) state.sessions.set(session.id, next);
+    if (expired) {
+      state.sessions.set(session.id, next);
+      noteSlackSessionLifecycle(state, next);
+    }
     return;
   }
   state.sessions.set(session.id, next);

@@ -298,7 +298,10 @@ The delivery implementation must respect Slack API rate limits and batch updates
 
 The outbox stores one immutable operation ID per lifecycle action. REST/WS/cron session
 writers enqueue those ids on create and status transitions so a session that is created and
-cancelled between ticks is still in the outbox. An exhausted protocol-v6
+cancelled between ticks is still in the outbox. Queue expiry is one of those transitions: the
+prompt, scheduled, and workspace assignment passes enqueue `session_failed` right after their
+durable `queue_expired` write wins, so an expiry is announced even when no later sweep sees it.
+An exhausted protocol-v6
 `checkout_fetch_failed` terminal-hook handoff is the delayed exception: the status write
 skips Slack while the handoff is pending, and settlement or expiry enqueues `session_failed`
 from the durable session even when that worker has no in-memory history. The worker then leases due rows, recovers
