@@ -85,17 +85,12 @@ describe("ProviderCreateForm", () => {
     const fetch = mockCreate();
     const view = mountForm(<ProviderCreateForm />);
     setName(view, "grok");
-    expectCommand(
-      view,
-      "grok-print",
-      "grok\n--always-approve\n--max-turns\n3\n--output-format\njson\n-p",
-      false,
-    );
+    expectCommand(view, "grok-print", "grok\n--always-approve\n--output-format\njson\n-p", false);
     submit(field(view.container, "form-provider-catalog"));
     await act(async () => Promise.resolve());
     expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
       name: "grok-print",
-      argv: ["grok", "--always-approve", "--max-turns", "3", "--output-format", "json", "-p"],
+      argv: ["grok", "--always-approve", "--output-format", "json", "-p"],
       appendPrompt: true,
       appendPromptSeparator: false,
       providerId: "p/1",
@@ -145,12 +140,7 @@ describe("ProviderCreateForm", () => {
     const view = mountForm(<ProviderCreateForm />);
     setName(view, "grok");
     setName(view, "other");
-    expectCommand(
-      view,
-      "grok-print",
-      "grok\n--always-approve\n--max-turns\n3\n--output-format\njson\n-p",
-      false,
-    );
+    expectCommand(view, "grok-print", "grok\n--always-approve\n--output-format\njson\n-p", false);
     view.unmount();
   });
 

@@ -11,7 +11,7 @@ describe("catalogCommandDefaults", () => {
   it("returns grok JSON defaults without a -- separator", () => {
     expect(catalogCommandDefaults(" Grok ")).toEqual({
       commandName: "grok-print",
-      argv: ["grok", "--always-approve", "--max-turns", "3", "--output-format", "json", "-p"],
+      argv: ["grok", "--always-approve", "--output-format", "json", "-p"],
       appendPrompt: true,
       appendPromptSeparator: false,
     });

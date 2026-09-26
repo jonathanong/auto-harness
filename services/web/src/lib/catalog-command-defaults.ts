@@ -28,7 +28,7 @@ export function catalogCommandDefaults(name: string): CatalogCommandDefaults | n
   if (key === "grok") {
     return {
       commandName: "grok-print",
-      argv: ["grok", "--always-approve", "--max-turns", "3", "--output-format", "json", "-p"],
+      argv: ["grok", "--always-approve", "--output-format", "json", "-p"],
       appendPrompt: true,
       appendPromptSeparator: false,
     };
