@@ -52,6 +52,9 @@ describe("render-harness-prompt.mts", () => {
     expect(result.stdout).not.toContain("merge-authority.md");
     expect(result.stdout).toContain("any repository-specific worktree-reset script");
     expect(result.stdout).not.toContain("reset-worktree");
+    expect(result.stdout).toContain(
+      "Never send your final response while a background command you started is still running.",
+    );
   });
 
   it("prefers a later --var-file over an earlier --var for the same NAME", () => {
