@@ -1,0 +1,137 @@
+name: Release actions
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: Version increment for the next vX.Y.Z actions tag on the current main branch
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    # workflow_dispatch can name a ref; only the main-branch definition may tag.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      github.workflow_ref == format('{0}/.github/workflows/release-actions.yml@refs/heads/main', github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: Resolve new or interrupted release
+        env:
+          RELEASE_TYPE: ${{ inputs.release_type }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          case "$RUN_ATTEMPT" in
+            '' | *[!0-9]*) echo "invalid GitHub run attempt: $RUN_ATTEMPT" >&2; exit 1 ;;
+          esac
+          case "$RUN_ID" in
+            '' | *[!0-9]*) echo "invalid GitHub run ID: $RUN_ID" >&2; exit 1 ;;
+          esac
+
+          git fetch --force --tags origin '+refs/heads/main:refs/remotes/origin/main'
+          git checkout --detach origin/main
+          head_commit="$(git rev-parse HEAD)"
+          semver_tags() {
+            git tag --list "$@" 'v*' | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | sort -V || true
+          }
+
+          # A rerun finishes the tag this run already pushed instead of cutting another version.
+          run_tags=()
+          while IFS= read -r candidate_tag; do
+            test -n "$candidate_tag" || continue
+            subject="$(git for-each-ref --format='%(contents:subject)' "refs/tags/${candidate_tag}")"
+            if test "$subject" = "Release actions ${candidate_tag} from GitHub Actions run ${RUN_ID}"; then
+              run_tags+=("$candidate_tag")
+            fi
+          done < <(semver_tags)
+          if (( ${#run_tags[@]} > 1 )); then
+            echo "multiple release tags belong to this workflow run" >&2
+            exit 1
+          fi
+          if (( ${#run_tags[@]} == 1 )); then
+            release_tag="${run_tags[0]}"
+            previous_tag="$(semver_tags --merged "${release_tag}^" | tail -n 1)"
+            {
+              echo "RELEASE_MODE=release-only"
+              echo "RELEASE_TAG=$release_tag"
+              echo "PREVIOUS_TAG=$previous_tag"
+            } >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          if test -n "$(git tag --points-at "$head_commit" --list 'v*')"; then
+            echo "main ${head_commit} already has an actions release tag; nothing new to release" >&2
+            exit 1
+          fi
+          previous_tag="$(semver_tags --merged "$head_commit" | tail -n 1)"
+          test -n "$previous_tag" || { echo "no vX.Y.Z tag is reachable from main" >&2; exit 1; }
+          IFS=. read -r major minor patch <<< "${previous_tag#v}"
+          case "$RELEASE_TYPE" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+            *) echo "unsupported release type: $RELEASE_TYPE" >&2; exit 1 ;;
+          esac
+          release_tag="v${major}.${minor}.${patch}"
+          if git rev-parse --verify --quiet "refs/tags/${release_tag}" >/dev/null; then
+            echo "release tag already exists: ${release_tag}" >&2
+            exit 1
+          fi
+          {
+            echo "RELEASE_MODE=new"
+            echo "RELEASE_TAG=$release_tag"
+            echo "PREVIOUS_TAG=$previous_tag"
+            echo "RELEASE_COMMIT=$head_commit"
+            echo "RELEASE_RUN_ID=$RUN_ID"
+          } >> "$GITHUB_ENV"
+      - name: Tag and push release
+        if: env.RELEASE_MODE == 'new'
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag --annotate "$RELEASE_TAG" "$RELEASE_COMMIT" \
+            --message "Release actions ${RELEASE_TAG} from GitHub Actions run ${RELEASE_RUN_ID}"
+          auth_header="$(printf 'x-access-token:%s' "$RELEASE_TOKEN" | base64 | tr -d '\n')"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
+            push origin "refs/tags/${RELEASE_TAG}"
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$RELEASE_TAG" --json tagName --jq .tagName >/dev/null 2>&1; then
+            exit 0
+          fi
+          release_args=(
+            "$RELEASE_TAG"
+            --verify-tag
+            --latest=false
+            --title "auto-harness actions ${RELEASE_TAG}"
+            --generate-notes
+          )
+          if test -n "$PREVIOUS_TAG"; then
+            release_args+=(--notes-start-tag "$PREVIOUS_TAG")
+          fi
+          gh release create "${release_args[@]}"

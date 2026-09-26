@@ -8,7 +8,8 @@ version changes in pull requests.
 
 The checked-in dispatch Action has a separate distribution policy: consumers pin a reviewed full
 commit SHA as documented in [`actions/dispatch`](../actions/dispatch/README.md). It does not use a
-moving branch ref or share the client's semver tags.
+moving branch ref or share the client's semver tags; the Actions have their own `vX.Y.Z` tags for pin
+comments, cut by [Release actions](release-actions.md).
 
 ## Prerequisites
 
