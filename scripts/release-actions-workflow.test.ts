@@ -30,7 +30,9 @@ describe("actions release workflow contract", () => {
     expect(releaseJob).toContain(
       "grep -E '^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$'",
     );
-    expect(releaseJob).toContain('previous_tag="$(semver_tags --merged "$head_commit" | tail -n 1)"');
+    expect(releaseJob).toContain(
+      'previous_tag="$(semver_tags --merged "$head_commit" | tail -n 1)"',
+    );
     expect(releaseJob).toContain('release_tag="v${major}.${minor}.${patch}"');
     expect(releaseJob).toContain("already has an actions release tag; nothing new to release");
     expect(releaseJob).toContain("release tag already exists");
