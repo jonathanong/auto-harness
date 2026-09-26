@@ -8,7 +8,7 @@ import {
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { sessionForPersistence, toPublic } from "./control-plane-state.ts";
+import { noteSlackSessionLifecycle, persistSession, toPublic } from "./control-plane-state.ts";
 import { orderedQueuedSessions } from "./control-plane-ordering.ts";
 import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
 import { releaseWorktree, tryClaimWorktree } from "./control-plane-worktrees.ts";
@@ -208,14 +208,17 @@ export async function assignQueuedDurable(
         completedAt: nowIso,
         ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
       });
-      if (expired)
-        state.sessions.set(session.id, {
+      if (expired) {
+        const failed: SessionRecord = {
           ...session,
           status: "failed",
           completedAt: nowIso,
           errorCode: "queue_expired",
           errorMessage: "queue TTL expired before capacity became available",
-        });
+        };
+        state.sessions.set(session.id, failed);
+        noteSlackSessionLifecycle(state, failed);
+      }
       continue;
     }
     if (plan.action !== "assign") continue;
@@ -474,9 +477,7 @@ function persistExpired(
     );
     return;
   }
-  const stored = sessionForPersistence(session);
-  state.sessions.set(session.id, stored);
-  if (state.storage) void state.storage.putSession(stored);
+  persistSession(state, session);
 }
 
 /** Invariant 2: requeue sessions that never acked. */

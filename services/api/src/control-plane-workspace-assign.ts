@@ -3,7 +3,7 @@ import type { HostWireMessage } from "@auto-harness/shared";
 
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { toPublic } from "./control-plane-state.ts";
+import { noteSlackSessionLifecycle, toPublic } from "./control-plane-state.ts";
 import type { SessionRecord, WorkspaceSlotRecord } from "./db/types.ts";
 import { buildProviderCatalog } from "./control-plane-session-target.ts";
 import { orderedQueuedSessions } from "./control-plane-ordering.ts";
@@ -147,13 +147,15 @@ async function expireWorkspaceSession(
     });
     if (!expired) return;
   }
-  state.sessions.set(session.id, {
+  const failed: SessionRecord = {
     ...session,
     status: "failed",
     completedAt: now,
     errorCode: "queue_expired",
     errorMessage: "queue TTL expired before workspace capacity became available",
-  });
+  };
+  state.sessions.set(session.id, failed);
+  noteSlackSessionLifecycle(state, failed);
 }
 
 export async function assignWorkspaceQueuedDurable(

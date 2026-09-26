@@ -1,8 +1,9 @@
 /* eslint-disable max-lines -- scheduled assignment branch cases share compact state builders. */
 import { describe, expect, it } from "vitest";
 
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createControlPlaneState, settleStorage } from "./control-plane-state.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
+import { slackOutboxStub } from "../test-helpers/slack-outbox-test-stub.ts";
 import {
   assignScheduledQueuedDurable,
   releaseScheduledLeaseLocal,
@@ -206,6 +207,16 @@ describe("scheduled assignment branch coverage", () => {
     });
     current.sessions.set("storage-lost", session({ id: "storage-lost" }));
     expect(await assignScheduledQueuedDurable(current)).toEqual([]);
+  });
+
+  it("enqueues the Slack failure lifecycle for a durable scheduled queue expiry", async () => {
+    const current = state();
+    current.sessions.set("s", session({ queueExpiresAt: "2025-01-01T00:00:00.000Z" }));
+    const slack = slackOutboxStub();
+    setDurableReadStorage(current, { ...slack.storage, expireQueuedSession: async () => true });
+    await expect(assignScheduledQueuedDurable(current)).resolves.toEqual([]);
+    await settleStorage(current);
+    expect(slack.ids()).toContain("slack:s:session_failed:reply");
   });
 
   it("expires a durable scheduled queue row and releases its concurrency lock", async () => {
