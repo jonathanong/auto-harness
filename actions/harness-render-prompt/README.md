@@ -46,3 +46,7 @@ when adopting a newer revision. Do not use the moving `main` ref.
   worktree-reset script," rather than naming one — if the calling repository has its own such
   script, document it separately (e.g. in the same repository-instructions doc the dispatched
   session already reads).
+- The rendered preamble tells the session it is non-interactive: print-mode CLIs exit when the
+  agent sends its final response and take any still-running background command with them, so
+  waits, polls, and retry loops must run in the foreground. Templates that start a long poll
+  (for example `pr-shepherd --until-terminal`) need no extra wording for this.
