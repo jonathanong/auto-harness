@@ -1,6 +1,7 @@
 # Agent guide — Auto Harness
 
 Conventions for humans and coding agents working in this repository.
+Contributor entry points: [README.md](README.md), [docs/README.md](docs/README.md).
 
 ## Layout
 
@@ -96,6 +97,6 @@ worktree gets stable, reusable ports across runs.
 - Machine-facing JSON APIs/files and daemon-advertised runtime capabilities are not operator UI
   settings and do not require duplicate form controls.
 
-## CLAUDE.md
-
-Root `CLAUDE.md` points here for the shared guide and carries selected cross-agent invariants.
+Cross-agent invariants 10–13 (control plane owns every user action, package-manager-agnostic
+sessions, separate browser and host request lifetimes, and paged list/history reads) live in
+[docs/plan.md](docs/plan.md#5-invariants).

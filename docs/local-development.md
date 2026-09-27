@@ -285,7 +285,7 @@ pnpm local:manage-verify
 
 ## Git hooks
 
-`pnpm install` sets up a Husky `pre-push` hook (see [.husky/CLAUDE.md](../.husky/CLAUDE.md)) that
+`pnpm install` sets up a Husky `pre-push` hook (see [.husky/AGENTS.md](../.husky/AGENTS.md)) that
 runs `pnpm fmt:check` and `pnpm lint` across the **whole repo** — not just changed files, since
 `oxfmt` also formats Markdown, YAML, and TOML — then checks that every branch the push actually
 carries is up to date with `origin/main`, before every push. It reads the pushed refs from git's

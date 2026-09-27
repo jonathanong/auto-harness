@@ -103,7 +103,7 @@ const REGEX_BRANCH_SAMPLES: Array<{ label: string; example: string }> = [
  * this path would either (a) describe a union most of whose branches always fail, or (b)
  * describe only the three live branches and silently misrepresent the route. It also runs
  * against this repo's own invariant that hosts talk to the control plane over WebSocket
- * only (CLAUDE.md "the control plane must do everything"), so keeping it out of the
+ * only (AGENTS.md "the control plane must do everything"), so keeping it out of the
  * REST-facing spec is the accurate outcome, not a gap.
  */
 const KNOWN_UNDOCUMENTED = new Set<string>(["/api/v1/host/messages"]);

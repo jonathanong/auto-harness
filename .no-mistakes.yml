@@ -207,7 +207,7 @@ rules:
     scope: repository
     include: ["**/*.md"]
     options:
-      rootFilenames: [CLAUDE.md, AGENTS.md]
+      rootFilenames: [AGENTS.md]
       indexFilenames: [README.md, docs/README.md, docs/architecture/README.md]
       maxDepth: 2
   - rule: production-dependency-declarations

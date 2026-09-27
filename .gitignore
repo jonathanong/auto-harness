@@ -36,3 +36,7 @@ cdk.out/
 *.webp
 *.bmp
 *.ico
+
+# Agent instructions live in AGENTS.md. CLAUDE.md overrides AGENTS.md in Claude Code.
+CLAUDE.md
+Claude.md

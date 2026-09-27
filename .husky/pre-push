@@ -16,7 +16,7 @@ fi
 # The checked-out branch is NOT the pushed ref, which is why this reads stdin instead of
 # `rev-parse --abbrev-ref HEAD`: `git push origin feature` from a `main` checkout would skip the
 # up-to-date check entirely, and `git push origin main` from a feature checkout would compare
-# the wrong commit. Both are the silent no-op .husky/CLAUDE.md forbids.
+# the wrong commit. Both are the silent no-op .husky/AGENTS.md forbids.
 pushed_revs=""
 while read -r local_ref local_sha remote_ref _remote_sha || [ -n "$local_ref" ]; do
   # A deletion reports an all-zero local sha and has no commit to compare. Matched with `case`
