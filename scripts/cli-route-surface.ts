@@ -15,7 +15,7 @@ export function readRouteSources(): string {
   return names.map((name) => readFileSync(join(API_SRC, name), "utf8")).join("\n");
 }
 
-export function stripRouteComments(source: string): string {
+function stripRouteComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
 }
 
