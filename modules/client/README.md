@@ -298,8 +298,8 @@ including commands added after this section was written. `auto-harness api` rema
 a raw request and does not replace those commands.
 
 Manifest commands print pretty JSON (nothing on `204`). A JSON body is `--body` or `--body-file`.
-`user create` and `account password` accept only `--body-file`, so a password does not land in
-shell history. `PUT`/`PATCH` pairs that share one handler are `update --method put|patch`
+`user create`, `account password`, and the Slack, GitHub, and custom integration writes
+accept only `--body-file`, so a password or signing secret does not land in shell history. `PUT`/`PATCH` pairs that share one handler are `update --method put|patch`
 (default `patch`), except Slack, where `replace` and `patch` are different requests. Paged lists
 accept `--limit`, `--cursor`, and `--all`. `--all` stops after 20 pages.
 

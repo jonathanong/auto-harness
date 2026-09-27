@@ -5,17 +5,21 @@ import { fileURLToPath } from "node:url";
 const API_SRC = fileURLToPath(new URL("../services/api/src/", import.meta.url));
 
 /** Handler sources for the local/Lambda app. Tests are excluded so fixtures cannot widen the surface. */
-export function readRouteSources(): string {
+export function readRouteSourceFiles(): string[] {
   const names = readdirSync(API_SRC).filter(
     (name) =>
       (name === "local-app.ts" || name.startsWith("local-routes-")) &&
       name.endsWith(".ts") &&
       !name.endsWith(".test.ts"),
   );
-  return names.map((name) => readFileSync(join(API_SRC, name), "utf8")).join("\n");
+  return names.map((name) => readFileSync(join(API_SRC, name), "utf8"));
 }
 
-function stripRouteComments(source: string): string {
+export function readRouteSources(): string {
+  return readRouteSourceFiles().join("\n");
+}
+
+export function stripRouteComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
 }
 
@@ -115,8 +119,10 @@ export function extractRouteTemplates(source: string): Set<string> {
   return templates;
 }
 
-function regexBodies(source: string): string[] {
-  const bodies: string[] = [];
+type RegexHit = { start: number; end: number; body: string };
+
+export function regexHits(source: string): RegexHit[] {
+  const hits: RegexHit[] = [];
   const marker = "/^\\/api\\/v1";
   let from = 0;
   while (from < source.length) {
@@ -140,7 +146,7 @@ function regexBodies(source: string): string[] {
         continue;
       }
       if (current === "/") {
-        bodies.push(body);
+        hits.push({ start, end: index, body });
         from = index + 1;
         closed = true;
         break;
@@ -150,7 +156,11 @@ function regexBodies(source: string): string[] {
     }
     if (!closed) throw new Error(`unclosed route regex near ${source.slice(start, start + 80)}`);
   }
-  return bodies;
+  return hits;
+}
+
+function regexBodies(source: string): string[] {
+  return regexHits(source).map((hit) => hit.body);
 }
 
 export function extractExactMethodPaths(source: string): Set<string> {

@@ -55,7 +55,8 @@ once via POST /auth/login, and carries the session cookie on every later request
 API key — it never touches argv, shell history, or output. It cannot be combined with an API key
 (--api-key-file, HARNESS_API_KEY, or HARNESS_API_KEY_FILE), nor with a command that also reads
 stdin for its own input (\`api --body-file -\`, \`host inventory set --file -\`,
-\`user create --body-file -\`, \`account password --body-file -\`).
+\`user create --body-file -\`, \`account password --body-file -\`, or an integration write's
+\`--body-file -\`).
 
 Examples:
   auto-harness whoami

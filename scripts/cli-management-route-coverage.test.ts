@@ -5,8 +5,10 @@ import {
   expandRoutePattern,
   extractExactMethodPaths,
   extractRouteTemplates,
+  readRouteSourceFiles,
   readRouteSources,
 } from "./cli-route-surface.ts";
+import { extractRegexMethodBindings } from "./cli-route-methods.ts";
 
 const EXCLUDED = [
   { method: "POST", path: "/api/v1/host/messages", audience: "host-protocol" },
@@ -100,5 +102,33 @@ describe("management CLI coverage", () => {
     const pairs = [...extractExactMethodPaths(source)];
     const missing = pairs.filter((pair) => !catalogOperations.has(pair)).toSorted();
     expect(missing).toEqual([]);
+  });
+
+  it("requires a catalog operation for every method checked beside a route regex", () => {
+    const missing = readRouteSourceFiles()
+      .flatMap((file) => extractRegexMethodBindings(file))
+      .filter(
+        (binding) =>
+          !binding.paths.some((path) => catalogOperations.has(`${binding.method} ${path}`)),
+      )
+      .map((binding) => `${binding.method} ${binding.paths.join(" | ")}`)
+      .toSorted();
+    expect(missing).toEqual([]);
+  });
+});
+
+describe("regex method bindings", () => {
+  it("records a new method on a parameterized handler", () => {
+    const source = `
+      const match = /^\\/api\\/v1\\/providers\\/([^/]+)$/.exec(url.pathname);
+      if (match) {
+        if (method === "GET") return true;
+        if (method === "DELETE") return true;
+      }
+    `;
+    expect(extractRegexMethodBindings(source)).toEqual([
+      { method: "GET", paths: ["/api/v1/providers/{}"] },
+      { method: "DELETE", paths: ["/api/v1/providers/{}"] },
+    ]);
   });
 });

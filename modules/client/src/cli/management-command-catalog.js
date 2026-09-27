@@ -89,19 +89,19 @@ export const manifestCommandCatalog = [
   ),
 
   cmd(["integration", "slack", "get"], "GET", "/integrations/slack"),
-  cmd(["integration", "slack", "create"], "POST", "/integrations/slack", { body: "required" }),
-  cmd(["integration", "slack", "replace"], "PUT", "/integrations/slack", { body: "required" }),
-  cmd(["integration", "slack", "patch"], "PATCH", "/integrations/slack", { body: "required" }),
+  cmd(["integration", "slack", "create"], "POST", "/integrations/slack", { body: "file" }),
+  cmd(["integration", "slack", "replace"], "PUT", "/integrations/slack", { body: "file" }),
+  cmd(["integration", "slack", "patch"], "PATCH", "/integrations/slack", { body: "file" }),
   cmd(["integration", "slack", "rm"], "DELETE", "/integrations/slack"),
   cmd(["integration", "slack", "oauth-start"], "POST", "/integrations/slack/oauth/start", {
     body: "required",
   }),
   cmd(["integration", "github", "get"], "GET", "/integrations/github-ingress"),
   cmd(["integration", "github", "create"], "POST", "/integrations/github-ingress", {
-    body: "required",
+    body: "file",
   }),
   cmd(["integration", "github", "update"], "PUT", "/integrations/github-ingress", {
-    body: "required",
+    body: "file",
   }),
   cmd(["integration", "github", "rm"], "DELETE", "/integrations/github-ingress", {
     headers: IF_MATCH,
@@ -111,11 +111,11 @@ export const manifestCommandCatalog = [
   }),
   cmd(["integration", "custom", "create"], "POST", "/integrations/custom/:integrationId", {
     params: ["integrationId"],
-    body: "required",
+    body: "file",
   }),
   cmd(["integration", "custom", "update"], "PUT", "/integrations/custom/:integrationId", {
     params: ["integrationId"],
-    body: "required",
+    body: "file",
   }),
   cmd(["integration", "custom", "rm"], "DELETE", "/integrations/custom/:integrationId", {
     params: ["integrationId"],

@@ -74,6 +74,19 @@ test("user create refuses an inline body and does not echo it", async () => {
   assert.match(stderr(), /--body is not accepted/);
 });
 
+test("slack create refuses an inline body that would carry the bot token", async () => {
+  const { io, stderr } = makeIo({
+    env,
+    fetch: async () => {
+      throw new Error("fetch must not be called");
+    },
+  });
+  const exitCode = await main(["integration", "slack", "create", "--body", "bot-token-secret"], io);
+  assert.equal(exitCode, 2);
+  assert.equal(stderr().includes("bot-token-secret"), false);
+  assert.match(stderr(), /--body is not accepted/);
+});
+
 test("user create posts the file body", async () => {
   const { seen, fetch } = calls();
   const { io } = makeIo({
