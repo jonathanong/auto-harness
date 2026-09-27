@@ -12,7 +12,7 @@ Related: [local-development.md](local-development.md) (runbook), [deploy-local.m
 
 | Need            | Check                                                                   |
 | --------------- | ----------------------------------------------------------------------- |
-| Node.js ≥ 22.18 | `node -v`                                                               |
+| Node.js ≥ 24    | `node -v`                                                               |
 | pnpm            | `pnpm -v` (see root `packageManager`)                                   |
 | Docker          | for DynamoDB Local                                                      |
 | Git ≥ 2.36      | worktrees and checkout recovery                                         |

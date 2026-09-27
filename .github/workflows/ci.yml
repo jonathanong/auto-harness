@@ -35,8 +35,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          # Native type stripping (no tsc/tsx). Node ≥ 22.18 unflags it.
-          node-version: "22.18"
+          # Native type stripping and the shared reporting tooling require Node 24.
+          node-version: "24"
           cache: pnpm
 
       - name: Reject pull request client version bumps
@@ -202,8 +202,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          # Native type stripping (no tsc/tsx). Node ≥ 22.18 unflags it.
-          node-version: "22.18"
+          # Native type stripping and the shared reporting tooling require Node 24.
+          node-version: "24"
           cache: pnpm
 
       - name: Install
@@ -263,7 +263,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22.18"
+          node-version: "24"
           cache: pnpm
 
       - name: Install
@@ -305,7 +305,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22.18"
+          node-version: "24"
           cache: pnpm
 
       - name: Install
@@ -378,7 +378,7 @@ jobs:
         if: steps.control-runtime-cache.outputs.cache-hit != 'true' || steps.host-pane-runtime-cache.outputs.cache-hit != 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22.18"
+          node-version: "24"
           cache: pnpm
 
       - name: Install
@@ -459,7 +459,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22.18"
+          node-version: "24"
           cache: pnpm
 
       - name: Install
@@ -534,7 +534,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22.18"
+          node-version: "24"
           cache: pnpm
 
       - name: Install

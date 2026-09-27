@@ -11,7 +11,7 @@ Related: [local-development.md](local-development.md), [host-daemon-e2e-testing.
 
 ## Prerequisites
 
-- Node ≥ 22.18, pnpm, Docker (DynamoDB Local)
+- Node ≥ 24, pnpm, Docker (DynamoDB Local)
 - One-time browser install:
 
 ```bash

@@ -2,7 +2,7 @@ name: Render Codex Prompt
 description: >
   Renders a Codex prompt template via render-harness-prompt.mts (bundled in this action's own
   directory) and emits the result as a multiline output. The caller must run its own Node
-  setup step before invoking this action so that node (v22.18+) and node_modules are
+  setup step before invoking this action so that node (v24+) and node_modules are
   available. Requires the calling repository to have "vouchington-tooling" installed as a
   dependency before this action runs. The template must live at a path under
   docs/prompts/automation/ in the calling repository's own checkout (override with

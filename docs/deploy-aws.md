@@ -23,7 +23,7 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 
 ## Prerequisites
 
-- Node ≥22.18, pnpm, and Docker (used only to build the Lambda image)
+- Node ≥24, pnpm, and Docker (used only to build the Lambda image)
 - `pnpm install` from the repository root (the CDK CLI is a package development dependency)
 - AWS CLI credentials with access to CloudFormation, CDK bootstrap resources,
   DynamoDB, S3, Lambda, API Gateway, EventBridge, CloudFront, CloudWatch, ECR, IAM, KMS, and SSM

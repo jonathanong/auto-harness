@@ -105,6 +105,9 @@ export function run(fx: Fixture, env: Record<string, string>) {
     cwd: fx.githubWorkspace,
     env: {
       ...process.env,
+      // Vitest adds its pnpm store to NODE_PATH. A real caller does not inherit that
+      // test-only fallback, which would mask a missing workspace dependency.
+      NODE_PATH: "",
       GITHUB_OUTPUT: fx.githubOutput,
       GITHUB_REPOSITORY: "example/repo",
       GITHUB_STEP_SUMMARY: fx.githubStepSummary,

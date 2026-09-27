@@ -28,7 +28,7 @@ when adopting a newer revision. Do not use the moving `main` ref. Prefer the com
   repository's own checkout — the script resolves `--template` relative to `process.cwd()`,
   which a composite action `run:` step executes at the calling repo's checkout root. Set the
   `template-dir` input to require a different directory instead.
-- The caller must run its own Node setup step (node v22.18+, `node_modules` installed) before
+- The caller must run its own Node setup step (node v24+, `node_modules` installed) before
   invoking this action.
 - This action requires the calling repository to have
   [`vouchington-tooling`](https://www.npmjs.com/package/vouchington-tooling) installed as a

@@ -227,7 +227,7 @@ provision `SessionCancelRedeliveries` before an API/Cron deploy that calls
 
 | Setting     | Recommendation                                                              |
 | ----------- | --------------------------------------------------------------------------- |
-| Runtime     | Node.js 22.x                                                                |
+| Runtime     | Node.js 24.x                                                                |
 | Memory      | 256 MB (most handlers); raise only if profiling shows need                  |
 | Timeout     | REST 10–15s; WS message 15–30s; cron 60s; archival 5 min if batched         |
 | Bundling    | esbuild via CDK (one artifact per logical handler group or a shared router) |

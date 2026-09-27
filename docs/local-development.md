@@ -8,7 +8,7 @@ Run and test Auto Harness on your machine **without an AWS account**. Install/pr
 
 | Piece                                   | Need                                                                     |
 | --------------------------------------- | ------------------------------------------------------------------------ |
-| Node.js ≥ 22.18                         | monorepo tooling + **native TypeScript type stripping** (no `tsc` build) |
+| Node.js ≥ 24                            | monorepo tooling + **native TypeScript type stripping** (no `tsc` build) |
 | pnpm                                    | workspaces (`packageManager` in root `package.json`)                     |
 | Docker                                  | **DynamoDB Local** (`amazon/dynamodb-local`)                             |
 | Git 2.36+                               | worktrees and checkout recovery                                          |
@@ -96,7 +96,6 @@ This is the supported way to **test Auto Harness locally today**. Local deploy/u
 | `pnpm local:host-pane`                                                                  | Host-pane Next.js UI on `:7422` (`HARNESS_HOST_ID`)                             |
 | `pnpm local:daemon`                                                                     | Agent CLI (`status`, `start`, `install-service`, `uninstall-service`)           |
 | `pnpm local:tmux`                                                                       | API + both UIs + agent, one tmux window each (DynamoDB Local runs via Docker)   |
-| `pnpm local:e2e`                                                                        | SessionRunner create→run on a temp git repo                                     |
 | `pnpm local:api-smoke`                                                                  | `POST /sessions` → 201                                                          |
 | `pnpm exec vitest run --project dynamo integration/blackboard-websocket-dynamo.test.ts` | Real WebSocket create→assign→run                                                |
 | `pnpm exec vitest run scripts/resume-ref-e2e.test.ts`                                   | Loopback agent loop against control plane                                       |
@@ -295,7 +294,7 @@ unit/integration tests stay on Linux; both platform legs feed the required `vite
 
 ## Runtime notes
 
-- **No `tsc` / no `tsx` build.** Execute with Node ≥ 22.18 type stripping.
+- **No `tsc` / no `tsx` build.** Execute with Node ≥ 24 type stripping.
 - Relative TypeScript imports use **`.ts` extensions**.
 - Avoid TS features Node cannot strip (enums, namespaces, parameter properties).
 - **D4:** only named, catalog-resolved Provider Accounts/Commands — never free-form shell command strings over the API.

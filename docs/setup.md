@@ -10,7 +10,7 @@ Design details: [aws.md](aws.md), [host-daemon.md](host-daemon.md), [plan.md](pl
 
 | Piece                                | Need                                                                                        |
 | ------------------------------------ | ------------------------------------------------------------------------------------------- |
-| Node.js ≥ 22.18                      | monorepo tooling + **native TypeScript type stripping** (no `tsc` build)                    |
+| Node.js ≥ 24                         | monorepo tooling + **native TypeScript type stripping** (no `tsc` build)                    |
 | pnpm                                 | workspaces (`packageManager` in root `package.json`)                                        |
 | Docker                               | **DynamoDB Local** for local API paths                                                      |
 | Git 2.36+                            | worktrees and checkout recovery                                                             |

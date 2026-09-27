@@ -105,7 +105,7 @@ Then retry `pnpm --filter @auto-harness/cdk run update`. Do not set
 ## Prerequisites
 
 - Everything in [deploy-aws.md#prerequisites](deploy-aws.md#prerequisites):
-  Node ≥22.18, pnpm, Docker running (needed by **every** lifecycle command,
+  Node ≥24, pnpm, Docker running (needed by **every** lifecycle command,
   including `teardown` and `purge` — they re-synth the same Lambda image),
   AWS CLI credentials, `AWS_REGION` set.
 - `grok` and `claude` on `PATH`, already logged in on this machine. Verify

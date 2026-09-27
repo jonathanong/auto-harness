@@ -10,7 +10,7 @@ Other surfaces: [deploy-aws.md](deploy-aws.md) · [deploy-host-daemon.md](deploy
 
 ## Prerequisites
 
-- Node.js ≥ 22.18, pnpm, Docker, Git 2.36+
+- Node.js ≥ 24, pnpm, Docker, Git 2.36+
 - Optional: non-interactive AI CLI (`grok`, `codex`, …) for real profile tests
 
 ```bash

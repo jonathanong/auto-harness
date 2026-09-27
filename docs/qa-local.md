@@ -44,7 +44,7 @@ on. That 404 is a production-only check — do it in
 
 | Need                          | Check                                                                         |
 | ----------------------------- | ----------------------------------------------------------------------------- |
-| Node.js ≥ 22.18               | `node -v`                                                                     |
+| Node.js ≥ 24                  | `node -v`                                                                     |
 | pnpm                          | `pnpm -v` (see root `packageManager`)                                         |
 | Docker                        | DynamoDB Local                                                                |
 | Git ≥ 2.36                    | worktrees and checkout recovery                                               |
