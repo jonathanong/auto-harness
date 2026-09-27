@@ -2,6 +2,8 @@ import { tmpdir } from "node:os";
 
 import type { SessionAssign } from "@auto-harness/shared";
 
+import type { PriorContextIdentity } from "../src/prior-context-file.ts";
+
 import { parseDaemonConfig } from "../src/config.ts";
 import type { ProcessRunner } from "../src/executor.ts";
 import type { GitClient } from "../src/git.ts";
@@ -27,7 +29,11 @@ export function baseAssign(over: Partial<SessionAssign> = {}): SessionAssign {
   };
 }
 
-export function setup(runner: ProcessRunner, gitOverrides: Partial<GitClient> = {}) {
+export function setup(
+  runner: ProcessRunner,
+  gitOverrides: Partial<GitClient> = {},
+  options: { identity?: PriorContextIdentity } = {},
+) {
   const config = parseDaemonConfig({
     hostId: "a1",
     repositories: [
@@ -71,6 +77,7 @@ export function setup(runner: ProcessRunner, gitOverrides: Partial<GitClient> = 
       processRunner: wrapped,
       executionProfiles: testExecutionProfiles,
       now: () => "2026-08-01T00:00:00.000Z",
+      ...(options.identity ? { identity: options.identity } : {}),
     }),
   };
 }

@@ -43,7 +43,8 @@ and route policy until the credential is invalidated.
 When `HARNESS_GITHUB_APP_CONFIG` is configured, the daemon signs a short-lived JWT locally and
 mints one installation token for each mapped session repository. The token is injected directly as
 `GH_TOKEN` into that assigned CLI and the repository's terminal hook, which needs the same scoped
-identity for the D3 failure-escalation flow. It is redacted from streamed output and errors, and
+identity for the D3 failure-escalation flow. The same token posts the session-link pull request
+comment before the CLI starts; a failed mint skips that comment instead of using ambient credentials. It is redacted from streamed output and errors, and
 the session ends before its GitHub expiry. The injected identity names are canonicalized in the
 child allowlist exactly once so a differently cased operator spelling cannot suppress `GH_TOKEN` or
 the Git author/committer keys. Before minting succeeds, early terminal-hook paths stay

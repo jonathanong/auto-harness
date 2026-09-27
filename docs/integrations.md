@@ -18,9 +18,9 @@ For **fire-and-forget** callers (e.g. GitHub Actions `POST /sessions` then exit)
 | Channel    | What they see                                                                                             |
 | ---------- | --------------------------------------------------------------------------------------------------------- |
 | **Slack**  | Target: session lifecycle thread (queued → running → done/fail) from Auto Harness                         |
-| **GitHub** | PRs, issue/PR comments, reviews, checks—repo updates produced by the agent session (or follow-on tooling) |
+| **GitHub** | One session-link comment when the run targets an existing pull request, plus the PRs, comments, reviews, and checks the agent writes |
 
-Auto Harness owns the **Slack** session thread when delivery is available. **GitHub** updates depend on what the session is allowed to do on the VPS (git/`gh` credentials on the agent host)—not on the Actions run that kicked it off.
+Auto Harness owns the **Slack** session thread when delivery is available. When a session runs against an existing pull request, the host posts one comment linking that session before the agent starts. Other GitHub writes still depend on the git and `gh` credentials on that host, not on the Actions run that kicked the session off.
 
 When outbound delivery is available, Auto Harness posts session updates to Slack: each session
 gets a thread in the configured channel, updated as the session progresses.

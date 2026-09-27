@@ -17,6 +17,7 @@ import {
   harnessSessionResult,
   type SessionRunResult,
 } from "./session-outcome.ts";
+import { postPullRequestSessionComment } from "./pull-request-session-comment-post.ts";
 import { runClaimedSession } from "./session-run-claimed.ts";
 import type { PriorContextIdentity } from "./prior-context-file.ts";
 import {
@@ -266,6 +267,22 @@ export class SessionRunner {
           );
           return retainDeferredTerminalHook(result);
         }
+
+        if (signal.aborted) {
+          return retainDeferredTerminalHook(await finishCheckoutInterruption());
+        }
+
+        await postPullRequestSessionComment({
+          assign,
+          cwd: claimed.cwd,
+          processRunner: this.deps.processRunner,
+          streamer,
+          childEnv: sessionChildEnv,
+          ...(this.deps.identity ? { apiUrl: this.deps.identity.apiUrl } : {}),
+          ...(this.deps.githubApp ? { githubApp: this.deps.githubApp } : {}),
+          ...(this.deps.nowMs ? { nowMs: this.deps.nowMs } : {}),
+          signal,
+        });
 
         if (signal.aborted) {
           return retainDeferredTerminalHook(await finishCheckoutInterruption());
