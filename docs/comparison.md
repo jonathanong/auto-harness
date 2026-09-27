@@ -95,7 +95,7 @@ State it plainly, no hedging:
 Auto Harness spawns each vendor's own CLI directly — no intermediary Agent SDK, no universal
 harness in between. Consequences:
 
-- **Full fidelity to vendor-native features** — `AGENTS.md`/`AGENTS.md`, hooks, MCP config, and
+- **Full fidelity to vendor-native features** — `AGENTS.md`, hooks, MCP config, and
   each CLI's own native resume/continue flag, none of it re-implemented or lagging behind a
   wrapper's release cadence.
 - **Usage envelopes parsed from the vendor's own structured output** — Claude's
