@@ -15,9 +15,9 @@
 
 For **fire-and-forget** callers (e.g. GitHub Actions `POST /sessions` then exit), humans do **not** watch the trigger job. They listen via:
 
-| Channel    | What they see                                                                                             |
-| ---------- | --------------------------------------------------------------------------------------------------------- |
-| **Slack**  | Target: session lifecycle thread (queued → running → done/fail) from Auto Harness                         |
+| Channel    | What they see                                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **Slack**  | Target: session lifecycle thread (queued → running → done/fail) from Auto Harness                                                    |
 | **GitHub** | One session-link comment when the run targets an existing pull request, plus the PRs, comments, reviews, and checks the agent writes |
 
 Auto Harness owns the **Slack** session thread when delivery is available. When a session runs against an existing pull request, the host posts one comment linking that session before the agent starts. Other GitHub writes still depend on the git and `gh` credentials on that host, not on the Actions run that kicked the session off.
