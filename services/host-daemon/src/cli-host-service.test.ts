@@ -174,9 +174,7 @@ describe("install-service CLI", () => {
         a,
       ),
     ).toBe(1);
-    expect(a.errors).toEqual([
-      "HARNESS_CHILD_ENV_ALLOWLIST undefined name: AGENT_BLACKBOARD_TOKEN",
-    ]);
+    expect(a.errors).toEqual(["HARNESS_CHILD_ENV_ALLOWLIST reserved name: AGENT_BLACKBOARD_TOKEN"]);
   });
 
   it("stringifies a non-Error HARNESS_ENV_FILE read failure", async () => {

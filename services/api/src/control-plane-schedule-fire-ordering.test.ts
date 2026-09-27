@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { queueWrite, settleStorage } from "./control-plane-state.ts";
 import { putScheduleOrThrow, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 describe("queued schedule fire writes", () => {
   it("snapshots a queued cursor before the cached record mutates", async () => {

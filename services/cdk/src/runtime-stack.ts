@@ -1,10 +1,9 @@
-import { fileURLToPath } from "node:url";
-
 import { Aws, CfnOutput, Duration, Fn, Stack, type StackProps } from "aws-cdk-lib";
 import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
-import * as lambda from "aws-cdk-lib/aws-lambda";
+import { addSessionReportingStream } from "./runtime-reporting-stream.ts";
+import { blackboardParam, grantBlackboardAccess } from "./blackboard-param.ts";
 import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import type { Construct } from "constructs";
 
@@ -30,7 +29,7 @@ type RuntimeStackProps = StackProps & {
   sentryDsn?: string;
 };
 
-const lambdaEntry = fileURLToPath(new URL("../../api/src/lambda-handlers.ts", import.meta.url));
+import { runtimeFunctionProps } from "./runtime-function-props.ts";
 
 /** Synthesizable REST + WebSocket Lambda runtime. This construct never deploys by itself. */
 export class AutoHarnessRuntimeStack extends Stack {
@@ -42,12 +41,14 @@ export class AutoHarnessRuntimeStack extends Stack {
     const { admins, cursorSecret, sessionSecret } = bootstrapSecretParams(this);
     const publicBaseUrl = publicBaseUrlParam(this);
     const slackApp = slackAppParam(this);
+    const blackboard = blackboardParam(this);
     const ingressSecret = cloudFrontIngressSecret(this);
     const commonEnvironment = {
       NODE_ENV: "production",
       HARNESS_ADMINS_SSM_PARAM: admins.param.valueAsString,
       HARNESS_CURSOR_SECRET_SSM_PARAM: cursorSecret.param.valueAsString,
       HARNESS_DDB_PREFIX: props.tablePrefix,
+      HARNESS_BLACKBOARD_SSM_PARAM: blackboard.param.valueAsString,
       HARNESS_METRIC_ENVIRONMENT: props.tablePrefix,
       HARNESS_SESSION_SECRET_SSM_PARAM: sessionSecret.param.valueAsString,
       PUBLIC_BASE_URL_SSM_PARAM: publicBaseUrl.param.valueAsString,
@@ -57,12 +58,7 @@ export class AutoHarnessRuntimeStack extends Stack {
       ARCHIVE_BUCKET: props.foundation.archiveBucket.bucketName,
       KMS_KEY_ID: props.foundation.integrationKey.keyArn,
     };
-    const functionProps = {
-      bundling: { minify: true, nodeModules: ["@aws-sdk/s3-request-presigner"], sourceMap: true },
-      entry: lambdaEntry,
-      memorySize: 256,
-      runtime: lambda.Runtime.NODEJS_22_X,
-    } satisfies Partial<nodejs.NodejsFunctionProps>;
+    const functionProps = runtimeFunctionProps;
     const restFunction = new nodejs.NodejsFunction(this, "RestFunction", {
       ...functionProps,
       environment: {
@@ -99,8 +95,10 @@ export class AutoHarnessRuntimeStack extends Stack {
     for (const fn of [restFunction, websocketFunction, cronFunction]) {
       grantBootstrapSecretsAccess(fn, { admins, cursorSecret, sessionSecret });
       grantPublicBaseUrlAccess(fn, publicBaseUrl);
+      grantBlackboardAccess(fn, blackboard);
     }
     grantSlackAppAccess(restFunction, slackApp);
+    addSessionReportingStream(this, cronFunction, props.foundation.tables.Sessions!);
     // Browser REST enqueues assignment on a separate invocation (Invariant 12).
     cronFunction.grantInvoke(restFunction);
     restFunction.addEnvironment("ASSIGNMENT_FUNCTION_NAME", cronFunction.functionName);

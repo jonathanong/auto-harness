@@ -694,15 +694,52 @@ export function handleHostMessage(
         plannerContext(state, "local"),
       );
       const accepted = !transitionEffect(plan, "ignore") && !transitionEffect(plan, "reject");
-      if (accepted && transitionEffect(plan, "authorize_command_start")) {
-        session.primaryCommandStartState = "authorized";
-      }
-      if (accepted && session.hostId && session.primaryCommandStartState === "authorized") {
-        state.onHostMessage?.(session.hostId, {
-          type: "session:command-start-acknowledged",
-          sessionId: session.id,
-          attemptId: msg.attemptId,
-        });
+      const acknowledge = () => {
+        if (session.hostId)
+          state.onHostMessage?.(session.hostId, {
+            type: "session:command-start-acknowledged",
+            sessionId: session.id,
+            attemptId: msg.attemptId,
+          });
+      };
+      if (
+        accepted &&
+        session.primaryCommandStartState === "authorized" &&
+        session.reportingAdmissionAttemptId === msg.attemptId
+      )
+        acknowledge();
+      else if (
+        accepted &&
+        transitionEffect(plan, "authorize_command_start") &&
+        state.blackboardReporting
+      ) {
+        const authorization = state.blackboardReporting
+          .authorize(session, msg.attemptId)
+          .then((verified) => {
+            const current = state.sessions.get(msg.sessionId);
+            if (
+              current === session &&
+              session.status === "running" &&
+              session.attemptId === msg.attemptId
+            ) {
+              if (verified) delete session.reportingAdmissionBlocked;
+              else session.reportingAdmissionBlocked = true;
+            }
+            if (
+              !verified ||
+              current !== session ||
+              session.status !== "running" ||
+              session.attemptId !== msg.attemptId ||
+              (sourceConnectionId &&
+                state.hostConnection.get(session.hostId!) !== sourceConnectionId)
+            )
+              return;
+            session.primaryCommandStartState = "authorized";
+            session.reportingAdmissionAttemptId = msg.attemptId;
+            acknowledge();
+          })
+          .catch(() => undefined);
+        state.pendingPersists.push(authorization);
       }
       return { ok: true };
     }
@@ -1189,7 +1226,7 @@ export async function handleHostMessageDurable(
     return { ok: true };
   }
   if (msg.type === "session:command-start") {
-    const session = await state.storage.getSession(msg.sessionId);
+    const session = await state.storage.getSession(msg.sessionId, true);
     if (!session) return { ok: false, error: "session not found" };
     const plan = planSessionTransition(
       session,
@@ -1200,16 +1237,28 @@ export async function handleHostMessageDurable(
     const authorized =
       !transitionEffect(plan, "ignore") &&
       !transitionEffect(plan, "reject") &&
-      (session.primaryCommandStartState === "authorized" ||
+      ((session.primaryCommandStartState === "authorized" &&
+        session.reportingAdmissionAttemptId === msg.attemptId) ||
         (transitionEffect(plan, "authorize_command_start") &&
-          (await state.storage.authorizePrimaryCommandStart({
-            sessionId: msg.sessionId,
-            worktreeId: msg.worktreeId,
-            attemptId: msg.attemptId,
-            ...(fence ? { fence } : {}),
-          }))));
-    if (!authorized) return { ok: true };
-    state.sessions.set(msg.sessionId, { ...session, primaryCommandStartState: "authorized" });
+          (await state.blackboardReporting?.authorize(session, msg.attemptId)) === true)) &&
+      (await state.storage.authorizePrimaryCommandStart({
+        sessionId: msg.sessionId,
+        worktreeId: msg.worktreeId,
+        attemptId: msg.attemptId,
+        ...(fence ? { fence } : {}),
+      }));
+    if (!authorized) {
+      if (transitionEffect(plan, "authorize_command_start")) {
+        await state.storage.recordBlackboardAdmissionBlock(session.id, true, msg.attemptId);
+        session.reportingAdmissionBlocked = true;
+      }
+      return { ok: true };
+    }
+    state.sessions.set(msg.sessionId, {
+      ...session,
+      primaryCommandStartState: "authorized",
+      reportingAdmissionAttemptId: msg.attemptId,
+    });
     return {
       ok: true,
       sessionCommandStartAcknowledged: { sessionId: msg.sessionId, attemptId: msg.attemptId },
@@ -2348,9 +2397,19 @@ function applySessionStatus(
     state.pendingAcks.delete(session.id);
     const reschedule = transitionEffect(plan, "reschedule");
     if (reschedule?.kind === "scheduled") {
-      void assignScheduledQueuedDurable(state).catch(() => undefined);
+      state.pendingPersists.push(
+        Promise.resolve()
+          .then(() => assignScheduledQueuedDurable(state))
+          .then(() => undefined)
+          .catch(() => undefined),
+      );
     } else if (reschedule) {
-      void assignQueued(state);
+      state.pendingPersists.push(
+        Promise.resolve()
+          .then(() => assignQueued(state))
+          .then(() => undefined)
+          .catch(() => undefined),
+      );
     }
     return {
       ok: true,
@@ -2482,11 +2541,26 @@ function applySessionStatus(
       delete session.result;
       const reschedule = transitionEffect(plan, "reschedule");
       if (reschedule?.kind === "scheduled") {
-        void assignScheduledQueuedDurable(state).catch(() => undefined);
+        state.pendingPersists.push(
+          Promise.resolve()
+            .then(() => assignScheduledQueuedDurable(state))
+            .then(() => undefined)
+            .catch(() => undefined),
+        );
       } else if (reschedule?.kind === "workspace") {
-        void assignWorkspaceQueuedDurable(state).catch(() => undefined);
+        state.pendingPersists.push(
+          Promise.resolve()
+            .then(() => assignWorkspaceQueuedDurable(state))
+            .then(() => undefined)
+            .catch(() => undefined),
+        );
       } else if (reschedule) {
-        void assignQueued(state);
+        state.pendingPersists.push(
+          Promise.resolve()
+            .then(() => assignQueued(state))
+            .then(() => undefined)
+            .catch(() => undefined),
+        );
       }
     } else if (finish) {
       if (

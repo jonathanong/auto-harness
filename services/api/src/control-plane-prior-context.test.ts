@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import {
   deterministicPlane,
   finishedLoggedSessionPlane,
@@ -17,7 +17,7 @@ describe("loadPriorSessionContextLocal", () => {
     expect(loadPriorSessionContextLocal(plane.state, "missing")).toBeNull();
   });
 
-  it("returns null for a session that exists but never logged anything", () => {
+  it("returns null for a session that exists but never logged anything", async () => {
     const plane = deterministicPlane();
     plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
     plane.createCommand({ id: "cmd", name: "echo", argv: ["echo"], appendPrompt: true });
@@ -28,7 +28,7 @@ describe("loadPriorSessionContextLocal", () => {
       target: { commandId: "cmd" },
       timeout: 30,
     });
-    plane.assignQueued();
+    await plane.assignQueued();
     const session = plane.getSession("s1")!;
     plane.handleHostMessage({
       type: "session:status",
@@ -41,8 +41,8 @@ describe("loadPriorSessionContextLocal", () => {
     expect(loadPriorSessionContextLocal(plane.state, "s1")).toBeNull();
   });
 
-  it("renders the transcript of a terminal source session", () => {
-    const plane = finishedLoggedSessionPlane("did the thing");
+  it("renders the transcript of a terminal source session", async () => {
+    const plane = await finishedLoggedSessionPlane("did the thing");
     const context = loadPriorSessionContextLocal(plane.state, "s1");
     expect(context).toMatchObject({ sourceSessionId: "s1", truncated: false });
     expect(context!.content).toContain("did the thing");
@@ -51,7 +51,7 @@ describe("loadPriorSessionContextLocal", () => {
 
 describe("loadPriorSessionContextDurable", () => {
   it("falls back to the local read when there is no durable storage configured", async () => {
-    const plane = finishedLoggedSessionPlane("durable path");
+    const plane = await finishedLoggedSessionPlane("durable path");
     const context = await loadPriorSessionContextDurable(plane.state, "s1");
     expect(context).toMatchObject({ sourceSessionId: "s1" });
     expect(context!.content).toContain("durable path");

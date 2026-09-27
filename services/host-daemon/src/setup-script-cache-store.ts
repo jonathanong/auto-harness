@@ -27,7 +27,11 @@ export function sanitizeCapturedSetupEnvironment(value: unknown): NodeJS.Process
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const environment: NodeJS.ProcessEnv = {};
   for (const [key, entry] of Object.entries(value)) {
-    if (typeof entry === "string" && !key.toUpperCase().startsWith("HARNESS_")) {
+    if (
+      typeof entry === "string" &&
+      !key.toUpperCase().startsWith("HARNESS_") &&
+      !key.toUpperCase().startsWith("AGENT_BLACKBOARD_")
+    ) {
       environment[key] = entry;
     }
   }
@@ -37,7 +41,11 @@ export function sanitizeCapturedSetupEnvironment(value: unknown): NodeJS.Process
 function persistedSetupEnvironment(environment: NodeJS.ProcessEnv): Record<string, string> {
   const persisted: Record<string, string> = {};
   for (const [key, value] of Object.entries(environment)) {
-    if (typeof value === "string" && !key.toUpperCase().startsWith("HARNESS_")) {
+    if (
+      typeof value === "string" &&
+      !key.toUpperCase().startsWith("HARNESS_") &&
+      !key.toUpperCase().startsWith("AGENT_BLACKBOARD_")
+    ) {
       persisted[key] = value;
     }
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 describe("provider account maxConcurrentSessions", () => {
   it("defaults to 1 and rejects an invalid cap", () => {

@@ -6,11 +6,7 @@ import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
 import { flushMacrotask, makeRepo } from "../test-helpers/daemon-loop-test-helpers.ts";
 
 async function waitFor(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (predicate()) return;
-    await flushMacrotask();
-  }
-  throw new Error("condition did not become true");
+  await vi.waitFor(() => expect(predicate()).toBe(true), { timeout: 1_000, interval: 1 });
 }
 
 describe("DaemonLoop terminal-hook shutdown", () => {
@@ -63,6 +59,7 @@ describe("DaemonLoop terminal-hook shutdown", () => {
       await flushMacrotask();
       expect(idle).toBe(false);
 
+      await waitFor(() => typeof finishHook === "function");
       finishHook({ exitCode: 0 });
       await waitFor(() => completionSent.mock.calls.length === 1);
       await flushMacrotask();

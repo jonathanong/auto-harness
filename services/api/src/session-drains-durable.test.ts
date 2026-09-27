@@ -2,7 +2,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
-import { createControlPlane } from "./create-plane.ts";
+import { createAuthorizedControlPlane as createControlPlane } from "../test-helpers/authorized-control-plane-factory.ts";
 import { reconcileSessionDrainDurable } from "./control-plane-session-drains.ts";
 import {
   createDynamoTestCtx,

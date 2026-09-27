@@ -24,6 +24,7 @@ describe("createFoundationDataAccess", () => {
     // scanning. Do not add it here without a deliberate decision to do so.
     expect(SCAN_TABLE_NAMES).not.toContain("HostLocks");
     expect(SCAN_TABLE_NAMES).not.toContain("ConcurrencyLocks");
+    expect(SCAN_TABLE_NAMES).not.toContain("ReportingRepairCheckpoints");
   });
 
   it("fails closed when a catalog table is missing", () => {
@@ -39,7 +40,7 @@ describe("createFoundationDataAccess", () => {
       partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
     });
     expect(() => createFoundationDataAccess(stack, { Users: users }, bucket)).toThrow(
-      `missing DynamoDB table definition: ${DYNAMO_TABLES[1]?.name}`,
+      `missing DynamoDB table definition: ${DYNAMO_TABLES.find((table) => table.name !== "Users")?.name}`,
     );
   });
 });

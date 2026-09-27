@@ -6,7 +6,7 @@ import WebSocket from "ws";
 
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { AuthService } from "./auth.ts";
 import { createPlaneWsBridge, parseHostMessage } from "./ws-hub.ts";
 
@@ -240,7 +240,7 @@ describe("createPlaneWsBridge", () => {
           }),
         );
       });
-      ws.on("message", (raw) => {
+      ws.on("message", async (raw) => {
         const msg = JSON.parse(String(raw)) as { type: string };
         received.push(msg);
         if (msg.type === "host:registered") {
@@ -250,7 +250,7 @@ describe("createPlaneWsBridge", () => {
             target: { commandId: "cmd-echo" },
             timeout: 10,
           });
-          plane.assignQueued();
+          await plane.assignQueued();
         }
         if (msg.type === "session:assign") {
           const assignment = msg as unknown as {

@@ -3,7 +3,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
 import { parseGitHubAppConfig } from "./github-app.ts";
-import { SessionRunner } from "./session-runner.ts";
+import { AuthorizedSessionRunner as SessionRunner } from "../test-helpers/authorized-session-runner.ts";
 import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
 
 const key = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey;

@@ -1,3 +1,4 @@
+import { stripBlackboardEnvironment } from "./child-env.ts";
 /* eslint-disable max-lines -- bounded result probes keep fact-specific capture and deadline handling together. */
 import {
   MAX_SESSION_RESULT_BRANCH_BYTES,
@@ -295,7 +296,7 @@ export async function collectSessionResult(options: {
   let environment: NodeJS.ProcessEnv;
   try {
     environment = options.environmentIsChild
-      ? options.environment
+      ? stripBlackboardEnvironment(options.environment)
       : createChildEnv(options.environment);
   } catch {
     const summary = options.agentSummary?.trim();

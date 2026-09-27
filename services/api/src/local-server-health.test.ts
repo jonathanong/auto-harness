@@ -59,7 +59,10 @@ describe("createLocalApp health and sessions", () => {
       };
     };
 
-    expect((await invoke("GET", "/health")).json).toEqual({ ok: true });
+    expect((await invoke("GET", "/health")).json).toEqual({
+      ok: true,
+      blackboardFeedbackProtocol: 1,
+    });
     const created = await invoke("POST", "/api/v1/sessions", {
       repositoryId: "r1",
       prompt: "p",

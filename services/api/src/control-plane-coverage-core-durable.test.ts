@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { assignQueuedDurable } from "./control-plane-assign.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { putScheduleOrThrow, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import { createDynamoTestCtx } from "../test-helpers/dynamo-test-helpers.ts";
 

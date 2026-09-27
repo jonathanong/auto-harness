@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
 import { createGitClient } from "./git.ts";
 import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
 import { scripted } from "../test-helpers/git-test-helpers.ts";
-import { SessionRunner } from "./session-runner.ts";
+import { AuthorizedSessionRunner as SessionRunner } from "../test-helpers/authorized-session-runner.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 import { deferred, makeRunner, viTick } from "../test-helpers/session-runner-main-test-helpers.ts";
 
@@ -97,8 +97,7 @@ describe("SessionRunner main checkout", () => {
         sessionType: "scheduled",
       }),
     );
-    await viTick();
-    expect(test.starts).toEqual(["/repo-1"]);
+    await vi.waitFor(() => expect(test.starts).toEqual(["/repo-1"]));
     firstGate.resolve();
     await expect(first).resolves.toMatchObject({ status: "completed" });
     await expect(second).resolves.toMatchObject({ status: "completed" });
@@ -116,9 +115,7 @@ describe("SessionRunner main checkout", () => {
     const second = test.runner.run(
       baseAssign({ repositoryId: "r2", worktreeId: null, sessionType: "scheduled" }),
     );
-    for (let attempt = 0; attempt < 10 && test.starts.length < 2; attempt += 1) {
-      await viTick();
-    }
+    await vi.waitFor(() => expect(test.starts).toHaveLength(2));
     expect(test.starts).toEqual(["/repo-1", "/repo-2"]);
     r1Gate.resolve();
     await Promise.all([first, second]);

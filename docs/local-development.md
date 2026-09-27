@@ -87,24 +87,23 @@ This is the supported way to **test Auto Harness locally today**. Local deploy/u
 
 ## Commands cheat sheet
 
-| Command                     | What it does                                                                         |
-| --------------------------- | ------------------------------------------------------------------------------------ |
-| `pnpm local:dynamodb`       | Start DynamoDB Local                                                                 |
-| `pnpm local:dynamodb:ready` | Wait for endpoint + ensure tables                                                    |
-| `pnpm local:api`            | Control-plane HTTP (+ `/ws`) on `:7420`                                              |
-| `pnpm local:web`            | Control-plane Next.js UI on `:7421`                                                  |
-| `pnpm local:host-pane`      | Host-pane Next.js UI on `:7422` (`HARNESS_HOST_ID`)                                  |
-| `pnpm local:daemon`         | Agent CLI (`status`, `run-session`, `start`, `install-service`, `uninstall-service`) |
-| `pnpm local:tmux`           | API + both UIs + agent, one tmux window each (DynamoDB Local runs via Docker)        |
-| `pnpm local:e2e`            | SessionRunner create→run on a temp git repo                                          |
-| `pnpm local:cli-e2e`        | Documented `pnpm local:daemon` path with `ref: main`                                 |
-| `pnpm local:api-smoke`      | `POST /sessions` → 201                                                               |
-| `pnpm local:ws-e2e`         | Real WebSocket create→assign→run                                                     |
-| `pnpm local:cloud-e2e`      | Loopback agent loop against control plane                                            |
-| `pnpm local:manage-verify`  | Repo/schedule CRUD, cancel, drain, web manage routes                                 |
-| `pnpm check`                | Full local CI gate (lint, fmt, test, knip, depcruise, links, no-mistakes)            |
-| `pnpm check:no-mistakes`    | `no-mistakes` rules in `.no-mistakes.yml` (also runs in `pnpm check`)                |
-| `pnpm test:e2e`             | Build production UIs + Playwright E2E (`next start`, not dev; [e2e.md](e2e.md))      |
+| Command                                                                                 | What it does                                                                    |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `pnpm local:dynamodb`                                                                   | Start DynamoDB Local                                                            |
+| `pnpm local:dynamodb:ready`                                                             | Wait for endpoint + ensure tables                                               |
+| `pnpm local:api`                                                                        | Control-plane HTTP (+ `/ws`) on `:7420`                                         |
+| `pnpm local:web`                                                                        | Control-plane Next.js UI on `:7421`                                             |
+| `pnpm local:host-pane`                                                                  | Host-pane Next.js UI on `:7422` (`HARNESS_HOST_ID`)                             |
+| `pnpm local:daemon`                                                                     | Agent CLI (`status`, `start`, `install-service`, `uninstall-service`)           |
+| `pnpm local:tmux`                                                                       | API + both UIs + agent, one tmux window each (DynamoDB Local runs via Docker)   |
+| `pnpm local:e2e`                                                                        | SessionRunner create→run on a temp git repo                                     |
+| `pnpm local:api-smoke`                                                                  | `POST /sessions` → 201                                                          |
+| `pnpm exec vitest run --project dynamo integration/blackboard-websocket-dynamo.test.ts` | Real WebSocket create→assign→run                                                |
+| `pnpm exec vitest run scripts/resume-ref-e2e.test.ts`                                   | Loopback agent loop against control plane                                       |
+| `pnpm local:manage-verify`                                                              | Repo/schedule CRUD, cancel, drain, web manage routes                            |
+| `pnpm check`                                                                            | Full local CI gate (lint, fmt, test, knip, depcruise, links, no-mistakes)       |
+| `pnpm check:no-mistakes`                                                                | `no-mistakes` rules in `.no-mistakes.yml` (also runs in `pnpm check`)           |
+| `pnpm test:e2e`                                                                         | Build production UIs + Playwright E2E (`next start`, not dev; [e2e.md](e2e.md)) |
 
 ---
 
@@ -113,25 +112,11 @@ This is the supported way to **test Auto Harness locally today**. Local deploy/u
 From the repo root after `pnpm install` (and DynamoDB Local for API paths):
 
 ```bash
-pnpm local:e2e          # SessionRunner create→run
-pnpm local:cli-e2e      # documented agent CLI + ref main
-pnpm local:ws-e2e       # real WebSocket agent channel
-pnpm local:cloud-e2e    # loopback agent loop
+pnpm exec vitest run --project dynamo integration/blackboard-websocket-dynamo.test.ts       # real WebSocket agent channel
+pnpm exec vitest run scripts/resume-ref-e2e.test.ts    # loopback agent loop
 ```
 
-What `local:e2e` does (real shipped modules):
-
-1. Creates a temporary git repo with branch `feature/local-e2e`
-2. Creates a session via the **local API create path** (`createLocalApp` / `POST /api/v1/sessions` handler)
-3. Asserts an **unknown target `commandId`** is rejected at create time (no shell fallback) — see target validation
-4. Runs `SessionRunner` against a real `echo` standalone Command, with `ref: feature/local-e2e`
-5. Asserts worktree `HEAD` matches that feature commit, terminal hook env was set, and log `seq` is monotonic
-
-Expect JSON with `"ok": true` and `"status": "completed"`.
-
----
-
-## Manual path A — configure host inventory, then `run-session`
+## Configure host inventory and start the daemon
 
 Agent identity is **env only**. Host inventory (paths, worktrees, attached Provider Accounts) lives on the control plane; the Command/Provider catalog is separate and global.
 
@@ -161,25 +146,21 @@ outside the repo (`<repo>-worktrees/wt-1`) because that keeps the repo's own wor
 daemon-managed directories (no `.gitignore` entry to remember, nothing for `git clean -fdx` or a
 backup tool to trip over).
 
-3. `run-session --file` reads a `SessionAssign` JSON with an already-resolved `resolvedArgv` (see [examples/local/session.assign.json](../examples/local/session.assign.json)) — this bypasses the control plane's own Provider/Command resolution entirely (useful for testing `SessionRunner` in isolation), so there's no catalog setup needed for this specific path.
-
-4. Run with env identity (a leading `--` from pnpm is stripped):
+3. Configure the controller's required reporting connection as described in [required-reporting.md](required-reporting.md), then start the daemon with its controller identity:
 
 ```bash
 export HARNESS_HOST_ID=local-1
 export HARNESS_API_URL=http://127.0.0.1:7420
-pnpm local:daemon status
-pnpm local:daemon run-session --file /path/to/session.assign.json
-pnpm local:daemon -- status
+pnpm local:daemon start
 ```
 
-On success the CLI prints a final JSON line with `"status":"completed"`. On failure (setup error, timeout, usage limit) status is non-completed and exit code is non-zero.
+The controller supplies assignments after fresh online reporting admission. Standalone assignment files cannot execute autonomous work.
 
 More command detail: [cli.md](cli.md).
 
 ---
 
-## Manual path B — local API create, then agent run
+## Create a session through the local API
 
 1. Start DynamoDB Local (if not already), then the API, and PUT host inventory as in path A.
 
@@ -204,12 +185,7 @@ curl -sS -X POST http://127.0.0.1:7420/api/v1/sessions \
   }"
 ```
 
-Response `201` includes `id`, `status: "queued"`, `url`, `targetDisplayNames`, `created: true`, and the fields you sent. If the request includes an active matching `concurrencyId`, the API instead returns `200` with the existing session and `created: false`; terminal sessions release the identity for retry. Copy `id` into a session assign JSON as `sessionId`, set `worktreeId` from host inventory, then:
-
-```bash
-export HARNESS_HOST_ID=local-1 HARNESS_API_URL=http://127.0.0.1:7420
-pnpm local:daemon -- run-session --file /path/to/session.assign.json
-```
+Response `201` includes the queued session ID and its URL. Keep the daemon running; the controller resolves the target and sends the assignment after online reporting admission. Inspect the session's `reporting` status in the API or UI independently of its work status.
 
 > The local API assigns queued sessions immediately on create, resume, host register/reconnect, terminal transitions, and capacity/cooldown changes. A one-minute EventBridge-equivalent repair sweep still evaluates cron, reclaims stale hosts, enforces ACK deadlines, and retries missed assigns. The `POST /scheduler/*` routes remain available when an operator needs to force a sweep.
 
@@ -300,10 +276,8 @@ is still the full, authoritative gate. Never bypass a failing hook with `--no-ve
 ```bash
 pnpm check
 pnpm test:platform        # focused native PTY/process/git/host-service/daemon coverage
-pnpm local:e2e            # create handler + SessionRunner (feature ref)
-pnpm local:cli-e2e        # documented `pnpm local:daemon` path with ref: main
 pnpm local:api-smoke      # POST /sessions → 201
-pnpm local:ws-e2e         # WebSocket create→assign→run
+pnpm exec vitest run --project dynamo integration/blackboard-websocket-dynamo.test.ts         # WebSocket create→assign→run
 pnpm local:manage-verify  # repo/schedule CRUD, cancel, drain, web manage routes
 # optional UI: pnpm local:web
 ```

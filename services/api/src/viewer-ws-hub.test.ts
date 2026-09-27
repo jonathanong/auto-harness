@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
 import { AuthService, type Principal } from "./auth.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { attachViewerWsHub } from "./viewer-ws-hub.ts";
 import { parseViewerMessage } from "./viewer-ws-protocol.ts";
 import { createPlaneWsBridge } from "./ws-hub.ts";

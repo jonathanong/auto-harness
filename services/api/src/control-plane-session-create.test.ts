@@ -2,7 +2,8 @@
 import { describe, expect, it } from "vitest";
 
 import { buildSessionRecord, validateSessionCreate } from "./control-plane-session-create.ts";
-import { createControlPlaneState, type ControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
+import type { ControlPlaneState } from "./control-plane-state.ts";
 
 function activateRepo(state: ControlPlaneState, id: string): void {
   state.repositories.set(id, {

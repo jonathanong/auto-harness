@@ -23,9 +23,12 @@ function ctx(send: ReturnType<typeof vi.fn>): PlaneStorageCtx {
 
 describe("permanent webhook delivery settlement", () => {
   it("uses the live lease fence and preserves conditional failures", async () => {
-    const send = vi.fn().mockResolvedValue({});
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({ Item: { id: "delivery", state: "leased" } })
+      .mockResolvedValueOnce({});
     await expect(deadLetterWebhookDelivery(ctx(send), fence)).resolves.toBe(true);
-    expect(send.mock.calls[0]?.[0].input).toMatchObject({
+    expect(send.mock.calls[1]?.[0].input).toMatchObject({
       ConditionExpression:
         "#state = :leased AND leaseOwner = :owner AND leaseId = :leaseId AND leaseExpiresAt > :now",
       ExpressionAttributeValues: expect.objectContaining({
@@ -34,7 +37,15 @@ describe("permanent webhook delivery settlement", () => {
       }),
     });
     await expect(
-      deadLetterWebhookDelivery(ctx(vi.fn().mockRejectedValue(conditional)), fence),
+      deadLetterWebhookDelivery(
+        ctx(
+          vi
+            .fn()
+            .mockResolvedValueOnce({ Item: { id: "delivery", state: "leased" } })
+            .mockRejectedValueOnce(conditional),
+        ),
+        fence,
+      ),
     ).resolves.toBe(false);
     await expect(
       deadLetterWebhookDelivery(ctx(vi.fn().mockRejectedValue(new Error("unavailable"))), fence),

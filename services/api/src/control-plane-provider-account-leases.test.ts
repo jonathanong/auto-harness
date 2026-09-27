@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- assignment, hydrate, and helper cases share one fixture. */
 import { describe, expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import {
   accountHasLeaseCapacity,
   accountHasLeaseCapacityOverCap,
@@ -23,7 +23,7 @@ import {
   tryAcquireProviderAccountLeaseLocal,
 } from "./control-plane-provider-account-leases.ts";
 import { maxConcurrentSessionsFor } from "./control-plane-provider-account-capacity.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 
 const FINGERPRINT = "a".repeat(64);
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -129,7 +129,7 @@ function createProviderSession(plane: ControlPlane, prompt: string): void {
 }
 
 describe("provider account execution-profile leases", () => {
-  it("fails closed when the exact account profile is not advertised as ready", () => {
+  it("fails closed when the exact account profile is not advertised as ready", async () => {
     const plane = seedAccountPlane({ ready: false });
     const created = plane.createSession({
       repositoryId: "repo-1",
@@ -138,31 +138,31 @@ describe("provider account execution-profile leases", () => {
       timeout: 30,
     });
     expect(created.ok).toBe(true);
-    expect(plane.assignQueued()).toEqual([]);
+    expect(await plane.assignQueued()).toEqual([]);
     expect(plane.getSession("sess-1")?.status).toBe("queued");
   });
 
-  it("keeps legacy generic locks separate from provider-account leases", () => {
+  it("keeps legacy generic locks separate from provider-account leases", async () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
     createProviderSession(plane, "legacy lock");
     const queued = plane.state.sessions.get("sess-1")!;
     queued.concurrencyId = "provider-account:acct-1:0";
 
-    expect(plane.assignQueued()).toHaveLength(1);
+    expect(await plane.assignQueued()).toHaveLength(1);
     expect(plane.getSession("sess-1")?.providerAccountLease?.concurrencyId).toBe(
       "provider-lease:acct-1:0",
     );
   });
 
-  it("honors advertised host assignment capacity", () => {
+  it("honors advertised host assignment capacity", async () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 2 });
     const connectionId = plane.state.hostConnection.get("host-1")!;
     const conn = plane.state.connections.get(connectionId)!;
     plane.state.connections.set(connectionId, { ...conn, maxConcurrentAssignments: 1 });
     createProviderSession(plane, "one");
     createProviderSession(plane, "two");
-    expect(plane.assignQueued()).toHaveLength(1);
-    expect(plane.assignQueued()).toEqual([]);
+    expect(await plane.assignQueued()).toHaveLength(1);
+    expect(await plane.assignQueued()).toEqual([]);
   });
 
   it("seeds a missing durable host count from active legacy assignments", () => {
@@ -190,12 +190,12 @@ describe("provider account execution-profile leases", () => {
     expect(hostAssignmentOccupancyCount(state, "other")).toBe(0);
   });
 
-  it("exhausts account slots at maxConcurrentSessions", () => {
+  it("exhausts account slots at maxConcurrentSessions", async () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
     createProviderSession(plane, "one");
     createProviderSession(plane, "two");
-    expect(plane.assignQueued()).toHaveLength(1);
-    expect(plane.assignQueued()).toEqual([]);
+    expect(await plane.assignQueued()).toHaveLength(1);
+    expect(await plane.assignQueued()).toEqual([]);
     expect(plane.getSession("sess-1")?.status).toBe("running");
     expect(plane.getSession("sess-2")?.status).toBe("queued");
     expect(plane.getSession("sess-1")?.providerAccountLease?.slot).toBe(0);
@@ -794,10 +794,10 @@ describe("provider account execution-profile leases", () => {
     ]);
   });
 
-  it("reconciles unacked leases when a host goes stale", () => {
+  it("reconciles unacked leases when a host goes stale", async () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
     createProviderSession(plane, "one");
-    expect(plane.assignQueued()).toHaveLength(1);
+    expect(await plane.assignQueued()).toHaveLength(1);
     expect(plane.state.providerAccountLeases.size).toBe(1);
     plane.heartbeat("host-1", NOW);
     expect(plane.reclaimStaleHosts(Date.parse(NOW) + 2)).toEqual(["sess-1"]);
@@ -909,10 +909,10 @@ describe("provider account execution-profile leases", () => {
     expect(plane.getProviderAccount("acct")?.maxConcurrentSessions).toBe(2);
   });
 
-  it("retains the account lease until an acknowledged timeout reports terminal", () => {
+  it("retains the account lease until an acknowledged timeout reports terminal", async () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
     createProviderSession(plane, "one");
-    expect(plane.assignQueued()).toHaveLength(1);
+    expect(await plane.assignQueued()).toHaveLength(1);
     const session = plane.getSession("sess-1")!;
     expect(
       plane.handleHostMessage({
@@ -928,7 +928,7 @@ describe("provider account execution-profile leases", () => {
     expect(plane.state.providerAccountLeases.size).toBe(1);
     expect(plane.getSession("sess-1")).toHaveProperty("providerAccountLease");
     createProviderSession(plane, "two");
-    expect(plane.assignQueued()).toHaveLength(0);
+    expect(await plane.assignQueued()).toHaveLength(0);
     expect(
       plane.handleHostMessage({
         type: "session:status",
@@ -939,13 +939,13 @@ describe("provider account execution-profile leases", () => {
       }).ok,
     ).toBe(true);
     expect(plane.state.providerAccountLeases.size).toBe(0);
-    expect(plane.assignQueued()).toHaveLength(1);
+    expect(await plane.assignQueued()).toHaveLength(1);
   });
 
   it("retains a provider-account lease through durable timeout", async () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
     createProviderSession(plane, "one");
-    expect(plane.assignQueued()).toHaveLength(1);
+    expect(await plane.assignQueued()).toHaveLength(1);
     const session = plane.getSession("sess-1")!;
     expect(
       plane.handleHostMessage({
@@ -975,17 +975,17 @@ describe("provider account execution-profile leases", () => {
     expect(plane.state.providerAccountLeases.size).toBe(1);
   });
 
-  it("counts a cancelled in-flight assignment against the advertised host cap", () => {
+  it("counts a cancelled in-flight assignment against the advertised host cap", async () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 2 });
     const connectionId = plane.state.hostConnection.get("host-1")!;
     const conn = plane.state.connections.get(connectionId)!;
     plane.state.connections.set(connectionId, { ...conn, maxConcurrentAssignments: 1 });
     createProviderSession(plane, "one");
-    expect(plane.assignQueued()).toHaveLength(1);
+    expect(await plane.assignQueued()).toHaveLength(1);
     expect(plane.cancelSession("sess-1").ok).toBe(true);
     expect(plane.getSession("sess-1")).toMatchObject({ status: "cancelled", hostId: "host-1" });
     createProviderSession(plane, "two");
-    expect(plane.assignQueued()).toEqual([]);
+    expect(await plane.assignQueued()).toEqual([]);
   });
 
   it("counts a leftover scheduled checkout against the advertised host cap", () => {

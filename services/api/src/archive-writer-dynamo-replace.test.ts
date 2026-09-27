@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { archiveSessionLogs } from "./control-plane-lifecycle.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { createDynamoTestCtx } from "../test-helpers/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("ArcRp");

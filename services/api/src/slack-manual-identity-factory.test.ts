@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AuthService } from "./auth.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { createLambdaRuntime } from "./lambda-handlers.ts";
 import { signSlackRaw } from "../test-helpers/slack-route-test-helpers.ts";
 

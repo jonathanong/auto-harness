@@ -1,7 +1,8 @@
 /* eslint-disable max-lines -- scheduled assignment branch cases share compact state builders. */
 import { describe, expect, it } from "vitest";
 
-import { createControlPlaneState, settleStorage } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
+import { settleStorage } from "./control-plane-state.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { slackOutboxStub } from "../test-helpers/slack-outbox-test-stub.ts";
 import {

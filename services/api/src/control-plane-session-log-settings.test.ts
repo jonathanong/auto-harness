@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { DEFAULT_SESSION_LOG_SETTINGS } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { assignLogSettings } from "./control-plane-session-log-settings.ts";
 
 describe("session log settings", () => {

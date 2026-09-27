@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { validateSessionCreate } from "./control-plane-session-create.ts";
 
 it("sizes every provider-account admission route that a workspace pool can expose", () => {

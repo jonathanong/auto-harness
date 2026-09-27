@@ -2,11 +2,11 @@
 import { describe, expect, it } from "vitest";
 import type { HostWireMessage } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("ControlPlane retry and resume invariants", () => {
-  it("usage_limit on a providerless command suppresses that target", () => {
+  it("usage_limit on a providerless command suppresses that target", async () => {
     let nowMs = Date.parse("2026-01-01T00:00:00.000Z");
     const plane = new ControlPlane({
       now: () => new Date(nowMs).toISOString(),
@@ -25,7 +25,7 @@ describe("ControlPlane retry and resume invariants", () => {
       online: true,
     });
     plane.createSession(baseSessionBody());
-    const usageAssignment = plane.assignQueued().find((a) => a.session.id === "sess-u")!;
+    const usageAssignment = (await plane.assignQueued()).find((a) => a.session.id === "sess-u")!;
     plane.handleHostMessage({
       type: "session:ack",
       sessionId: "sess-u",
@@ -45,7 +45,7 @@ describe("ControlPlane retry and resume invariants", () => {
     expect(plane.getSession("sess-u")?.suppressedTargetIndexes).toEqual([0]);
   });
 
-  it("Invariant 7 / D5: resume pins agent only; works after original worktree reused", () => {
+  it("Invariant 7 / D5: resume pins agent only; works after original worktree reused", async () => {
     let n = 0;
     const plane = new ControlPlane({
       idFactory: () => `sess-${++n}`,
@@ -74,7 +74,7 @@ describe("ControlPlane retry and resume invariants", () => {
       online: true,
     });
     plane.createSession(baseSessionBody({ ref: "feature/x" }));
-    const firstAssign = plane.assignQueued();
+    const firstAssign = await plane.assignQueued();
     const originalWt = firstAssign[0]!.worktree.id;
     const firstAttempt = firstAssign[0]!.session.attemptId!;
     plane.handleHostMessage({
@@ -94,7 +94,7 @@ describe("ControlPlane retry and resume invariants", () => {
 
     // Original worktree reused by intervening session
     plane.createSession(baseSessionBody({ prompt: "other" }));
-    const intervening = plane.assignQueued();
+    const intervening = await plane.assignQueued();
     const interveningWt = intervening[0]!.worktree.id;
 
     const resumed = plane.resumeSession(firstAssign[0]!.session.id);
@@ -118,7 +118,7 @@ describe("ControlPlane retry and resume invariants", () => {
       attemptId: intervening[0]!.session.attemptId!,
       status: "completed",
     });
-    const resumeAssign = plane.assignQueued();
+    const resumeAssign = await plane.assignQueued();
     const hit = resumeAssign.find((a) => a.session.id === resumed.session.id);
     expect(hit).toBeTruthy();
     expect(hit?.worktree.hostId).toBe("agent-1");
@@ -128,7 +128,7 @@ describe("ControlPlane retry and resume invariants", () => {
     expect(["wt-a", "wt-b"]).toContain(interveningWt);
   });
 
-  it("keeps a native resume on its exact fallback route, then clears every pin for a fresh run", () => {
+  it("keeps a native resume on its exact fallback route, then clears every pin for a fresh run", async () => {
     const now = "2026-01-01T00:00:00.000Z";
     let n = 0;
     const plane = new ControlPlane({ idFactory: () => `s${++n}`, now: () => now, shardCount: 1 });
@@ -180,7 +180,7 @@ describe("ControlPlane retry and resume invariants", () => {
     expect(created.ok).toBe(true);
     // No primary command is available on the source run, forcing fallback 1.
     plane.state.commands.delete("primary");
-    const source = plane.assignQueued()[0]!.session;
+    const source = (await plane.assignQueued())[0]!.session;
     const sourceWorktreeId = source.worktreeId!;
     const sourceAttemptId = source.attemptId!;
     expect(source.resolvedRoute).toMatchObject({
@@ -213,7 +213,7 @@ describe("ControlPlane retry and resume invariants", () => {
     });
     const resumed = plane.resumeSession(source.id);
     expect(resumed.ok).toBe(true);
-    const native = plane.assignQueued()[0]!.session;
+    const native = (await plane.assignQueued())[0]!.session;
     expect(assignments.at(-1)).toMatchObject({
       resume: true,
       resumedFromSessionId: source.id,
@@ -242,7 +242,7 @@ describe("ControlPlane retry and resume invariants", () => {
     plane.state.commands.delete("fallback");
     const fresh = plane.resumeSession(native.id);
     expect(fresh.ok).toBe(true);
-    const freshAssigned = plane.assignQueued()[0]!.session;
+    const freshAssigned = (await plane.assignQueued())[0]!.session;
     expect(freshAssigned.resumeFallback).toBe(true);
     expect(freshAssigned.cliResumeRef).toBeUndefined();
     expect(freshAssigned.resolvedRoute).toMatchObject({ targetIndex: 0, commandId: "primary" });

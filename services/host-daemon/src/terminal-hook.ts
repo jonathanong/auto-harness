@@ -2,11 +2,13 @@ import { thrownMessage } from "@auto-harness/shared";
 import type { SessionErrorCode, SessionStatus } from "@auto-harness/shared";
 
 import { assertPathWithinAllowedRoots, resolveHookPath } from "./allowed-roots.ts";
+import { sessionFeedbackInstructions } from "./session-feedback-instructions.ts";
 import { createChildEnv } from "./child-env.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { hardTimeoutKillBudget } from "./hard-timeout-kill-budget.ts";
 
 type TerminalHookInput = {
+  feedbackPath?: string;
   scriptPath: string;
   cwd: string;
   sessionId: string;
@@ -31,6 +33,12 @@ export async function runTerminalHook(
   let scriptPath = input.scriptPath;
   const env: NodeJS.ProcessEnv = {
     ...createChildEnv(input.childEnvSource ?? process.env),
+    ...(input.feedbackPath
+      ? {
+          HARNESS_FEEDBACK_PATH: input.feedbackPath,
+          HARNESS_FEEDBACK_INSTRUCTIONS: sessionFeedbackInstructions(input.feedbackPath),
+        }
+      : {}),
     HARNESS_SESSION_ID: input.sessionId,
     HARNESS_STATUS: input.status,
     HARNESS_WORKTREE_PATH: input.worktreePath,

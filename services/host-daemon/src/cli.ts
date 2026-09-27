@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- CLI command dispatch and its bounded status report share one entrypoint. */
 import { readFileSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { basename } from "node:path";
 
 import {
   installCrashLogging,
@@ -9,7 +9,6 @@ import {
   onShutdownSignal,
   thrownMessage,
   type LifecycleLogger,
-  type SessionAssign,
 } from "@auto-harness/shared";
 
 import type { DaemonConfig, HostIdentity } from "./config.ts";
@@ -25,10 +24,9 @@ import {
   type HostServiceStatus,
 } from "./host-service.ts";
 import { fetchControlPlaneHostStatus, type ControlPlaneHostStatus } from "./host-status.ts";
-import { ensureDaemonReady, runAssignedSession } from "./runtime.ts";
+import { ensureDaemonReady } from "./runtime.ts";
 import { defaultSetupCacheDir } from "./setup-script-cache.ts";
 import { initHostSentry, reportHostCrash } from "./sentry.ts";
-import type { SessionRunResult } from "./session-runner.ts";
 
 export { printUsage } from "./cli-usage.ts";
 
@@ -62,18 +60,12 @@ export type RunSessionDeps = {
   ensureReady: (
     config: DaemonConfig,
   ) => Promise<import("@auto-harness/shared").HostRuntimeReport | void>;
-  runSession: (
-    config: DaemonConfig,
-    assign: SessionAssign,
-    onLog: (line: string) => void,
-    childEnvSource: NodeJS.ProcessEnv,
-  ) => Promise<SessionRunResult>;
   readFile: (path: string) => string;
   log: (msg: string) => void;
   error: (msg: string) => void;
   /**
-   * The three structured JSON documents this CLI prints on stdout — `status`,
-   * `status --config-only`, and `run-session`'s terminal result — are
+   * The structured JSON documents this CLI prints on stdout — `status`,
+   * `status --config-only` — are
    * documented, machine-readable output (AGENTS.md). `log` timestamps every
    * line for daemon lifecycle/session-stream readability, which would
    * otherwise corrupt these by prefixing text before the opening `{`. Kept
@@ -172,8 +164,6 @@ export function createDefaultRunSessionDeps(
       console.log(payload);
     },
     ensureReady: (config) => ensureDaemonReady(config),
-    runSession: (config, assign, onLog, childEnvSource) =>
-      runAssignedSession(config, assign, onLog, undefined, undefined, childEnvSource),
     installService: installHostService,
     uninstallService: uninstallHostService,
     statusService: getHostServiceStatus,
@@ -307,7 +297,7 @@ export async function runCli(
     return deps.uninstallService({ env: resolvedEnv, log: deps.log, error: deps.error });
   }
 
-  if (command === "start" || command === "run-session") {
+  if (command === "start") {
     const childEnvErrors = parseChildEnvAllowlist(resolvedEnv).errors;
     if (childEnvErrors.length > 0) {
       deps.error(childEnvErrors.join("; "));
@@ -396,24 +386,10 @@ export async function runCli(
   }
 
   if (command === "run-session") {
-    const fileIdx = args.indexOf("--file");
-    const file = fileIdx >= 0 ? args[fileIdx + 1] : undefined;
-    if (!file) {
-      deps.error("--file is required");
-      return 1;
-    }
-    const config = await deps.loadConfig({ env: resolvedEnv });
-    const assign = JSON.parse(deps.readFile(resolve(file))) as SessionAssign;
-    await deps.ensureReady(config);
-    const result = await deps.runSession(config, assign, deps.log, resolvedEnv);
-    deps.logResult(
-      JSON.stringify({
-        status: result.status,
-        exitCode: result.exitCode,
-        errorCode: result.errorCode,
-      }),
+    deps.error(
+      "Standalone run-session is unavailable: create a session through the trusted controller so required reporting gates execution and completion.",
     );
-    return result.status === "completed" ? 0 : 1;
+    return 1;
   }
 
   if (command === "start") {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { createGitHubIngressSessionDurable } from "./control-plane-sessions-durable.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type {

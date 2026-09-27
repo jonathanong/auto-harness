@@ -19,6 +19,7 @@ export type TableDef = {
 };
 
 export const DYNAMO_TABLES: TableDef[] = [
+  { name: "ReportingRepairCheckpoints", partitionKey: { name: "status", type: "S" } },
   {
     name: "Users",
     partitionKey: { name: "id", type: "S" },

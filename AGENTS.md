@@ -15,7 +15,7 @@ Contributor entry points: [README.md](README.md), [docs/README.md](docs/README.m
 
 - `modules/*` may import other modules and npm packages only.
 - `services/*` may import `modules/*` and npm packages only.
-- **No service may import another service.** Share code via modules.
+- **No service may import another service.** Share code via modules. Tests under root `integration/` may exercise multiple services through their actual public boundaries.
 
 Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
 Cross-plane overview: [docs/architecture/](docs/architecture/README.md).
@@ -41,12 +41,11 @@ observability, and retention principles in
 | `pnpm check:no-mistakes`      | no-mistakes rules (Playwright `data-pw`, Next.js, repo hygiene)                                                                               |
 | `pnpm test:e2e`               | Build production UIs + Playwright E2E (`next start`; [docs/e2e.md](docs/e2e.md))                                                              |
 | `pnpm local:e2e:isolated`     | Isolated e2e in this worktree's own port range + DynamoDB container (multi-worktree safe; see `pnpm local:e2e:isolated -- <playwright args>`) |
-| `pnpm local:e2e`              | Phase 1 create→run on a temp git repo                                                                                                         |
 | `pnpm local:api`              | Local API on `:7420` (Node + DynamoDB)                                                                                                        |
 | `pnpm local:web`              | Control-plane Next.js UI on `:7421`                                                                                                           |
 | `pnpm local:host-pane`        | Host-pane Next.js UI on `:7422`                                                                                                               |
 | `pnpm local:dynamodb`         | DynamoDB Local on host `:7423`                                                                                                                |
-| `pnpm local:daemon`           | Agent CLI (`status`, `run-session`, `start`, `install-service`, `uninstall-service`)                                                          |
+| `pnpm local:daemon`           | Agent CLI (`status`, `start`, `install-service`, `uninstall-service`; dispatch work through the controller)                                   |
 | `pnpm local:tmux`             | Above (minus DynamoDB, which stays in Docker), one tmux window each                                                                           |
 
 Package manager: **pnpm** only (see `packageManager` in root `package.json`). `next`, `react`, and `react-dom` are default-catalog pins in `pnpm-workspace.yaml`; apps and `@auto-harness/ui` must use `"catalog:"` — a per-package pin installs a second Next and splits App Router context. Run `pr-shepherd` from this repository so [`.pr-shepherdrc.yml`](.pr-shepherdrc.yml) loads: it ignores the CodeRabbit **CI check** only, not review comments ([docs/github.md](docs/github.md#pr-shepherd)). Local runbook: [docs/local-development.md](docs/local-development.md). **Pre-deploy E2E:** [docs/host-daemon-e2e-testing.md](docs/host-daemon-e2e-testing.md). **Deploy:** [docs/deploy.md](docs/deploy.md) → [local](docs/deploy-local.md) / [AWS](docs/deploy-aws.md) / [agent](docs/deploy-host-daemon.md).
@@ -72,7 +71,7 @@ worktree gets stable, reusable ports across runs.
 
 ## TypeScript / runtime
 
-- **No `tsc` build.** Sources are executed with **Node native type stripping** (`node file.ts`). Requires **Node.js ≥ 22.18**.
+- **No `tsc` build.** Sources are executed with **Node native type stripping** (`node file.ts`). Requires **Node.js ≥ 24** for the controller, shared reporting tooling, and supported workspace scripts; Lambda uses Node.js 24.
 - Relative imports use **`.ts` extensions** (what Node resolves at runtime).
 - Avoid TypeScript features Node cannot strip (enums, namespaces, parameter properties). Prefer plain fields assigned in the constructor.
 - Strict mode via `tsconfig.base.json` for editors (`noEmit`, `allowImportingTsExtensions`).

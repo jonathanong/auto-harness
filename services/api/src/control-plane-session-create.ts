@@ -5,6 +5,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString } from "./control-plane-state.ts";
 import { resolveTargetDisplayNames } from "./control-plane-session-target-display-name.ts";
 import type { SessionRecord } from "./db/types.ts";
+import { reportingPolicyFields } from "./blackboard-reporting.ts";
 import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
 
 type ValidatedFields = Extract<
@@ -294,6 +295,12 @@ export function buildSessionRecord(
     : undefined;
   return {
     id,
+    ...reportingPolicyFields(
+      state.blackboardReporting,
+      v.repositoryId ?? "",
+      principalId,
+      v.workspacePoolId,
+    ),
     repositoryId: v.repositoryId ?? "",
     ...(v.workspacePoolId ? { workspacePoolId: v.workspacePoolId } : {}),
     ...(setupProfileId ? { setupProfileId } : {}),

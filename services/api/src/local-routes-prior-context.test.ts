@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 import {
@@ -10,7 +10,7 @@ import {
 
 describe("GET /sessions/:id/prior-context", () => {
   it("returns the rendered transcript of the resumed-from session", async () => {
-    const plane = finishedLoggedSessionPlane("did the thing");
+    const plane = await finishedLoggedSessionPlane("did the thing");
     // A running session's hostId is set at assign time; a fallback resume records
     // resumedFromSessionId without a native pin. Set both directly to exercise the
     // route without needing the full resume + fallback-routing pipeline here.

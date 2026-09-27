@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { setInMemoryScheduleStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { triggerScheduleDurable } from "./control-plane-schedule-fire.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 

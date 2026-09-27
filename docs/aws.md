@@ -1,5 +1,7 @@
 # AWS Layer (Control Plane)
 
+Required autonomous Blackboard feedback and trusted deployment setup: [required-reporting.md](required-reporting.md).
+
 This document describes the **AWS control plane** in depth: API Gateway, Lambda handlers, DynamoDB, S3, scheduling, WebSocket fan-out, and how those pieces talk to host-plane agents. The control plane is serverless and designed to idle near zero.
 
 Host plane: [host-daemon.md](host-daemon.md). Overview: [architecture/](architecture/README.md).  

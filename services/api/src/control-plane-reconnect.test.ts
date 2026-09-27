@@ -1,14 +1,14 @@
 /* eslint-disable max-lines */
 import { describe, expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import {
   reclaimReconnectDeadlines,
   reconcileHostRunningSessions,
 } from "./control-plane-reconnect.ts";
 
-function runningPlane() {
+async function runningPlane() {
   const plane = new ControlPlane({
     now: () => "2026-01-01T00:00:00.000Z",
     reconnectGraceMs: 10,
@@ -27,7 +27,7 @@ function runningPlane() {
   });
   if (!registration.ok) throw new Error("register");
   plane.createSession(baseSessionBody());
-  const [assigned] = plane.assignQueued();
+  const [assigned] = await plane.assignQueued();
   if (!assigned) throw new Error("assign");
   plane.handleHostMessage({
     type: "session:ack",
@@ -89,7 +89,7 @@ function loseSessionAfterValidation(plane: ControlPlane, sessionId: string, onLo
 
 describe("reconnect reconciliation", () => {
   it("retains a reported running session and clears its offline deadline", async () => {
-    const plane = runningPlane();
+    const plane = await runningPlane();
     expect(plane.getSession("s")?.reconnectDeadlineAt).toBeDefined();
     const registered = plane.registerHost({
       hostId: "h",
@@ -105,14 +105,14 @@ describe("reconnect reconciliation", () => {
   });
 
   it("rejects a reported session whose in-memory worktree disappeared", async () => {
-    const plane = runningPlane();
+    const plane = await runningPlane();
     plane.state.worktrees.delete("w");
 
     await expect(reconcileHostRunningSessions(plane.state, "h", ["s"])).resolves.toBe(false);
   });
 
   it("requeues omitted work and expires an unreconciled reconnect", async () => {
-    const plane = runningPlane();
+    const plane = await runningPlane();
     const deadline = Date.parse(plane.getSession("s")!.reconnectDeadlineAt!);
     expect(await plane.reclaimReconnectDeadlines(deadline - 1)).toEqual([]);
     expect(await plane.reclaimReconnectDeadlines(deadline)).toEqual(["s"]);
@@ -120,7 +120,7 @@ describe("reconnect reconciliation", () => {
     expect(plane.getSession("s")?.infrastructureRetryCount).toBe(1);
     expect(plane.getSession("s")?.lastInfrastructureErrorCode).toBe("host_lost");
 
-    const second = runningPlane();
+    const second = await runningPlane();
     // A stale local deadline tracker must be removed when the durable/local
     // reconciliation puts the session back into the queue.
     second.state.pendingAcks.set("s", { sessionId: "s", worktreeId: "w", assignedAtMs: 0 });
@@ -140,7 +140,7 @@ describe("reconnect reconciliation", () => {
   });
 
   it("fails an authorized command rather than replaying it after reconnect grace", async () => {
-    const plane = runningPlane();
+    const plane = await runningPlane();
     const internal = plane.state.sessions.get("s")!;
     internal.primaryCommandStartState = "authorized";
     const deadline = Date.parse(internal.reconnectDeadlineAt!);
@@ -1523,7 +1523,9 @@ describe("reconnect reconciliation", () => {
     plane.state.storage = undefined;
     seedBaseCommand(plane);
     const queued = plane.createSession(baseSessionBody());
-    expect(plane.assignQueued().map((item) => item.session.id)).toEqual([queued.session.id]);
+    expect((await plane.assignQueued()).map((item) => item.session.id)).toEqual([
+      queued.session.id,
+    ]);
   });
 
   it("adopts legacy no-deadline reports and ignores expired rows missing ownership", async () => {

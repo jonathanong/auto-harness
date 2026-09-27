@@ -8,7 +8,7 @@ import {
   resumeHost,
   resumeHostDurable,
 } from "./control-plane-agents.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 const inventory = [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }];
 

@@ -2,7 +2,49 @@
 import type { Command, Provider } from "./catalog-types.js";
 export type { Command, Provider, ResumeRefCapture, UsageRates } from "./catalog-types.js";
 
+export type SessionFeedback = {
+  schemaVersion: 1;
+  completionKind: "changed" | "no-change" | "policy-refusal" | "shepherd-terminal" | "aborted";
+  feedbackCoverage: "complete" | "partial" | "unavailable";
+  assessments: Record<
+    "architecture" | "sandbox" | "tools",
+    "finding" | "none-observed" | "not-assessed" | "unavailable"
+  >;
+  assessmentEvidence: { architecture: string; sandbox: string; tools: string };
+  toolAssessments: Array<{
+    name: string;
+    status: "used" | "skipped" | "unavailable";
+    reason: string;
+  }>;
+  findings: Array<{
+    category:
+      | "architecture"
+      | "sandbox"
+      | "approval"
+      | "guard"
+      | "workflow"
+      | "validation"
+      | "tool";
+    recurrence: "recurring" | "one-off";
+    summary: string;
+    source?: string;
+  }>;
+  droppedCount: number;
+  shepherdAction?: "merged" | "closed" | "ready" | "blocked" | "cancelled";
+};
+
+export type SessionReporting = {
+  protocolVersion: 1;
+  mode: "autonomous";
+  deliveryStatus: "not-started" | "pending" | "delivered" | "blocked";
+  feedbackCoverage: "complete" | "partial" | "unavailable" | "not-started";
+  completionStatus: "in-progress" | "complete" | "incomplete";
+  sourceEventId?: string;
+  deliveredAt?: string;
+};
+
 export type SessionResult = {
+  feedback?: SessionFeedback;
   summary: string;
   summarySource: "agent" | "harness";
   summaryTruncated?: true;
@@ -84,6 +126,7 @@ export type CreateSessionInput =
   | WorkspaceSessionInput;
 
 export type Session = {
+  reporting?: SessionReporting;
   id: string;
   repositoryId: string | null;
   workspacePoolId?: string;

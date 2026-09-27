@@ -30,7 +30,6 @@ Quick start:
 
 ```bash
 pnpm local:dynamodb && pnpm local:dynamodb:ready
-pnpm local:e2e
 pnpm check
 ```
 
@@ -58,7 +57,7 @@ See [aws.md](aws.md), [auth.md](auth.md), [security.md](security.md).
 
 ## VPS agent (production shape)
 
-Install / update / teardown: **[deploy-host-daemon.md](deploy-host-daemon.md)**. Locally: `run-session` / e2e in [local-development.md](local-development.md) or daemon start in [deploy-local.md](deploy-local.md).
+Install / update / teardown: **[deploy-host-daemon.md](deploy-host-daemon.md)**. Locally: controller dispatch / e2e in [local-development.md](local-development.md) or daemon start in [deploy-local.md](deploy-local.md).
 
 Persist the host daemon on Linux (systemd), macOS (LaunchAgent, current user), or Windows
 (logon scheduled task, current user) from the checkout:

@@ -17,6 +17,14 @@ import {
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { AsyncLocalStorage } from "node:async_hooks";
 
+import { parseBlackboardConfig } from "./blackboard-config.ts";
+import { createBlackboardReporting, type BlackboardReporting } from "./blackboard-reporting.ts";
+import { repairBlackboardReporting } from "./blackboard-repair.ts";
+import {
+  isBlackboardSessionStream,
+  processBlackboardSessionStream,
+  drainBlackboardOutbox,
+} from "./blackboard-lifecycle.ts";
 import { AuthService, type Principal } from "./auth.ts";
 import { createControlPlane } from "./create-plane.ts";
 import { createLocalApp } from "./local-app.ts";
@@ -71,6 +79,7 @@ export type LambdaCronContext = {
 };
 
 export type CronResult = {
+  batchItemFailures?: Array<{ itemIdentifier: string }>;
   ackDeadlinesEnforced: number;
   archivesRetried: number;
   cancelsRedelivered: number;
@@ -84,6 +93,7 @@ export type CronResult = {
 };
 
 export type LambdaRuntimeDependencies = {
+  blackboardReporting?: BlackboardReporting;
   auth?: AuthService;
   created?: PlaneBundle;
   management?: ManagementClient;
@@ -174,6 +184,21 @@ export async function fetchPublicBaseUrl(client?: SsmClient): Promise<string | u
  * than treating a transient infrastructure failure as absent Slack configuration for this
  * container's lifetime.
  */
+/** Missing trusted configuration leaves execution fail closed; infrastructure failures retry construction. */
+export async function loadBlackboardReporting(
+  client?: SsmClient,
+): Promise<BlackboardReporting | undefined> {
+  const name = process.env.HARNESS_BLACKBOARD_SSM_PARAM;
+  if (!name) return undefined;
+  try {
+    const raw = await fetchSecureParameter(client ?? new SSMClient({}), name);
+    return createBlackboardReporting(parseBlackboardConfig(raw));
+  } catch (error) {
+    if (error instanceof ParameterNotFound) return undefined;
+    throw error;
+  }
+}
+
 export async function loadSlackAppCredentials(
   client?: SsmClient,
 ): Promise<SlackAppCredentials | undefined> {
@@ -354,6 +379,10 @@ export async function createLambdaRuntime(
   const fetchedPublicBaseUrl = dependencies.created
     ? undefined
     : await fetchPublicBaseUrl(dependencies.ssmClient);
+  const blackboardReporting =
+    dependencies.blackboardReporting ??
+    dependencies.created?.plane.state.blackboardReporting ??
+    (dependencies.created ? undefined : await loadBlackboardReporting(dependencies.ssmClient));
   const slackAppCredentials =
     dependencies.slackAppCredentials ??
     (dependencies.created ? undefined : await loadSlackAppCredentials(dependencies.ssmClient));
@@ -366,6 +395,7 @@ export async function createLambdaRuntime(
     dependencies.created ??
     (await createControlPlane({
       aws: true,
+      ...(blackboardReporting ? { blackboardReporting } : {}),
       sessionCursorSecret: bootstrapSecrets!.cursorSecret,
       skipEnsureTables: true,
       hydrateSessionHistory: false,
@@ -528,6 +558,16 @@ export async function createLambdaRuntime(
 
   return {
     async cron(eventOrContext?: unknown, lambdaContext?: LambdaCronContext) {
+      if (isBlackboardSessionStream(eventOrContext))
+        return runInvocation(async () => {
+          const result = await processBlackboardSessionStream(created.plane.state, eventOrContext);
+          await drainBlackboardOutbox(
+            created.plane.state,
+            () =>
+              (lambdaContext?.getRemainingTimeInMillis?.() ?? Number.POSITIVE_INFINITY) > 25_000,
+          );
+          return { ...emptyCronResult(), ...result };
+        });
       if (isAssignmentEnqueue(eventOrContext)) {
         return runInvocation(async () => {
           const assignments = await assignQueuedAndScheduledDurable(created.plane.state);
@@ -552,14 +592,22 @@ export async function createLambdaRuntime(
         );
         const repositoriesReconciled = await created.plane.reconcileRepositoryDrainsDurable();
         const sessionDrainsReconciled = await created.plane.reconcileSessionDrainsDurable();
+        const cancelsRedelivered = await created.plane.redeliverPendingCancelsDurable(
+          25,
+          () => (context?.getRemainingTimeInMillis?.() ?? Number.POSITIVE_INFINITY) > 10_000,
+        );
+        await repairBlackboardReporting(
+          created.plane.state,
+          () => (context?.getRemainingTimeInMillis?.() ?? Number.POSITIVE_INFINITY) > 30_000,
+        );
+        await drainBlackboardOutbox(
+          created.plane.state,
+          () => (context?.getRemainingTimeInMillis?.() ?? Number.POSITIVE_INFINITY) > 25_000,
+        );
         const assignments = await assignQueuedAndScheduledDurable(created.plane.state, {
           fullScan: true,
         });
         const archivesRetried = await created.plane.retryPendingArchivesDurable(
-          25,
-          () => (context?.getRemainingTimeInMillis?.() ?? Number.POSITIVE_INFINITY) > 10_000,
-        );
-        const cancelsRedelivered = await created.plane.redeliverPendingCancelsDurable(
           25,
           () => (context?.getRemainingTimeInMillis?.() ?? Number.POSITIVE_INFINITY) > 10_000,
         );

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { gzipJsonlLines } from "@auto-harness/shared";
 
 import { getLogsDurable } from "./control-plane-durable-read-runtime.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import {
   gzipLogRecords,
   parseGzipJsonlLogs,

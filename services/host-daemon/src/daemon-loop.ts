@@ -51,6 +51,7 @@ import { probeGitReadiness } from "./git-readiness.ts";
 import { withTimeout } from "./with-timeout.ts";
 import { runTerminalHook } from "./terminal-hook.ts";
 import { collectSessionResult } from "./session-result.ts";
+import { prepareSessionFeedback, takeSessionFeedback } from "./session-feedback-artifact.ts";
 import {
   GITHUB_APP_TOKEN_MARGIN_MS,
   loadGitHubAppConfig,
@@ -1122,7 +1123,7 @@ export class DaemonLoop {
 
   /** Ask the control plane to durably authorize the primary CLI launch. */
   private authorizeCommandStart(assign: SessionAssign, signal?: AbortSignal): Promise<boolean> {
-    if (!signal) return Promise.resolve(true);
+    if (!signal) return Promise.resolve(false);
     if (signal.aborted) return Promise.resolve(false);
     const key = inflightKey(assign.sessionId, assign.attemptId);
     return new Promise<boolean>((resolve) => {
@@ -1659,6 +1660,7 @@ export class DaemonLoop {
         const remainingMs = effectiveExpiresAtMs - Date.now();
         if (remainingMs <= 0) return undefined;
         await runTerminalHook(terminalRunner, {
+          feedbackPath: await prepareSessionFeedback(msg),
           scriptPath,
           cwd: current.cwd,
           sessionId: msg.sessionId,
@@ -1672,13 +1674,16 @@ export class DaemonLoop {
           ...(msg.metadata !== undefined ? { metadata: msg.metadata } : {}),
         });
       }
-      return await collectSessionResult({
+      const result = await collectSessionResult({
         runner: terminalRunner,
         cwd: current.cwd,
         status: msg.status,
         environment: terminalEnvironment,
         deadlineAtMs: effectiveExpiresAtMs,
       });
+      const feedback = await takeSessionFeedback(msg);
+      if (feedback) result.feedback = feedback;
+      return result;
     } catch (error) {
       if (mappedGitHubApp) {
         this.onLog?.(`GitHub App credential provisioning failed for ${msg.sessionId}`);

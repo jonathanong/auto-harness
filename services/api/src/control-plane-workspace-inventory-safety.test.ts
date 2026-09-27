@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { syncHostWorkspaceSlots } from "./control-plane-agent-hosts.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 function attachment(id = "slot", path = "/work/slot", workspacePoolId = "pool-a") {
   return [{ workspacePoolId, slots: [{ id, name: id, path }] }];

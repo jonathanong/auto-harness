@@ -6,7 +6,7 @@ import WebSocket from "ws";
 
 import type { HostToServerMessage } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { createPlaneWsBridge } from "./ws-hub.ts";
 
 describe("WebSocket durable ACK replies", () => {

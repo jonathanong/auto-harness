@@ -11,8 +11,8 @@ import {
   createSessionDurable,
   resumeSessionDurable,
 } from "./control-plane-sessions-durable.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { putSchedule, putScheduleDurable, updateSchedule } from "./control-plane-schedules.ts";
 import { tryClaimScheduleFireDurable } from "./control-plane-schedule-fire.ts";
 import {

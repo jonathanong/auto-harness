@@ -1,5 +1,5 @@
 import type { ProcessRunner } from "../src/executor.ts";
-import { SessionRunner } from "../src/session-runner.ts";
+import { AuthorizedSessionRunner as SessionRunner } from "./authorized-session-runner.ts";
 import type { DaemonConfig } from "../src/config.ts";
 import type { GitClient } from "../src/git.ts";
 import { WorktreeManager } from "../src/worktree-manager.ts";
@@ -92,6 +92,6 @@ export function makeRunner() {
 
 export async function viTick(): Promise<void> {
   for (let i = 0; i < 4; i += 1) {
-    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
 }

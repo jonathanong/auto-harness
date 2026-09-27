@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { queueWrite } from "./control-plane-state.ts";
 import { createLambdaRuntime } from "./lambda-handlers.ts";
 import { createLambdaResponseCapture, requestForLambdaEvent } from "./lambda-http-adapter.ts";
@@ -28,7 +28,7 @@ describe("Lambda HTTP adapter", () => {
     expect(request.socket.remoteAddress).toBe("203.0.113.7");
     await expect(runtime.rest(event)).resolves.toMatchObject({
       statusCode: 200,
-      body: '{"ok":true}',
+      body: '{"ok":true,"blackboardFeedbackProtocol":1}',
       headers: { "content-type": "application/json" },
     });
     await expect(runtime.rest({ rawPath: "/health" })).resolves.toMatchObject({ statusCode: 200 });

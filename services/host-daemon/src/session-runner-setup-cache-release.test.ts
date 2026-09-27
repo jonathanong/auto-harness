@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
 import { checkoutFetchFailure } from "./git-commands.ts";
-import { SessionRunner } from "./session-runner.ts";
+import { AuthorizedSessionRunner as SessionRunner } from "../test-helpers/authorized-session-runner.ts";
 import { WorkspaceManager } from "./workspace-manager.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";

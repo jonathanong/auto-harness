@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { handleAuditLogRoutes } from "./local-routes-audit-logs.ts";
 import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 

@@ -4,7 +4,7 @@ import { reclaimStaleHosts } from "./control-plane-lifecycle.ts";
 import { finishHostLostSession } from "./control-plane-infrastructure-retry.ts";
 import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
 import { reclaimScheduledReconnect } from "./control-plane-reconnect-scheduled.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { offlineHostAndRequeueDurableImpl } from "./control-plane-worktrees-disconnect.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 

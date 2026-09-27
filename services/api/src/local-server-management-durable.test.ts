@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { DEFAULT_USAGE_LIMIT_COOLDOWN_SECONDS } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import type {
   CommandRecord,
   HostInventoryRecord,

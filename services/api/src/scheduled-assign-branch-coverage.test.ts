@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildRegisteredInventory } from "./control-plane-agent-registration.ts";
 import { assignScheduledQueuedDurable } from "./control-plane-scheduled-assign.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import type { SessionRecord } from "./db/types.ts";
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { finishHostLostSession } from "./control-plane-infrastructure-retry.ts";
 import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";

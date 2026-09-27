@@ -36,7 +36,7 @@ describe("runSetupScript", () => {
       undefined,
       { PATH: process.env.PATH, SHELL: "/bin/sh" },
     );
-    expect(result.environment?.AGENT_BLACKBOARD_URL).toBe("https://blackboard.test");
+    expect(result.environment?.AGENT_BLACKBOARD_URL).toBeUndefined();
     expect(result.environment?.HARNESS_API_KEY).toBeUndefined();
   });
 

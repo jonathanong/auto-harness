@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import type { GitClient } from "./git.ts";
-import { SessionRunner } from "./session-runner.ts";
+import { AuthorizedSessionRunner as SessionRunner } from "../test-helpers/authorized-session-runner.ts";
 import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 

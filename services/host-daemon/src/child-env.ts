@@ -45,7 +45,11 @@ export function parseChildEnvAllowlist(source: NodeJS.ProcessEnv): {
     } else if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
       // Do not echo malformed input: a mistaken NAME=value entry may contain a secret.
       errors.push(`HARNESS_CHILD_ENV_ALLOWLIST invalid name at position ${index + 1}`);
-    } else if (key.toUpperCase().startsWith("HARNESS_") || key === "NOTIFY_SOCKET") {
+    } else if (
+      key.toUpperCase().startsWith("HARNESS_") ||
+      key.toUpperCase().startsWith("AGENT_BLACKBOARD_") ||
+      key === "NOTIFY_SOCKET"
+    ) {
       errors.push(`HARNESS_CHILD_ENV_ALLOWLIST reserved name: ${key}`);
     } else if (seen.has(key)) {
       errors.push(`HARNESS_CHILD_ENV_ALLOWLIST duplicate name: ${key}`);
@@ -77,10 +81,18 @@ export function createChildEnv(
     if (
       value !== undefined &&
       !key.toUpperCase().startsWith("HARNESS_") &&
+      !key.toUpperCase().startsWith("AGENT_BLACKBOARD_") &&
       (isBaselineKey(key, platform) || allowed.has(key))
     ) {
       env[key] = value;
     }
   }
   return env;
+}
+
+/** Dedicated reporting credentials are control-plane only, even after profile/setup overlays. */
+export function stripBlackboardEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(source).filter(([key]) => !key.toUpperCase().startsWith("AGENT_BLACKBOARD_")),
+  );
 }

@@ -2,9 +2,9 @@
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { seedBaseCommand, baseSessionBody } from "../test-helpers/control-plane-test-helpers.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { enqueueAssignment, requestAssignment } from "./request-assignment.ts";
 
@@ -178,7 +178,7 @@ describe("requestAssignment", () => {
     expect(plane.state.sessions.get(scheduled.id)?.status).toBe("queued");
   });
 
-  it("caps event work by session count and elapsed budget while full repair drains the rest", async () => {
+  it("caps event work by session count and elapsed budget while bounded full repair drains the rest", async () => {
     let id = 0;
     const plane = new ControlPlane({
       now: () => NOW,
@@ -211,7 +211,7 @@ describe("requestAssignment", () => {
       [...plane.state.sessions.values()].filter((row) => row.status === "running"),
     ).toHaveLength(1);
 
-    await requestAssignment(plane.state, { fullScan: true, maxSessions: 0, budgetMs: 0 });
+    await requestAssignment(plane.state, { fullScan: true, maxSessions: 0, budgetMs: 2_000 });
     expect(
       [...plane.state.sessions.values()].filter((row) => row.status === "running"),
     ).toHaveLength(2);

@@ -9,7 +9,7 @@ import {
   handleHostMessage,
   handleHostMessageDurable,
 } from "./control-plane-messages.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { LogRecord } from "./control-plane-types.ts";
 import type { SessionRecord } from "./db/types.ts";
 

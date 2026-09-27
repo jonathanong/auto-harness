@@ -8,12 +8,12 @@ import {
 import { planPromptPlacement } from "./queue-placement-planner.ts";
 
 describe("assign wiring for prior-session context", () => {
-  it("attaches priorContext only for a fallback resume on a capability-advertising host", () => {
-    const plane = finishedCommandSwapSourcePlane(["prior-session-context"]);
+  it("attaches priorContext only for a fallback resume on a capability-advertising host", async () => {
+    const plane = await finishedCommandSwapSourcePlane(["prior-session-context"]);
     plane.resumeSession("s1", { target: { commandId: "cmd-new" } });
     const assigns: unknown[] = [];
     plane.setOnHostMessage((_host, message) => assigns.push(message));
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(assigns).toHaveLength(1);
     expect(assigns[0]).toMatchObject({
       resumedFromSessionId: "s1",
@@ -22,8 +22,8 @@ describe("assign wiring for prior-session context", () => {
     expect((assigns[0] as { resume?: boolean }).resume).toBeUndefined();
   });
 
-  it("omits priorContext when the assigned host does not advertise the capability", () => {
-    const plane = finishedCommandSwapSourcePlane();
+  it("omits priorContext when the assigned host does not advertise the capability", async () => {
+    const plane = await finishedCommandSwapSourcePlane();
     // Replace the capable host with a plain one so the fallback lands there instead.
     plane.state.hostInventories.delete("host-a");
     plane.state.connections.clear();
@@ -33,25 +33,25 @@ describe("assign wiring for prior-session context", () => {
     plane.resumeSession("s1", { target: { commandId: "cmd-new" } });
     const assigns: unknown[] = [];
     plane.setOnHostMessage((_host, message) => assigns.push(message));
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(assigns).toHaveLength(1);
     expect(assigns[0]).toMatchObject({ resumedFromSessionId: "s1" });
     expect((assigns[0] as { priorContext?: unknown }).priorContext).toBeUndefined();
   });
 
-  it("never attaches priorContext on a native resume", () => {
-    const plane = finishedCommandSwapSourcePlane();
+  it("never attaches priorContext on a native resume", async () => {
+    const plane = await finishedCommandSwapSourcePlane();
     plane.resumeSession("s1");
     const assigns: unknown[] = [];
     plane.setOnHostMessage((_host, message) => assigns.push(message));
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(assigns).toHaveLength(1);
     expect(assigns[0]).toMatchObject({ resume: true, cliResumeRef: "cli-1" });
     expect((assigns[0] as { priorContext?: unknown }).priorContext).toBeUndefined();
   });
 
-  it("an overridden resume assigns on the new command with no clear_pin round trip", () => {
-    const plane = finishedCommandSwapSourcePlane();
+  it("an overridden resume assigns on the new command with no clear_pin round trip", async () => {
+    const plane = await finishedCommandSwapSourcePlane();
     const resumed = plane.resumeSession("s1", { target: { commandId: "cmd-new" } });
     expect(resumed.ok).toBe(true);
     if (!resumed.ok) return;
@@ -63,8 +63,8 @@ describe("assign wiring for prior-session context", () => {
     expect(plan.candidates[0]?.route.commandId).toBe("cmd-new");
   });
 
-  it("bakes the prior-context pointer into resolvedArgv after a pin-expiry clear_pin", () => {
-    const plane = finishedCommandSwapSourcePlane();
+  it("bakes the prior-context pointer into resolvedArgv after a pin-expiry clear_pin", async () => {
+    const plane = await finishedCommandSwapSourcePlane();
     const resumed = plane.resumeSession("s1");
     expect(resumed.ok).toBe(true);
     if (!resumed.ok) return;
@@ -75,7 +75,7 @@ describe("assign wiring for prior-session context", () => {
     registerFixtureHost(plane, "host-b", ["prior-session-context"]);
     const assigns: unknown[] = [];
     plane.setOnHostMessage((_host, message) => assigns.push(message));
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(assigns).toHaveLength(1);
     expect((assigns[0] as { resolvedArgv: string[] }).resolvedArgv.join(" ")).toContain(
       ".auto-harness/prior-session.md",

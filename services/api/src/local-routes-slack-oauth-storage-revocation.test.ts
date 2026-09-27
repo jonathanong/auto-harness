@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 import type { SlackOAuthExchange, SlackOAuthStateRecord } from "./slack-oauth-types.ts";

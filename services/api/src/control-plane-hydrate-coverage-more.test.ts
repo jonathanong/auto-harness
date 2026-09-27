@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { hydrateFromStorage } from "./control-plane-hydrate.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 
 describe("durable hydration boundary records", () => {
   it("retains eligible leases while discarding an incomplete host connection", async () => {

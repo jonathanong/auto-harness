@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- omitted-session reconnect cases share one state builder. */
 import { describe, expect, it, vi } from "vitest";
 
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { reconcileHostOwnedSessions } from "./control-plane-reconnect-omitted.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 

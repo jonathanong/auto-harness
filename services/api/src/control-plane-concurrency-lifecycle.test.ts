@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { HostWireMessage } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { supersedeSession } from "./control-plane-sessions.ts";
 import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";

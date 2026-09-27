@@ -1,5 +1,7 @@
 # Integrations
 
+Required autonomous Blackboard feedback and trusted deployment setup: [required-reporting.md](required-reporting.md).
+
 ## Slack
 
 > **Current status:** Auto Harness stores an encrypted, redacted Slack configuration through the

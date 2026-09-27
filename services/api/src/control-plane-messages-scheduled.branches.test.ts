@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- scheduled terminal branches share one session fixture. */
 import { describe, expect, it } from "vitest";
 
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import type { SessionRecord } from "./db/types.ts";

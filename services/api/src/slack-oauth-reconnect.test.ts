@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { DEFAULT_SLACK_NOTIFICATIONS } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { startSlackOAuth } from "./slack-oauth.ts";
 import type { SlackIntegrationRecord } from "./slack-integration-types.ts";
 import type { SlackOAuthStateRecord } from "./slack-oauth-types.ts";

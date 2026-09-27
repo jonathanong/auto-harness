@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { AuthService, type Principal } from "./auth.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import type { SessionRecord } from "./db/types.ts";
 import { errorMessage } from "./local-route-errors.ts";
 import { handleHostSchedulerRoutes } from "./local-routes-host-scheduler.ts";

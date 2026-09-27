@@ -57,6 +57,7 @@ export async function tryAssignMainCheckoutSession(
     connectionId: string;
     now: string;
     resolvedArgv: string[];
+    feedbackPromptBindings?: SessionRecord["feedbackPromptBindings"];
     resumeSpec?: import("@auto-harness/shared").SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
@@ -148,7 +149,7 @@ export async function tryAssignMainCheckoutSession(
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
         UpdateExpression:
-          "SET #s = :running, statusShard = :statusShard, worktreeId = :null, hostId = :hostId, activeHostId = :activeHostId, activeHostOrder = :activeHostOrder, startedAt = :now, assignmentSentAt = :now, resolvedArgv = :argv, resolvedRoute = :route, assignmentConnectionId = :connectionId, mainCheckoutLease = :true, attemptId = :attemptId, primaryCommandStartState = :primaryCommandStartState" +
+          "SET #s = :running, statusShard = :statusShard, worktreeId = :null, hostId = :hostId, activeHostId = :activeHostId, activeHostOrder = :activeHostOrder, startedAt = :now, assignmentSentAt = :now, resolvedArgv = :argv, feedbackPromptBindings = :feedbackPromptBindings, resolvedRoute = :route, assignmentConnectionId = :connectionId, mainCheckoutLease = :true, attemptId = :attemptId, primaryCommandStartState = :primaryCommandStartState" +
           (opts.resumeSpec ? ", resumeSpec = if_not_exists(resumeSpec, :resumeSpec)" : "") +
           (opts.providerAccountLease ? ", providerAccountLease = :providerAccountLease" : "") +
           (opts.sessionApiKeyHash ? ", sessionApiKeyHash = :sessionApiKeyHash" : "") +
@@ -167,6 +168,7 @@ export async function tryAssignMainCheckoutSession(
           ":activeHostOrder": activeHostOrder(opts.now, opts.sessionId),
           ":now": opts.now,
           ":argv": opts.resolvedArgv,
+          ":feedbackPromptBindings": opts.feedbackPromptBindings ?? [],
           ":route": opts.resolvedRoute,
           ":connectionId": opts.connectionId,
           ":true": true,

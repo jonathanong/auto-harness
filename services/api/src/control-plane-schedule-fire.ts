@@ -1,3 +1,4 @@
+import { reportingPolicyFields } from "./blackboard-reporting.ts";
 /* eslint-disable max-lines */
 import { MAX_FALLBACKS, isValidUtcTimestamp, nextCronOccurrence } from "@auto-harness/shared";
 import type { PublicSession, ScheduleRecord } from "./control-plane-types.ts";
@@ -54,6 +55,7 @@ export function triggerSchedule(
   }
   const result = createSession(state, scheduledSessionInput(state, schedule), {
     allowScheduleId: true,
+    ...(schedule.principalId ? { principalId: schedule.principalId } : {}),
   });
   if (!result.ok) {
     return { ok: false, error: result.error };
@@ -245,6 +247,7 @@ export function tryClaimScheduleFire(
   }
   const result = createSession(state, scheduledSessionInput(state, schedule), {
     allowScheduleId: true,
+    ...(schedule.principalId ? { principalId: schedule.principalId } : {}),
   });
   if (!result.ok) {
     if (result.code === "REPOSITORY_ADMISSION_CLOSED") schedule.nextRunAt = newNextRunAt;
@@ -525,6 +528,12 @@ function createScheduledSession(state: ControlPlaneState, schedule: ScheduleReco
     : undefined;
   return {
     id,
+    ...reportingPolicyFields(
+      state.blackboardReporting,
+      schedule.repositoryId ?? "",
+      schedule.principalId,
+      schedule.workspacePoolId,
+    ),
     repositoryId: schedule.repositoryId,
     ...(schedule.workspacePoolId ? { workspacePoolId: schedule.workspacePoolId } : {}),
     ...(setupProfileId ? { setupProfileId } : {}),

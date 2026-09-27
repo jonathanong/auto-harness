@@ -1,12 +1,15 @@
-import { harnessSessionResult, normalizeSessionResult, thrownMessage } from "@auto-harness/shared";
+import {
+  harnessSessionResult,
+  normalizeSessionResult,
+  thrownMessage,
+  mergeSessionFeedback,
+} from "@auto-harness/shared";
 import type {
   SessionAssign,
   SessionErrorCode,
   SessionLogChunk,
   SessionStatus,
-  SessionTerminalStatus,
 } from "@auto-harness/shared";
-import type { SessionUsage } from "@auto-harness/shared";
 import type { SessionResult } from "@auto-harness/shared";
 
 import type { ProcessRunner } from "./executor.ts";
@@ -15,52 +18,18 @@ import { createDeferredTerminalHookSettlement } from "./deferred-terminal-hook.t
 import type { GitHubAppConfig } from "./github-app.ts";
 import { runTerminalHook } from "./terminal-hook.ts";
 import { collectSessionResult } from "./session-result.ts";
+import {
+  prepareSessionFeedback,
+  takeSessionFeedback,
+  snapshotSessionFeedback,
+} from "./session-feedback-artifact.ts";
 
-export type SessionRunResult = {
-  status: SessionTerminalStatus;
-  exitCode: number | null;
-  errorCode?: SessionErrorCode;
-  errorMessage?: string;
-  cliResumeRef?: string;
-  usage?: SessionUsage;
-  result?: SessionResult;
-  /** Settles a retained first-fetch-failure hook before its worktree claim releases. */
-  settleDeferredTerminalHook?: (
-    runHook: boolean,
-    /** The v7 control-plane handoff lease, when settlement is recovery-owned. */
-    deadlineAtMs?: number,
-  ) => Promise<SessionResult | undefined>;
-  logs: SessionLogChunk[];
-  /** Local cleanup/quarantine state; the daemon forwards the terminal failure normally. */
-  workspaceSlotError?: string;
-  /** Echoed in the terminal frame so the control plane can release/quarantine this slot atomically. */
-  workspaceSlotId?: string;
-};
-
-type SessionOutcome = {
-  status: SessionTerminalStatus;
-  exitCode: number | null;
-  /** Do not run the terminal hook when cancellation wins before command start. */
-  suppressTerminalHook?: boolean;
-  deferTerminalHook?: boolean;
-  errorCode?: SessionErrorCode;
-  errorMessage?: string;
-  cliResumeRef?: string;
-  usage?: SessionUsage;
-  agentSummary?: string;
-};
-
-type ClaimedHookTarget = {
-  worktree: { id: string };
-  cwd: string;
-  repository: { terminalHookScript?: string };
-  allowedRoots?: readonly string[];
-  currentHookTarget: () => Promise<{
-    cwd: string;
-    repository: { terminalHookScript?: string };
-    allowedRoots?: readonly string[];
-  } | null>;
-};
+import type {
+  SessionRunResult,
+  SessionOutcome,
+  ClaimedHookTarget,
+} from "./session-outcome-types.ts";
+export type { SessionRunResult } from "./session-outcome-types.ts";
 
 /** Every daemon-owned terminal path has a queryable fallback, even without a checkout. */
 export { harnessSessionResult };
@@ -109,6 +78,7 @@ async function finishSession(
   environmentIsChild = false,
 ): Promise<SessionRunResult> {
   streamer.flush();
+  const primaryFeedback = await snapshotSessionFeedback(assign);
   if (hookScript && !outcome.suppressTerminalHook) {
     await runTerminalHook(processRunner, {
       scriptPath: hookScript,
@@ -117,6 +87,7 @@ async function finishSession(
       status: outcome.status as SessionStatus,
       worktreePath,
       childEnvSource,
+      feedbackPath: await prepareSessionFeedback(assign),
       ...(allowedRoots.length ? { allowedRoots } : {}),
       ...(outcome.errorCode !== undefined ? { errorCode: outcome.errorCode } : {}),
       ...(assign.ref !== undefined ? { ref: assign.ref } : {}),
@@ -138,6 +109,11 @@ async function finishSession(
       : canProbeResult
         ? harnessSessionResult(outcome.status)
         : summaryOnlySessionResult(outcome);
+  const feedback = mergeSessionFeedback(
+    primaryFeedback,
+    outcome.deferTerminalHook ? undefined : await takeSessionFeedback(assign),
+  );
+  if (feedback) result.feedback = feedback;
   void worktreeId;
   return {
     status: outcome.status,

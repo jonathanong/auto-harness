@@ -42,6 +42,7 @@ import type { UsageRecord } from "./usage.ts";
 import type { ArchiveWriter } from "./archive-writer.ts";
 import type { ArchiveReader } from "./archive-reader.ts";
 import { enqueueSlackSessionLifecycle } from "./slack-session-runtime.ts";
+import { sessionReporting } from "./blackboard-reporting.ts";
 import { attachPendingTerminalHookHandoffIndex } from "./control-plane-terminal-hook-handoff-index.ts";
 
 /** Shared mutable state bag for ControlPlane subsystems. */
@@ -174,6 +175,8 @@ export type ControlPlaneState = {
    * HTTP invocation never waits on host delivery (Invariant 12).
    */
   onAssignmentRequested: (() => void | Promise<void>) | undefined;
+  blackboardReporting: import("./blackboard-reporting.ts").BlackboardReporting | undefined;
+  onReportingRequested: ((session: SessionRecord) => void | Promise<void>) | undefined;
 };
 
 export function createControlPlaneState(options: ControlPlaneOptions = {}): ControlPlaneState {
@@ -264,6 +267,8 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
       randomBytes(32).toString("base64url"),
     onHostMessage: options.onHostMessage,
     onAssignmentRequested: options.onAssignmentRequested,
+    blackboardReporting: options.blackboardReporting,
+    onReportingRequested: options.onReportingRequested,
     onLogCommitted: undefined,
     onLogPartCommitted: undefined,
   };
@@ -347,6 +352,7 @@ export function persistSession(state: ControlPlaneState, session: SessionRecord)
     queueWrite(state, async (storage) => {
       await storage!.putSession(stored);
       await enqueueSlackSessionLifecycle(state, stored);
+      await state.onReportingRequested?.(stored);
     });
   }
 }
@@ -354,7 +360,10 @@ export function persistSession(state: ControlPlaneState, session: SessionRecord)
 /** Durable writers that already persisted the row still enqueue Slack here. */
 export function noteSlackSessionLifecycle(state: ControlPlaneState, session: SessionRecord): void {
   const stored = { ...session };
-  queueWrite(state, () => enqueueSlackSessionLifecycle(state, stored));
+  queueWrite(state, async () => {
+    await enqueueSlackSessionLifecycle(state, stored);
+    await state.onReportingRequested?.(stored);
+  });
 }
 
 export function persistWorktree(state: ControlPlaneState, wt: WorktreeRecord): void {
@@ -377,6 +386,7 @@ export function toPublic(
     activeHostId: _activeHostId,
     activeHostOrder: _activeHostOrder,
     primaryCommandStartState: _primaryCommandStartState,
+    reportingAdmissionAttemptId: _reportingAdmissionAttemptId,
     descendantCount: _descendantCount,
     terminalHookHandoff: _terminalHookHandoff,
     terminalHookHandoffSettled: _terminalHookHandoffSettled,
@@ -387,6 +397,7 @@ export function toPublic(
   if (!includeResult) delete (publicSession as Partial<SessionRecord>).result;
   return {
     ...publicSession,
+    reporting: publicSession.reporting ?? sessionReporting(session),
     repositoryId: session.workspacePoolId ? null : session.repositoryId,
     url: `${state.publicBaseUrl}/sessions/${session.id}`,
   };

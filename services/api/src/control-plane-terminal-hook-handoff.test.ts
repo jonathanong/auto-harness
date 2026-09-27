@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { finishHostLostSession } from "./control-plane-infrastructure-retry.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import {
   pendingTerminalHookHandoffs,

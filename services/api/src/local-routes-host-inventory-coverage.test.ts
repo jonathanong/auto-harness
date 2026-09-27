@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { MAX_HOST_REGISTRATION_BYTES } from "@auto-harness/shared";
 import type { Principal } from "./auth.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import {
   handleHostInventoryRoutes,
   mergeHiddenRepositories,

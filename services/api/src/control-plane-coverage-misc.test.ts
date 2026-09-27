@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { supersedeSession } from "./control-plane-sessions.ts";
 import { BASE_COMMAND_ID, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
@@ -51,7 +51,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
       target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
     });
-    const kAssignment = planeK.assignQueued().find((a) => a.session.id === "k1")!;
+    const kAssignment = (await planeK.assignQueued()).find((a) => a.session.id === "k1")!;
     planeK.handleHostMessage({
       type: "session:ack",
       sessionId: "k1",

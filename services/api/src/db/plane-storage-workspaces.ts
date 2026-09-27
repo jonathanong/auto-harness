@@ -383,6 +383,7 @@ export async function tryAssignWorkspaceSession(
     now: string;
     attemptId: string;
     resolvedArgv: string[];
+    feedbackPromptBindings?: SessionRecord["feedbackPromptBindings"];
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
     providerId?: string;
@@ -404,6 +405,7 @@ export async function tryAssignWorkspaceSession(
     ":now": opts.now,
     ":attemptId": opts.attemptId,
     ":argv": opts.resolvedArgv,
+    ":feedbackPromptBindings": opts.feedbackPromptBindings ?? [],
     ":route": opts.resolvedRoute,
     ":connectionId": opts.connectionId,
     ":true": true,
@@ -425,6 +427,7 @@ export async function tryAssignWorkspaceSession(
     "assignmentSentAt = :now",
     "attemptId = :attemptId",
     "resolvedArgv = :argv",
+    "feedbackPromptBindings = :feedbackPromptBindings",
     "resolvedRoute = :route",
     "assignmentConnectionId = :connectionId",
     "hostAssignmentLease = :hostAssignmentLease",

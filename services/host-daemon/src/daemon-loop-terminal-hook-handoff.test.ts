@@ -9,11 +9,7 @@ import {
   terminalStatusFixture,
 } from "../test-helpers/daemon-loop-test-helpers.ts";
 async function waitFor(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (predicate()) return;
-    await flushMacrotask();
-  }
-  throw new Error("condition did not become true");
+  await vi.waitFor(() => expect(predicate()).toBe(true), { timeout: 1_000, interval: 1 });
 }
 describe("DaemonLoop terminal-hook handoff", () => {
   it("runs a v7 handoff once and retries its completion until acknowledged", async () => {

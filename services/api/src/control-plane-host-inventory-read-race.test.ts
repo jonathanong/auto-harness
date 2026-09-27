@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { putHostInventoryDurable } from "./control-plane-agent-hosts.ts";
 import { listHostInventoriesDurable } from "./control-plane-durable-read-catalog.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 
 describe("durable host inventory reads", () => {
   it("retries a scan that overlaps a durable mutation", async () => {

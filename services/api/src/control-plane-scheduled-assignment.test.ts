@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { putScheduleOrThrow, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("scheduled assignment rollout", () => {
-  it("keeps scheduled sessions out of the worktree assignment path", () => {
+  it("keeps scheduled sessions out of the worktree assignment path", async () => {
     const plane = new ControlPlane({ idFactory: () => "scheduled-session", shardCount: 1 });
     seedBaseCommand(plane);
     const schedule = putScheduleOrThrow(plane, {
@@ -24,7 +24,7 @@ describe("scheduled assignment rollout", () => {
     });
 
     expect(plane.triggerSchedule(schedule.id).ok).toBe(true);
-    expect(plane.assignQueued()).toEqual([]);
+    expect(await plane.assignQueued()).toEqual([]);
     expect(plane.getSession("scheduled-session")?.status).toBe("queued");
     expect(plane.listWorktrees()[0]).toMatchObject({ id: "wt-1", status: "idle" });
   });

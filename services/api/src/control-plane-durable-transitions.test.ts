@@ -4,8 +4,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import type { SessionRecord } from "./db/types.ts";
 import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
-import { createControlPlane } from "./create-plane.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { createAuthorizedControlPlane as createControlPlane } from "../test-helpers/authorized-control-plane-factory.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { ControlPlaneBase } from "./control-plane-facade.ts";
 import { heartbeatDurable } from "./control-plane-agents.ts";
 import { enforceAckDeadlinesDurable } from "./control-plane-assign.ts";

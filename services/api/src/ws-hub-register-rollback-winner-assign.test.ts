@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type WebSocket from "ws";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { createWsDelivery } from "./ws-hub.ts";
 import {
   claimUnackedOnWorktree,

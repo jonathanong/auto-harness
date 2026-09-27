@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 describe("busy workspace slot inventory edits", () => {
   it("rejects a name-only edit and preserves the current slot", () => {

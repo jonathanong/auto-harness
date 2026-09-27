@@ -1,3 +1,4 @@
+import { testReporting } from "../services/api/test-helpers/reporting-control-plane.ts";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -91,6 +92,7 @@ describe("daemon restart observability integration", () => {
     // "unit"/"integration" projects), so their random port ranges must not overlap.
     const port = 24_000 + Math.floor(Math.random() * 1_000);
     server = await startLocalServer({
+      blackboardReporting: testReporting(),
       port,
       useDynamo: false,
       enableWs: true,

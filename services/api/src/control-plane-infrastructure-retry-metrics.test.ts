@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import { reconcileHostOwnedSessions } from "./control-plane-reconnect-omitted.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import { OPERATIONAL_METRIC_ENVIRONMENT_VAR } from "./operational-metrics.ts";
 

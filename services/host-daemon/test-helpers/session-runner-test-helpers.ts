@@ -6,7 +6,7 @@ import { parseDaemonConfig } from "../src/config.ts";
 import type { ProcessRunner } from "../src/executor.ts";
 import type { GitClient } from "../src/git.ts";
 import type { ExecutionProfiles } from "../src/execution-profiles.ts";
-import { SessionRunner } from "../src/session-runner.ts";
+import { AuthorizedSessionRunner as SessionRunner } from "./authorized-session-runner.ts";
 import { WorktreeManager } from "../src/worktree-manager.ts";
 
 export const testExecutionProfiles: ExecutionProfiles = {

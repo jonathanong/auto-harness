@@ -4,7 +4,7 @@ import {
   hydrateAssignmentConnectionDurable,
   refreshAssignmentReadinessDurable,
 } from "./control-plane-assignment-readiness.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 
 const freshConnection = async () => ({
   connectionId: "connection",

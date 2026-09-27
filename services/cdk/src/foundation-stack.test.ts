@@ -4,6 +4,7 @@ import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 
 import { AutoHarnessFoundationStack } from "./foundation-stack.ts";
+import { DYNAMO_TABLES } from "./tables.ts";
 
 function foundationTemplate(
   props: ConstructorParameters<typeof AutoHarnessFoundationStack>[2] = {},
@@ -69,7 +70,16 @@ describe("AutoHarnessFoundationStack", () => {
   it("synthesizes every current durable table, archive bucket, outputs, and only foundation resources", () => {
     const template = foundationTemplate();
 
-    template.resourceCountIs("AWS::DynamoDB::Table", 27);
+    template.resourceCountIs("AWS::DynamoDB::Table", 28);
+    template.hasResource("AWS::DynamoDB::Table", {
+      DeletionPolicy: "Retain",
+      UpdateReplacePolicy: "Retain",
+      Properties: {
+        TableName: "AutoHarness-ReportingRepairCheckpoints",
+        KeySchema: [{ AttributeName: "status", KeyType: "HASH" }],
+        DeletionProtectionEnabled: true,
+      },
+    });
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       TableName: "AutoHarness-SessionDrains",
       KeySchema: [
@@ -325,6 +335,7 @@ describe("AutoHarnessFoundationStack", () => {
     expect(JSON.stringify(scanStatement)).not.toContain("SessionLogs");
     expect(JSON.stringify(scanStatement)).not.toContain("AuditLogs");
     expect(JSON.stringify(scanStatement)).not.toContain("HostLocks");
+    expect(JSON.stringify(scanStatement)).not.toContain("ReportingRepairCheckpoints");
     template.hasResourceProperties("AWS::IAM::ManagedPolicy", {
       PolicyDocument: {
         Statement: [
@@ -336,6 +347,12 @@ describe("AutoHarnessFoundationStack", () => {
         ],
       },
     });
+    const repairTableId = Object.keys(
+      template.findResources("AWS::DynamoDB::Table", {
+        Properties: { TableName: "AutoHarness-ReportingRepairCheckpoints" },
+      }),
+    )[0];
+    template.hasOutput("ReportingRepairCheckpointsTableName", { Value: { Ref: repairTableId } });
     template.hasOutput("TablePrefix", { Value: "AutoHarness" });
     template.hasOutput("ArchiveBucketName", {});
     template.hasOutput("ApiDataAccessPolicyArn", {});
@@ -369,7 +386,7 @@ describe("AutoHarnessFoundationStack", () => {
     });
     expect(
       Object.values(json.Resources).filter((resource) => resource.DeletionPolicy === "Delete"),
-    ).toHaveLength(30);
+    ).toHaveLength(31);
     expect(
       Object.values(json.Resources).filter(
         (resource) => resource.Type === "AWS::CloudFormation::CustomResource",
@@ -383,11 +400,14 @@ describe("AutoHarnessFoundationStack", () => {
   });
 
   it("accepts the longest safe table prefix and rejects the next character", () => {
-    const longestSafePrefix = "a".repeat(229);
+    const longestTable = DYNAMO_TABLES.reduce((longest, table) =>
+      table.name.length > longest.name.length ? table : longest,
+    );
+    const longestSafePrefix = "a".repeat(255 - 1 - longestTable.name.length);
 
     foundationTemplate({ tablePrefix: longestSafePrefix }).hasResourceProperties(
       "AWS::DynamoDB::Table",
-      { TableName: `${longestSafePrefix}-SessionCancelRedeliveries` },
+      { TableName: `${longestSafePrefix}-${longestTable.name}` },
     );
     expect(() => foundationTemplate({ tablePrefix: `${longestSafePrefix}a` })).toThrow(
       "tablePrefix is too long",

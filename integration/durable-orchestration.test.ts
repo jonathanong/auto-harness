@@ -1,3 +1,4 @@
+import { testReporting } from "../services/api/test-helpers/reporting-control-plane.ts";
 /* eslint-disable max-lines -- durable create, resume, and restart share one orchestration. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -5,7 +6,7 @@ import { basename, delimiter, dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createControlPlane } from "../services/api/src/create-plane.ts";
+import { createAuthorizedControlPlane as createControlPlane } from "../services/api/test-helpers/authorized-control-plane-factory.ts";
 import type { DynamoPlaneStorage } from "../services/api/src/db/plane-storage.ts";
 import { startLocalServer } from "../services/api/src/local-server.ts";
 import { loadDaemonConfig } from "../services/host-daemon/src/config.ts";
@@ -91,6 +92,7 @@ describe("durable full-stack orchestration", () => {
 
     const port = 21_000 + Math.floor(Math.random() * 1_000);
     server = await startLocalServer({
+      blackboardReporting: testReporting(),
       port,
       plane: createdPlane.plane,
       enableWs: true,
@@ -206,6 +208,7 @@ describe("durable full-stack orchestration", () => {
     });
     storage = restartedPlane.storage;
     server = await startLocalServer({
+      blackboardReporting: testReporting(),
       port,
       plane: restartedPlane.plane,
       enableWs: false,

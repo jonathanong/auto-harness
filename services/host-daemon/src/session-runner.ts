@@ -75,6 +75,15 @@ export class SessionRunner {
   }
 
   async run(assign: SessionAssign, options: SessionRunOptions = {}): Promise<SessionRunResult> {
+    if (!this.deps.authorizeCommandStart)
+      return {
+        status: "failed",
+        exitCode: null,
+        errorCode: "setup_failed",
+        errorMessage: "Trusted controller command authorization is required",
+        result: harnessSessionResult("failed"),
+        logs: [],
+      };
     if (isWorkspaceAssign(assign)) return await this.runWorkspace(assign, options);
     const childEnvSource = this.deps.childEnvSource ?? process.env;
     const mappedGitHubApp = assign.repositoryId

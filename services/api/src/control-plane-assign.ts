@@ -1,3 +1,7 @@
+import {
+  ASSIGNMENT_REPORTING_BUDGET_MS,
+  assignmentReportingAllowed,
+} from "./blackboard-admission.ts";
 /* eslint-disable max-lines */
 import {
   appendPriorContextPointer,
@@ -41,20 +45,22 @@ import { createSessionApiKey } from "./control-plane-session-api-key.ts";
  * Assign queued sessions with exclusive worktree claim (Invariant 1).
  * Emits session:assign and tracks ack deadline (Invariant 2).
  */
-export function assignQueued(
+export async function assignQueued(
   state: ControlPlaneState,
   sessionId?: string,
-): Array<{ session: PublicSession; worktree: WorktreeRecord }> {
+): Promise<Array<{ session: PublicSession; worktree: WorktreeRecord }>> {
   const assigned: Array<{ session: PublicSession; worktree: WorktreeRecord }> = [];
   const nowIso = state.now();
   const nowMs = Date.parse(nowIso);
   const catalog = buildProviderCatalog(state);
 
+  const reportingDeadline = Date.now() + ASSIGNMENT_REPORTING_BUDGET_MS;
   for (const session of orderedQueuedSessions(
     state.sessions.values(),
     state.shardCount,
     "prompt",
   )) {
+    if (Date.now() >= reportingDeadline) break;
     if (sessionId !== undefined && session.id !== sessionId) continue;
     let plan = planPromptPlacement(state, catalog, session, nowMs);
     if (plan.action === "clear_pin") {
@@ -73,9 +79,22 @@ export function assignQueued(
       ) {
         continue;
       }
+      const attemptId = state.attemptIdFactory();
+      if (!(await assignmentReportingAllowed(state, session, attemptId))) break;
+      if (state.sessions.get(session.id) !== session || session.status !== "queued") continue;
+      const freshPlan = planPromptPlacement(state, catalog, session, Date.parse(state.now()));
+      if (
+        freshPlan.action !== "assign" ||
+        !freshPlan.candidates.some(
+          ({ worktree, route: freshRoute }) =>
+            worktree.id === candidate.id && JSON.stringify(freshRoute) === JSON.stringify(route),
+        ) ||
+        !hostProviderAccountReady(state, candidate.hostId, route.providerAccountId) ||
+        !accountHasLeaseCapacity(state, route.providerAccountId)
+      )
+        continue;
       const won = tryClaimWorktree(state, candidate.id, session.id, nowIso);
       if (!won) continue;
-      const attemptId = state.attemptIdFactory();
       const apiKey = hostAdvertisesSessionSpawn(state, candidate.hostId)
         ? createSessionApiKey()
         : undefined;
@@ -95,6 +114,7 @@ export function assignQueued(
       session.hostId = candidate.hostId;
       session.startedAt = nowIso;
       session.resolvedArgv = route.resolvedArgv;
+      session.feedbackPromptBindings = route.feedbackPromptBindings ?? [];
       if (session.resumeSpec === undefined && route.resumeSpec !== undefined) {
         session.resumeSpec = route.resumeSpec;
       }
@@ -133,6 +153,9 @@ export function assignQueued(
         prompt: session.prompt,
         ...(apiKey ? { sessionApiKey: apiKey.key } : {}),
         resolvedArgv: route.resolvedArgv,
+        ...(route.feedbackPromptBindings
+          ? { feedbackPromptBindings: route.feedbackPromptBindings }
+          : {}),
         timeout: session.timeout,
         worktreeId: candidate.id,
         infrastructureRetryCount: session.infrastructureRetryCount ?? 0,
@@ -181,11 +204,13 @@ export async function assignQueuedDurable(
   const nowMs = Date.parse(nowIso);
   const catalog = buildProviderCatalog(state);
 
+  const reportingDeadline = Date.now() + ASSIGNMENT_REPORTING_BUDGET_MS;
   for (const session of orderedQueuedSessions(
     state.sessions.values(),
     state.shardCount,
     "prompt",
   )) {
+    if (Date.now() >= reportingDeadline) break;
     if (sessionId !== undefined && session.id !== sessionId) continue;
     await listWorktreesForRepositoryDurable(state, session.repositoryId);
     let plan = planPromptPlacement(state, catalog, session, nowMs);
@@ -234,6 +259,7 @@ export async function assignQueuedDurable(
         continue;
       }
       const attemptId = state.attemptIdFactory();
+      if (!(await assignmentReportingAllowed(state, session, attemptId))) break;
       const apiKey = hasHostCapability(
         state.connections.get(connectionId)?.capabilities,
         "session-spawn",
@@ -269,6 +295,9 @@ export async function assignQueuedDurable(
           connectionId,
           now: nowIso,
           resolvedArgv: route.resolvedArgv,
+          ...(route.feedbackPromptBindings
+            ? { feedbackPromptBindings: route.feedbackPromptBindings }
+            : {}),
           resumeSpec: route.resumeSpec,
           resolvedRoute: {
             targetIndex: route.targetIndex,
@@ -308,6 +337,9 @@ export async function assignQueuedDurable(
         hostId: candidate.hostId,
         startedAt: nowIso,
         resolvedArgv: route.resolvedArgv,
+        ...(route.feedbackPromptBindings
+          ? { feedbackPromptBindings: route.feedbackPromptBindings }
+          : {}),
         resumeSpec,
         resolvedRoute: {
           targetIndex: route.targetIndex,
@@ -350,6 +382,9 @@ export async function assignQueuedDurable(
         prompt: session.prompt,
         ...(apiKey ? { sessionApiKey: apiKey.key } : {}),
         resolvedArgv: route.resolvedArgv,
+        ...(route.feedbackPromptBindings
+          ? { feedbackPromptBindings: route.feedbackPromptBindings }
+          : {}),
         timeout: session.timeout,
         worktreeId: candidate.id,
         infrastructureRetryCount: nextSession.infrastructureRetryCount ?? 0,

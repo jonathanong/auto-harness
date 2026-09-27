@@ -1,3 +1,4 @@
+import { reportingPolicyFields } from "./blackboard-reporting.ts";
 /* eslint-disable max-lines -- resume validation, pin invalidation, and record construction share one module. */
 import {
   appendPriorContextPointer,
@@ -201,6 +202,11 @@ export function prepareResumedSession(
       };
   const resumed: SessionRecord = {
     id,
+    ...reportingPolicyFields(
+      state.blackboardReporting,
+      source.repositoryId,
+      opts.principalId ?? source.principalId,
+    ),
     repositoryId: source.repositoryId,
     ...routingFields,
     queueTtlSeconds: source.queueTtlSeconds,
@@ -237,7 +243,9 @@ function copyResumeSpec(source: NonNullable<SessionRecord["resumeSpec"]>) {
   return {
     argv: [...source.argv],
     appendPrompt: source.appendPrompt,
-    appendPromptSeparator: source.appendPromptSeparator,
+    ...(source.appendPromptSeparator !== undefined
+      ? { appendPromptSeparator: source.appendPromptSeparator }
+      : {}),
     ...(source.resumeArgvTemplate !== undefined
       ? { resumeArgvTemplate: [...source.resumeArgvTemplate] }
       : {}),

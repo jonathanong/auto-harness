@@ -467,7 +467,6 @@ migration marker. **No product-repo automation workflow may cut over before the 
   replay (Invariant 5).
 
 **Status (local exit):** done for agent + local REST without AWS. Verify with
-`pnpm check`, `pnpm local:e2e`, `pnpm local:cli-e2e` (documented CLI + `ref: main` while primary
 tree is on `main`), and `pnpm local:api-smoke`.
 
 The current assigned-command executor uses a 120x40 `@replit/ruspty` terminal (POSIX hosts only)
@@ -480,7 +479,7 @@ compatibility for non-interactive CLI modes; it does not add an interactive user
 - Local API uses **Amazon DynamoDB Local** (`docker compose` / `pnpm local:dynamodb`) via the
   AWS SDK — not a custom DB. Process cache remains for single-process coordination; durable
   rows live in DynamoDB Local (same table shapes as CDK).
-- Agent `start` (WebSocket daemon) is Phase 3; local path uses `run-session` / `local:e2e` bridge.
+- Local autonomous work uses the connected daemon and required reporting controller.
 - `services/web` remains a stub until a later UI phase.
 - Checkout always detaches at the resolved SHA so a session `ref` that is already checked out in
   the primary tree (e.g. `main`) still works.
@@ -628,7 +627,7 @@ The local store is DynamoDB Local via `pnpm local:dynamodb` (official image).
 
 **Status (code-complete and tested locally; AWS dispatch proven only for short programmatic
 sessions):** `DaemonLoop` + **WebSocket** (`/ws` on local API, `auto-harness-agent start`,
-`pnpm local:ws-e2e`) and loopback (`pnpm local:cloud-e2e`). Ack deadline requeue (Inv 2),
+`pnpm exec vitest run --project dynamo integration/blackboard-websocket-dynamo.test.ts`) and loopback (`pnpm exec vitest run scripts/resume-ref-e2e.test.ts`). Ack deadline requeue (Inv 2),
 usage_limit retry (Inv 6), agent-only resume pin (Inv 7), durable concurrency dedupe (Inv 9),
 heartbeat stale reclaim. Durable logs are host gzip PUTs to S3 when upload is on; the
 control-plane viewer socket does not carry log text. AWS

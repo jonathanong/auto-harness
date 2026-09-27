@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseHostBody } from "./control-plane-agent-hosts-parse.ts";
 import { drainHostDurable } from "./control-plane-agents.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 describe("agent inventory guard coverage", () => {
   it("rejects missing repository strings, non-array repositories, and invalid worktree names", () => {

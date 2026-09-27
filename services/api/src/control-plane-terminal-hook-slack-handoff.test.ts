@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createControlPlaneState, settleStorage } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
+import { settleStorage } from "./control-plane-state.ts";
 import {
   expireTerminalHookHandoffIfNeeded,
   settleTerminalHookHandoff,

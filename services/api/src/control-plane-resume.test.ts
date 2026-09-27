@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { appendPriorContextPointer } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 function acknowledge(plane: ControlPlane, sessionId: string): void {
   const session = plane.getSession(sessionId)!;
@@ -45,11 +45,11 @@ function createPlane(options?: ConstructorParameters<typeof ControlPlane>[0]): C
  * Shared by the native-continuation-preference and deleted-Command-replay tests below,
  * which otherwise repeat identical fixture setup before diverging on what happens at
  * resume. */
-function startTerminalSession(
+async function startTerminalSession(
   commands: CommandInput[],
   session: { target: { commandId: string }; fallbacks?: Array<{ commandId: string }> },
   cliResumeRef?: string,
-): { plane: ControlPlane; messages: unknown[]; sourceId: string } {
+): Promise<{ plane: ControlPlane; messages: unknown[]; sourceId: string }> {
   const messages: unknown[] = [];
   const plane = createPlane({ shardCount: 1 });
   plane.setOnHostMessage((_host, message) => messages.push(message));
@@ -68,14 +68,14 @@ function startTerminalSession(
   });
   expect(created.ok).toBe(true);
   const sourceId = created.ok ? created.session.id : "";
-  plane.assignQueued();
+  await plane.assignQueued();
   acknowledge(plane, sourceId);
   finish(plane, sourceId, "completed", cliResumeRef);
   return { plane, messages, sourceId };
 }
 
 describe("control-plane native resume", () => {
-  it("snapshots the command resume spec and materializes native argv", () => {
+  it("snapshots the command resume spec and materializes native argv", async () => {
     const messages: unknown[] = [];
     const plane = createPlane({
       shardCount: 1,
@@ -104,7 +104,7 @@ describe("control-plane native resume", () => {
       target: { commandId: "cmd" },
       timeout: 30,
     });
-    plane.assignQueued();
+    await plane.assignQueued();
     const assignments = () =>
       messages.filter((message) => (message as { type?: string }).type === "session:assign");
     expect(assignments()[0]).toMatchObject({
@@ -125,7 +125,7 @@ describe("control-plane native resume", () => {
     });
     const resumed = plane.resumeSession("s1");
     expect(resumed.ok).toBe(true);
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(assignments()[1]).toMatchObject({
       resolvedArgv: ["codex", "resume", "cli-1", "Continue from the previous session."],
       resumeRefCapture: { stream: "stdout", linePrefix: "id: " },
@@ -150,7 +150,7 @@ describe("control-plane native resume", () => {
     expect(plane.resumeSession("s1").ok).toBe(true);
   });
 
-  it("upgrades structured output in provider-bound native resume templates, including frozen legacy snapshots", () => {
+  it("upgrades structured output in provider-bound native resume templates, including frozen legacy snapshots", async () => {
     const messages: unknown[] = [];
     const plane = createPlane({
       shardCount: 1,
@@ -204,7 +204,7 @@ describe("control-plane native resume", () => {
     });
     expect(source.ok).toBe(true);
     if (!source.ok) throw new Error("unreachable");
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(plane.state.sessions.get(source.session.id)?.resumeSpec?.resumeArgvTemplate).toEqual([
       "claude",
       "-p",
@@ -226,7 +226,7 @@ describe("control-plane native resume", () => {
     // The Command is left live (not deleted): a native continuation still uses this frozen
     // legacy snapshot ahead of the live Command's current, already-migrated template.
     expect(plane.resumeSession(source.session.id).ok).toBe(true);
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(messages.at(-1)).toMatchObject({
       type: "session:assign",
       resolvedArgv: [
@@ -240,7 +240,7 @@ describe("control-plane native resume", () => {
     });
   });
 
-  it("carries the authenticated principal across resumed sessions", () => {
+  it("carries the authenticated principal across resumed sessions", async () => {
     const plane = createPlane({
       idFactory: (() => {
         let id = 0;
@@ -263,7 +263,7 @@ describe("control-plane native resume", () => {
     expect(created.ok).toBe(true);
     const sourceId = created.ok ? created.session.id : "";
     plane.state.sessions.get(sourceId)!.principalId = "creator";
-    plane.assignQueued();
+    await plane.assignQueued();
     acknowledge(plane, sourceId);
     finish(plane, sourceId);
 
@@ -304,7 +304,7 @@ describe("control-plane native resume", () => {
     expect(plane.state.sessions.get("s2")).toMatchObject({ principalId: "legacy-creator" });
   });
 
-  it("inserts -- before a leading-dash resume prompt in the argv template only when appendPromptSeparator opts in", () => {
+  it("inserts -- before a leading-dash resume prompt in the argv template only when appendPromptSeparator opts in", async () => {
     const messages: unknown[] = [];
     const plane = createPlane({ shardCount: 1 });
     plane.setOnHostMessage((_host, message) => messages.push(message));
@@ -329,7 +329,7 @@ describe("control-plane native resume", () => {
     });
     expect(created.ok).toBe(true);
     const sourceId = created.ok ? created.session.id : "";
-    plane.assignQueued();
+    await plane.assignQueued();
     acknowledge(plane, sourceId);
     finish(plane, sourceId, "completed", "cli-1");
     // Command is left live: the captured cliResumeRef plus frozen resumeArgvTemplate make
@@ -337,19 +337,19 @@ describe("control-plane native resume", () => {
 
     const resumed = plane.resumeSession(sourceId, { prompt: "--dangerously-skip-permissions" });
     expect(resumed.ok).toBe(true);
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(messages.at(-1)).toMatchObject({
       type: "session:assign",
       resolvedArgv: ["codex", "resume", "cli-1", "--", "--dangerously-skip-permissions"],
     });
   });
 
-  it("uses the frozen normal command with a continuation override when native resume is absent", () => {
+  it("uses the frozen normal command with a continuation override when native resume is absent", async () => {
     // No captured cliResumeRef and no resumeArgvTemplate, so this never qualifies as a
     // native continuation (see prefersNativeResumeRoute) — live resolution must actually
     // fail to reach the frozen fallback. Re-point providerId (a soft FK with no eligible
     // accounts) instead of deleting, since deletion is covered by dedicated tests below.
-    const { plane, messages, sourceId } = startTerminalSession(
+    const { plane, messages, sourceId } = await startTerminalSession(
       [{ id: "cmd", name: "tool", argv: ["tool", "run"] }],
       { target: { commandId: "cmd" } },
     );
@@ -357,7 +357,7 @@ describe("control-plane native resume", () => {
 
     const resumed = plane.resumeSession(sourceId, { prompt: "continue here" });
     expect(resumed.ok).toBe(true);
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(messages.at(-1)).toMatchObject({
       type: "session:assign",
       resolvedArgv: ["tool", "run", "continue here"],
@@ -368,15 +368,15 @@ describe("control-plane native resume", () => {
     const source = plane.state.sessions.get(sourceId)!;
     source.resumeSpec = { argv: ["tool", "plain"], appendPrompt: false };
     expect(plane.resumeSession(sourceId, { prompt: "not appended" }).ok).toBe(true);
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(messages.at(-1)).toMatchObject({ resolvedArgv: ["tool", "plain"] });
   });
 
-  it("inserts -- in the frozen native-resume-pin fallback only when appendPromptSeparator opts in", () => {
+  it("inserts -- in the frozen native-resume-pin fallback only when appendPromptSeparator opts in", async () => {
     // No cliResumeRef captured and no resumeArgvTemplate, so this stays outside the
     // native-continuation preference — re-point providerId to make live resolution fail
     // instead of deleting the Command (deletion is covered by dedicated tests below).
-    const { plane, messages, sourceId } = startTerminalSession(
+    const { plane, messages, sourceId } = await startTerminalSession(
       [{ id: "cmd", name: "claude-print", argv: ["claude", "-p"], appendPromptSeparator: true }],
       { target: { commandId: "cmd" } },
     );
@@ -384,14 +384,14 @@ describe("control-plane native resume", () => {
 
     const resumed = plane.resumeSession(sourceId, { prompt: "--dangerously-skip-permissions" });
     expect(resumed.ok).toBe(true);
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(messages.at(-1)).toMatchObject({
       type: "session:assign",
       resolvedArgv: ["claude", "-p", "--", "--dangerously-skip-permissions"],
     });
   });
 
-  it("rejects non-terminal sources and native resumes without a captured reference", () => {
+  it("rejects non-terminal sources and native resumes without a captured reference", async () => {
     const plane = createPlane({ shardCount: 1 });
     plane.createCommand({
       id: "cmd",
@@ -412,7 +412,7 @@ describe("control-plane native resume", () => {
     });
     const sourceId = created.ok ? created.session.id : "";
     expect(plane.resumeSession(sourceId)).toMatchObject({ ok: false });
-    plane.assignQueued();
+    await plane.assignQueued();
     acknowledge(plane, sourceId);
     finish(plane, sourceId);
     expect(plane.resumeSession(sourceId)).toEqual({
@@ -421,7 +421,7 @@ describe("control-plane native resume", () => {
     });
   });
 
-  it("retains host affinity and a captured reference from a late cancelled status", () => {
+  it("retains host affinity and a captured reference from a late cancelled status", async () => {
     const plane = createPlane({ shardCount: 1 });
     plane.createCommand({
       id: "cmd",
@@ -441,7 +441,7 @@ describe("control-plane native resume", () => {
       timeout: 30,
     });
     const sourceId = created.ok ? created.session.id : "";
-    plane.assignQueued();
+    await plane.assignQueued();
     acknowledge(plane, sourceId);
     plane.cancelSession(sourceId);
     finish(plane, sourceId, "cancelled", "native-ref");
@@ -453,7 +453,7 @@ describe("control-plane native resume", () => {
     expect(plane.resumeSession(sourceId).ok).toBe(true);
   });
 
-  it("rejects missing, non-terminal, scheduled, and invalid override sources", () => {
+  it("rejects missing, non-terminal, scheduled, and invalid override sources", async () => {
     const missing = createPlane({ shardCount: 1 });
     expect(missing.resumeSession("missing")).toEqual({ ok: false, error: "session not found" });
 
@@ -577,7 +577,7 @@ describe("control-plane native resume", () => {
     });
     expect(source.ok).toBe(true);
     if (source.ok) {
-      overrides.assignQueued();
+      await overrides.assignQueued();
       acknowledge(overrides, source.session.id);
       finish(overrides, source.session.id);
       expect(overrides.resumeSession(source.session.id, { prompt: "" })).toEqual({
@@ -661,7 +661,7 @@ describe("control-plane native resume", () => {
     }
   });
 
-  it("returns an already-active session sharing the source's concurrencyId instead of resuming (in-memory path)", () => {
+  it("returns an already-active session sharing the source's concurrencyId instead of resuming (in-memory path)", async () => {
     const plane = createPlane({ shardCount: 1 });
     plane.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
     plane.registerHost({
@@ -678,7 +678,7 @@ describe("control-plane native resume", () => {
     });
     expect(source.ok).toBe(true);
     if (!source.ok) return;
-    plane.assignQueued();
+    await plane.assignQueued();
     plane.forceStatus(source.session.id, "completed");
     // Only the process cache (no storage backend) makes this branch reachable —
     // simulate a second worker's active session already holding this identity.
@@ -694,7 +694,7 @@ describe("control-plane native resume", () => {
     });
   });
 
-  it("uses the frozen argv without appending a prompt when resuming a command", () => {
+  it("uses the frozen argv without appending a prompt when resuming a command", async () => {
     const messages: unknown[] = [];
     const plane = createPlane({ shardCount: 1 });
     plane.setOnHostMessage((_host, message) => messages.push(message));
@@ -712,19 +712,19 @@ describe("control-plane native resume", () => {
     });
     expect(source.ok).toBe(true);
     if (!source.ok) throw new Error("unreachable");
-    plane.assignQueued();
+    await plane.assignQueued();
     acknowledge(plane, source.session.id);
     finish(plane, source.session.id);
     const resumed = plane.resumeSession(source.session.id);
     expect(resumed.ok).toBe(true);
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(messages.at(-1)).toMatchObject({
       type: "session:assign",
       resolvedArgv: ["tool", "run"],
     });
   });
 
-  it("skips an assignment when its referenced command has been removed", () => {
+  it("skips an assignment when its referenced command has been removed", async () => {
     const plane = createPlane({ shardCount: 1 });
     plane.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
     plane.registerHost({
@@ -742,11 +742,11 @@ describe("control-plane native resume", () => {
     // This is an externally-corrupted catalog row, not a supported delete:
     // delete guards intentionally reject removal while the session is queued.
     plane.state.commands.delete("cmd");
-    expect(plane.assignQueued()).toEqual([]);
+    expect(await plane.assignQueued()).toEqual([]);
   });
 
-  it("does not replay a deleted primary Command's frozen snapshot; falls through to a live fallback", () => {
-    const { plane, messages, sourceId } = startTerminalSession(
+  it("does not replay a deleted primary Command's frozen snapshot; falls through to a live fallback", async () => {
+    const { plane, messages, sourceId } = await startTerminalSession(
       [
         { id: "primary", name: "primary", argv: ["primary"] },
         { id: "fallback", name: "fallback", argv: ["fallback"] },
@@ -761,7 +761,7 @@ describe("control-plane native resume", () => {
 
     const resumed = plane.resumeSession(sourceId);
     expect(resumed.ok).toBe(true);
-    expect(plane.assignQueued()).toHaveLength(1);
+    expect(await plane.assignQueued()).toHaveLength(1);
     expect(messages.at(-1)).toMatchObject({
       type: "session:assign",
       commandId: "fallback",
@@ -772,8 +772,8 @@ describe("control-plane native resume", () => {
     expect(messages.at(-1)).not.toHaveProperty("cliResumeRef");
   });
 
-  it("does not replay a deleted Command's frozen snapshot when nothing else resolves", () => {
-    const { plane, sourceId } = startTerminalSession(
+  it("does not replay a deleted Command's frozen snapshot when nothing else resolves", async () => {
+    const { plane, sourceId } = await startTerminalSession(
       [{ id: "cmd", name: "cmd", argv: ["cmd"] }],
       { target: { commandId: "cmd" } },
       "cli-1",
@@ -782,15 +782,15 @@ describe("control-plane native resume", () => {
 
     const resumed = plane.resumeSession(sourceId);
     expect(resumed.ok).toBe(true);
-    expect(plane.assignQueued()).toEqual([]);
+    expect(await plane.assignQueued()).toEqual([]);
   });
 
-  it("prefers the frozen resumeArgvTemplate over a live, untouched Command", () => {
+  it("prefers the frozen resumeArgvTemplate over a live, untouched Command", async () => {
     // The Command is entirely untouched — regression test for the ordering bug where a
     // native continuation with a captured ref and a frozen template was silently given
     // the plain command argv (starting a *new* CLI conversation) whenever live resolution
     // still happened to succeed.
-    const { plane, messages, sourceId } = startTerminalSession(
+    const { plane, messages, sourceId } = await startTerminalSession(
       [
         {
           id: "cmd",
@@ -805,18 +805,18 @@ describe("control-plane native resume", () => {
 
     const resumed = plane.resumeSession(sourceId);
     expect(resumed.ok).toBe(true);
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(messages.at(-1)).toMatchObject({
       type: "session:assign",
       resolvedArgv: ["codex", "resume", "cli-1", "Continue from the previous session."],
     });
   });
 
-  it("resolves a resumeFallback continuation with no template live, picking up a catalog edit", () => {
+  it("resolves a resumeFallback continuation with no template live, picking up a catalog edit", async () => {
     // No cliResumeRef captured: this resume has no native continuation to make, so
     // prefersNativeResumeRoute must stay false and live resolution — including the edit
     // below — must still win, unlike the native-continuation case above.
-    const { plane, messages, sourceId } = startTerminalSession(
+    const { plane, messages, sourceId } = await startTerminalSession(
       [{ id: "cmd", name: "tool", argv: ["tool", "run"] }],
       { target: { commandId: "cmd" } },
     );
@@ -824,15 +824,15 @@ describe("control-plane native resume", () => {
 
     const resumed = plane.resumeSession(sourceId);
     expect(resumed.ok).toBe(true);
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(messages.at(-1)).toMatchObject({
       type: "session:assign",
       resolvedArgv: ["edited", "run", "Continue from the previous session."],
     });
   });
 
-  it("clears the pin instead of silently reusing a live route when the frozen template fails validation", () => {
-    const { plane, messages, sourceId } = startTerminalSession(
+  it("clears the pin instead of silently reusing a live route when the frozen template fails validation", async () => {
+    const { plane, messages, sourceId } = await startTerminalSession(
       [
         {
           id: "cmd",
@@ -859,7 +859,7 @@ describe("control-plane native resume", () => {
 
     const resumed = plane.resumeSession(sourceId);
     expect(resumed.ok).toBe(true);
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(messages.at(-1)).toMatchObject({
       type: "session:assign",
       // clear_pin appends the prior-context pointer to the prompt (see
@@ -875,8 +875,8 @@ describe("control-plane native resume", () => {
     expect(messages.at(-1)).not.toHaveProperty("cliResumeRef");
   });
 
-  it("replaces the frozen snapshot instead of leaking a deleted Command's template onto its live fallback", () => {
-    const { plane, messages, sourceId } = startTerminalSession(
+  it("replaces the frozen snapshot instead of leaking a deleted Command's template onto its live fallback", async () => {
+    const { plane, messages, sourceId } = await startTerminalSession(
       [
         {
           id: "primary",
@@ -901,7 +901,7 @@ describe("control-plane native resume", () => {
     const firstResumed = plane.resumeSession(sourceId);
     expect(firstResumed.ok).toBe(true);
     const fallbackId = firstResumed.ok ? firstResumed.session.id : "";
-    plane.assignQueued();
+    await plane.assignQueued();
     acknowledge(plane, fallbackId);
     finish(plane, fallbackId, "completed", "cli-2");
 
@@ -911,7 +911,7 @@ describe("control-plane native resume", () => {
     // "fallback".
     const secondResumed = plane.resumeSession(fallbackId);
     expect(secondResumed.ok).toBe(true);
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(messages.at(-1)).toMatchObject({
       type: "session:assign",
       commandId: "fallback",

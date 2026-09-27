@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { AuthService } from "./auth.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { createPlaneWsBridge } from "./ws-hub.ts";
 
 describe("WebSocket host authentication", () => {

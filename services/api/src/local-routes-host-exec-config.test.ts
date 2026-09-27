@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Principal } from "./auth.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import type { HostInventoryRecord } from "./db/plane-storage.ts";
 import { handleHostExecConfigRoutes } from "./local-routes-host-exec-config.ts";
 import { handleHostInventoryRoutes } from "./local-routes-host-inventory.ts";

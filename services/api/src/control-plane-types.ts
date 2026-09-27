@@ -64,6 +64,8 @@ export type ArchiveMetadata = {
 };
 
 export type ControlPlaneOptions = {
+  blackboardReporting?: import("./blackboard-reporting.ts").BlackboardReporting;
+  onReportingRequested?: (session: SessionRecord) => void | Promise<void>;
   /**
    * DynamoDB persistence (Local or AWS). Required for production/local server.
    * When set, durable state is written through and critical claims use conditional
@@ -118,6 +120,7 @@ export type PublicSession = Omit<
   | "activeHostId"
   | "activeHostOrder"
   | "primaryCommandStartState"
+  | "reportingAdmissionAttemptId"
   | "sessionApiKeyHash"
   | "descendantCount"
   | "terminalHookHandoff"

@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- connection fixtures include protocolVersion. */
 import { describe, expect, it } from "vitest";
 
-import { createControlPlane } from "./create-plane.ts";
+import { createAuthorizedControlPlane as createControlPlane } from "../test-helpers/authorized-control-plane-factory.ts";
 import {
   buildProviderCatalog,
   resolveScheduledSessionTarget,

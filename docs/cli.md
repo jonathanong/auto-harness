@@ -39,12 +39,10 @@ curl -fsS -X POST "http://127.0.0.1:7420/api/v1/commands" \
 export HARNESS_HOST_ID=local-1
 export HARNESS_API_URL=http://127.0.0.1:7420
 pnpm local:daemon status
-pnpm local:daemon run-session --file /path/to/session.assign.json
+pnpm local:daemon start
 
 # One-shot create→run verification
-pnpm local:e2e
 # Documented CLI path (requires local:api)
-pnpm local:cli-e2e
 ```
 
 Agent process env: `HARNESS_HOST_ID`, `HARNESS_API_URL`, optional `HARNESS_API_KEY`. Optional
@@ -85,17 +83,7 @@ Use `status --config-only` for the prior inventory-only JSON (`hostId`, `reposit
 and worktrees) and its configuration-only exit behavior. This mode does not query the
 service manager or control-plane host status.
 
-### `run-session`
-
-Run one session from a JSON assign file (see [examples/local/session.assign.json](../examples/local/session.assign.json)).
-
-```bash
-pnpm local:daemon -- run-session --file ./session.assign.json
-```
-
-Required assign fields: `sessionId`, `repositoryId`, `prompt`, `resolvedArgv` (the target and argv are computed control-plane-side from a Provider Account/Command; the daemon then resolves a bare executable through trusted `PATH` or a relative executable against the assigned checkout), `timeout` (seconds), `worktreeId`. Absolute/drive-qualified executables and complete `..` path segments are rejected. Optional: `ref`, `setupScript`, `resume`, `resumedFromSessionId`, `cliResumeRef`, `resumeRefCapture`, `metadata`. Resume re-checks out `ref` when supplied (otherwise the repository default branch) and skips setup.
-
-Terminal line is JSON: `{ "status", "exitCode", "errorCode" }`. Exit code `0` only when `status === "completed"`.
+Standalone `run-session --file` execution is retired. Create autonomous work through the [REST API](api.md) and run the connected daemon; the [required reporting controller](required-reporting.md) gates admission and completion.
 
 ### `start`
 
@@ -147,7 +135,7 @@ sudo env \
   pnpm local:daemon install-service
 ```
 
-`status` / `run-session` / `start` still default to `local-1` and `http://127.0.0.1:7420` for
+`status` / `start` still default to `local-1` and `http://127.0.0.1:7420` for
 local work above. They do not automatically discover a platform service's persisted environment.
 On a deployed macOS host, load the LaunchAgent environment explicitly so `status` checks the same
 identity as the service:
@@ -192,7 +180,7 @@ pnpm local:api
 | `GET`  | `/api/v1/sessions`     | list                                                                                                                                                                             |
 | `GET`  | `/api/v1/sessions/:id` | get                                                                                                                                                                              |
 
-No auto-dispatch to the agent yet — bridge with a session assign file for `run-session`.
+The controller dispatches queued work to a connected daemon after required online reporting admission.
 
 ---
 

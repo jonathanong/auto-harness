@@ -47,11 +47,7 @@ export function deps(partial: Partial<RunSessionDeps> = {}): RunSessionDeps & {
       }),
     loadConfig: async () => sampleConfig,
     ensureReady: async () => undefined,
-    runSession: async () => ({
-      status: "completed",
-      exitCode: 0,
-      logs: [],
-    }),
+
     installService: () => 0,
     uninstallService: () => 0,
     statusService: () => ({ state: "running", reason: "test service" }),

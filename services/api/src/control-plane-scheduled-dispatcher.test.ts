@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { HostWireMessage } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";

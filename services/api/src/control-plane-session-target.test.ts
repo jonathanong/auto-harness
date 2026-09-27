@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import {
   buildProviderCatalog,
   resolveSessionTargetArgv,

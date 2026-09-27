@@ -2,7 +2,7 @@ import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { registerHostDurable } from "./control-plane-agents.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 describe("durable host inventory registration fence", () => {
   it("rolls back when the inventory lease fence loses", async () => {

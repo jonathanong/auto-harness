@@ -36,7 +36,7 @@ export type { SessionRunResult, SessionRunnerDeps } from "./session-runner.ts";
 export { runTerminalHook } from "./terminal-hook.ts";
 export { WorktreeManager } from "./worktree-manager.ts";
 export { runCli, main, createDefaultRunSessionDeps, normalizeCliArgs } from "./cli.ts";
-export { ensureDaemonReady, runAssignedSession } from "./runtime.ts";
+export { ensureDaemonReady } from "./runtime.ts";
 export { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
 export type { DaemonLoopOptions, DaemonTransport } from "./daemon-loop.ts";
 export { createWsTransport } from "./ws-transport.ts";

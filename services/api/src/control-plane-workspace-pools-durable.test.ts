@@ -1,13 +1,13 @@
 /* eslint-disable max-lines */
 import { expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import {
   getWorkspacePoolPublicDurable,
   listWorkspacePoolSummariesDurable,
   listWorkspacePoolsPublicDurable,
 } from "./control-plane-workspace-pools.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 
 it("uses durable workspace-pool catalog reads, writes, and fenced deletion", async () => {
   const record = {

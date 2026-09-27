@@ -1,4 +1,4 @@
-import { ControlPlane } from "../src/control-plane.ts";
+import { TestControlPlane as ControlPlane } from "./reporting-control-plane.ts";
 import { handleRepositoryRoutes } from "../src/local-routes-repos-schedules.ts";
 
 export function admins(): string {

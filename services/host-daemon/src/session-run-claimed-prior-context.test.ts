@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProcessRunner } from "./executor.ts";
 import { LogStreamer } from "./log-streamer.ts";
-import { runClaimedSession } from "./session-run-claimed.ts";
+import { runAuthorizedClaimedSession as runClaimedSession } from "../test-helpers/authorized-session-run-claimed.ts";
 import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
 
 const identity = { apiUrl: "http://127.0.0.1:7420", apiKey: "secret" };

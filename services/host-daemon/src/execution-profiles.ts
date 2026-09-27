@@ -1,3 +1,4 @@
+import { stripBlackboardEnvironment } from "./child-env.ts";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, normalize } from "node:path";
@@ -57,7 +58,12 @@ function parseProfileEnv(raw: unknown, ctx: string): Record<string, string> {
       throw new Error(`${ctx} has an invalid name`);
     }
     const upper = key.toUpperCase();
-    if (upper.startsWith("HARNESS_") || upper === "HOME" || upper === "USERPROFILE") {
+    if (
+      upper.startsWith("HARNESS_") ||
+      upper.startsWith("AGENT_BLACKBOARD_") ||
+      upper === "HOME" ||
+      upper === "USERPROFILE"
+    ) {
       throw new Error(`${ctx} reserved name: ${key}`);
     }
     if (typeof value !== "string") throw new Error(`${ctx}.${key} must be a string`);
@@ -193,10 +199,16 @@ export function applyExecutionProfile(
   profile: ExecutionProfile,
   resolveHome: typeof realpathSync = realpathSync,
 ): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...base };
+  const env: NodeJS.ProcessEnv = stripBlackboardEnvironment(base);
   for (const [key, value] of Object.entries(profile.env)) {
     const upper = key.toUpperCase();
-    if (upper.startsWith("HARNESS_") || upper === "HOME" || upper === "USERPROFILE") continue;
+    if (
+      upper.startsWith("HARNESS_") ||
+      upper.startsWith("AGENT_BLACKBOARD_") ||
+      upper === "HOME" ||
+      upper === "USERPROFILE"
+    )
+      continue;
     env[key] = value;
   }
   const resolvedHome = resolveHome(profile.home).toString();

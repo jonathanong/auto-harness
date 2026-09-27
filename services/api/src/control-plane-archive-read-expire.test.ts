@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- stale-snapshot memory expiry shares the durable expire cases. */
 import { describe, expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 describe("durable archive expiry reads", () => {
   it("persists a pending archive as expired before reporting data loss", async () => {

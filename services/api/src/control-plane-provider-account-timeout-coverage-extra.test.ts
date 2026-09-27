@@ -4,7 +4,7 @@ import {
   releaseTimedOutProviderAccountLease as releaseTimedOutLease,
   releaseTimedOutProviderAccountLeasesForHost,
 } from "./control-plane-provider-account-leases.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 function timedOut(

@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { archiveSessionLogs, retrySessionArchiveIfNeeded } from "./control-plane-lifecycle.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { gzipLogRecords, putSessionLogPart } from "./session-log-objects.ts";
 import { createDynamoTestCtx } from "../test-helpers/dynamo-test-helpers.ts";
 

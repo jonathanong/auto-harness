@@ -386,6 +386,7 @@ export class DynamoPlaneStorageBase {
     now: string;
     attemptId: string;
     resolvedArgv: string[];
+    feedbackPromptBindings?: SessionRecord["feedbackPromptBindings"];
     resumeSpec?: SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
@@ -486,6 +487,7 @@ export class DynamoPlaneStorageBase {
     connectionId: string;
     now: string;
     resolvedArgv: string[];
+    feedbackPromptBindings?: SessionRecord["feedbackPromptBindings"];
     resumeSpec?: SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;

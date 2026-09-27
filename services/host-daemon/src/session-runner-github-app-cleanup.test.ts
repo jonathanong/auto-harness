@@ -15,7 +15,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       return actual.mkdtemp(...args);
     }),
     rm: vi.fn(async (...args: Parameters<typeof actual.rm>) => {
-      if (state.failNextRemoval) {
+      if (state.failNextRemoval && String(args[0]).includes("auto-harness-gh-config-")) {
         state.failNextRemoval = false;
         throw new Error("GitHub config directory is busy");
       }
@@ -26,7 +26,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 
 import type { ProcessRunner } from "./executor.ts";
 import { parseGitHubAppConfig } from "./github-app.ts";
-import { SessionRunner } from "./session-runner.ts";
+import { AuthorizedSessionRunner as SessionRunner } from "../test-helpers/authorized-session-runner.ts";
 import type { WorktreeManager } from "./worktree-manager.ts";
 import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
 

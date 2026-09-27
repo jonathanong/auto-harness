@@ -3,7 +3,7 @@ import { existsSync, readdirSync } from "node:fs";
 
 import type { ProcessRunner } from "./executor.ts";
 import { withoutAmbientGitHubTokens, type GitHubAppConfig } from "./github-app.ts";
-import { SessionRunner } from "./session-runner.ts";
+import { AuthorizedSessionRunner as SessionRunner } from "../test-helpers/authorized-session-runner.ts";
 import type { WorktreeManager } from "./worktree-manager.ts";
 import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
 

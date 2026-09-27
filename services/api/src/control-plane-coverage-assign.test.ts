@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { BASE_COMMAND_ID, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 function markHostReady(plane: ControlPlane, hostId: string): void {
@@ -21,7 +21,7 @@ function markHostReady(plane: ControlPlane, hostId: string): void {
 }
 
 describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
-  it("bound sessions pin and offline claim", () => {
+  it("bound sessions pin and offline claim", async () => {
     const planeE = new ControlPlane({
       idFactory: () => "e1",
       now: () => "2026-01-01T00:00:00.000Z",
@@ -49,7 +49,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     es.hostId = "ae";
     es.worktreeId = "we";
     es.ackReceivedAt = "t";
-    expect(planeE.assignQueued()).toHaveLength(0);
+    expect(await planeE.assignQueued()).toHaveLength(0);
 
     // resume without cliResumeRef branch + early ack deadline continue
     const planeF = new ControlPlane({
@@ -80,7 +80,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
       timeout: 1,
       ref: "main",
     });
-    planeF.assignQueued();
+    await planeF.assignQueued();
     const first = planeF.getSession("f1")!;
     planeF.handleHostMessage({
       type: "session:ack",
@@ -110,7 +110,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
       status: "idle",
       online: true,
     });
-    expect(planeF.assignQueued().length).toBeGreaterThan(0);
+    expect((await planeF.assignQueued()).length).toBeGreaterThan(0);
     // deadline not expired: call with now equal to assignment time (fixed clock)
     const assignMs = Date.parse("2026-01-01T00:00:00.000Z");
     planeF.state.pendingAcks.set("pending-early", {
@@ -154,6 +154,6 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
       }
       return w;
     };
-    expect(planeG.assignQueued()).toHaveLength(0);
+    expect(await planeG.assignQueued()).toHaveLength(0);
   });
 });

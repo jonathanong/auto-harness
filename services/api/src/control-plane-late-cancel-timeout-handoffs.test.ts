@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { cancelSession } from "./control-plane-cancel-local.ts";
 import { handleHostMessage } from "./control-plane-messages.ts";
 import { enforceRunningTimeouts } from "./control-plane-running-timeout.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";

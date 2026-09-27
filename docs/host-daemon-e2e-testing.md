@@ -36,11 +36,9 @@ pnpm check                 # lint, fmt, tests+coverage (unit + integration), kni
 pnpm test:platform         # native PTY/process/git/host-service/daemon slice
 pnpm local:dynamodb
 pnpm local:dynamodb:ready
-pnpm local:e2e             # SessionRunner + ref + unknown target + hooks
-pnpm local:cli-e2e         # documented pnpm local:daemon run-session (ref: main)
 pnpm local:api-smoke       # POST /sessions → 201 queued
-pnpm local:ws-e2e          # real WebSocket create→assign→run
-pnpm local:cloud-e2e       # DaemonLoop loopback
+pnpm exec vitest run --project dynamo integration/blackboard-websocket-dynamo.test.ts          # real WebSocket create→assign→run
+pnpm exec vitest run scripts/resume-ref-e2e.test.ts       # DaemonLoop loopback
 pnpm local:manage-verify   # repos/schedules/cancel/drain + thin web routes
 ```
 
@@ -406,7 +404,6 @@ Copy into the PR or agent final report:
 
 ```text
 [ ] pnpm check green
-[ ] pnpm local:e2e / local:cli-e2e / local:api-smoke / local:ws-e2e / local:cloud-e2e green
 [ ] DynamoDB Local cleared; no stale queued sessions
 [ ] API :7420 health ok; agent online; expected Provider Accounts attached
 [ ] Echo session: create → assign → completed; logs present

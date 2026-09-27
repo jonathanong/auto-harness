@@ -4,7 +4,7 @@ import {
   deleteHostInventoryDurable,
   putHostInventoryDurable,
 } from "./control-plane-agent-hosts.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { HostInventoryRecord } from "./db/plane-storage.ts";
 
 /**

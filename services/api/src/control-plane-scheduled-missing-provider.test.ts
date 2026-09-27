@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createControlPlane } from "./create-plane.ts";
+import { createAuthorizedControlPlane as createControlPlane } from "../test-helpers/authorized-control-plane-factory.ts";
 import {
   buildProviderCatalog,
   resolveScheduledSessionTarget,
@@ -117,6 +117,7 @@ describe("scheduled provider deletion", () => {
       registered.connectionId,
     );
 
+    await created.plane.settleStorage();
     expect(created.plane.state.providerAccounts.has("missing-account-a")).toBe(false);
     expect(await ctx.storage.getSession(first.id)).toMatchObject({
       status: "running",

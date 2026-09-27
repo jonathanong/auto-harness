@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Principal } from "./auth.ts";
 import { addDurableReadDefaults } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { handleRepositoryRoutes, handleScheduleRoutes } from "./local-routes-repos-schedules.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";

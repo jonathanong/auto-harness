@@ -54,18 +54,15 @@ describe.skipIf(process.platform === "win32")("PtyProcessRunner real CLI", () =>
   it("cancels a running process without leaving its child alive", async () => {
     const root = mkdtempSync(join(tmpdir(), "auto-harness-pty-cancel-"));
     try {
-      const scriptPath = join(root, "wait.mjs");
-      writeFileSync(
-        scriptPath,
-        "#!/usr/bin/env node\nconsole.log(`READY:${process.pid}`); setInterval(() => undefined, 1_000);\n",
-      );
+      const scriptPath = join(root, "wait.sh");
+      writeFileSync(scriptPath, "#!/bin/sh\necho READY:$$\nwhile :; do sleep 1; done\n");
       chmodSync(scriptPath, 0o755);
       const controller = new AbortController();
       let output = "";
       let childPid: number | undefined;
 
       const result = await new PtyProcessRunner().run({
-        argv: ["./wait.mjs"],
+        argv: ["./wait.sh"],
         cwd: root,
         signal: controller.signal,
         timeoutMs: 5_000,
@@ -114,15 +111,21 @@ describe.skipIf(process.platform === "win32")("PtyProcessRunner real CLI", () =>
     // threshold this assertion is supposed to catch a real leak against".
     const spawns = 20;
     for (let i = 0; i < spawns; i++) {
+      let ready = false;
       const result = await new PtyProcessRunner().run({
         // Bare command name, not process.execPath: PtyProcessRunner rejects an
         // absolute argv[0] as an assigned-command hijack guard (resolve-executable.ts).
-        argv: ["node", "-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1_000);"],
+        // A shell trap installs before READY; a slow Node startup could time out before
+        // installing its SIGTERM handler and exercise SIGTERM instead of this path.
+        argv: ["sh", "-c", "trap '' TERM; echo READY; while :; do sleep 1; done"],
         cwd: process.cwd(),
         timeoutMs: 300,
         terminationGraceMs: 100,
-        onChunk: () => undefined,
+        onChunk: (chunk) => {
+          if (chunk.data.includes("READY")) ready = true;
+        },
       });
+      expect(ready).toBe(true);
       expect(result).toMatchObject({ timedOut: true, signal: "SIGKILL" });
     }
     // Give the OS a moment to finish reclaiming fds from the reaped children.

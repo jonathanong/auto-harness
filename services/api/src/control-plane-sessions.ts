@@ -1,3 +1,4 @@
+import { reportingPolicyFields } from "./blackboard-reporting.ts";
 /* eslint-disable max-lines -- session creation and lifecycle transitions share validation state. */
 import {
   isActiveSessionStatus,
@@ -29,6 +30,7 @@ export function createSession(
   state: ControlPlaneState,
   body: unknown,
   options: {
+    principalId?: string;
     allowScheduleId?: boolean;
     allowCustomWebhookConcurrencyId?: boolean;
     allowGitHubCommentConcurrencyId?: boolean;
@@ -114,6 +116,13 @@ export function createSession(
     : undefined;
   const session: SessionRecord = {
     id,
+    ...reportingPolicyFields(
+      state.blackboardReporting,
+      v.repositoryId ?? "",
+      options.principalId,
+      v.workspacePoolId,
+    ),
+    ...(options.principalId ? { principalId: options.principalId } : {}),
     repositoryId: v.repositoryId ?? "",
     ...(v.workspacePoolId ? { workspacePoolId: v.workspacePoolId } : {}),
     ...(setupProfileId ? { setupProfileId } : {}),

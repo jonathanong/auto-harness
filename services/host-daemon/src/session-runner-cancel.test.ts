@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProcessRunner } from "./executor.ts";
-import { SessionRunner } from "./session-runner.ts";
+import { AuthorizedSessionRunner as SessionRunner } from "../test-helpers/authorized-session-runner.ts";
 import { baseAssign, setup } from "../test-helpers/session-runner-test-helpers.ts";
 import type { WorktreeManager } from "./worktree-manager.ts";
 

@@ -1,3 +1,4 @@
+import { testReporting } from "../services/api/test-helpers/reporting-control-plane.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, join } from "node:path";
@@ -65,6 +66,7 @@ describe.skipIf(process.platform === "win32")(
       // port ranges must not overlap.
       const port = 26000 + Math.floor(Math.random() * 2000);
       const server = await startLocalServer({
+        blackboardReporting: testReporting(),
         port,
         useDynamo: false,
         enableWs: true,

@@ -1,5 +1,9 @@
 import { createServer } from "node:http";
 
+import { parseBlackboardConfig } from "./blackboard-config.ts";
+import { createBlackboardReporting } from "./blackboard-reporting.ts";
+import { repairBlackboardReporting } from "./blackboard-repair.ts";
+import { drainBlackboardOutbox, enqueueBlackboardSession } from "./blackboard-lifecycle.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { createControlPlane } from "./create-plane.ts";
 import { AuthService } from "./auth.ts";
@@ -55,9 +59,15 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   let store = options.store;
 
   const publicBaseUrl = resolvePublicBaseUrl(options.publicBaseUrl);
+  const blackboardReporting =
+    options.blackboardReporting ??
+    (process.env.HARNESS_BLACKBOARD_CONFIG
+      ? createBlackboardReporting(parseBlackboardConfig(process.env.HARNESS_BLACKBOARD_CONFIG))
+      : undefined);
   if (!plane && !store && options.useDynamo !== false) {
     const created = await createControlPlane({
       publicBaseUrl,
+      ...(blackboardReporting ? { blackboardReporting } : {}),
     });
     plane = created.plane;
     store = new MemorySessionStore({ plane });
@@ -66,6 +76,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   } else if (!plane) {
     plane = new ControlPlane({
       publicBaseUrl,
+      ...(blackboardReporting ? { blackboardReporting } : {}),
     });
     store = new MemorySessionStore({ plane });
   }
@@ -93,7 +104,17 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   });
   const { store: resolvedStore, plane: resolvedPlane, handler } = app;
   await auth.hydrate(resolvedPlane.state.storage);
-  const scheduler = new LocalScheduler(resolvedPlane, options.scheduler);
+  resolvedPlane.state.onReportingRequested = async (session) => {
+    await enqueueBlackboardSession(resolvedPlane.state, session);
+    void drainBlackboardOutbox(resolvedPlane.state).catch(() => undefined);
+  };
+  const scheduler = new LocalScheduler(resolvedPlane, {
+    ...options.scheduler,
+    reportingTick: async () => {
+      await repairBlackboardReporting(resolvedPlane.state);
+      await drainBlackboardOutbox(resolvedPlane.state);
+    },
+  });
   const slackWorker = createSlackWorker(resolvedPlane, options);
   const webhookWorker = createWebhookWorker(resolvedPlane, options);
   const server = createServer((req, res) => {

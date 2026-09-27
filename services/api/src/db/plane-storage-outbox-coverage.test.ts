@@ -143,7 +143,15 @@ describe("webhook delivery storage branches", () => {
       claimWebhookDelivery(ctx(vi.fn().mockResolvedValue({})), lease),
     ).resolves.toBeNull();
     await expect(
-      claimWebhookDelivery(ctx(vi.fn().mockRejectedValue(conditional)), lease),
+      claimWebhookDelivery(
+        ctx(
+          vi
+            .fn()
+            .mockResolvedValueOnce({ Item: { id: "delivery", state: "pending" } })
+            .mockRejectedValueOnce(conditional),
+        ),
+        lease,
+      ),
     ).resolves.toBeNull();
     const failure = new Error("webhook table unavailable");
     await expect(claimWebhookDelivery(ctx(vi.fn().mockRejectedValue(failure)), lease)).rejects.toBe(

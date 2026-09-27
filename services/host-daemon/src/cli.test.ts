@@ -37,6 +37,15 @@ describe("normalizeCliArgs", () => {
 });
 
 describe("runCli", () => {
+  it("refuses standalone assignment files before loading configuration or executing work", async () => {
+    const loadConfig = vi.fn(() => {
+      throw new Error("must not load");
+    });
+    const a = deps({ loadConfig });
+    expect(await runCli(["node", "x", "run-session", "--file", "session.json"], {}, a)).toBe(1);
+    expect(a.errors[0]).toContain("trusted controller");
+    expect(loadConfig).not.toHaveBeenCalled();
+  });
   it("prints usage for help and missing command", async () => {
     const a = deps();
     expect(await runCli(["node", "x", "help"], {}, a)).toBe(0);
@@ -248,15 +257,6 @@ describe("runCli", () => {
     });
   });
 
-  it("run-session requires --file and completes", async () => {
-    const missing = deps();
-    expect(await runCli(["node", "x", "run-session"], {}, missing)).toBe(1);
-    expect(missing.errors[0]).toMatch(/--file/);
-    const ok = deps();
-    expect(await runCli(["node", "x", "run-session", "--file", "s.json"], {}, ok)).toBe(0);
-    expect(ok.logs.some((l) => l.includes("completed"))).toBe(true);
-  });
-
   it("dispatches service installation and removal commands", async () => {
     const installed = deps({ installService: () => 7 });
     expect(await runCli(["node", "x", "install-service"], {}, installed)).toBe(7);
@@ -267,21 +267,9 @@ describe("runCli", () => {
   it("rejects a malformed child environment allowlist before starting", async () => {
     const a = deps();
     expect(
-      await runCli(
-        ["node", "x", "run-session", "--file", "s.json"],
-        { HARNESS_CHILD_ENV_ALLOWLIST: "BAD-NAME" },
-        a,
-      ),
+      await runCli(["node", "x", "start"], { HARNESS_CHILD_ENV_ALLOWLIST: "BAD-NAME" }, a),
     ).toBe(1);
     expect(a.errors[0]).toMatch(/invalid name/);
-  });
-
-  it("reports a non-completed one-shot session as a failure", async () => {
-    const failed = deps({
-      runSession: async () => ({ status: "failed", exitCode: 1, errorCode: "failed", logs: [] }),
-    });
-    expect(await runCli(["node", "x", "run-session", "--file", "s.json"], {}, failed)).toBe(1);
-    expect(failed.logs.some((line) => line.includes('"status":"failed"'))).toBe(true);
   });
 
   it("ignores a late status configuration result after its deadline", async () => {
@@ -298,35 +286,6 @@ describe("runCli", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it("passes the environment loaded from HARNESS_ENV_FILE to a one-shot session", async () => {
-    let childEnvSource: NodeJS.ProcessEnv | undefined;
-    const a = deps({
-      readFile: (path) =>
-        path === "/persisted.env"
-          ? "HARNESS_CHILD_ENV_ALLOWLIST=AGENT_BLACKBOARD_TOKEN\nAGENT_BLACKBOARD_TOKEN=persisted-token\n"
-          : JSON.stringify({
-              sessionId: "s1",
-              repositoryId: "repo-1",
-              prompt: "p",
-              resolvedArgv: ["echo"],
-              timeout: 5,
-              worktreeId: "wt-1",
-            }),
-      runSession: async (_config, _assign, _onLog, environment) => {
-        childEnvSource = environment;
-        return { status: "completed", exitCode: 0, logs: [] };
-      },
-    });
-    expect(
-      await runCli(
-        ["node", "x", "run-session", "--file", "s.json"],
-        { HARNESS_ENV_FILE: "/persisted.env" },
-        a,
-      ),
-    ).toBe(0);
-    expect(childEnvSource?.AGENT_BLACKBOARD_TOKEN).toBe("persisted-token");
   });
 
   it("unknown command prints usage", async () => {
@@ -521,7 +480,7 @@ describe("printUsage / main / defaults", () => {
   });
 
   it("default deps' logResult prints structured JSON verbatim, with no timestamp prefix", () => {
-    // status/status --config-only/run-session print documented, machine-readable
+    // status/status --config-only print documented, machine-readable
     // JSON on stdout; a timestamp prefix ahead of the opening `{` would break
     // every consumer that parses it. logResult is the one sink exempt from that.
     const d = createDefaultRunSessionDeps(() => "2026-01-01T00:00:00.000Z");
@@ -529,6 +488,15 @@ describe("printUsage / main / defaults", () => {
     d.logResult('{"status":"ok"}');
     expect(log).toHaveBeenCalledWith('{"status":"ok"}');
     log.mockRestore();
+  });
+
+  it("default readiness dependency probes a workspace-only host without touching a repository", async () => {
+    const report = await createDefaultRunSessionDeps().ensureReady({
+      ...sampleConfig,
+      repositories: [],
+    });
+    expect(report.daemonVersion).toBeDefined();
+    expect(typeof report.gitReady).toBe("boolean");
   });
 
   it("default deps' log/error use the real clock when none is injected", () => {
@@ -556,28 +524,6 @@ describe("printUsage / main / defaults", () => {
     } finally {
       vi.unstubAllGlobals();
     }
-  });
-
-  it("default deps' ensureReady/runSession close over the real runtime functions", async () => {
-    // Not asserting on the outcome — ensureDaemonReady/runAssignedSession are exercised
-    // by runtime.ts's own tests. Only proving these wrapper closures forward to them.
-    const d = createDefaultRunSessionDeps();
-    const empty: DaemonConfig = { ...sampleConfig, repositories: [] };
-    await expect(d.ensureReady(empty)).resolves.toMatchObject({ gitReady: true });
-    const result = await d.runSession(
-      empty,
-      {
-        sessionId: "s",
-        repositoryId: "missing",
-        prompt: "p",
-        resolvedArgv: ["echo"],
-        timeout: 1,
-        worktreeId: "missing",
-      },
-      () => undefined,
-      {},
-    );
-    expect(result.status).toBe("failed");
   });
 
   it("main delegates", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { encodeStorageCursor, InvalidListPageQueryError } from "./control-plane-id-page.ts";
 import { listCommandsPage, listProvidersPage } from "./db/plane-storage-catalog-providers.ts";
 import type { PlaneStorageCtx } from "./db/plane-storage-types.ts";

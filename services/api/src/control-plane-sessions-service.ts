@@ -36,6 +36,7 @@ import {
   sessionCursorScopeHash,
   type CursorPosition,
 } from "./control-plane-session-cursor.ts";
+import { withSessionReporting } from "./blackboard-lifecycle.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 function durableListRepositoryIds(
@@ -95,7 +96,7 @@ export class ControlPlaneSessionsService {
 
   async getSessionDurable(id: string): Promise<PublicSession | null> {
     const session = await durableRuntime.getSessionDurable(this.state, id);
-    return session ? toPublic(this.state, session) : null;
+    return session ? toPublic(this.state, await withSessionReporting(this.state, session)) : null;
   }
 
   createSessionChildDurable(
@@ -115,7 +116,11 @@ export class ControlPlaneSessionsService {
       // Child collection reads are list views: terminal session results may contain
       // large/provider-sensitive output and must follow the same omission contract as
       // the top-level session list.
-      items: page.items.map((session) => toPublic(this.state, session, false)),
+      items: await Promise.all(
+        page.items.map(async (session) =>
+          toPublic(this.state, await withSessionReporting(this.state, session), false),
+        ),
+      ),
       nextCursor: page.nextCursor,
     };
   }
@@ -175,7 +180,11 @@ export class ControlPlaneSessionsService {
         ...(normalized.continuation ? { continuation: normalized.continuation } : {}),
       });
       return {
-        items: page.items.map((record) => toPublic(this.state, record, false)),
+        items: await Promise.all(
+          page.items.map(async (record) =>
+            toPublic(this.state, await withSessionReporting(this.state, record), false),
+          ),
+        ),
         nextCursor:
           page.continuation === null
             ? null
@@ -235,10 +244,12 @@ export class ControlPlaneSessionsService {
     return priorContext.loadPriorSessionContextDurable(this.state, sourceSessionId);
   }
 
-  assignQueued(): Array<{
-    session: PublicSession;
-    worktree: import("./db/types.ts").WorktreeRecord;
-  }> {
+  async assignQueued(): Promise<
+    Array<{
+      session: PublicSession;
+      worktree: import("./db/types.ts").WorktreeRecord;
+    }>
+  > {
     return assign.assignQueued(this.state);
   }
 

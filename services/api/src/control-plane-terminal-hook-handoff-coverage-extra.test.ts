@@ -6,7 +6,7 @@ import {
   finishHostLostSession,
   queueHostLossRetry,
 } from "./control-plane-infrastructure-retry.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import {
   expireTerminalHookHandoffIfNeeded,
   pendingTerminalHookHandoffs,

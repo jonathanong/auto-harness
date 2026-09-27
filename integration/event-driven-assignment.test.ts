@@ -4,7 +4,7 @@ import { basename, delimiter, dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createControlPlane } from "../services/api/src/create-plane.ts";
+import { createAuthorizedControlPlane as createControlPlane } from "../services/api/test-helpers/authorized-control-plane-factory.ts";
 import type { DynamoPlaneStorage } from "../services/api/src/db/plane-storage.ts";
 import { startLocalServer } from "../services/api/src/local-server.ts";
 import { loadDaemonConfig } from "../services/host-daemon/src/config.ts";

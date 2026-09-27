@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- starvation, expiry, and D8 placement cases share one fixture. */
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { assignQueued } from "./control-plane-assign.ts";
 import { assignScheduledQueuedDurable } from "./control-plane-scheduled-assign.ts";
 import { buildProviderCatalog } from "./control-plane-session-target.ts";
@@ -342,7 +342,7 @@ describe("queue placement planner", () => {
     ).toEqual({ action: "skip", reason: "no_idle_worktree" });
   });
 
-  it("assigns a later shard's higher-priority session before draining shard 0", () => {
+  it("assigns a later shard's higher-priority session before draining shard 0", async () => {
     const plane = new ControlPlane({ now: () => NOW, shardCount: 2 });
     seedBaseCommand(plane);
     markHostReady(plane, "host");
@@ -364,7 +364,7 @@ describe("queue placement planner", () => {
       "high",
       session({ id: "high", queueShard: 1, priority: 20, createdAt: "2026-01-01T00:00:01.000Z" }),
     );
-    const assigned = assignQueued(plane.state);
+    const assigned = await assignQueued(plane.state);
     expect(assigned.map((item) => item.session.id)).toEqual(["high"]);
     expect(plane.state.sessions.get("low")?.status).toBe("queued");
   });

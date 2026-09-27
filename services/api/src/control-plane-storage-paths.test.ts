@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createDynamoTestCtx } from "../test-helpers/dynamo-test-helpers.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { putScheduleOrThrow } from "../test-helpers/control-plane-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("StoPaths");
@@ -79,7 +79,7 @@ describe("ControlPlane storage write-through paths", () => {
       target: { commandId: "c" },
       timeout: 1,
     });
-    plane.assignQueued();
+    await plane.assignQueued();
     plane.appendLog({
       sessionId: "s1",
       stream: "stdout",

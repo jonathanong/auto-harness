@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 
 import { reclaimReconnectDeadlines } from "./control-plane-reconnect.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { SessionRecord, WorkspaceSlotRecord } from "./db/types.ts";
 
 function reconnectingWorkspace(overrides: Partial<SessionRecord> = {}): SessionRecord {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 describe("legacy schedule concurrency", () => {
   it("enriches a hydrated legacy schedule with its generated id and active session", async () => {

@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- scheduled reconnect branch cases share one durable state fixture. */
 import { describe, expect, it } from "vitest";
 
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import {
   confirmScheduledReconnect,
   reclaimScheduledReconnect,

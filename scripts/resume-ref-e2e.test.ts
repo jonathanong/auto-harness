@@ -8,7 +8,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "../services/api/src/control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../services/api/test-helpers/reporting-control-plane.ts";
 import { DaemonLoop, createLoopbackTransport } from "../services/host-daemon/src/daemon-loop.ts";
 import type { DaemonConfig } from "../services/host-daemon/src/config.ts";
 import { runCommandOk } from "./lib/run-command.mts";
@@ -110,7 +110,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
       if (!first.ok) {
         return;
       }
-      plane.assignQueued();
+      await plane.assignQueued();
       await loop.waitForIdle();
       expect(plane.getSession(first.session.id)?.status).toBe("completed");
 
@@ -127,7 +127,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
       if (!intervening.ok) {
         return;
       }
-      plane.assignQueued();
+      await plane.assignQueued();
       await loop.waitForIdle();
       expect(plane.getSession(intervening.session.id)?.status).toBe("completed");
 
@@ -140,7 +140,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
         return;
       }
       expect(resumed.session.ref).toBe("feature/resume");
-      plane.assignQueued();
+      await plane.assignQueued();
       await loop.waitForIdle();
       expect(plane.getSession(resumed.session.id)?.status).toBe("completed");
 

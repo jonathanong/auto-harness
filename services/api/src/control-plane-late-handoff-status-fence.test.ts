@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 it("does not reuse a deferred handoff for a different terminal report from the same attempt", async () => {

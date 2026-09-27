@@ -1,8 +1,9 @@
+import { settleStorage } from "./control-plane-state.ts";
 /* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { addDurableReadDefaults } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { enforceAckDeadlinesDurable } from "./control-plane-assign.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
@@ -63,7 +64,7 @@ function providerPlane(): ControlPlane {
 }
 
 describe("routing edge coverage", () => {
-  it("pauses a provider account globally and immediately assigns an explicit providerless fallback", () => {
+  it("pauses a provider account globally and immediately assigns an explicit providerless fallback", async () => {
     const plane = providerPlane();
     const created = plane.createSession({
       repositoryId: "repo",
@@ -73,7 +74,7 @@ describe("routing edge coverage", () => {
       timeout: 10,
     });
     expect(created.ok).toBe(true);
-    const first = plane.assignQueued()[0]!.session;
+    const first = (await plane.assignQueued())[0]!.session;
     expect(first.resolvedRoute).toMatchObject({ providerAccountId: "account", targetIndex: 0 });
     expect(
       plane.handleHostMessage({
@@ -94,6 +95,7 @@ describe("routing edge coverage", () => {
       }).ok,
     ).toBe(true);
     expect(plane.getProviderAccount("account")?.usageLimitedUntil).toBe("2026-01-01T00:01:00.000Z");
+    await settleStorage(plane.state);
     expect(plane.getSession(first.id)?.status).toBe("running");
     expect(plane.getSession(first.id)?.resolvedRoute).toMatchObject({
       commandId: "cli-fallback",
@@ -101,7 +103,7 @@ describe("routing edge coverage", () => {
     });
   });
 
-  it("suppresses a providerless limit for this session and rejects stale attempt frames", () => {
+  it("suppresses a providerless limit for this session and rejects stale attempt frames", async () => {
     const plane = providerPlane();
     const created = plane.createSession({
       repositoryId: "repo",
@@ -111,7 +113,7 @@ describe("routing edge coverage", () => {
       timeout: 10,
     });
     expect(created.ok).toBe(true);
-    const first = plane.assignQueued()[0]!.session;
+    const first = (await plane.assignQueued())[0]!.session;
     expect(
       plane.handleHostMessage({
         type: "session:status",
@@ -130,6 +132,7 @@ describe("routing edge coverage", () => {
       status: "failed",
       errorCode: "usage_limit",
     });
+    await settleStorage(plane.state);
     expect(plane.getSession(first.id)?.suppressedTargetIndexes).toEqual([0]);
     expect(plane.getSession(first.id)?.resolvedRoute).toMatchObject({
       providerAccountId: "account",
@@ -137,7 +140,7 @@ describe("routing edge coverage", () => {
     });
   });
 
-  it("expires a queued session before any capacity becomes available", () => {
+  it("expires a queued session before any capacity becomes available", async () => {
     let now = "2026-01-01T00:00:00.000Z";
     const plane = new ControlPlane({ now: () => now, shardCount: 1 });
     plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
@@ -151,7 +154,7 @@ describe("routing edge coverage", () => {
     });
     expect(created.ok).toBe(true);
     now = "2026-01-01T00:00:01.000Z";
-    expect(plane.assignQueued()).toEqual([]);
+    expect(await plane.assignQueued()).toEqual([]);
     expect(plane.getSession(created.ok ? created.session.id : "")?.errorCode).toBe("queue_expired");
   });
 
@@ -247,7 +250,7 @@ describe("routing edge coverage", () => {
     expect(plane.getSession(stored.id)?.suppressedTargetIndexes).toEqual([0]);
   });
 
-  it("keeps stale sync frames inert and records terminal optional fields", () => {
+  it("keeps stale sync frames inert and records terminal optional fields", async () => {
     const plane = providerPlane();
     const created = plane.createSession({
       repositoryId: "repo",
@@ -256,7 +259,7 @@ describe("routing edge coverage", () => {
       timeout: 10,
     });
     expect(created.ok).toBe(true);
-    const assigned = plane.assignQueued()[0]!.session;
+    const assigned = (await plane.assignQueued())[0]!.session;
     plane.handleHostMessage({
       type: "session:ack",
       sessionId: assigned.id,

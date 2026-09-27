@@ -10,8 +10,8 @@ import {
   buildProviderCatalog,
   resolveScheduledSessionTarget,
 } from "./control-plane-session-target.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";

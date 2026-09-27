@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 
 import { validateSessionCreate } from "./control-plane-session-create.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { createSession } from "./control-plane-sessions.ts";
 
 function workspaceState() {

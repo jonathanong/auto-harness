@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import type { GitClient } from "./git.ts";
-import { SessionRunner } from "./session-runner.ts";
+import { AuthorizedSessionRunner as SessionRunner } from "../test-helpers/authorized-session-runner.ts";
 import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 
@@ -172,12 +172,14 @@ describe("SessionRunner setup environment", () => {
       worktrees: new WorktreeManager(config, git),
       processRunner: runner,
       childEnvSource: {
-        HARNESS_CHILD_ENV_ALLOWLIST: "AGENT_BLACKBOARD_TOKEN",
-        AGENT_BLACKBOARD_TOKEN: "persisted-token",
+        HARNESS_CHILD_ENV_ALLOWLIST: "VENDOR_TOKEN",
+        VENDOR_TOKEN: "persisted-token",
+        AGENT_BLACKBOARD_TOKEN: "controller-only-token",
       },
     }).run(baseAssign({ resume: true }));
     expect(result.status).toBe("completed");
     expect(setupCalls).toEqual([]);
-    expect(commandEnvironment?.AGENT_BLACKBOARD_TOKEN).toBe("persisted-token");
+    expect(commandEnvironment?.VENDOR_TOKEN).toBe("persisted-token");
+    expect(commandEnvironment?.AGENT_BLACKBOARD_TOKEN).toBeUndefined();
   });
 });

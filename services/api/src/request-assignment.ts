@@ -38,9 +38,7 @@ export async function assignQueuedAndScheduledDurable(
   const maxSessions = fullScan
     ? Number.POSITIVE_INFINITY
     : (options.maxSessions ?? EVENT_DRIVEN_ASSIGNMENT_BATCH_SIZE);
-  const budgetMs = fullScan
-    ? Number.POSITIVE_INFINITY
-    : (options.budgetMs ?? EVENT_DRIVEN_ASSIGNMENT_BUDGET_MS);
+  const budgetMs = options.budgetMs ?? EVENT_DRIVEN_ASSIGNMENT_BUDGET_MS;
   const now = options.now ?? Date.now;
   const startedAt = now();
   let queued: SessionRecord[];

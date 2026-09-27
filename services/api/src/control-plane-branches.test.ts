@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import {
   BASE_COMMAND_ID,
   baseSessionBody,
@@ -11,7 +11,7 @@ import {
 } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("ControlPlane remaining branches", () => {
-  it("covers remaining branches: disabled cron, future fire, limit suppression, register replace, disconnect", () => {
+  it("covers remaining branches: disabled cron, future fire, limit suppression, register replace, disconnect", async () => {
     let n = 0;
     const plane = new ControlPlane({
       idFactory: () => `sess-${++n}`,
@@ -93,7 +93,9 @@ describe("ControlPlane remaining branches", () => {
     if (created.ok) {
       const s = plane.getSession(created.session.id)!;
       // force running path with assign then usage limit
-      const assigned = plane.assignQueued().find((a) => a.session.id === created.session.id)!;
+      const assigned = (await plane.assignQueued()).find(
+        (a) => a.session.id === created.session.id,
+      )!;
       plane.handleHostMessage({
         type: "session:ack",
         sessionId: created.session.id,
@@ -112,14 +114,14 @@ describe("ControlPlane remaining branches", () => {
       });
       expect(plane.getSession(created.session.id)?.status).toBe("queued");
       // The suppressed target leaves the session queued without assignment.
-      expect(plane.assignQueued()).toHaveLength(0);
+      expect(await plane.assignQueued()).toHaveLength(0);
       void s;
     }
 
     // ack deadline: already acked pending cleanup
     const ackClean = plane.createSession(baseSessionBody({ prompt: "ack-clean" }));
     const running = ackClean.ok
-      ? plane.assignQueued().find((a) => a.session.id === ackClean.session.id)
+      ? (await plane.assignQueued()).find((a) => a.session.id === ackClean.session.id)
       : undefined;
     if (running) {
       plane.handleHostMessage({

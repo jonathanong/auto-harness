@@ -9,7 +9,7 @@ import {
   negotiateHostProtocolVersion,
 } from "./control-plane-protocol.ts";
 import { hydrateFromStorage } from "./control-plane-hydrate.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 
 describe("host connection protocol negotiation", () => {
   it("accepts only the current host protocol", () => {

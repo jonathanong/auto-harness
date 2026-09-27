@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { withDeletionMarkers } from "./control-plane-deletion-markers.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 
 describe("catalog deletion markers", () => {
   it("is a no-op without durable marker support", async () => {

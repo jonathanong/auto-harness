@@ -1,8 +1,9 @@
 /* eslint-disable max-lines -- timeout coverage cases share one session fixture. */
 import { describe, expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
-import { createControlPlaneState, settleStorage } from "./control-plane-state.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
+import { settleStorage } from "./control-plane-state.ts";
 import { reclaimReconnectDeadlines } from "./control-plane-reconnect.ts";
 import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import {
@@ -184,7 +185,7 @@ describe("running timeout residual coverage", () => {
     const queued = plane.createSession(baseSessionBody({ timeout: 1 }));
     expect(queued.ok).toBe(true);
     if (!queued.ok) throw new Error(queued.error);
-    plane.assignQueued();
+    await plane.assignQueued();
     const assigned = plane.state.sessions.get(queued.session.id)!;
     const far = Date.parse(NOW) + 60_000;
     expect(plane.enforceRunningTimeouts(far)).toEqual([]);
@@ -199,7 +200,7 @@ describe("running timeout residual coverage", () => {
     expect(plane.enforceRunningTimeouts()).toEqual([assigned.id]);
   });
 
-  it("sends session:cancel and leaves a mismatched worktree busy", () => {
+  it("sends session:cancel and leaves a mismatched worktree busy", async () => {
     const cancels: string[] = [];
     const plane = new ControlPlane({
       now: () => NOW,
@@ -207,7 +208,7 @@ describe("running timeout residual coverage", () => {
         if (message.type === "session:cancel") cancels.push(`${hostId}:${message.sessionId}`);
       },
     });
-    const { sessionId, worktreeId } = startAcknowledgedRunning(plane);
+    const { sessionId, worktreeId } = await startAcknowledgedRunning(plane);
     plane.state.worktrees.get(worktreeId)!.currentSessionId = "other";
     expect(plane.enforceRunningTimeouts(runningDeadlineMs(plane, sessionId))).toEqual([sessionId]);
     expect(plane.getWorktree(worktreeId)?.status).toBe("busy");
@@ -339,7 +340,7 @@ describe("running timeout residual coverage", () => {
 
   it("finishes stranded work through durable storage and ignores a lost race", async () => {
     const plane = new ControlPlane({ now: () => NOW });
-    const { sessionId, worktreeId } = startAcknowledgedRunning(plane);
+    const { sessionId, worktreeId } = await startAcknowledgedRunning(plane);
     plane.state.worktrees.get(worktreeId)!.currentSessionId = "other";
     const session = { ...plane.state.sessions.get(sessionId)!, concurrencyId: "lock" };
     let finished: unknown;
@@ -365,7 +366,7 @@ describe("running timeout residual coverage", () => {
     expect(plane.getWorktree(worktreeId)?.status).toBe("busy");
 
     const other = new ControlPlane({ now: () => NOW });
-    const again = startAcknowledgedRunning(other);
+    const again = await startAcknowledgedRunning(other);
     other.state.storage = {
       finishSession: async () => false,
       releaseMainCheckoutSession: async () => false,

@@ -7,7 +7,7 @@ import {
   enforceAckDeadlinesDurable,
 } from "./control-plane-assign.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -107,7 +107,7 @@ function providerAssignmentState() {
 }
 
 describe("assignment residual coverage", () => {
-  it("clears terminal errors when assigning a queued prompt without storage", () => {
+  it("clears terminal errors when assigning a queued prompt without storage", async () => {
     const state = providerAssignmentState();
     const queued = state.sessions.get("s")!;
     state.commands.set("command", {
@@ -125,7 +125,7 @@ describe("assignment residual coverage", () => {
     const messages: unknown[] = [];
     state.onHostMessage = (_hostId, message) => messages.push(message);
 
-    expect(assignQueued(state)).toHaveLength(1);
+    expect(await assignQueued(state)).toHaveLength(1);
     expect(state.sessions.get("s")).not.toHaveProperty("errorCode");
     expect(state.sessions.get("s")).not.toHaveProperty("errorMessage");
     expect(messages).toMatchObject([{ type: "session:assign", infrastructureRetryCount: 1 }]);
@@ -154,7 +154,7 @@ describe("assignment residual coverage", () => {
     expect(messages).toMatchObject([{ type: "session:assign", infrastructureRetryCount: 1 }]);
   });
 
-  it("skips a local candidate when readiness changes after planning", () => {
+  it("skips a local candidate when readiness changes after planning", async () => {
     const state = providerAssignmentState();
     const connection = state.connections.get("connection")!;
     let readinessReads = 0;
@@ -167,20 +167,20 @@ describe("assignment residual coverage", () => {
     });
     state.connections.set("connection", { ...connection, providerAccountReadiness: readiness });
 
-    expect(assignQueued(state)).toEqual([]);
+    expect(await assignQueued(state)).toEqual([]);
     expect(state.worktrees.get("w")).toMatchObject({ status: "idle" });
     expect(state.sessions.get("s")).toMatchObject({ status: "queued" });
   });
 
-  it("skips a local candidate when the provider account has no remaining lease capacity", () => {
+  it("skips a local candidate when the provider account has no remaining lease capacity", async () => {
     const state = providerAssignmentState();
     state.providerAccounts.get("account")!.maxConcurrentSessions = 0;
-    expect(assignQueued(state)).toEqual([]);
+    expect(await assignQueued(state)).toEqual([]);
     expect(state.sessions.get("s")).toMatchObject({ status: "queued" });
     expect(state.worktrees.get("w")).toMatchObject({ status: "idle" });
   });
 
-  it("releases a claimed local worktree when provider lease acquisition loses a race", () => {
+  it("releases a claimed local worktree when provider lease acquisition loses a race", async () => {
     const state = providerAssignmentState();
     const leases = new Map<string, never>();
     Object.defineProperty(leases, "has", {
@@ -188,7 +188,7 @@ describe("assignment residual coverage", () => {
     });
     state.providerAccountLeases = leases as typeof state.providerAccountLeases;
 
-    expect(assignQueued(state)).toEqual([]);
+    expect(await assignQueued(state)).toEqual([]);
     expect(state.worktrees.get("w")).toMatchObject({ status: "idle" });
     expect(state.sessions.get("s")).toMatchObject({ status: "queued" });
   });
@@ -217,7 +217,7 @@ describe("assignment residual coverage", () => {
   it("skips locally and durably queued work while repository admission is unavailable", async () => {
     const local = createControlPlaneState({ now: () => NOW, shardCount: 1 });
     local.sessions.set("s", session());
-    expect(assignQueued(local)).toEqual([]);
+    expect(await assignQueued(local)).toEqual([]);
 
     const durable = createControlPlaneState({ now: () => NOW, shardCount: 1 });
     durable.sessions.set("s", session());
@@ -277,7 +277,7 @@ describe("assignment residual coverage", () => {
     expect(assigned).toBe(0);
   });
 
-  it("fails closed for a connected host whose Git preflight is not ready", () => {
+  it("fails closed for a connected host whose Git preflight is not ready", async () => {
     const state = createControlPlaneState({ now: () => NOW, shardCount: 1 });
     state.sessions.set("s", session({ target: { commandId: "command" } }));
     state.commands.set("command", {
@@ -305,7 +305,7 @@ describe("assignment residual coverage", () => {
     });
     state.hostConnection.set("host", "connection");
 
-    expect(assignQueued(state)).toEqual([]);
+    expect(await assignQueued(state)).toEqual([]);
   });
 
   it("durably assigns a pinned frozen native continuation", async () => {
@@ -434,7 +434,7 @@ describe("assignment residual coverage", () => {
     expect(state.pendingAcks.has(row.id)).toBe(false);
   });
 
-  it("sorts eligible provider routes after their cached account was evicted", () => {
+  it("sorts eligible provider routes after their cached account was evicted", async () => {
     const state = createControlPlaneState({
       now: () => NOW,
       attemptIdFactory: () => "attempt",
@@ -496,7 +496,7 @@ describe("assignment residual coverage", () => {
     state.sessions.set("s", session({ target: { commandId: "provider-command" } }));
     state.providerAccounts.get = () => undefined;
 
-    expect(assignQueued(state)).toHaveLength(1);
+    expect(await assignQueued(state)).toHaveLength(1);
   });
 
   it("assigns durably after the claimed provider account disappears", async () => {

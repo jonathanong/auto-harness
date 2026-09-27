@@ -33,8 +33,9 @@ describe("runTerminalHook", () => {
       metadata: { pr: 1 },
       worktreePath: "/wt",
       childEnvSource: {
-        HARNESS_CHILD_ENV_ALLOWLIST: "AGENT_BLACKBOARD_TOKEN",
-        AGENT_BLACKBOARD_TOKEN: "persisted-token",
+        HARNESS_CHILD_ENV_ALLOWLIST: "VENDOR_TOKEN",
+        VENDOR_TOKEN: "persisted-token",
+        AGENT_BLACKBOARD_TOKEN: "forbidden",
       },
     });
     expect(seenEnv?.HARNESS_SESSION_ID).toBe("sess-1");
@@ -43,7 +44,8 @@ describe("runTerminalHook", () => {
     expect(seenEnv?.HARNESS_REF).toBe("main");
     expect(seenEnv?.HARNESS_METADATA).toBe('{"pr":1}');
     expect(seenEnv?.HARNESS_WORKTREE_PATH).toBe("/wt");
-    expect(seenEnv?.AGENT_BLACKBOARD_TOKEN).toBe("persisted-token");
+    expect(seenEnv?.VENDOR_TOKEN).toBe("persisted-token");
+    expect(seenEnv?.AGENT_BLACKBOARD_TOKEN).toBeUndefined();
   });
 
   it("injects hook metadata without inheriting daemon credentials", async () => {

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import { cancelSession } from "./control-plane-cancel-local.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { SessionRecord } from "./db/types.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 

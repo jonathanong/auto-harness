@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { HostWireMessage } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import {
   baseSessionBody,
   putScheduleOrThrow,
@@ -198,7 +198,7 @@ describe("ControlPlane operator management", () => {
     expect(plane.deleteSchedule("sched-1").ok).toBe(false); // already gone
   });
 
-  it("cancelSession queued and running", () => {
+  it("cancelSession queued and running", async () => {
     const messages: HostWireMessage[] = [];
     let n = 0;
     const plane = new ControlPlane({
@@ -231,7 +231,7 @@ describe("ControlPlane operator management", () => {
     expect(plane.cancelSession(queued.id).ok).toBe(false);
     expect(plane.cancelSession("missing").ok).toBe(false);
     plane.createSession(baseSessionBody({ prompt: "running-cancel" }));
-    plane.assignQueued();
+    await plane.assignQueued();
     const running = plane.listSessions().find((s) => s.prompt === "running-cancel")!;
     plane.handleHostMessage({
       type: "session:ack",

@@ -71,6 +71,7 @@ function isFingerprintedChildEnvValue(
   return (
     typeof value === "string" &&
     !key.toUpperCase().startsWith("HARNESS_") &&
+    !key.toUpperCase().startsWith("AGENT_BLACKBOARD_") &&
     !(key === "GH_CONFIG_DIR" && value === appGeneratedGitHubConfigDir)
   );
 }

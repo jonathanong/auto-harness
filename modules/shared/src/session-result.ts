@@ -1,7 +1,9 @@
+import { isSessionFeedback, type SessionFeedback } from "./session-feedback.ts";
 import type { SessionStatus } from "./types.ts";
 
 /** Machine-readable outcome captured at the end of a session attempt. */
 export type SessionResult = {
+  feedback?: SessionFeedback;
   summary: string;
   summarySource: "agent" | "harness";
   summaryTruncated?: true;
@@ -57,6 +59,7 @@ export function normalizeSessionResult(value: unknown): SessionResult | undefine
   const summary = text(input.summary, MAX_SESSION_RESULT_SUMMARY_BYTES);
   if (summary === undefined || summary.length === 0) return undefined;
   const result: SessionResult = { summary, summarySource: input.summarySource };
+  if (isSessionFeedback(input.feedback)) result.feedback = structuredClone(input.feedback);
   if (
     bytes(input.summary as string) > MAX_SESSION_RESULT_SUMMARY_BYTES ||
     input.summaryTruncated === true
@@ -147,5 +150,8 @@ export function isSessionResult(value: unknown): value is SessionResult {
       return false;
     }
   }
-  return input.filesChangedTruncated === undefined || input.filesChangedTruncated === true;
+  return (
+    (input.feedback === undefined || isSessionFeedback(input.feedback)) &&
+    (input.filesChangedTruncated === undefined || input.filesChangedTruncated === true)
+  );
 }

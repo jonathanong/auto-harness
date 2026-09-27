@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { handleAuthRoutes } from "./local-routes-auth.ts";
 import { handleSelfServiceAuthRoutes } from "./local-routes-auth-self-service.ts";
 import { createLocalApp } from "./local-server.ts";

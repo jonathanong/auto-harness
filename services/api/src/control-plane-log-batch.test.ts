@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- omitted-attempt and mixed-host batch cases stay together. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { handleHostLogBatchDurable } from "./control-plane-messages.ts";
 import { OPERATIONAL_METRIC_ENVIRONMENT_VAR } from "./operational-metrics.ts";
 

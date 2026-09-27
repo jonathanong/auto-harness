@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { createPlaneWsBridge } from "./ws-hub.ts";
 
 async function registeredSocket(

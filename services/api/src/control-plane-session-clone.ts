@@ -1,3 +1,4 @@
+import { reportingPolicyFields } from "./blackboard-reporting.ts";
 import {
   promptByteLengthError,
   sessionPriorityError,
@@ -114,6 +115,12 @@ export function prepareClonedSession(
   const createdAt = state.now();
   const session: SessionRecord = {
     id,
+    ...reportingPolicyFields(
+      state.blackboardReporting,
+      source.repositoryId,
+      opts.createdBy,
+      source.workspacePoolId,
+    ),
     repositoryId: source.repositoryId,
     ...(source.workspacePoolId ? { workspacePoolId: source.workspacePoolId } : {}),
     ...(source.setupProfileId ? { setupProfileId: source.setupProfileId } : {}),

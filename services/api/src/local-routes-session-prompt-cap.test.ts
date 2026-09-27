@@ -5,7 +5,7 @@ import {
   promptByteLengthError,
 } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
@@ -76,12 +76,12 @@ describe("session prompt byte cap on create and resume", () => {
       worktrees: [{ id: "wt", name: "wt", repositoryId: "repo-1", path: "/wt", labels: [] }],
       commandProfiles: [],
     });
-    plane.assignQueued();
+    await plane.assignQueued();
     finish(plane, (createdAtCap.json as { id: string }).id);
     const source = plane.createSession(baseSessionBody({ prompt: "source" }));
     expect(source.ok).toBe(true);
     if (!source.ok) throw new Error(source.error);
-    plane.assignQueued();
+    await plane.assignQueued();
     finish(plane, source.session.id);
 
     const resumedAtCap = await post(`/api/v1/sessions/${source.session.id}/resume`, {

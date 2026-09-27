@@ -139,6 +139,7 @@ export class AutoHarnessFoundationStack extends Stack {
       const table = new dynamodb.Table(this, definition.name, {
         tableName: tableName(tablePrefix, definition),
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        ...(definition.name === "Sessions" ? { stream: dynamodb.StreamViewType.NEW_IMAGE } : {}),
         partitionKey: { name: definition.partitionKey.name, type: dynamodb.AttributeType.STRING },
         ...(definition.sortKey
           ? { sortKey: { name: definition.sortKey.name, type: dynamodb.AttributeType.STRING } }

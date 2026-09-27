@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionAssign } from "@auto-harness/shared";
 
 import type { ProcessRunner } from "./executor.ts";
-import { SessionRunner } from "./session-runner.ts";
+import { AuthorizedSessionRunner as SessionRunner } from "../test-helpers/authorized-session-runner.ts";
 
 const processRunner: ProcessRunner = {
   async run() {

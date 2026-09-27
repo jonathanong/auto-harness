@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- disconnect fence-loss cases share one durable fixture. */
 import { describe, expect, it } from "vitest";
 
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { offlineHostAndRequeueDurableImpl } from "./control-plane-worktrees-disconnect.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 

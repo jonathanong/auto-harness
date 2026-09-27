@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- disconnect fencing cases share one storage fixture shape. */
 import { expect, it, vi } from "vitest";
 
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { disconnectHost } from "./control-plane-agents.ts";
 import { offlineHostAndRequeueDurableImpl } from "./control-plane-worktrees-disconnect.ts";
 import type { SessionRecord, WorkspaceSlotRecord } from "./db/types.ts";

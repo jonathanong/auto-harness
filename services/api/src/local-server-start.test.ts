@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { startLocalServer } from "./local-server.ts";
 import { MemorySessionStore } from "./memory-store.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 describe("startLocalServer", () => {
   it("listens and closes", async () => {

@@ -39,6 +39,7 @@ export async function tryAssignSession(
     now: string;
     attemptId: string;
     resolvedArgv: string[];
+    feedbackPromptBindings?: SessionRecord["feedbackPromptBindings"];
     resumeSpec?: import("@auto-harness/shared").SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
@@ -63,6 +64,7 @@ export async function tryAssignSession(
     "assignmentSentAt = :now",
     "attemptId = :attemptId",
     "resolvedArgv = :argv",
+    "feedbackPromptBindings = :feedbackPromptBindings",
     "resolvedRoute = :route",
     "assignmentConnectionId = :connectionId",
     "primaryCommandStartState = :primaryCommandStartState",
@@ -78,6 +80,7 @@ export async function tryAssignSession(
     ":now": opts.now,
     ":attemptId": opts.attemptId,
     ":argv": opts.resolvedArgv,
+    ":feedbackPromptBindings": opts.feedbackPromptBindings ?? [],
     ":connectionId": opts.connectionId,
     ":primaryCommandStartState": opts.primaryCommandStartState ?? "pending",
     ":route": opts.resolvedRoute,

@@ -5,6 +5,7 @@ import { describeControlPlane, DYNAMO_TABLES, getServiceName, statusShardKey } f
 describe("CDK table catalog", () => {
   it("matches the current durable storage names and keys", () => {
     expect(DYNAMO_TABLES.map((table) => table.name)).toEqual([
+      "ReportingRepairCheckpoints",
       "Users",
       "Repositories",
       "Worktrees",
@@ -33,6 +34,10 @@ describe("CDK table catalog", () => {
       "WebhookDeliveries",
       "SessionCancelRedeliveries",
     ]);
+    expect(DYNAMO_TABLES.find((table) => table.name === "ReportingRepairCheckpoints")).toEqual({
+      name: "ReportingRepairCheckpoints",
+      partitionKey: { name: "status", type: "S" },
+    });
     expect(DYNAMO_TABLES.find((table) => table.name === "Worktrees")?.gsis).toEqual([
       {
         name: "repositoryId-id",

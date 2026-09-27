@@ -1,7 +1,7 @@
 import { HOST_PROTOCOL_VERSION, type HostWireMessage } from "@auto-harness/shared";
 import { expect } from "vitest";
 
-import { ControlPlane } from "../src/control-plane.ts";
+import { TestControlPlane as ControlPlane } from "./reporting-control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 export const ROLLBACK_NOW = "2026-01-01T00:00:00.000Z";

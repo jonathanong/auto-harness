@@ -9,6 +9,17 @@ import { createLoopbackTransport } from "./loopback-transport.ts";
 import { makeRepo, pendingTerminalStatusOf } from "../test-helpers/daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop reconnect", () => {
+  it("refuses command authorization without an attempt abort signal", async () => {
+    const loop = new DaemonLoop({
+      config: { hostId: "h", repositories: [], providerAccounts: [] },
+      transport: createLoopbackTransport({ sendToServer() {} }),
+    });
+    const authorization = loop as unknown as {
+      authorizeCommandStart(assign: unknown): Promise<boolean>;
+    };
+    expect(await authorization.authorizeCommandStart(assignMessage("missing-signal"))).toBe(false);
+    loop.stop();
+  });
   it("uses the 75-second reconnect grace by default", () => {
     const loop = new DaemonLoop({
       config: {
@@ -116,10 +127,12 @@ describe("DaemonLoop reconnect", () => {
       // Checkout runs a real `git` subprocess before the primary command is
       // authorized to start; wait for that authorization request instead of
       // resurning the old (pre-cleanup) short-circuit that skipped it entirely.
-      await vi.waitFor(() =>
-        expect(transport.sent.some((message) => message.type === "session:command-start")).toBe(
-          true,
-        ),
+      await vi.waitFor(
+        () =>
+          expect(transport.sent.some((message) => message.type === "session:command-start")).toBe(
+            true,
+          ),
+        { timeout: 5_000, interval: 10 },
       );
       transport.deliver({
         type: "session:command-start-acknowledged",

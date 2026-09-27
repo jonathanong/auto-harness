@@ -326,6 +326,7 @@ export {
   MAX_COMMAND_ARG_LENGTH,
   MAX_RESUME_REF_CAPTURE_LENGTH,
   materializeResumeArgv,
+  materializeResumeArgvWithPromptBindings,
   validateCommandArgv,
   validateCommandExecutable,
   validateCommandResumeSpec,
@@ -381,3 +382,11 @@ export {
 export { contentSecurityPolicy, securityHeaders, wsOrigin } from "./security-headers.ts";
 export { SESSION_COOKIE, hasValidSession, sessionCookieValue } from "./session-cookie.ts";
 export { collectCursorPages, MAX_CURSOR_PAGES, type CursorPage } from "./cursor-pages.ts";
+
+export {
+  mergeSessionFeedback,
+  isSessionFeedback,
+  MAX_SESSION_FEEDBACK_BYTES,
+  type SessionFeedback,
+  type SessionReporting,
+} from "./session-feedback.ts";

@@ -3,14 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { flushMacrotask, makeRepo } from "../test-helpers/daemon-loop-test-helpers.ts";
+import { makeRepo } from "../test-helpers/daemon-loop-test-helpers.ts";
 
 async function waitFor(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (predicate()) return;
-    await flushMacrotask();
-  }
-  throw new Error("condition did not become true");
+  await vi.waitFor(() => expect(predicate()).toBe(true), { timeout: 1_000, interval: 1 });
 }
 
 describe("DaemonLoop main-checkout terminal-hook handoffs", () => {

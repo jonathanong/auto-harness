@@ -1,3 +1,4 @@
+import { testReporting } from "../services/api/test-helpers/reporting-control-plane.ts";
 /* eslint-disable max-lines -- packaged daemon spawn, drain, and log capture stay one lifecycle. */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -78,6 +79,7 @@ describe("packaged host daemon lifecycle", () => {
     // "unit"/"integration" projects), so their random port ranges must not overlap.
     const port = 25_000 + Math.floor(Math.random() * 1_000);
     server = await startLocalServer({
+      blackboardReporting: testReporting(),
       port,
       useDynamo: false,
       enableWs: true,

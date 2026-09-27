@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
 import {
   DEFAULT_SLACK_NOTIFICATIONS,

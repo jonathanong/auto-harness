@@ -6,6 +6,7 @@ import {
   type WebhookFailureCode,
 } from "../webhook-outbox.ts";
 import { isConditionalFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
+import { getWebhookDelivery, storedDeliveryState } from "./plane-storage-webhook-outbox.ts";
 import type { WebhookLeaseFence } from "./plane-storage-webhook-outbox.ts";
 
 function assertNonEmpty(value: string, label: string): void {
@@ -24,6 +25,8 @@ export async function completeWebhookDelivery(
   input: WebhookLeaseFence,
 ): Promise<boolean> {
   assertFence(input);
+  const current = await getWebhookDelivery(ctx, input.id);
+  if (!current) return false;
   try {
     await ctx.doc.send(
       new UpdateCommand({
@@ -35,8 +38,8 @@ export async function completeWebhookDelivery(
           "#state = :leased AND leaseOwner = :owner AND leaseId = :leaseId AND leaseExpiresAt > :now",
         ExpressionAttributeNames: { "#state": "state" },
         ExpressionAttributeValues: {
-          ":leased": "leased",
-          ":delivered": "delivered",
+          ":leased": storedDeliveryState("leased", Boolean(current.feedback)),
+          ":delivered": storedDeliveryState("delivered", Boolean(current.feedback)),
           ":owner": input.owner,
           ":leaseId": input.leaseId,
           ":now": input.now,
@@ -55,6 +58,8 @@ async function settleFailure(
   input: WebhookLeaseFence & { failureCode: WebhookFailureCode; nextAttemptAt: string },
   state: "pending" | "dead",
 ): Promise<boolean> {
+  const current = await getWebhookDelivery(ctx, input.id);
+  if (!current) return false;
   try {
     await ctx.doc.send(
       new UpdateCommand({
@@ -66,11 +71,13 @@ async function settleFailure(
             : "SET #state = :state, updatedAt = :now, deadLetteredAt = :now, lastFailedAt = :now, lastFailureCode = :failure REMOVE dueAt, leaseOwner, leaseId, leaseExpiresAt",
         ConditionExpression:
           "#state = :leased AND leaseOwner = :owner AND leaseId = :leaseId AND leaseExpiresAt > :now AND " +
-          (state === "pending" ? "attemptCount < maxAttempts" : "attemptCount >= maxAttempts"),
+          (state === "pending"
+            ? "(attribute_exists(feedback) OR attemptCount < maxAttempts)"
+            : "(attribute_not_exists(feedback) AND attemptCount >= maxAttempts)"),
         ExpressionAttributeNames: { "#state": "state" },
         ExpressionAttributeValues: {
-          ":leased": "leased",
-          ":state": state,
+          ":leased": storedDeliveryState("leased", Boolean(current.feedback)),
+          ":state": storedDeliveryState(state, Boolean(current.feedback)),
           ":owner": input.owner,
           ":leaseId": input.leaseId,
           ":now": input.now,
@@ -109,6 +116,8 @@ export async function deadLetterWebhookDelivery(
 ): Promise<boolean> {
   assertFence(input);
   assertWebhookFailureCode(input.failureCode);
+  const current = await getWebhookDelivery(ctx, input.id);
+  if (!current) return false;
   try {
     await ctx.doc.send(
       new UpdateCommand({
@@ -120,8 +129,8 @@ export async function deadLetterWebhookDelivery(
           "#state = :leased AND leaseOwner = :owner AND leaseId = :leaseId AND leaseExpiresAt > :now",
         ExpressionAttributeNames: { "#state": "state" },
         ExpressionAttributeValues: {
-          ":leased": "leased",
-          ":dead": "dead",
+          ":leased": storedDeliveryState("leased", Boolean(current.feedback)),
+          ":dead": storedDeliveryState("dead", Boolean(current.feedback)),
           ":owner": input.owner,
           ":leaseId": input.leaseId,
           ":now": input.now,
@@ -143,6 +152,8 @@ export async function deadLetterExhaustedWebhookDelivery(
 ): Promise<boolean> {
   assertNonEmpty(input.id, "id");
   assertCanonicalTimestamp(input.now, "now");
+  const current = await getWebhookDelivery(ctx, input.id);
+  if (!current) return false;
   try {
     await ctx.doc.send(
       new UpdateCommand({
@@ -151,12 +162,12 @@ export async function deadLetterExhaustedWebhookDelivery(
         UpdateExpression:
           "SET #state = :dead, updatedAt = :now, deadLetteredAt = :now, lastFailedAt = :now, lastFailureCode = :failure REMOVE dueAt, leaseOwner, leaseId, leaseExpiresAt",
         ConditionExpression:
-          "(#state = :pending OR #state = :leased) AND dueAt <= :now AND attemptCount >= maxAttempts",
+          "(#state = :pending OR #state = :leased) AND dueAt <= :now AND attribute_not_exists(feedback) AND attemptCount >= maxAttempts",
         ExpressionAttributeNames: { "#state": "state" },
         ExpressionAttributeValues: {
-          ":pending": "pending",
-          ":leased": "leased",
-          ":dead": "dead",
+          ":pending": storedDeliveryState("pending", Boolean(current.feedback)),
+          ":leased": storedDeliveryState("leased", Boolean(current.feedback)),
+          ":dead": storedDeliveryState("dead", Boolean(current.feedback)),
           ":now": input.now,
           ":failure": "lease-expired",
         },

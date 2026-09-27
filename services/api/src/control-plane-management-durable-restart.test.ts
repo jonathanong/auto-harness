@@ -8,7 +8,7 @@ import type {
   ProviderRecord,
   RepositoryRecord,
 } from "./db/plane-storage.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 function get<T extends object>(records: Map<string, T>, id: string): T | null {
   const record = records.get(id);

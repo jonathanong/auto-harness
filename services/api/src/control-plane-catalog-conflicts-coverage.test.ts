@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ProviderAccountRecord } from "./db/plane-storage.ts";
 import { addDurableReadDefaults } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 const account = (label = "account"): ProviderAccountRecord => ({
   id: "account",

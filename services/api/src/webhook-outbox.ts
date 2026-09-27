@@ -1,3 +1,5 @@
+import type { FeedbackEnvelope } from "vouchington-tooling/agent-blackboard";
+import { assertBlackboardDeliverySnapshot } from "./webhook-blackboard-snapshot.ts";
 import { createHash } from "node:crypto";
 import { isTerminalSessionStatus, type SessionStatus } from "@auto-harness/shared";
 
@@ -47,11 +49,29 @@ export type WebhookDestinationRef = {
 
 type WebhookDeliveryState = "pending" | "leased" | "delivered" | "dead";
 
+export type BlackboardDeliveryPayload = {
+  identity: {
+    sessionId: string;
+    parentSessionId: string | null;
+    agent: "auto-harness";
+    version: string;
+  };
+  envelope: FeedbackEnvelope;
+  authorization: {
+    repositoryId: string | null;
+    workspacePoolId?: string;
+    principalId: string;
+    policyVersion: number;
+  };
+};
+
 export type DurableWebhookDelivery = {
+  feedback?: BlackboardDeliveryPayload;
   id: string;
   event: WebhookEvent;
   destination: WebhookDestinationRef;
   state: WebhookDeliveryState;
+  /** Independent indexed queues prevent one destination kind starving or claiming another. */
   createdAt: string;
   updatedAt: string;
   dueAt?: string;
@@ -67,6 +87,7 @@ export type DurableWebhookDelivery = {
 };
 
 export type WebhookEnqueueInput = {
+  feedback?: BlackboardDeliveryPayload;
   sessionId: string;
   repositoryId?: string | null;
   workspacePoolId?: string | null;
@@ -168,7 +189,18 @@ export function createWebhookDelivery(input: WebhookEnqueueInput): DurableWebhoo
     configurationId: input.destination.configurationId,
     configurationVersion: input.destination.configurationVersion,
   };
+  if (input.feedback)
+    assertBlackboardDeliverySnapshot(
+      input.feedback,
+      input.sessionId,
+      eventId,
+      repositoryId,
+      workspacePoolId,
+      destination.configurationId,
+      destination.configurationVersion,
+    );
   return {
+    ...(input.feedback ? { feedback: structuredClone(input.feedback) } : {}),
     id: stableId("whd", [eventId, destination.configurationId, destination.configurationVersion]),
     event,
     destination,

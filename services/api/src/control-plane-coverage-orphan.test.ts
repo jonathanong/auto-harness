@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { BASE_COMMAND_ID, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import { offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 
 describe("ControlPlane coverage: orphan maps, claims, and ack deadlines", () => {
-  it("orphan maps tryClaim and ack deadlines", () => {
+  it("orphan maps tryClaim and ack deadlines", async () => {
     const planeO = new ControlPlane({
       connectionIdFactory: () => "orphan",
       heartbeatStaleMs: 1,
@@ -40,7 +40,7 @@ describe("ControlPlane coverage: orphan maps, claims, and ack deadlines", () => 
       timeout: 1,
     });
     const z = planeO.listSessions()[0]!;
-    const zAssignment = planeO.assignQueued().find((a) => a.session.id === z.id)!;
+    const zAssignment = (await planeO.assignQueued()).find((a) => a.session.id === z.id)!;
     planeO.state.worktrees.delete(zAssignment.worktree.id);
     planeO.handleHostMessage({
       type: "session:status",
@@ -86,7 +86,7 @@ describe("ControlPlane coverage: orphan maps, claims, and ack deadlines", () => 
       }
       return w;
     };
-    planeC.assignQueued();
+    await planeC.assignQueued();
     expect(calls).toBeGreaterThan(0);
 
     // release missing worktree + ack deadline already-acked pending
@@ -113,7 +113,7 @@ describe("ControlPlane coverage: orphan maps, claims, and ack deadlines", () => 
       target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
     });
-    const dAssignment = planeD.assignQueued().find((a) => a.session.id === "d1")!;
+    const dAssignment = (await planeD.assignQueued()).find((a) => a.session.id === "d1")!;
     planeD.handleHostMessage({
       type: "session:ack",
       sessionId: "d1",
@@ -180,7 +180,7 @@ describe("ControlPlane coverage: orphan maps, claims, and ack deadlines", () => 
       target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
     });
-    const assignment = plane.assignQueued()[0]!;
+    const assignment = (await plane.assignQueued())[0]!;
     const running = plane.state.sessions.get(assignment.session.id)!;
     let sessionReads = 0;
     plane.state.storage = {

@@ -5,7 +5,7 @@ import { ParameterNotFound, SSMClient } from "@aws-sdk/client-ssm";
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import {
   createLambdaHandlers,
   createLambdaRuntime,

@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- inventory lifecycle cases share durable/local fixtures. */
 import { describe, expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import {
   syncHostWorkspaceSlots,
   syncHostWorkspaceSlotsDurable,

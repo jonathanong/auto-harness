@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createControlPlaneState } from "./control-plane-state.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import {
   buildRegisteredInventory,
   parseHostRegistrationRepositories,

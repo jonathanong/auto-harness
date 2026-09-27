@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
 
@@ -32,12 +32,12 @@ function assignedPlane() {
 }
 
 describe("ControlPlane assignment-attempt fencing", () => {
-  it("ignores an old ACK and terminal status after the session is re-assigned", () => {
+  it("ignores an old ACK and terminal status after the session is re-assigned", async () => {
     const { now, plane } = assignedPlane();
-    const first = plane.assignQueued()[0]!;
+    const first = (await plane.assignQueued())[0]!;
     expect(first.session.attemptId).toBe("attempt-1");
     plane.enforceAckDeadlines(Date.parse(now) + 15_000);
-    const second = plane.assignQueued()[0]!;
+    const second = (await plane.assignQueued())[0]!;
     expect(second.session.attemptId).toBe("attempt-2");
 
     plane.handleHostMessage({
@@ -62,11 +62,11 @@ describe("ControlPlane assignment-attempt fencing", () => {
     expect(plane.state.pendingAcks.get("sess-1")?.attemptId).toBe("attempt-2");
   });
 
-  it("ignores delayed old-attempt logs after re-assignment", () => {
+  it("ignores delayed old-attempt logs after re-assignment", async () => {
     const { now, plane } = assignedPlane();
-    const first = plane.assignQueued()[0]!;
+    const first = (await plane.assignQueued())[0]!;
     plane.enforceAckDeadlines(Date.parse(now) + 15_000);
-    expect(plane.assignQueued()).toHaveLength(1);
+    expect(await plane.assignQueued()).toHaveLength(1);
 
     expect(
       plane.handleHostMessage({
@@ -97,7 +97,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
 
   it("ignores a delayed old-attempt reconnect claim", async () => {
     const { plane } = assignedPlane();
-    const first = plane.assignQueued()[0]!;
+    const first = (await plane.assignQueued())[0]!;
     plane.handleHostMessage({
       type: "session:ack",
       sessionId: "sess-1",
@@ -118,7 +118,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
 
   it("retains a reconnect claim for the current attempt", async () => {
     const { plane } = assignedPlane();
-    const first = plane.assignQueued()[0]!;
+    const first = (await plane.assignQueued())[0]!;
     plane.handleHostMessage({
       type: "session:ack",
       sessionId: "sess-1",
@@ -139,9 +139,9 @@ describe("ControlPlane assignment-attempt fencing", () => {
 
   it("ignores delayed old-attempt logs and status on the durable path", async () => {
     const { now, plane } = assignedPlane();
-    const first = plane.assignQueued()[0]!;
+    const first = (await plane.assignQueued())[0]!;
     plane.enforceAckDeadlines(Date.parse(now) + 15_000);
-    const second = plane.assignQueued()[0]!;
+    const second = (await plane.assignQueued())[0]!;
     const persisted = { ...plane.state.sessions.get("sess-1")! };
     let logs = 0;
     let finished = 0;
@@ -188,9 +188,9 @@ describe("ControlPlane assignment-attempt fencing", () => {
 
   it("fences durable logs against storage, not a stale process cache", async () => {
     const { now, plane } = assignedPlane();
-    const first = plane.assignQueued()[0]!;
+    const first = (await plane.assignQueued())[0]!;
     plane.enforceAckDeadlines(Date.parse(now) + 15_000);
-    const second = plane.assignQueued()[0]!;
+    const second = (await plane.assignQueued())[0]!;
     plane.state.sessions.set("sess-1", {
       ...plane.getSession("sess-1")!,
       attemptId: first.session.attemptId,
@@ -233,7 +233,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
     expect(plane.getSession("sess-1")?.attemptId).toBe(second.session.attemptId);
   });
 
-  it("rejects registration that does not advertise the current host protocol", () => {
+  it("rejects registration that does not advertise the current host protocol", async () => {
     const plane = new ControlPlane({ shardCount: 1, idFactory: () => "sess-legacy" });
     seedBaseCommand(plane);
     expect(
@@ -259,13 +259,13 @@ describe("ControlPlane assignment-attempt fencing", () => {
       }).ok,
     ).toBe(true);
     expect(plane.createSession(baseSessionBody()).ok).toBe(true);
-    expect(plane.assignQueued()).toHaveLength(1);
+    expect(await plane.assignQueued()).toHaveLength(1);
     expect(plane.getSession("sess-legacy")?.hostId).toBe("modern");
   });
 
-  it("discards stale reconnect attempts before ownership validation", () => {
+  it("discards stale reconnect attempts before ownership validation", async () => {
     const { plane } = assignedPlane();
-    const first = plane.assignQueued()[0]!;
+    const first = (await plane.assignQueued())[0]!;
     plane.handleHostMessage({
       type: "session:ack",
       sessionId: "sess-1",
@@ -369,9 +369,9 @@ describe("ControlPlane assignment-attempt fencing", () => {
     });
   });
 
-  it("fills omitted attemptId on logs from the currently owned attempt", () => {
+  it("fills omitted attemptId on logs from the currently owned attempt", async () => {
     const { now, plane } = assignedPlane();
-    const first = plane.assignQueued()[0]!;
+    const first = (await plane.assignQueued())[0]!;
     plane.handleHostMessage({
       type: "session:ack",
       sessionId: "sess-1",
@@ -393,7 +393,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
 
   it("fills omitted durable log attemptId from the current session row", async () => {
     const { now, plane } = assignedPlane();
-    plane.assignQueued();
+    await plane.assignQueued();
     plane.state.storage = {
       getSession: async () => plane.state.sessions.get("sess-1"),
       getHostLock: async () => "connection",
@@ -416,7 +416,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
 
   it("ignores delayed logs from a previous host without treating them as a stale connection", async () => {
     const { now, plane } = assignedPlane();
-    const first = plane.assignQueued()[0]!;
+    const first = (await plane.assignQueued())[0]!;
     plane.handleHostMessage({
       type: "session:ack",
       sessionId: "sess-1",
@@ -456,7 +456,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
 
   it("ignores delayed ack and status from a previous host without a stale-connection error", async () => {
     const { plane } = assignedPlane();
-    const first = plane.assignQueued()[0]!;
+    const first = (await plane.assignQueued())[0]!;
     plane.handleHostMessage({
       type: "session:ack",
       sessionId: "sess-1",
@@ -527,7 +527,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
 
   it("preserves the durable checkout retry disposition on a moot status", async () => {
     const { plane } = assignedPlane();
-    const first = plane.assignQueued()[0]!;
+    const first = (await plane.assignQueued())[0]!;
     plane.state.sessions.set("sess-1", {
       ...plane.getSession("sess-1")!,
       hostId: "host-2",
@@ -609,7 +609,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
 
   it("rejects a current-attempt durable log from a connection that does not own the host", async () => {
     const { now, plane } = assignedPlane();
-    plane.assignQueued();
+    await plane.assignQueued();
     plane.state.storage = {
       getSession: async (sessionId: string) =>
         sessionId === "sess-1" ? (plane.state.sessions.get("sess-1") ?? null) : null,
@@ -661,7 +661,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
 
   it("writes an unfenced durable log when the session has no attempt id", async () => {
     const { now, plane } = assignedPlane();
-    plane.assignQueued();
+    await plane.assignQueued();
     const session = plane.getSession("sess-1")!;
     const { attemptId: _attemptId, ...withoutAttempt } = session;
     plane.state.sessions.set("sess-1", withoutAttempt);

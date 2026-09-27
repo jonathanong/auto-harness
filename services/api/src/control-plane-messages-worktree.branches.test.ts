@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- terminal variants share one durable worktree fixture. */
 import { describe, expect, it, vi } from "vitest";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";

@@ -102,6 +102,7 @@ export function run(fx: Fixture, env: Record<string, string>) {
   writeFileSync(fx.githubStepSummary, "");
   return spawnSync("bash", [fx.runScript], {
     encoding: "utf8",
+    cwd: fx.githubWorkspace,
     env: {
       ...process.env,
       GITHUB_OUTPUT: fx.githubOutput,

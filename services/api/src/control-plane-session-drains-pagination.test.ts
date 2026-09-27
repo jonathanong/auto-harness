@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { reconcileSessionDrainDurable } from "./control-plane-session-drains.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { SessionDrainRecord } from "./db/plane-storage.ts";
 import type { SessionRecord } from "./db/types.ts";
 

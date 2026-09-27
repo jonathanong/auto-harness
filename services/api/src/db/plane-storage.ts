@@ -21,6 +21,7 @@ import * as locks from "./plane-storage-locks.ts";
 import * as cancelRedeliveries from "./plane-storage-cancel-redeliveries.ts";
 import * as notificationDeliveries from "./plane-storage-notification-deliveries.ts";
 import * as webhookOutbox from "./plane-storage-webhook-outbox.ts";
+import * as reportingRepair from "./plane-storage-reporting-repair.ts";
 import * as webhookSettlement from "./plane-storage-webhook-settlement.ts";
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import { clearAll as clearAllStorage } from "./plane-storage-clear.ts";
@@ -86,6 +87,32 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return notificationDeliveries.reschedule(this.ctx, input);
   }
 
+  claimReportingRepair(
+    status: import("@auto-harness/shared").SessionTerminalStatus,
+    owner: string,
+    now: string,
+  ) {
+    return reportingRepair.claimReportingRepair(this.ctx, status, owner, now);
+  }
+
+  completeReportingRepair(
+    checkpoint: reportingRepair.ReportingRepairCheckpoint,
+    cursor: reportingRepair.ReportingRepairCheckpoint["cursor"],
+    now: string,
+  ) {
+    return reportingRepair.completeReportingRepair(this.ctx, checkpoint, cursor, now);
+  }
+
+  recordBlackboardAdmissionBlock(
+    sessionId: string,
+    blocked: boolean,
+    attemptId?: string,
+  ): Promise<boolean> {
+    return import("./plane-storage-blackboard-admission.ts").then((module) =>
+      module.recordBlackboardAdmissionBlock(this.ctx, sessionId, blocked, attemptId),
+    );
+  }
+
   enqueueWebhookDelivery(input: import("../webhook-outbox.ts").WebhookEnqueueInput): Promise<{
     created: boolean;
     delivery: import("../webhook-outbox.ts").DurableWebhookDelivery;
@@ -100,6 +127,7 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
   }
 
   listDueWebhookDeliveries(input: {
+    lane?: "blackboard" | "webhook";
     state: "pending" | "leased";
     now: string;
     limit: number;

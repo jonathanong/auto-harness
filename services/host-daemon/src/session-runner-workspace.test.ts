@@ -7,7 +7,7 @@ import type { SessionAssign } from "@auto-harness/shared";
 
 import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
-import { SessionRunner } from "./session-runner.ts";
+import { AuthorizedSessionRunner as SessionRunner } from "../test-helpers/authorized-session-runner.ts";
 import { WorkspaceManager } from "./workspace-manager.ts";
 
 const roots: string[] = [];

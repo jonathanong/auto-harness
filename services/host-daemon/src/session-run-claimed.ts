@@ -1,3 +1,4 @@
+import { stripBlackboardEnvironment } from "./child-env.ts";
 /* eslint-disable max-lines -- claimed run covers setup, profile env, and terminal outcomes. */
 import { thrownMessage } from "@auto-harness/shared";
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
@@ -32,6 +33,11 @@ import {
   type InstallationToken,
 } from "./github-app.ts";
 import { SecretRedactingProcessRunner } from "./secret-redacting-runner.ts";
+import {
+  feedbackCommandArgv,
+  sessionFeedbackInstructions,
+} from "./session-feedback-instructions.ts";
+import { prepareSessionFeedback } from "./session-feedback-artifact.ts";
 
 const SESSION_CREDENTIAL_REDACTION = "[session credential redacted]";
 // A single character (or other tiny suffix) can naturally occur in ordinary
@@ -430,7 +436,7 @@ async function runProcessAndFinish(
   }
   const commandEnv = profile
     ? applyExecutionProfile(terminalEnvironment, profile)
-    : { ...terminalEnvironment };
+    : stripBlackboardEnvironment(terminalEnvironment);
   if (isolatedGitHubConfigDir) commandEnv.GH_CONFIG_DIR = isolatedGitHubConfigDir;
   delete commandEnv.HARNESS_API_KEY;
   delete commandEnv.HARNESS_SESSION_API_KEY;
@@ -499,7 +505,7 @@ async function runProcessAndFinish(
   };
   const executeAuthorized = async (): Promise<SessionRunResult> => {
     try {
-      const authorized = (await authorizeCommandStart?.(assign, signal)) ?? !signal?.aborted;
+      const authorized = (await authorizeCommandStart?.(assign, signal)) === true;
       if (!authorized || signal?.aborted) {
         return await finish({
           status: timedOut() ? "timed_out" : "cancelled",
@@ -525,10 +531,15 @@ async function runProcessAndFinish(
     let runnerRejected = false;
     let runnerError: unknown;
     try {
+      const feedbackPath = await prepareSessionFeedback(assign);
       result = await effectiveCommandRunner.run({
-        argv,
+        argv: feedbackCommandArgv(argv, feedbackPath, assign.feedbackPromptBindings),
         cwd: claimed.cwd,
-        env: spawnEnv,
+        env: {
+          ...spawnEnv,
+          HARNESS_FEEDBACK_PATH: feedbackPath,
+          HARNESS_FEEDBACK_INSTRUCTIONS: sessionFeedbackInstructions(feedbackPath),
+        },
         timeoutMs,
         ...(signal ? { signal } : {}),
         onChunk: (c) => {

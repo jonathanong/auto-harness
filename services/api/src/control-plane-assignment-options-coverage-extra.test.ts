@@ -6,7 +6,8 @@ import { providerAccountLeaseConcurrencyId } from "@auto-harness/shared";
 import { assignQueued, assignQueuedDurable } from "./control-plane-assign.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { slackOutboxStub } from "../test-helpers/slack-outbox-test-stub.ts";
-import { createControlPlaneState, settleStorage } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
+import { settleStorage } from "./control-plane-state.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -109,11 +110,62 @@ function providerState() {
 }
 
 describe("assignment optional-field coverage", () => {
-  it("only issues session credentials to capability-advertising daemons", () => {
+  it("does not assign a session replaced while its online reporting probe is pending", async () => {
+    const state = providerState();
+    state.blackboardReporting = {
+      requiresDurableStorage: false,
+      authorizeAssignment: async () => {
+        state.sessions.set("s", session({ status: "cancelled" }));
+        return true;
+      },
+    } as never;
+    const messages: unknown[] = [];
+    state.onHostMessage = (_hostId, message) => messages.push(message);
+    expect(await assignQueued(state)).toEqual([]);
+    expect(state.sessions.get("s")?.status).toBe("cancelled");
+    expect([...state.worktrees.values()].every((worktree) => worktree.status === "idle")).toBe(
+      true,
+    );
+    expect(messages).toEqual([]);
+  });
+  it("keeps trusted prompt bindings on local assignment state and its host message", async () => {
+    const state = providerState();
+    state.commands.set("provider-command", {
+      ...state.commands.get("provider-command")!,
+      argv: ["codex", "exec"],
+    });
+    const messages: Array<{ feedbackPromptBindings?: unknown }> = [];
+    state.onHostMessage = (_hostId, message) => messages.push(message);
+    expect(await assignQueued(state)).toHaveLength(1);
+    expect(state.sessions.get("s")?.feedbackPromptBindings).toEqual([
+      { index: 2, start: 0, end: 3 },
+    ]);
+    expect(messages[0]?.feedbackPromptBindings).toEqual(
+      state.sessions.get("s")?.feedbackPromptBindings,
+    );
+  });
+  it("does not claim a locally simulated slot whose readiness changed during the online probe", async () => {
+    const state = providerState();
+    state.blackboardReporting = {
+      requiresDurableStorage: false,
+      authorizeAssignment: async () => {
+        for (const connection of state.connections.values())
+          connection.providerAccountReadiness = [];
+        return true;
+      },
+    } as never;
+    expect(await assignQueued(state)).toEqual([]);
+    expect(state.sessions.get("s")?.status).toBe("queued");
+    expect([...state.worktrees.values()].every((worktree) => worktree.status === "idle")).toBe(
+      true,
+    );
+  });
+
+  it("only issues session credentials to capability-advertising daemons", async () => {
     const legacy = providerState();
     const legacyMessages: Array<{ sessionApiKey?: string }> = [];
     legacy.onHostMessage = (_hostId, message) => legacyMessages.push(message as never);
-    expect(assignQueued(legacy)).toHaveLength(1);
+    expect(await assignQueued(legacy)).toHaveLength(1);
     expect(legacyMessages[0]?.sessionApiKey).toBeUndefined();
     expect(legacy.sessions.get("s")?.sessionApiKeyHash).toBeUndefined();
 
@@ -123,7 +175,7 @@ describe("assignment optional-field coverage", () => {
     }
     const capableMessages: Array<{ sessionApiKey?: string }> = [];
     capable.onHostMessage = (_hostId, message) => capableMessages.push(message as never);
-    expect(assignQueued(capable)).toHaveLength(1);
+    expect(await assignQueued(capable)).toHaveLength(1);
     expect(capableMessages[0]?.sessionApiKey).toMatch(/^hns_session_/);
     expect(capable.sessions.get("s")?.sessionApiKeyHash).toMatch(/^[a-f0-9]{64}$/);
     expect(capable.sessions.get("s")?.sessionApiKeyHash).not.toBe(
@@ -164,16 +216,16 @@ describe("assignment optional-field coverage", () => {
     }
   });
 
-  it("orders provider routes with a live cached account", () => {
-    expect(assignQueued(providerState())).toHaveLength(1);
+  it("orders provider routes with a live cached account", async () => {
+    expect(await assignQueued(providerState())).toHaveLength(1);
   });
 
-  it("withholds assignments from hosts that do not negotiate the current protocol", () => {
+  it("withholds assignments from hosts that do not negotiate the current protocol", async () => {
     const state = providerState();
     for (const [connectionId, connection] of state.connections) {
       state.connections.set(connectionId, { ...connection, protocolVersion: 99 });
     }
-    expect(assignQueued(state)).toEqual([]);
+    expect(await assignQueued(state)).toEqual([]);
     expect(state.sessions.get("s")?.status).toBe("queued");
   });
 
@@ -320,7 +372,7 @@ describe("assignment optional-field coverage", () => {
     state.sessions.set("s", session({ queueExpiresAt: "2025-01-01T00:00:00.000Z" }));
     const writes: SessionRecord[] = [];
     state.storage = { putSession: async (row: SessionRecord) => writes.push(row) } as never;
-    expect(assignQueued(state)).toEqual([]);
+    expect(await assignQueued(state)).toEqual([]);
     await state.writeTail;
     expect(writes[0]).toMatchObject({ status: "failed", errorCode: "queue_expired" });
   });
@@ -338,7 +390,7 @@ describe("assignment optional-field coverage", () => {
         released.push(id);
       },
     } as never;
-    expect(assignQueued(state)).toEqual([]);
+    expect(await assignQueued(state)).toEqual([]);
     await state.writeTail;
     expect(released).toEqual(["lock"]);
     expect(state.sessions.get("s")).toMatchObject({ status: "failed", errorCode: "queue_expired" });
@@ -358,7 +410,7 @@ describe("assignment optional-field coverage", () => {
     state.sessions.set("s", session({ queueExpiresAt: "2025-01-01T00:00:00.000Z" }));
     const writes: SessionRecord[] = [];
     state.storage = { putSession: async (row: SessionRecord) => writes.push(row) } as never;
-    expect(assignQueued(state)).toEqual([]);
+    expect(await assignQueued(state)).toEqual([]);
     await state.writeTail;
     expect(writes[0]).toMatchObject({ status: "failed", errorCode: "queue_expired" });
   });
@@ -445,7 +497,7 @@ describe("assignment optional-field coverage", () => {
     expect(assignmentInputs[0]?.hostAssignmentCap).toBe(3);
   });
 
-  it("falls back to the next candidate when a stale duplicate lease occupies every slot", () => {
+  it("falls back to the next candidate when a stale duplicate lease occupies every slot", async () => {
     // `accountHasLeaseCapacityFromReadModel` (used for planning) counts distinct holder
     // session ids, while `tryAcquireProviderAccountLeaseLocal` (used to actually claim a
     // slot) checks per-slot occupancy in `state.providerAccountLeases`. A stale duplicate
@@ -468,7 +520,7 @@ describe("assignment optional-field coverage", () => {
         providerAccountId: "account",
       });
     }
-    expect(assignQueued(state)).toEqual([]);
+    expect(await assignQueued(state)).toEqual([]);
     expect(state.sessions.get("s")?.status).toBe("queued");
     expect(state.providerAccountLeases.size).toBe(2);
   });

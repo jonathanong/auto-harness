@@ -15,11 +15,11 @@ import {
 import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read-catalog.ts";
 import { refreshAssignmentCommandsDurable } from "./control-plane-durable-read-catalog.ts";
 import { refreshAssignmentCommandsDurable as refreshAssignmentCommandsDirect } from "./control-plane-assignment-command-refresh.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { ControlPlaneBase } from "./control-plane-facade.ts";
 import { ControlPlaneSessionsService } from "./control-plane-sessions-service.ts";
 import { accountHasLeaseCapacity } from "./control-plane-provider-account-leases.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 
 const session = {
   id: "session",

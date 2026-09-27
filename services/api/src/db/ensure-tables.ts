@@ -444,6 +444,12 @@ export async function ensureControlPlaneTables(opts: {
   await enableTableTtl(ddb, names.slackInboundEvents, "ttl");
   await createIfMissing(ddb, notificationDeliveriesTableDefinition(names.notificationDeliveries));
   await createIfMissing(ddb, webhookDeliveriesTableDefinition(names.webhookDeliveries));
+  await createIfMissing(ddb, {
+    TableName: names.reportingRepairCheckpoints,
+    KeySchema: [{ AttributeName: "status", KeyType: "HASH" }],
+    AttributeDefinitions: [{ AttributeName: "status", AttributeType: "S" }],
+    BillingMode: "PAY_PER_REQUEST",
+  });
   await createIfMissing(
     ddb,
     sessionCancelRedeliveriesTableDefinition(names.sessionCancelRedeliveries),

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { listRepositoriesDurable } from "./control-plane-durable-read-catalog.ts";
 import { setRepositoryAdmissionDurable } from "./control-plane-repository-admission.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { RepositoryRecord } from "./db/plane-storage.ts";
 
 describe("durable repository reads", () => {

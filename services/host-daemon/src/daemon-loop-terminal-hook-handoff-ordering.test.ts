@@ -13,11 +13,7 @@ import {
 } from "../test-helpers/daemon-loop-test-helpers.ts";
 
 async function waitFor(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    if (predicate()) return;
-    await flushMacrotask();
-  }
-  throw new Error("condition did not become true");
+  await vi.waitFor(() => expect(predicate()).toBe(true), { timeout: 5_000, interval: 10 });
 }
 
 function worktreeTarget(repositoryId = "demo", worktreeId = "wt-1"): string {
@@ -193,6 +189,7 @@ describe("DaemonLoop terminal-hook handoff ordering", () => {
       finishAssignment();
       await waitFor(() => hookStarted.mock.calls.length === 1);
       expect(assignmentStarted.mock.calls.flat()).toEqual(["blocker"]);
+      await waitFor(() => typeof finishHook === "function");
       finishHook({ exitCode: 0 });
       await waitFor(
         () =>
@@ -344,6 +341,7 @@ describe("DaemonLoop terminal-hook handoff ordering", () => {
       for (let attempt = 0; attempt < 10; attempt += 1) await flushMacrotask();
       expect(assignmentStarted).not.toHaveBeenCalled();
 
+      await waitFor(() => typeof finishHook === "function");
       finishHook({ exitCode: 0 });
       await waitFor(() => assignmentStarted.mock.calls.length === 1);
       loop.stop();
@@ -430,6 +428,7 @@ describe("DaemonLoop terminal-hook handoff ordering", () => {
       await waitFor(
         () => (loop as unknown as { inflight: Map<string, unknown> }).inflight.size === 0,
       );
+      await waitFor(() => typeof finishHook === "function");
       finishHook({ exitCode: 0 });
       await waitFor(
         () =>

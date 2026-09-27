@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { configuredArchiveWriter, S3ArchiveWriter } from "./archive-writer.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 
 describe("S3ArchiveWriter", () => {
   it("uploads only the bounded private session archive contract", async () => {

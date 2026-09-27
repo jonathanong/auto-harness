@@ -9,7 +9,7 @@ import {
   tryClaimScheduleFire,
   tryClaimScheduleFireDurable,
 } from "./control-plane-schedule-fire.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { ScheduleRecord } from "./control-plane-types.ts";
 import { putScheduleDurable } from "./control-plane-schedules.ts";
 

@@ -290,12 +290,12 @@ describe("DaemonLoop command-start authorization", () => {
     }
   });
 
-  it("authorizes immediately without a cancellation signal and refuses an already-aborted launch", async () => {
+  it("refuses launches without a cancellation signal or with an already-aborted signal", async () => {
     const transport = new ProtocolTransport();
     const loop = await startedLoop(transport);
     try {
       transport.negotiate(HOST_PROTOCOL_VERSION);
-      await expect(authorizeWithoutSignal(loop)).resolves.toBe(true);
+      await expect(authorizeWithoutSignal(loop)).resolves.toBe(false);
       await expect(authorize(loop, AbortSignal.abort())).resolves.toBe(false);
       expect(transport.sent.some((message) => message.type === "session:command-start")).toBe(
         false,

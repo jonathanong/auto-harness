@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 describe("schedule repository admission", () => {
   it("rejects local durable schedule creation while admission is closed", async () => {

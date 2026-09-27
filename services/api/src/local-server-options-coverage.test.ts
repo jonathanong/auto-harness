@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { publicBaseUrlFromEnv, resolvePublicBaseUrl } from "./local-http.ts";
 import { startLocalServer } from "./local-server.ts";
 

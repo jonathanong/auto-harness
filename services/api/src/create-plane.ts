@@ -59,6 +59,7 @@ export async function createControlPlane(
   const storage = new DynamoPlaneStorage(doc, tables);
   const plane = new ControlPlane({
     storage,
+    ...(options.blackboardReporting ? { blackboardReporting: options.blackboardReporting } : {}),
     ...(options.publicBaseUrl !== undefined ? { publicBaseUrl: options.publicBaseUrl } : {}),
     ...(options.now !== undefined ? { now: options.now } : {}),
     ...(options.idFactory !== undefined ? { idFactory: options.idFactory } : {}),

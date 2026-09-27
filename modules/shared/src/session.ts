@@ -41,6 +41,8 @@ export type SessionAssign = {
   sessionApiKey?: string;
   /** Final argv, already resolved control-plane-side (cascade walk + prompt append per Command.appendPrompt). */
   resolvedArgv: string[];
+  /** Trusted prompt spans supplied by argv materialization; host inserts its private feedback destination here. */
+  feedbackPromptBindings?: Array<{ index: number; start: number; end: number }>;
   timeout: number;
   worktreeId: string | null;
   /** Automatic infrastructure retries consumed before this assignment. */
@@ -142,6 +144,8 @@ export type HostWireMessage =
       prompt: string;
       sessionApiKey?: string;
       resolvedArgv: string[];
+      /** Trusted prompt spans supplied by argv materialization; host inserts its private feedback destination here. */
+      feedbackPromptBindings?: Array<{ index: number; start: number; end: number }>;
       timeout: number;
       worktreeId: string | null;
       /** Automatic infrastructure retries consumed before this assignment. */

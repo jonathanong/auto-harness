@@ -40,7 +40,11 @@ function capturedEnvironment(value: unknown): NodeJS.ProcessEnv {
   }
   const environment: NodeJS.ProcessEnv = {};
   for (const [key, entry] of Object.entries(value)) {
-    if (typeof entry === "string" && !key.toUpperCase().startsWith("HARNESS_")) {
+    if (
+      typeof entry === "string" &&
+      !key.toUpperCase().startsWith("HARNESS_") &&
+      !key.toUpperCase().startsWith("AGENT_BLACKBOARD_")
+    ) {
       environment[key] = entry;
     }
   }

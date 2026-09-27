@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { MAX_CONCURRENCY_ID_BYTES } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { putScheduleOrThrow, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("schedule UTC cron validation", () => {

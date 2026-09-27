@@ -38,6 +38,7 @@ export function resolvePublicBaseUrl(value?: string): string {
 }
 
 export type LocalServerOptions = {
+  blackboardReporting?: import("./blackboard-reporting.ts").BlackboardReporting;
   port?: number;
   /** Bind interface. Defaults to loopback; public binds require required auth. */
   host?: string;

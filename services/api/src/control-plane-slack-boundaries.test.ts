@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { resolveManualSlackIdentity } from "./control-plane-slack-manual-identity.ts";
 import { slackTestEncryptor } from "../test-helpers/slack-route-test-helpers.ts";
 

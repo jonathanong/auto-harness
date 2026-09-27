@@ -105,6 +105,7 @@ function prepareChild(
   state: ControlPlaneState,
   parent: SessionRecord,
   body: unknown,
+  owner: string | undefined,
 ): { ok: true; child: SessionRecord } | { ok: false; error: string; code?: string } {
   if (parent.status !== "running" && !isTerminalSessionStatus(parent.status)) {
     return { ok: false, error: "parent session must be running or terminal", code: "CONFLICT" };
@@ -119,9 +120,10 @@ function prepareChild(
   }
   const prepared = validateSessionCreate(state, input.input, { allowReservedConcurrencyId: true });
   if (!prepared.ok) return prepared;
-  const child = buildSessionRecord(state, prepared, parent.principalId);
+  const child = buildSessionRecord(state, prepared, owner);
   child.parentSessionId = parent.id;
   child.rootSessionId = parent.rootSessionId ?? parent.id;
+  child.reportingMode = "autonomous";
   return { ok: true, child };
 }
 
@@ -141,10 +143,11 @@ export async function createSessionChildDurable(
       refreshTargetCatalogDurable(state),
     ]);
   }
-  const prepared = prepareChild(state, parent, body);
+  const candidateOwner = options.principalId ?? parent.principalId ?? parent.metadata?.createdBy;
+  const owner = typeof candidateOwner === "string" && candidateOwner ? candidateOwner : undefined;
+  const prepared = prepareChild(state, parent, body, owner);
   if (!prepared.ok) return prepared;
   const rootId = prepared.child.rootSessionId!;
-  const owner = options.principalId ?? parent.principalId ?? parent.metadata?.createdBy;
   if (typeof owner === "string" && owner) {
     prepared.child.principalId = owner;
     prepared.child.metadata = { createdBy: owner };

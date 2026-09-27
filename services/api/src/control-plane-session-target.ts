@@ -1,6 +1,7 @@
 /* eslint-disable max-lines */
 import {
   materializeResumeArgv,
+  materializeResumeArgvWithPromptBindings,
   resolveProviderAccountCommandId,
   resolveProviderAccountEnabled,
   validateCommandResumeSpec,
@@ -19,6 +20,7 @@ export type ResolvedSessionRoute = {
   providerAccountId?: string;
   commandId: string;
   resolvedArgv: string[];
+  feedbackPromptBindings?: Array<{ index: number; start: number; end: number }>;
   resumeSpec: SessionResumeSpec;
 };
 
@@ -171,6 +173,22 @@ function resolveNativeResumeRoute(
         : spec.appendPromptSeparator
           ? [...argv, "--", session.prompt]
           : [...argv, session.prompt],
+    feedbackPromptBindings: validatedResumeArgvTemplate
+      ? materializeResumeArgvWithPromptBindings(
+          validatedResumeArgvTemplate,
+          session.cliResumeRef!,
+          session.prompt,
+          spec.appendPromptSeparator,
+        ).promptBindings
+      : spec.appendPrompt
+        ? [
+            {
+              index: argv.length + (spec.appendPromptSeparator ? 1 : 0),
+              start: 0,
+              end: session.prompt.length,
+            },
+          ]
+        : [],
     resumeSpec: copyResumeSpec(spec, argv, validatedResumeArgvTemplate),
   };
 }
@@ -218,7 +236,14 @@ function resolveTargets(
     if (providerId === null) {
       const resolvedArgv = buildArgv(command, prompt);
       return resolvedArgv
-        ? [{ commandId: command.id, resolvedArgv, resumeSpec: commandResumeSpec(command) }]
+        ? [
+            {
+              commandId: command.id,
+              resolvedArgv,
+              feedbackPromptBindings: initialPromptBindings(command, resolvedArgv, prompt),
+              resumeSpec: commandResumeSpec(command),
+            },
+          ]
         : [];
     }
     const resolvedArgv = buildArgv(command, prompt);
@@ -235,6 +260,7 @@ function resolveTargets(
       providerAccountId: account.id,
       commandId: command.id,
       resolvedArgv,
+      feedbackPromptBindings: initialPromptBindings(command, resolvedArgv, prompt),
       resumeSpec: commandResumeSpec(command),
     }));
   }
@@ -267,6 +293,7 @@ function resolveTargets(
         providerAccountId: account.id,
         commandId,
         resolvedArgv,
+        feedbackPromptBindings: initialPromptBindings(command, resolvedArgv, prompt),
         resumeSpec: commandResumeSpec(command),
       });
     }
@@ -463,7 +490,9 @@ function commandResumeSpec(command: CommandRecord): SessionResumeSpec {
   return {
     argv,
     appendPrompt: command.appendPrompt,
-    appendPromptSeparator: command.appendPromptSeparator,
+    ...(command.appendPromptSeparator !== undefined
+      ? { appendPromptSeparator: command.appendPromptSeparator }
+      : {}),
     ...(resumeArgvTemplate ? { resumeArgvTemplate } : {}),
     ...(command.resumeRefCapture ? { resumeRefCapture: { ...command.resumeRefCapture } } : {}),
   };
@@ -477,8 +506,14 @@ function copyResumeSpec(
   return {
     argv: [...argv],
     appendPrompt: spec.appendPrompt,
-    appendPromptSeparator: spec.appendPromptSeparator,
+    ...(spec.appendPromptSeparator !== undefined
+      ? { appendPromptSeparator: spec.appendPromptSeparator }
+      : {}),
     ...(resumeArgvTemplate ? { resumeArgvTemplate: [...resumeArgvTemplate] } : {}),
     ...(spec.resumeRefCapture ? { resumeRefCapture: { ...spec.resumeRefCapture } } : {}),
   };
+}
+
+function initialPromptBindings(command: CommandRecord, argv: string[], prompt: string) {
+  return command.appendPrompt ? [{ index: argv.length - 1, start: 0, end: prompt.length }] : [];
 }

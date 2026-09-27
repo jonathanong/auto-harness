@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("ControlPlane concurrency and late status", () => {
@@ -57,7 +57,7 @@ describe("ControlPlane concurrency and late status", () => {
     });
   });
 
-  it("late session:status after disconnect completes acknowledged work", () => {
+  it("late session:status after disconnect completes acknowledged work", async () => {
     const plane = new ControlPlane({
       now: () => "2026-01-01T00:00:00.000Z",
       idFactory: () => "sess-1",
@@ -75,7 +75,7 @@ describe("ControlPlane concurrency and late status", () => {
       return;
     }
     plane.createSession(baseSessionBody());
-    const assigned = plane.assignQueued()[0]!.session;
+    const assigned = (await plane.assignQueued())[0]!.session;
     plane.handleHostMessage({
       type: "session:ack",
       sessionId: "sess-1",

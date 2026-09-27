@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { HostInventoryRecord } from "./db/plane-storage.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { listSessionTargets } from "./control-plane-session-targets.ts";
 
 function markHostReady(

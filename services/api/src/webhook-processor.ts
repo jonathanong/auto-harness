@@ -17,7 +17,12 @@ export async function processWebhookOutboxOnce(
 ): Promise<ProcessResult> {
   validateWebhookWorkerOptions(options);
   const now = (options.now ?? (() => new Date().toISOString()))();
-  const candidates = await dueCandidates(store, now, options.dueQueryLimit ?? 25);
+  const candidates = await dueCandidates(
+    store,
+    now,
+    options.dueQueryLimit ?? 25,
+    options.lane ?? "webhook",
+  );
   for (const candidate of candidates) {
     const result = await processCandidate(store, transport, candidate, now, options);
     if (result) return result;
@@ -37,6 +42,7 @@ export async function processWebhookOutboxBatch(
     store,
     now,
     Math.min(maximum, options.dueQueryLimit ?? 25),
+    options.lane ?? "webhook",
   );
   for (const candidate of candidates) {
     if (!canContinue()) return;
@@ -52,7 +58,8 @@ async function processCandidate(
   now: string,
   options: WebhookWorkerOptions,
 ): Promise<Exclude<ProcessResult, "idle"> | null> {
-  if (candidate.attemptCount >= candidate.maxAttempts) {
+  if ((candidate.feedback ? "blackboard" : "webhook") !== (options.lane ?? "webhook")) return null;
+  if (!candidate.feedback && candidate.attemptCount >= candidate.maxAttempts) {
     return (await store.deadLetterExhaustedWebhookDelivery({ id: candidate.id, now }))
       ? "dead"
       : null;
@@ -73,6 +80,7 @@ async function processCandidate(
   try {
     result = await transport.deliver({
       idempotencyKey: claimed.id,
+      ...(claimed.feedback ? { feedback: claimed.feedback } : {}),
       destination: claimed.destination,
       event: claimed.event,
       body: JSON.stringify(claimed.event),
@@ -111,10 +119,11 @@ async function dueCandidates(
   store: WebhookOutboxStore,
   now: string,
   limit: number,
+  lane: "blackboard" | "webhook",
 ): Promise<DurableWebhookDelivery[]> {
   const [pending, leased] = await Promise.all([
-    store.listDueWebhookDeliveries({ state: "pending", now, limit }),
-    store.listDueWebhookDeliveries({ state: "leased", now, limit }),
+    store.listDueWebhookDeliveries({ state: "pending", now, limit, lane }),
+    store.listDueWebhookDeliveries({ state: "leased", now, limit, lane }),
   ]);
   return [...pending, ...leased]
     .toSorted((a, b) => (a.dueAt ?? "").localeCompare(b.dueAt ?? "") || a.id.localeCompare(b.id))

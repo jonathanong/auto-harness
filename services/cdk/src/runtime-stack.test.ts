@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- one synthesized runtime template covers REST, WebSocket, and cron. */
 import { existsSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { isAbsolute, join, sep } from "node:path";
+import { spawnSync } from "node:child_process";
+import { isAbsolute, join } from "node:path";
 
 import { App } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
@@ -11,7 +11,7 @@ import { AutoHarnessFoundationStack } from "./foundation-stack.ts";
 import { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
 
 describe("AutoHarnessRuntimeStack", () => {
-  it("keeps the S3 presigner resolvable inside every synthesized Lambda asset", () => {
+  it("loads every synthesized Lambda asset in isolation with its bundled dependencies", () => {
     const app = new App();
     const foundation = new AutoHarnessFoundationStack(app, "Foundation", {
       tablePrefix: "ReviewRuntime",
@@ -32,10 +32,16 @@ describe("AutoHarnessRuntimeStack", () => {
 
     expect(assets).not.toHaveLength(0);
     for (const asset of assets) {
-      const resolved = createRequire(join(asset.path, "index.js")).resolve(
-        "@aws-sdk/s3-request-presigner",
+      const result = spawnSync(
+        process.execPath,
+        [
+          "-e",
+          'const handlers = require("./index.js"); if (!["cron", "rest", "websocket"].every((name) => typeof handlers[name] === "function")) process.exit(1)',
+        ],
+        { cwd: asset.path, encoding: "utf8", env: { ...process.env, NODE_PATH: "" } },
       );
-      expect(resolved.startsWith(`${asset.path}${sep}node_modules${sep}`)).toBe(true);
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(0);
     }
   });
 
@@ -79,7 +85,7 @@ describe("AutoHarnessRuntimeStack", () => {
         }),
       },
       Handler: "index.websocket",
-      Runtime: "nodejs22.x",
+      Runtime: "nodejs24.x",
       Timeout: 30,
     });
     template.hasResourceProperties("AWS::Lambda::Function", {
@@ -90,7 +96,7 @@ describe("AutoHarnessRuntimeStack", () => {
         }),
       },
       Handler: "index.cron",
-      Runtime: "nodejs22.x",
+      Runtime: "nodejs24.x",
       Timeout: 60,
     });
     template.hasResourceProperties("AWS::Events::Rule", {

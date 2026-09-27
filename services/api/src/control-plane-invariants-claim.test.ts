@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { HostWireMessage } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import {
   BASE_COMMAND_ID,
   baseSessionBody,
@@ -18,7 +18,7 @@ describe("ControlPlane claim invariants", () => {
     expect(plane.listSessions()).toEqual([]);
   });
 
-  it("Invariant 1: exclusive worktree claim under concurrent assign", () => {
+  it("Invariant 1: exclusive worktree claim under concurrent assign", async () => {
     const messages: HostWireMessage[] = [];
     const plane = new ControlPlane({
       idFactory: (() => {
@@ -45,10 +45,10 @@ describe("ControlPlane claim invariants", () => {
     plane.createSession(baseSessionBody());
     plane.createSession(baseSessionBody({ prompt: "second" }));
 
-    const a1 = plane.assignQueued();
+    const a1 = await plane.assignQueued();
     expect(a1).toHaveLength(1);
     expect(a1[0]?.worktree.id).toBe("wt-1");
-    const a2 = plane.assignQueued();
+    const a2 = await plane.assignQueued();
     expect(a2).toHaveLength(0);
     expect(plane.getWorktree("wt-1")?.status).toBe("busy");
     const assignments = messages.filter(
@@ -136,7 +136,7 @@ describe("ControlPlane claim invariants", () => {
     expect(logs[0]!.timestampSeq < logs[1]!.timestampSeq).toBe(true);
   });
 
-  it("Invariant 2: no-ack requeues and frees worktree", () => {
+  it("Invariant 2: no-ack requeues and frees worktree", async () => {
     const plane = new ControlPlane({
       ackDeadlineMs: 100,
       now: () => "2026-01-01T00:00:00.000Z",
@@ -155,7 +155,7 @@ describe("ControlPlane claim invariants", () => {
       online: true,
     });
     plane.createSession(baseSessionBody());
-    plane.assignQueued();
+    await plane.assignQueued();
     expect(plane.getWorktree("wt-1")?.status).toBe("busy");
     const requeued = plane.enforceAckDeadlines(Date.parse("2026-01-01T00:00:00.000Z") + 200);
     expect(requeued).toEqual(["sess-1"]);

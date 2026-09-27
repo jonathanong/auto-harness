@@ -1,3 +1,7 @@
+import {
+  ASSIGNMENT_REPORTING_BUDGET_MS,
+  assignmentReportingAllowed,
+} from "./blackboard-admission.ts";
 /* eslint-disable max-lines -- workspace placement keeps lease acquisition and dispatch together. */
 import type { HostWireMessage } from "@auto-harness/shared";
 
@@ -68,6 +72,9 @@ function assignMessage(
     // that opts out of appendPrompt does not consume it at all.
     prompt: "",
     resolvedArgv: route.resolvedArgv,
+    ...(route.feedbackPromptBindings
+      ? { feedbackPromptBindings: route.feedbackPromptBindings }
+      : {}),
     timeout: session.timeout,
     assignedAt,
     attemptId,
@@ -103,6 +110,9 @@ function nextSession(
     startedAt: now,
     attemptId,
     resolvedArgv: route.resolvedArgv,
+    ...(route.feedbackPromptBindings
+      ? { feedbackPromptBindings: route.feedbackPromptBindings }
+      : {}),
     resolvedRoute: {
       targetIndex: route.targetIndex,
       ...(route.providerId ? { providerId: route.providerId } : {}),
@@ -173,11 +183,13 @@ export async function assignWorkspaceQueuedDurable(
   const nowMs = Date.parse(now);
   const catalog = buildProviderCatalog(state);
   const hydratedWorkspacePools = new Set<string>();
+  const reportingDeadline = Date.now() + ASSIGNMENT_REPORTING_BUDGET_MS;
   for (const session of orderedQueuedSessions(
     state.sessions.values(),
     state.shardCount,
     "workspace",
   )) {
+    if (Date.now() >= reportingDeadline) break;
     if (sessionId && session.id !== sessionId) continue;
     if (
       state.storage &&
@@ -211,6 +223,7 @@ export async function assignWorkspaceQueuedDurable(
       )
         continue;
       const attemptId = state.attemptIdFactory();
+      if (!(await assignmentReportingAllowed(state, session, attemptId))) break;
       const message = assignMessage(
         session,
         slot,
@@ -248,6 +261,9 @@ export async function assignWorkspaceQueuedDurable(
             now,
             attemptId,
             resolvedArgv: route.resolvedArgv,
+            ...(route.feedbackPromptBindings
+              ? { feedbackPromptBindings: route.feedbackPromptBindings }
+              : {}),
             resolvedRoute: {
               targetIndex: route.targetIndex,
               ...(route.providerId ? { providerId: route.providerId } : {}),

@@ -1,5 +1,5 @@
 import { AuthService } from "../src/auth.ts";
-import { ControlPlane } from "../src/control-plane.ts";
+import { TestControlPlane as ControlPlane } from "./reporting-control-plane.ts";
 import { createLocalApp } from "../src/local-server.ts";
 
 function base64Admins(): string {

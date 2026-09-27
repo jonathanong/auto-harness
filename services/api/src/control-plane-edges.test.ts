@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import {
   BASE_COMMAND_ID,
   baseSessionBody,
@@ -110,7 +110,7 @@ describe("ControlPlane API edges", () => {
       online: true,
     });
     plane.createSession(baseSessionBody());
-    const assigned = plane.assignQueued()[0]!.session;
+    const assigned = (await plane.assignQueued())[0]!.session;
     plane.handleHostMessage({
       type: "session:ack",
       sessionId: "sess-1",
@@ -129,7 +129,7 @@ describe("ControlPlane API edges", () => {
     });
     expect(resumed.ok).toBe(true);
     if (resumed.ok) {
-      plane.assignQueued();
+      await plane.assignQueued();
       expect(plane.getSession(resumed.session.id)?.status).toBe("running");
     }
     expect((await plane.archiveSessionLogs("empty-sess")).body).toBe("");

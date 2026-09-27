@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -32,10 +32,17 @@ function runningSession(over: Partial<SessionRecord> = {}): SessionRecord {
 
 describe("command-start assignment gating", () => {
   it("acknowledges a durable command start only after its fenced commit, idempotently", async () => {
-    const state = createControlPlaneState({ now: () => NOW });
+    const state = createControlPlaneState({
+      now: () => NOW,
+      blackboardReporting: { authorize: async () => true } as never,
+    });
     let persisted = runningSession();
     state.sessions.set(persisted.id, persisted);
-    const authorizePrimaryCommandStart = vi.fn(async () => false);
+    const authorizePrimaryCommandStart = vi.fn(
+      async () =>
+        persisted.primaryCommandStartState === "authorized" &&
+        persisted.reportingAdmissionAttemptId === "attempt",
+    );
     state.storage = {
       getSession: async () => persisted,
       getHostLock: async () => "connection",
@@ -60,7 +67,11 @@ describe("command-start assignment gating", () => {
     });
 
     authorizePrimaryCommandStart.mockImplementationOnce(async () => {
-      persisted = { ...persisted, primaryCommandStartState: "authorized" };
+      persisted = {
+        ...persisted,
+        primaryCommandStartState: "authorized",
+        reportingAdmissionAttemptId: "attempt",
+      };
       return true;
     });
     await expect(handleHostMessageDurable(state, message, "connection")).resolves.toEqual({
@@ -73,11 +84,11 @@ describe("command-start assignment gating", () => {
       ok: true,
       sessionCommandStartAcknowledged: { sessionId: persisted.id, attemptId: "attempt" },
     });
-    expect(authorizePrimaryCommandStart).toHaveBeenCalledTimes(2);
+    expect(authorizePrimaryCommandStart).toHaveBeenCalledTimes(3);
 
     await expect(
       handleHostMessageDurable(state, { ...message, attemptId: "stale" }, "connection"),
     ).resolves.toEqual({ ok: true });
-    expect(authorizePrimaryCommandStart).toHaveBeenCalledTimes(2);
+    expect(authorizePrimaryCommandStart).toHaveBeenCalledTimes(3);
   });
 });

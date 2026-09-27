@@ -1,4 +1,9 @@
-import { thrownMessage, type SessionAssign, type SessionStatus } from "@auto-harness/shared";
+import {
+  mergeSessionFeedback,
+  thrownMessage,
+  type SessionAssign,
+  type SessionStatus,
+} from "@auto-harness/shared";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,6 +20,11 @@ import {
 } from "./github-app.ts";
 import { SecretRedactingProcessRunner } from "./secret-redacting-runner.ts";
 import { collectSessionResult } from "./session-result.ts";
+import {
+  prepareSessionFeedback,
+  takeSessionFeedback,
+  snapshotSessionFeedback,
+} from "./session-feedback-artifact.ts";
 import type { SessionRunResult } from "./session-outcome.ts";
 import { runTerminalHook } from "./terminal-hook.ts";
 
@@ -39,34 +49,15 @@ type DeferredTerminalHookOptions = {
   nowMs?: () => number;
 };
 
-const RECOVERY_CREDENTIAL_TIMEOUT_MS = 60_000;
-
-function recoveryDeadline(deadlineAtMs: number | undefined): {
-  signal: AbortSignal;
-  deadlineAtMs: number;
-  dispose: () => void;
-} {
-  const controller = new AbortController();
-  const deadline = Math.min(
-    deadlineAtMs ?? Number.POSITIVE_INFINITY,
-    Date.now() + RECOVERY_CREDENTIAL_TIMEOUT_MS,
-  );
-  const timeoutMs = deadline - Date.now();
-  const timer = timeoutMs <= 0 ? undefined : setTimeout(() => controller.abort(), timeoutMs);
-  if (timeoutMs <= 0) controller.abort();
-  return {
-    signal: controller.signal,
-    deadlineAtMs: deadline,
-    dispose: () => {
-      if (timer !== undefined) clearTimeout(timer);
-    },
-  };
-}
+import { recoveryDeadline } from "./recovery-deadline.ts";
 
 /** Revalidate the retained claim, run its hook, then collect the observable post-hook result. */
 export function createDeferredTerminalHookSettlement(options: DeferredTerminalHookOptions) {
   return async (runHook: boolean, deadlineAtMs?: number) => {
-    if (!runHook) return undefined;
+    if (!runHook) {
+      await takeSessionFeedback(options.assign);
+      return undefined;
+    }
     if (
       deadlineAtMs !== undefined &&
       (!Number.isFinite(deadlineAtMs) || deadlineAtMs <= Date.now())
@@ -84,6 +75,7 @@ export function createDeferredTerminalHookSettlement(options: DeferredTerminalHo
     }
     if (!current) return undefined;
     if (deadlineAtMs !== undefined && deadlineAtMs <= Date.now()) return undefined;
+    const primaryFeedback = await snapshotSessionFeedback(options.assign);
     const repositoryId = options.assign.repositoryId;
     const mappedGitHubApp =
       typeof repositoryId === "string" &&
@@ -131,6 +123,7 @@ export function createDeferredTerminalHookSettlement(options: DeferredTerminalHo
           effectiveDeadlineAtMs === undefined ? undefined : effectiveDeadlineAtMs - Date.now();
         if (remainingMs !== undefined && remainingMs <= 0) return undefined;
         await runTerminalHook(terminalRunner, {
+          feedbackPath: await prepareSessionFeedback(options.assign),
           scriptPath,
           cwd: current.cwd,
           sessionId: options.assign.sessionId,
@@ -144,7 +137,7 @@ export function createDeferredTerminalHookSettlement(options: DeferredTerminalHo
           ...(options.assign.metadata !== undefined ? { metadata: options.assign.metadata } : {}),
         });
       }
-      return await collectSessionResult({
+      const result = await collectSessionResult({
         runner: terminalRunner,
         cwd: current.cwd,
         status: options.status,
@@ -153,6 +146,12 @@ export function createDeferredTerminalHookSettlement(options: DeferredTerminalHo
         ...(options.environmentIsChild ? { environmentIsChild: true } : {}),
         ...(effectiveDeadlineAtMs !== undefined ? { deadlineAtMs: effectiveDeadlineAtMs } : {}),
       });
+      const feedback = mergeSessionFeedback(
+        primaryFeedback,
+        await takeSessionFeedback(options.assign),
+      );
+      if (feedback) result.feedback = feedback;
+      return result;
     } catch (error) {
       if (mappedGitHubApp) {
         options.streamer.write("system", "GitHub App credential provisioning failed");
@@ -160,6 +159,7 @@ export function createDeferredTerminalHookSettlement(options: DeferredTerminalHo
       }
       throw error;
     } finally {
+      await takeSessionFeedback(options.assign);
       credentialDeadline?.dispose();
       if (isolatedGitHubConfigDir) {
         try {

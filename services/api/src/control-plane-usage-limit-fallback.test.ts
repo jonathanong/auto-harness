@@ -3,8 +3,10 @@ import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
+import { handleHostMessage } from "./control-plane-messages.ts";
+import { settleStorage } from "./control-plane-state.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { ConnectionRecord } from "./db/plane-storage-types.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 
@@ -161,6 +163,17 @@ function usageLimitStatus() {
 }
 
 describe("durable usage-limit fallback on an empty worker", () => {
+  it("preserves a queued fallback when its local reschedule callback fails", async () => {
+    const state = emptyWorkerState();
+    expect(handleHostMessage(state, usageLimitStatus())).toEqual({ ok: true });
+    state.now = () => {
+      throw new Error("scheduler clock unavailable");
+    };
+    await settleStorage(state);
+    expect(state.sessions.get("sess")?.status).toBe("queued");
+    expect(state.worktrees.get("wt")?.status).toBe("idle");
+  });
+
   it("assigns the next provider when the status worker has no in-memory sockets", async () => {
     const state = emptyWorkerState();
     setDurableReadStorage(state, {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { deleteProvider, deleteProviderDurable } from "./control-plane-provider-delete.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 
 const provider = {
   id: "provider",

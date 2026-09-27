@@ -10,6 +10,7 @@ import { SessionDetailsCard } from "./session-details-card.tsx";
 import { SessionExecutionSummary } from "./session-execution-summary.tsx";
 import { SessionIdCopyButton } from "./session-id-copy-button.tsx";
 import { SessionPromptPanel } from "./session-prompt-panel.tsx";
+import { SessionReportingNotice } from "./session-reporting-notice.tsx";
 import { SessionStatusBar } from "./session-status-bar.tsx";
 import { TabContent, TabList, TabPanels, TabTrigger } from "./tab-panels.tsx";
 
@@ -66,6 +67,7 @@ export function SessionDetail({
       />
 
       <SessionStatusBar session={s} />
+      <SessionReportingNotice session={s} />
       {notices}
       <SessionExecutionSummary
         status={s.status}

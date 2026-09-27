@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- attach, HTTP send, and bounded reconcile cases share one store. */
 import { describe, expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 import type { SlackDeliveryRecord, SlackOutboxStore } from "./slack-delivery-types.ts";
 import {

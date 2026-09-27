@@ -5,7 +5,7 @@ import {
   hostHasAssignmentCapacity,
   providerAccountLeaseWriteOpts,
 } from "./control-plane-provider-account-leases.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 
 it("counts only busy workspace slots on the requested host and preserves absent lease write options", () => {
   const state = createControlPlaneState();

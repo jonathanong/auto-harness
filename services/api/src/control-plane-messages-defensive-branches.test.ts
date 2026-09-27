@@ -30,7 +30,7 @@ vi.mock("./control-plane-lifecycle.ts", async (importOriginal) => {
 
 vi.mock("./request-assignment.ts", () => ({ requestAssignment: async () => undefined }));
 
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import type { SessionRecord } from "./db/types.ts";

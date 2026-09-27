@@ -1,3 +1,7 @@
+import {
+  ASSIGNMENT_REPORTING_BUDGET_MS,
+  assignmentReportingAllowed,
+} from "./blackboard-admission.ts";
 /* eslint-disable max-lines */
 import { hasHostCapability, type HostWireMessage } from "@auto-harness/shared";
 
@@ -96,6 +100,9 @@ function wire(
     prompt: session.prompt,
     ...(sessionApiKey ? { sessionApiKey } : {}),
     resolvedArgv: session.resolvedArgv!,
+    ...(session.feedbackPromptBindings
+      ? { feedbackPromptBindings: session.feedbackPromptBindings }
+      : {}),
     timeout: session.timeout,
     worktreeId: null,
     infrastructureRetryCount: session.infrastructureRetryCount ?? 0,
@@ -124,11 +131,13 @@ export async function assignScheduledQueuedDurable(
   const assigned: ScheduledAssignment[] = [];
   const now = state.now();
   const catalog = buildProviderCatalog(state);
+  const reportingDeadline = Date.now() + ASSIGNMENT_REPORTING_BUDGET_MS;
   for (const session of orderedQueuedSessions(
     state.sessions.values(),
     state.shardCount,
     "scheduled",
   )) {
+    if (Date.now() >= reportingDeadline) break;
     if (sessionId !== undefined && session.id !== sessionId) continue;
     const hosts = await eligibleHosts(state, session.repositoryId);
     const plan = planScheduledPlacement(state, catalog, session, hosts);
@@ -162,6 +171,7 @@ export async function assignScheduledQueuedDurable(
       )
         continue;
       const attemptId = state.attemptIdFactory();
+      if (!(await assignmentReportingAllowed(state, session, attemptId))) break;
       const apiKey = hasHostCapability(connection.capabilities, "session-spawn")
         ? createSessionApiKey()
         : undefined;
@@ -192,6 +202,9 @@ export async function assignScheduledQueuedDurable(
               connectionId,
               now,
               resolvedArgv: target.resolvedArgv,
+              ...(target.feedbackPromptBindings
+                ? { feedbackPromptBindings: target.feedbackPromptBindings }
+                : {}),
               resumeSpec: target.resumeSpec,
               resolvedRoute: {
                 targetIndex: target.targetIndex,
@@ -246,6 +259,9 @@ export async function assignScheduledQueuedDurable(
       startedAt: now,
       assignmentSentAt: now,
       resolvedArgv: target.resolvedArgv,
+      ...(target.feedbackPromptBindings
+        ? { feedbackPromptBindings: target.feedbackPromptBindings }
+        : {}),
       ...(session.resumeSpec === undefined && target.resumeSpec !== undefined
         ? { resumeSpec: target.resumeSpec }
         : {}),

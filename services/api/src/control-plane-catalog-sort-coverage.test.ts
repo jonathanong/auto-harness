@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 it("uses ids as deterministic catalog sort tie breakers", () => {
   const plane = new ControlPlane();

@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { offlineHostAndRequeueDurableImpl } from "./control-plane-worktrees-disconnect.ts";
 import type { SessionRecord, WorkspaceSlotRecord } from "./db/types.ts";
 

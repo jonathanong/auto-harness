@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { DEFAULT_SLACK_NOTIFICATIONS } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 import type { SlackIntegrationRecord } from "./slack-integration-types.ts";
 import { enableSlackOutbound } from "./slack-runtime.ts";

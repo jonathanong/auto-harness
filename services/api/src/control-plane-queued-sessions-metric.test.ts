@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read-catalog.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 const session = {

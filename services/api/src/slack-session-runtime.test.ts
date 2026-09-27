@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionRecord } from "./db/types.ts";
 import type { SlackDeliveryRecord, SlackOutboxStore } from "./slack-delivery-types.ts";
 import { DEFAULT_SLACK_NOTIFICATIONS } from "./slack-integration-types.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { gzipLogRecords, putSessionLogPart } from "./session-log-objects.ts";
 import {
   enqueueSlackSessionLifecycle,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { pendingTerminalHookHandoffs } from "./control-plane-terminal-hook-handoff.ts";
 import { indexPendingTerminalHookHandoff } from "./control-plane-terminal-hook-handoff-index.ts";
 import { finishHostLostSession } from "./control-plane-infrastructure-retry.ts";

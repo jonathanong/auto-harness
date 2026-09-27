@@ -8,6 +8,14 @@ export type { UsageRecord } from "../usage.ts";
 
 export type SessionRecord = {
   id: string;
+  /** Every Harness run is autonomous; absent historical mode is unconfigured, never interactive. */
+  reportingMode?: "autonomous";
+  reportingPolicyVersion?: number;
+  reportingAdmissionAttemptId?: string;
+  reportingAdmissionBlocked?: boolean;
+  reportingRepository?: string;
+  reportingAgentVersion?: string;
+  reporting?: import("@auto-harness/shared").SessionReporting;
   /** Empty only for workspace sessions; public and host-wire shapes expose that as null. */
   repositoryId: string;
   /** Workspace-pool execution is mutually exclusive with repository execution. */
@@ -46,6 +54,7 @@ export type SessionRecord = {
   suppressedTargetIndexes?: number[];
   /** Final argv, resolved once assigned to a worktree (cascade walk + prompt append). */
   resolvedArgv?: string[];
+  feedbackPromptBindings?: Array<{ index: number; start: number; end: number }>;
   /** Frozen native-resume configuration from the first assignment. */
   resumeSpec?: SessionResumeSpec | undefined;
   timeout: number;

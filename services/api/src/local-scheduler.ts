@@ -23,6 +23,7 @@ export type LocalSchedulerOptions = {
   intervalMs?: number;
   /** Observes a failed operation; the next operation and later ticks still run. */
   onError?: (error: unknown) => void;
+  reportingTick?: () => Promise<void>;
 };
 
 /**
@@ -35,6 +36,7 @@ export type LocalSchedulerOptions = {
 export class LocalScheduler {
   private readonly plane: SchedulerPlane;
   private readonly intervalMs: number;
+  private readonly reportingTick: (() => Promise<void>) | undefined;
   private readonly onError: ((error: unknown) => void) | undefined;
   private timer: ReturnType<typeof setInterval> | undefined;
   private inFlight: Promise<void> | undefined;
@@ -42,6 +44,7 @@ export class LocalScheduler {
 
   constructor(plane: SchedulerPlane, options: LocalSchedulerOptions = {}) {
     this.plane = plane;
+    this.reportingTick = options.reportingTick;
     this.intervalMs = options.intervalMs ?? DEFAULT_LOCAL_SCHEDULER_INTERVAL_MS;
     this.onError = options.onError ?? reportSchedulerError;
     if (!Number.isFinite(this.intervalMs) || this.intervalMs <= 0) {
@@ -88,6 +91,7 @@ export class LocalScheduler {
       () => this.plane.reconcileRepositoryDrainsDurable(),
       () => this.plane.reconcileSessionDrainsDurable(),
       () => this.plane.requestAssignment({ fullScan: true }),
+      ...(this.reportingTick ? [this.reportingTick] : []),
     ];
     for (const step of steps) {
       if (!this.started) return;

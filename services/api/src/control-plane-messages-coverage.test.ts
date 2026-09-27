@@ -1,11 +1,12 @@
+import { settleStorage } from "./control-plane-state.ts";
 /* eslint-disable max-lines -- command-start and infrastructure-retry paths share one control-plane fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { OPERATIONAL_METRIC_ENVIRONMENT_VAR } from "./operational-metrics.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 
@@ -80,7 +81,7 @@ function durable(session: SessionRecord, methods: Record<string, unknown> = {}) 
 }
 
 describe("control-plane host message coverage paths", () => {
-  it("rejects a missing local command start and authorizes a pending one before notifying its host", () => {
+  it("rejects a missing local command start and authorizes a pending one before notifying its host", async () => {
     const delivered: unknown[] = [];
     const state = createControlPlaneState({
       onHostMessage: (_hostId, message) => delivered.push(message),
@@ -96,6 +97,7 @@ describe("control-plane host message coverage paths", () => {
     state.sessions.set("session", running({ primaryCommandStartState: "pending" }));
 
     expect(handleHostMessage(state, message)).toEqual({ ok: true });
+    await settleStorage(state);
     expect(state.sessions.get("session")?.primaryCommandStartState).toBe("authorized");
     expect(delivered).toEqual([
       {
@@ -138,7 +140,8 @@ describe("control-plane host message coverage paths", () => {
       ok: true,
       sessionCommandStartAcknowledged: { sessionId: "session", attemptId: "attempt" },
     });
-    expect(authorizePrimaryCommandStart).toHaveBeenCalledTimes(1);
+    // Exact replay still crosses the persisted session and HostLock authorization fence.
+    expect(authorizePrimaryCommandStart).toHaveBeenCalledTimes(2);
   });
 
   it("requeues local infrastructure failures after releasing either scheduled or worktree capacity", () => {
@@ -189,6 +192,21 @@ describe("control-plane host message coverage paths", () => {
     });
   });
 
+  it("keeps a local infrastructure retry queued when the follow-up scheduler fails", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    state.sessions.set("session", running());
+    state.worktrees.set("worktree", worktree());
+    expect(
+      handleHostMessage(state, status("session", "failed", { errorCode: "checkout_fetch_failed" })),
+    ).toEqual({ ok: true });
+    state.now = () => {
+      throw new Error("scheduler clock unavailable");
+    };
+    await settleStorage(state);
+    expect(state.sessions.get("session")?.status).toBe("queued");
+    expect(state.worktrees.get("worktree")?.status).toBe("idle");
+  });
+
   it("immediately reschedules local infrastructure retries for prompts and schedules", async () => {
     const promptPlane = new ControlPlane({
       now: () => NOW,
@@ -216,7 +234,7 @@ describe("control-plane host message coverage paths", () => {
     ).toMatchObject({ ok: true });
     const promptCreated = promptPlane.createSession(baseSessionBody());
     if (!promptCreated.ok) throw new Error(promptCreated.error);
-    const [promptAssignment] = promptPlane.assignQueued();
+    const [promptAssignment] = await promptPlane.assignQueued();
     if (!promptAssignment) throw new Error("prompt was not assigned");
 
     expect(
@@ -231,6 +249,7 @@ describe("control-plane host message coverage paths", () => {
         deferTerminalHookResult: true,
       }),
     ).toEqual({ ok: true });
+    await settleStorage(promptPlane.state);
     const retriedPrompt = promptPlane.getSession(promptCreated.session.id);
     expect(retriedPrompt).toMatchObject({
       status: "running",

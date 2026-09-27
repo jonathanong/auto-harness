@@ -4,7 +4,7 @@ import { assignQueued } from "./control-plane-assign.ts";
 import { handleHostMessage } from "./control-plane-messages.ts";
 import { createRepository } from "./control-plane-repos.ts";
 import { assignScheduledQueuedDurable } from "./control-plane-scheduled-assign.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { expireTerminalHookHandoffIfNeeded } from "./control-plane-terminal-hook-handoff.ts";
 import { tryClaimWorktree } from "./control-plane-worktrees.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
@@ -125,11 +125,11 @@ describe("in-memory exhausted checkout reservation", () => {
     });
     expect(tryClaimWorktree(state, "worktree", "other", NOW)).toBe(false);
     state.sessions.set("other", queued("other"));
-    expect(assignQueued(state)).toEqual([]);
+    expect(await assignQueued(state)).toEqual([]);
 
     expect(handleHostMessage(state, completeHandoff(), "connection")).toEqual({ ok: true });
     await vi.waitFor(() => expect(state.worktrees.get("worktree")?.status).toBe("idle"));
-    expect(assignQueued(state)).toHaveLength(1);
+    expect(await assignQueued(state)).toHaveLength(1);
     expect(state.sessions.get("other")).toMatchObject({
       status: "running",
       worktreeId: "worktree",

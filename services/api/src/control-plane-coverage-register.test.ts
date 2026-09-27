@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 describe("ControlPlane coverage: register replace resume and missing status", () => {
-  it("register replace resume and missing status", () => {
+  it("register replace resume and missing status", async () => {
     let n = 0;
     const plane = new ControlPlane({
       idFactory: () => `s${++n}`,
@@ -103,7 +103,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     const wt2 = plane.getWorktree("wt-2")!;
     expect(wt2.status).toBe("idle");
     // Intercept: assign once normally
-    const assigned = plane.assignQueued();
+    const assigned = await plane.assignQueued();
     expect(assigned.length).toBe(1);
 
     // Session already bound with ack — skipped on next assign
@@ -160,7 +160,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
       timeout: 1,
       ref: "main",
     });
-    planeR.assignQueued();
+    await planeR.assignQueued();
     const sid = planeR.listSessions()[0]!.id;
     const source = planeR.getSession(sid)!;
     planeR.handleHostMessage({
@@ -190,7 +190,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
         status: "idle",
         online: true,
       });
-      const a = planeR.assignQueued();
+      const a = await planeR.assignQueued();
       expect(a.some((x) => x.session.id === resumed.session.id)).toBe(true);
     }
 

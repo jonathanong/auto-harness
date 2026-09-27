@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- admission state cases share one control-plane fixture. */
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import {
   repositoryAdmissionFailure,

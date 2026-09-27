@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- lifecycle branch coverage shares focused fixtures. */
 import { describe, expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { decryptCustomWebhookSecret } from "./control-plane-custom-webhooks.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 

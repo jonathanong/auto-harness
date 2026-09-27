@@ -1,24 +1,12 @@
 /* eslint-disable max-lines -- git readiness, workspace-only, and GitHub App assignment share one runtime fixture. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
-import * as githubApp from "./github-app.ts";
-import { ensureDaemonReady, runAssignedSession } from "./runtime.ts";
-
-/**
- * git is now resolved to an absolute path before spawning; match by basename,
- * stripping a Windows executable extension (resolveTrustedExecutable's
- * default `platform` is `process.platform`, so this file's real spawns
- * resolve to "git.exe" when actually run on Windows, not just in CI's
- * platform-injected unit tests).
- */
-function isGit(argv0: string | undefined): boolean {
-  return argv0 !== undefined && basename(argv0).replace(/\.(exe|cmd|bat|com)$/i, "") === "git";
-}
+import { ensureDaemonReady } from "./runtime.ts";
 
 const runtimeRoot = mkdtempSync(join(tmpdir(), "ah-runtime-unit-"));
 const runtimeRepo = join(runtimeRoot, "repo");
@@ -120,114 +108,5 @@ describe("runtime helpers", () => {
       gitReadinessReason: "git_unavailable",
     });
     expect(calls).toEqual(["git --version"]);
-  });
-
-  it("runAssignedSession completes", async () => {
-    const load = vi.spyOn(githubApp, "loadGitHubAppConfig").mockReturnValue({
-      appId: "1",
-      privateKey: {} as never,
-      botLogin: "bot",
-      botUserId: 1,
-      repositories: new Map(),
-    });
-    const runner: ProcessRunner = {
-      async run(opts) {
-        if (isGit(opts.argv[0])) {
-          if (opts.argv.includes("--version")) {
-            opts.onChunk({ stream: "stdout", data: "git version 2.36.0\n" });
-          }
-          if (opts.argv[1] === "symbolic-ref") {
-            return { exitCode: 1, timedOut: false, signal: null };
-          }
-          return { exitCode: 0, timedOut: false, signal: null };
-        }
-        opts.onChunk({ stream: "stdout", data: "hi\n" });
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-    const lines: string[] = [];
-    const result = await runAssignedSession(
-      config,
-      {
-        sessionId: "s",
-        repositoryId: "repo-1",
-        prompt: "hi",
-        resolvedArgv: ["echo", "hi"],
-        timeout: 10,
-        worktreeId: "wt-1",
-      },
-      (l) => lines.push(l),
-      runner,
-      runner,
-    );
-    expect(result.status).toBe("completed");
-    expect(lines.length).toBeGreaterThan(0);
-    expect(load).toHaveBeenCalled();
-    load.mockRestore();
-  });
-
-  it("refuses an assignment when Git is unavailable", async () => {
-    const unavailable: ProcessRunner = {
-      async run() {
-        return { exitCode: 1, timedOut: false, signal: null };
-      },
-    };
-    await expect(
-      runAssignedSession(
-        config,
-        {
-          sessionId: "unready",
-          repositoryId: "repo-1",
-          prompt: "hi",
-          resolvedArgv: ["echo", "hi"],
-          timeout: 10,
-          worktreeId: "wt-1",
-        },
-        () => undefined,
-        unavailable,
-        unavailable,
-      ),
-    ).rejects.toThrow("Git 2.36 or newer");
-  });
-
-  it("uses the command runner only for the assigned CLI", async () => {
-    const systemCalls: string[][] = [];
-    const commandCalls: string[][] = [];
-    const systemRunner: ProcessRunner = {
-      async run(options) {
-        systemCalls.push(options.argv);
-        if (options.argv.includes("--version")) {
-          options.onChunk({ stream: "stdout", data: "git version 2.36.0\n" });
-        }
-        if (options.argv[1] === "symbolic-ref") {
-          return { exitCode: 1, timedOut: false, signal: null };
-        }
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-    const commandRunner: ProcessRunner = {
-      async run(options) {
-        commandCalls.push(options.argv);
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-
-    await runAssignedSession(
-      config,
-      {
-        sessionId: "pty",
-        repositoryId: "repo-1",
-        prompt: "literal",
-        resolvedArgv: ["tool", "literal"],
-        timeout: 10,
-        worktreeId: "wt-1",
-      },
-      () => undefined,
-      systemRunner,
-      commandRunner,
-    );
-
-    expect(systemCalls.every((argv) => isGit(argv[0]))).toBe(true);
-    expect(commandCalls).toEqual([["tool", "literal"]]);
   });
 });

@@ -90,7 +90,8 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     const method = req.method ?? "GET";
     const ctx: import("./local-http.ts").RouteCtx = { plane, req, res, url, method };
     const childRoute = /^\/api\/v1\/sessions\/([^/]+)\/children$/.exec(url.pathname);
-    if (method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true });
+    if (method === "GET" && url.pathname === "/health")
+      return send(res, 200, { ok: true, blackboardFeedbackProtocol: 1 });
     if (
       isPublicSlackIngressRoute(method, url.pathname) &&
       (await enforceRateLimit({

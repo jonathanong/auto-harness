@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { assignQueuedDurable } from "./control-plane-assign.ts";
 import { assignScheduledQueuedDurable } from "./control-plane-scheduled-assign.ts";
 import { assignWorkspaceQueuedDurable } from "./control-plane-workspace-assign.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { ConnectionRecord } from "./db/plane-storage-types.ts";
 import type { SessionRecord } from "./db/types.ts";
 import { workspacePlane, createWorkspaceSession } from "./test-helpers/workspace-session.ts";

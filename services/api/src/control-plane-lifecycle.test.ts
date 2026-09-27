@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 
 import type { HostWireMessage } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("ControlPlane lifecycle", () => {
-  it("reclaims stale agents and offlines all worktrees", () => {
+  it("reclaims stale agents and offlines all worktrees", async () => {
     const plane = new ControlPlane({
       heartbeatStaleMs: 1_000,
       now: () => "2026-01-01T00:00:00.000Z",
@@ -26,7 +26,7 @@ describe("ControlPlane lifecycle", () => {
     });
     plane.heartbeat("a1", "2026-01-01T00:00:00.000Z");
     plane.createSession(baseSessionBody({ timeout: 3600 }));
-    const assigned = plane.assignQueued()[0]!.session;
+    const assigned = (await plane.assignQueued())[0]!.session;
     plane.handleHostMessage({
       type: "session:ack",
       sessionId: "sess-1",
@@ -43,7 +43,7 @@ describe("ControlPlane lifecycle", () => {
     expect(plane.getWorktree("wt-1")?.online).toBe(false);
     // idle worktree of dead agent also offline — no zombie assign
     expect(plane.getWorktree("wt-idle")?.online).toBe(false);
-    expect(plane.assignQueued()).toHaveLength(0);
+    expect(await plane.assignQueued()).toHaveLength(0);
     expect(plane.getHeartbeatStaleMs()).toBeLessThan(3600 * 1000);
   });
 
@@ -115,7 +115,7 @@ describe("ControlPlane lifecycle", () => {
       worktrees: [{ id: "wt", name: "wt", repositoryId: "repo-1", path: "/wt", labels: [] }],
     });
     expect(plane.createSession(baseSessionBody()).ok).toBe(true);
-    expect(plane.assignQueued()).toHaveLength(1);
+    expect(await plane.assignQueued()).toHaveLength(1);
     const first = plane.getSession("sess-1")!;
     expect(plane.createSession(baseSessionBody()).ok).toBe(true);
     await plane.handleHostMessageDurable({
@@ -128,7 +128,7 @@ describe("ControlPlane lifecycle", () => {
     expect(plane.getSession("sess-2")?.status).toBe("running");
   });
 
-  it("disconnect frees busy worktrees and prevents zombie assigns", () => {
+  it("disconnect frees busy worktrees and prevents zombie assigns", async () => {
     const plane = new ControlPlane({
       now: () => "2026-01-01T00:00:00.000Z",
       idFactory: () => "sess-1",
@@ -146,7 +146,7 @@ describe("ControlPlane lifecycle", () => {
     });
     expect(reg.ok).toBe(true);
     plane.createSession(baseSessionBody());
-    const assigned = plane.assignQueued()[0]!.session;
+    const assigned = (await plane.assignQueued())[0]!.session;
     plane.handleHostMessage({
       type: "session:ack",
       sessionId: "sess-1",
@@ -167,7 +167,7 @@ describe("ControlPlane lifecycle", () => {
     expect(plane.getWorktree("wt-1")?.online).toBe(false);
     expect(plane.getWorktree("wt-2")?.online).toBe(false);
     // cannot assign to disconnected zombie
-    expect(plane.assignQueued()).toHaveLength(0);
+    expect(await plane.assignQueued()).toHaveLength(0);
   });
 
   it("requeues acknowledged work only after its reconnect deadline", async () => {
@@ -188,7 +188,7 @@ describe("ControlPlane lifecycle", () => {
       throw new Error(`registerHost failed: ${registration.error}`);
     }
     plane.createSession(baseSessionBody());
-    plane.assignQueued();
+    await plane.assignQueued();
     const assigned = plane.getSession("sess-1")!;
     plane.handleHostMessage({
       type: "session:ack",
@@ -229,7 +229,7 @@ describe("ControlPlane lifecycle", () => {
       online: true,
     });
     plane.createSession(baseSessionBody());
-    const assigned = plane.assignQueued()[0]!.session;
+    const assigned = (await plane.assignQueued())[0]!.session;
     plane.handleHostMessage({
       type: "session:ack",
       sessionId: "sess-1",
@@ -270,7 +270,7 @@ describe("ControlPlane lifecycle", () => {
     expect(plane.listArchives()).toHaveLength(1);
   });
 
-  it("drain agent is sticky: released busy worktree stays offline", () => {
+  it("drain agent is sticky: released busy worktree stays offline", async () => {
     const msgs: HostWireMessage[] = [];
     const plane = new ControlPlane({
       idFactory: (() => {
@@ -305,7 +305,7 @@ describe("ControlPlane lifecycle", () => {
       online: true,
     });
     plane.createSession(baseSessionBody());
-    const assigned = plane.assignQueued()[0]!.session;
+    const assigned = (await plane.assignQueued())[0]!.session;
     plane.handleHostMessage({
       type: "session:ack",
       sessionId: "sess-1",
@@ -330,6 +330,6 @@ describe("ControlPlane lifecycle", () => {
     expect(plane.getWorktree("wt-1")?.online).toBe(false);
 
     plane.createSession(baseSessionBody({ prompt: "after drain" }));
-    expect(plane.assignQueued()).toHaveLength(0);
+    expect(await plane.assignQueued()).toHaveLength(0);
   });
 });

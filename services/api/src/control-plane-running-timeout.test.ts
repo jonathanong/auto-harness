@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import {
   RUNNING_TIMEOUT_NOW as NOW,
   runningDeadlineMs,
@@ -8,9 +8,9 @@ import {
 } from "../test-helpers/control-plane-running-timeout-test-helpers.ts";
 
 describe("acknowledged running sessions converge or time out", () => {
-  it("applies a successful host completion to the public session and releases the worktree", () => {
+  it("applies a successful host completion to the public session and releases the worktree", async () => {
     const plane = new ControlPlane({ now: () => NOW });
-    const { sessionId, worktreeId } = startAcknowledgedRunning(plane);
+    const { sessionId, worktreeId } = await startAcknowledgedRunning(plane);
     const session = plane.getSession(sessionId)!;
     expect(
       plane.handleHostMessage({
@@ -30,9 +30,9 @@ describe("acknowledged running sessions converge or time out", () => {
     expect(plane.getWorktree(worktreeId)?.currentSessionId).toBeNull();
   });
 
-  it("ignores a rejected terminal report then applies a later matching completion", () => {
+  it("ignores a rejected terminal report then applies a later matching completion", async () => {
     const plane = new ControlPlane({ now: () => NOW });
-    const { sessionId, worktreeId } = startAcknowledgedRunning(plane);
+    const { sessionId, worktreeId } = await startAcknowledgedRunning(plane);
     const session = plane.getSession(sessionId)!;
     expect(
       plane.handleHostMessage({
@@ -60,9 +60,9 @@ describe("acknowledged running sessions converge or time out", () => {
     expect(plane.getWorktree(worktreeId)?.status).toBe("idle");
   });
 
-  it("times out an acknowledged running assignment at ackReceivedAt + timeout", () => {
+  it("times out an acknowledged running assignment at ackReceivedAt + timeout", async () => {
     const plane = new ControlPlane({ now: () => NOW });
-    const { sessionId, worktreeId } = startAcknowledgedRunning(plane);
+    const { sessionId, worktreeId } = await startAcknowledgedRunning(plane);
     const due = runningDeadlineMs(plane, sessionId);
     expect(plane.enforceRunningTimeouts(due - 1)).toEqual([]);
     expect(plane.getSession(sessionId)?.status).toBe("running");
@@ -75,9 +75,9 @@ describe("acknowledged running sessions converge or time out", () => {
     expect(plane.getWorktree(worktreeId)?.currentSessionId).toBeNull();
   });
 
-  it("retains a provider lease until the timed-out daemon reports terminal", () => {
+  it("retains a provider lease until the timed-out daemon reports terminal", async () => {
     const plane = new ControlPlane({ now: () => NOW });
-    const { sessionId, worktreeId } = startAcknowledgedRunning(plane);
+    const { sessionId, worktreeId } = await startAcknowledgedRunning(plane);
     const session = plane.state.sessions.get(sessionId)!;
     const lease = {
       concurrencyId: "provider-lease:acct:0",
@@ -108,9 +108,9 @@ describe("acknowledged running sessions converge or time out", () => {
     expect(plane.state.providerAccountLeases.has(lease.concurrencyId)).toBe(false);
   });
 
-  it("releases a preserved lease when the timed-out host disconnects", () => {
+  it("releases a preserved lease when the timed-out host disconnects", async () => {
     const plane = new ControlPlane({ now: () => NOW });
-    const { sessionId } = startAcknowledgedRunning(plane);
+    const { sessionId } = await startAcknowledgedRunning(plane);
     const session = plane.state.sessions.get(sessionId)!;
     const lease = {
       concurrencyId: "provider-lease:acct:0",

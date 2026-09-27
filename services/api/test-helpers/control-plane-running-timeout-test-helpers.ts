@@ -1,15 +1,15 @@
 import { expect } from "vitest";
 
-import { ControlPlane } from "../src/control-plane.ts";
+import { TestControlPlane as ControlPlane } from "./reporting-control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 export const RUNNING_TIMEOUT_NOW = "2026-08-21T16:19:39.015Z";
 export const RUNNING_TIMEOUT_SECONDS = 900;
 
-export function startAcknowledgedRunning(plane: ControlPlane): {
+export async function startAcknowledgedRunning(plane: ControlPlane): Promise<{
   sessionId: string;
   worktreeId: string;
-} {
+}> {
   seedBaseCommand(plane);
   plane.registerHost({
     hostId: "host",
@@ -18,7 +18,7 @@ export function startAcknowledgedRunning(plane: ControlPlane): {
   const created = plane.createSession(baseSessionBody({ timeout: RUNNING_TIMEOUT_SECONDS }));
   expect(created.ok).toBe(true);
   if (!created.ok) throw new Error(created.error);
-  plane.assignQueued();
+  await plane.assignQueued();
   const session = plane.getSession(created.session.id)!;
   plane.handleHostMessage({
     type: "session:ack",

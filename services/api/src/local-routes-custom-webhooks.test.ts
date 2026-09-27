@@ -3,7 +3,7 @@ import { createHmac } from "node:crypto";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { AuthService } from "./auth.ts";
 import { createLocalApp } from "./local-server.ts";
 import { handleCustomWebhookConfigRoutes } from "./local-routes-custom-webhook-config.ts";

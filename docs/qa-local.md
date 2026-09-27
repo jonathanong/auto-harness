@@ -82,11 +82,9 @@ From repo root. These exercise **shipped** scripts — not re-implementations.
 pnpm check                 # lint, fmt, tests+coverage, knip, depcruise, links, no-mistakes
 pnpm local:dynamodb
 pnpm local:dynamodb:ready
-pnpm local:e2e             # SessionRunner + ref + unknown target + hooks
-pnpm local:cli-e2e         # documented pnpm local:daemon run-session (ref: main)
 pnpm local:api-smoke       # POST /sessions → 201
-pnpm local:ws-e2e          # real WebSocket create→assign→run
-pnpm local:cloud-e2e       # DaemonLoop loopback
+pnpm exec vitest run --project dynamo integration/blackboard-websocket-dynamo.test.ts          # real WebSocket create→assign→run
+pnpm exec vitest run scripts/resume-ref-e2e.test.ts       # DaemonLoop loopback
 pnpm local:manage-verify   # repos/schedules/cancel/drain + thin web routes
 ```
 

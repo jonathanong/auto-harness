@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { archiveSessionLogs, getArchiveDownloadDurable } from "./control-plane-archive.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import type { ArchiveMetadata } from "./control-plane-types.ts";
 
 function storedComplete(sessionId: string, versionId?: string): ArchiveMetadata {

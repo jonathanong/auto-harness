@@ -4,10 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_SLACK_NOTIFICATIONS } from "@auto-harness/shared";
 
 import { disconnectHostDurable } from "./control-plane-agents.ts";
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { reclaimStaleHostsDurable } from "./control-plane-lifecycle.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 import { seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("durable host disconnect", () => {

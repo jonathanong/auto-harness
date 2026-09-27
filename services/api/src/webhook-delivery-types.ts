@@ -36,6 +36,7 @@ export type WebhookDestinationSelector = (
 ) => Promise<readonly WebhookDestinationRef[]>;
 
 export type WebhookTransportRequest = {
+  feedback?: import("./webhook-outbox.ts").BlackboardDeliveryPayload;
   /** Stable across ambiguous retries; transports must use it for deduplication. */
   idempotencyKey: string;
   destination: WebhookDestinationRef;
@@ -197,6 +198,7 @@ export type WebhookOutboxStore = {
     delivery: DurableWebhookDelivery;
   }>;
   listDueWebhookDeliveries(input: {
+    lane?: "blackboard" | "webhook";
     state: "pending" | "leased";
     now: string;
     limit: number;
@@ -217,6 +219,7 @@ export type WebhookOutboxStore = {
 };
 
 export type WebhookWorkerOptions = {
+  lane?: "blackboard" | "webhook";
   intervalMs?: number;
   maxDeliveriesPerTick?: number;
   maxSessionsPerTick?: number;

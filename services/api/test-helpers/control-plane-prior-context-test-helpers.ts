@@ -1,5 +1,5 @@
 import type { SessionRecord } from "../src/db/types.ts";
-import { ControlPlane } from "../src/control-plane.ts";
+import { TestControlPlane as ControlPlane } from "./reporting-control-plane.ts";
 
 /** A minimal terminal-or-running session record for prior-context route tests,
  * with just enough fields to satisfy `SessionRecord` and the route's access checks. */
@@ -51,7 +51,7 @@ export function registerFixtureHost(
   });
 }
 
-function assignedFixtureSession(
+async function assignedFixtureSession(
   plane: ControlPlane,
   commandId: string,
   prompt: string,
@@ -60,7 +60,7 @@ function assignedFixtureSession(
 ) {
   registerFixtureHost(plane, hostId, hostCapabilities);
   plane.createSession({ repositoryId: "repo", prompt, target: { commandId }, timeout: 30 });
-  plane.assignQueued();
+  await plane.assignQueued();
   return plane.getSession("s1")!;
 }
 
@@ -68,7 +68,9 @@ function assignedFixtureSession(
  * `cmd-old` on host `host-a` and finished with a captured `cliResumeRef`,
  * plus a `cmd-new` command to rebind onto. Pass `hostCapabilities` to opt
  * `host-a` into advertising capabilities such as `prior-session-context`. */
-export function finishedCommandSwapSourcePlane(hostCapabilities: string[] = []): ControlPlane {
+export async function finishedCommandSwapSourcePlane(
+  hostCapabilities: string[] = [],
+): Promise<ControlPlane> {
   const plane = deterministicPlane();
   plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
   plane.createCommand({
@@ -79,7 +81,13 @@ export function finishedCommandSwapSourcePlane(hostCapabilities: string[] = []):
     resumeRefCapture: { stream: "stdout", linePrefix: "id: " },
   });
   plane.createCommand({ id: "cmd-new", name: "new", argv: ["new"], appendPrompt: true });
-  const session = assignedFixtureSession(plane, "cmd-old", "first", "host-a", hostCapabilities);
+  const session = await assignedFixtureSession(
+    plane,
+    "cmd-old",
+    "first",
+    "host-a",
+    hostCapabilities,
+  );
   plane.handleHostMessage({
     type: "session:status",
     sessionId: "s1",
@@ -94,11 +102,11 @@ export function finishedCommandSwapSourcePlane(hostCapabilities: string[] = []):
 /** A prior-context rendering fixture: a single-command session on host
  * `host` that logs `content` to stdout before completing, without ever
  * capturing a native-resume ref. */
-export function finishedLoggedSessionPlane(content: string): ControlPlane {
+export async function finishedLoggedSessionPlane(content: string): Promise<ControlPlane> {
   const plane = deterministicPlane();
   plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
   plane.createCommand({ id: "cmd", name: "echo", argv: ["echo"], appendPrompt: true });
-  const session = assignedFixtureSession(plane, "cmd", "first run", "host");
+  const session = await assignedFixtureSession(plane, "cmd", "first run", "host");
   plane.handleHostMessage({
     type: "session:log",
     sessionId: "s1",

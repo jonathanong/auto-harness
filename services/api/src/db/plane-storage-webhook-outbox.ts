@@ -30,8 +30,19 @@ export type WebhookLeaseFence = {
   now: string;
 };
 
+export type StoredBlackboardDeliveryState = `blackboard-${DurableWebhookDelivery["state"]}`;
+export function storedDeliveryState(
+  state: DurableWebhookDelivery["state"],
+  blackboard: boolean,
+): DurableWebhookDelivery["state"] | StoredBlackboardDeliveryState {
+  return blackboard ? `blackboard-${state}` : state;
+}
 function delivery(item: Record<string, unknown>): DurableWebhookDelivery {
-  return item as unknown as DurableWebhookDelivery;
+  const state =
+    typeof item.state === "string" && item.state.startsWith("blackboard-")
+      ? item.state.slice("blackboard-".length)
+      : item.state;
+  return { ...item, state } as unknown as DurableWebhookDelivery;
 }
 
 function assertNonEmpty(value: string, label: string): void {
@@ -54,7 +65,7 @@ export async function enqueueWebhookDelivery(
     await ctx.doc.send(
       new PutCommand({
         TableName: ctx.tables.webhookDeliveries,
-        Item: record,
+        Item: { ...record, state: storedDeliveryState(record.state, Boolean(record.feedback)) },
         ConditionExpression: "attribute_not_exists(id)",
       }),
     );
@@ -85,7 +96,12 @@ export async function getWebhookDelivery(
 /** Bounded queue read. Pending rows use retry time; leased rows use lease expiry as `dueAt`. */
 export async function listDueWebhookDeliveries(
   ctx: PlaneStorageCtx,
-  input: { state: "pending" | "leased"; now: string; limit: number },
+  input: {
+    lane?: "blackboard" | "webhook";
+    state: "pending" | "leased";
+    now: string;
+    limit: number;
+  },
 ): Promise<DurableWebhookDelivery[]> {
   assertCanonicalTimestamp(input.now, "now");
   assertWebhookQueryLimit(input.limit);
@@ -95,7 +111,10 @@ export async function listDueWebhookDeliveries(
       IndexName: "state-dueAt",
       KeyConditionExpression: "#state = :state AND dueAt <= :now",
       ExpressionAttributeNames: { "#state": "state" },
-      ExpressionAttributeValues: { ":state": input.state, ":now": input.now },
+      ExpressionAttributeValues: {
+        ":state": storedDeliveryState(input.state, input.lane === "blackboard"),
+        ":now": input.now,
+      },
       Limit: input.limit,
       ScanIndexForward: true,
     }),
@@ -112,6 +131,8 @@ export async function claimWebhookDelivery(
   if (input.leaseExpiresAt <= input.now) {
     throw new RangeError("leaseExpiresAt must be after now");
   }
+  const current = await getWebhookDelivery(ctx, input.id);
+  if (!current) return null;
   try {
     const response = await ctx.doc.send(
       new UpdateCommand({
@@ -120,11 +141,11 @@ export async function claimWebhookDelivery(
         UpdateExpression:
           "SET #state = :leased, dueAt = :expiry, updatedAt = :now, leaseOwner = :owner, leaseId = :leaseId, leaseExpiresAt = :expiry, attemptCount = attemptCount + :one",
         ConditionExpression:
-          "(#state = :pending OR #state = :leased) AND dueAt <= :now AND attemptCount < maxAttempts",
+          "(#state = :pending OR #state = :leased) AND dueAt <= :now AND (attribute_exists(feedback) OR attemptCount < maxAttempts)",
         ExpressionAttributeNames: { "#state": "state" },
         ExpressionAttributeValues: {
-          ":pending": "pending",
-          ":leased": "leased",
+          ":pending": storedDeliveryState("pending", Boolean(current.feedback)),
+          ":leased": storedDeliveryState("leased", Boolean(current.feedback)),
           ":now": input.now,
           ":owner": input.owner,
           ":leaseId": input.leaseId,

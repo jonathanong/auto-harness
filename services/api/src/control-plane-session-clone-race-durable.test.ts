@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createControlPlane } from "./create-plane.ts";
+import { createAuthorizedControlPlane as createControlPlane } from "../test-helpers/authorized-control-plane-factory.ts";
 import {
   createDynamoTestCtx,
   putActiveTestRepository,

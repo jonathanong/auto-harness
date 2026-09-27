@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 import { offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 import { offlineHostAndRequeue } from "./control-plane-worktrees.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { TestControlPlane as ControlPlane } from "../test-helpers/reporting-control-plane.ts";
 
 describe("durable schedule deletion fencing", () => {
   it("serializes owned schedule deletion with the principal deletion fence", async () => {

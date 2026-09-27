@@ -109,7 +109,9 @@ describe("DynamoDB Local clients", () => {
     const webhooks = await client.send(
       new DescribeTableCommand({ TableName: a.webhookDeliveries }),
     );
-    expect(webhooks.Table?.GlobalSecondaryIndexes?.[0]?.IndexName).toBe("state-dueAt");
+    expect(webhooks.Table?.GlobalSecondaryIndexes?.map((index) => index.IndexName)).toEqual([
+      "state-dueAt",
+    ]);
   });
 
   it("is safe when independent processes provision the same fresh table prefix", async () => {

@@ -1,4 +1,6 @@
 export type SessionSummary = {
+  reporting?: import("@auto-harness/shared").SessionReporting;
+  result?: import("@auto-harness/shared").SessionResult;
   id: string;
   type?: "prompt" | "scheduled" | "workspace" | null;
   status: string;

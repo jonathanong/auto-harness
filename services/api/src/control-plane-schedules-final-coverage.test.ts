@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 
 import { putScheduleDurable } from "./control-plane-schedules.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createTestControlPlaneState as createControlPlaneState } from "../test-helpers/reporting-control-plane.ts";
 
 it("rejects durable schedule creation for a repository absent from the local durable read model", async () => {
   const state = createControlPlaneState({ now: () => "2026-01-01T00:00:00.000Z" });
