@@ -54,17 +54,17 @@ function printConflict(io, flags, error, repositoryId) {
  * placeholder `<hostId>`. */
 function hintFor(dependency, dependencies, repositoryId) {
   const { kind, id, status } = dependency;
-  if (kind === "schedule") return `${kind} ${id}: auto-harness api DELETE /schedules/${id}`;
+  if (kind === "schedule") return `${kind} ${id}: auto-harness schedule rm ${id}`;
   if (kind === "session") {
     return (
       `${kind} ${id} is still running (status: ${status}); wait for it, or ` +
-      `auto-harness api POST /sessions/${id}/cancel`
+      `auto-harness session cancel ${id}`
     );
   }
   if (kind === "session-drain") {
     return (
-      `${kind} ${id} (status: ${status}): auto-harness api POST ` +
-      `/repositories/${repositoryId}/session-drains/${id}/release`
+      `${kind} ${id} (status: ${status}): auto-harness repo session-drain release ` +
+      `${repositoryId} ${id}`
     );
   }
   if (kind === "host-inventory") {

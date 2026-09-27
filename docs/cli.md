@@ -2,6 +2,15 @@
 
 Phase 1 local tooling for the agent and API packages. CI callers use the [REST API](api.md) (fire-and-forget); they do not run this CLI.
 
+## Operator CLI
+
+Users and automation agents manage a control-plane instance with `auto-harness` from
+`auto-harness-client`. Every management HTTP operation has a named command. The manual is
+[modules/client/README.md](../modules/client/README.md), and `auto-harness help` lists the
+commands. `auto-harness api` sends one raw request and does not satisfy that coverage rule.
+
+The commands below are the host-daemon CLI (`pnpm local:daemon`) and the local API process.
+
 Full local runbook: [local-development.md](local-development.md). Pre-deploy E2E: [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).
 
 ## Invocation (from monorepo root)

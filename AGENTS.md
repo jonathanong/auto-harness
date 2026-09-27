@@ -97,6 +97,23 @@ worktree gets stable, reusable ports across runs.
 - Machine-facing JSON APIs/files and daemon-advertised runtime capabilities are not operator UI
   settings and do not require duplicate form controls.
 
+## Control-plane CLI coverage
+
+The published `auto-harness` CLI (`modules/client`) is how users and automation agents manage a
+control-plane instance. Every management HTTP operation — each method and path template — has a
+named command that performs it. `auto-harness api` is a raw request escape hatch; a management
+operation still needs its named command.
+
+Host-daemon protocol (`POST /host/messages`, session log-part and log-archive uploads), scheduler
+worker routes, unauthenticated ingress (GitHub webhooks, Slack events, custom webhooks, and the
+Slack OAuth callback), and browser-only session mechanics (`POST /auth/logout`,
+`POST /auth/viewer-ticket`) stay with those callers. Login, `GET /auth/me`, and `GET /health` are
+covered by `--admin-password-stdin`, `whoami`, and `doctor`.
+
+[`scripts/cli-management-route-coverage.test.ts`](scripts/cli-management-route-coverage.test.ts)
+fails when a new route is unclassified or a management operation has no command.
+
 Cross-agent invariants 10–13 (control plane owns every user action, package-manager-agnostic
 sessions, separate browser and host request lifetimes, and paged list/history reads) live in
-[docs/plan.md](docs/plan.md#5-invariants).
+[docs/plan.md](docs/plan.md#5-invariants). Control-plane CLI coverage is stated above and enforced
+by that route-coverage test.

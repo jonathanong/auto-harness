@@ -1,10 +1,8 @@
 import { parseFlags } from "../args.js";
 import { CliUsageError } from "../cli-errors.js";
 import { createClient, GLOBAL_BOOLEAN_FLAGS, GLOBAL_VALUE_FLAGS } from "../config.js";
+import { MAX_ALL_PAGES, collectAllPages } from "../page-all.js";
 import { allowlistAccount, formatAccountLine } from "../service-account-format.js";
-
-// Mirrors `host list`'s and `repo list`'s own cap and guard.
-const MAX_ALL_PAGES = 20;
 
 /**
  * `GET /auth/service-accounts`, paged with `limit`/`cursor`. Unlike `host list`/`repo list`,
@@ -51,23 +49,18 @@ async function runListOnePage(client, flags, io) {
 }
 
 async function runListAll(client, flags, io) {
-  const items = [];
-  const seenCursors = new Set();
-  let cursor = flags["--cursor"];
-  for (let pageCount = 0; pageCount < MAX_ALL_PAGES; pageCount += 1) {
-    const page = await client.request(buildQuery(flags, cursor));
-    items.push(...(page.items ?? []).map(allowlistAccount));
-    cursor = page.nextCursor || undefined;
-    if (!cursor) break;
-    if (seenCursors.has(cursor)) {
-      throw new Error("repeated pagination cursor for /auth/service-accounts");
-    }
-    seenCursors.add(cursor);
-  }
-  if (cursor) {
+  const { items, nextCursor } = await collectAllPages(
+    (cursor) => client.request(buildQuery(flags, cursor)),
+    {
+      startCursor: flags["--cursor"],
+      resourcePath: "/auth/service-accounts",
+      mapItem: allowlistAccount,
+    },
+  );
+  if (nextCursor) {
     io.stderr.write(
       `warning: --all stopped after ${MAX_ALL_PAGES} pages; more service accounts remain ` +
-        `(nextCursor: ${cursor})\n`,
+        `(nextCursor: ${nextCursor})\n`,
     );
   }
   if (flags["--json"]) {

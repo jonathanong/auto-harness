@@ -1,6 +1,8 @@
 import { CliUsageError } from "../cli-errors.js";
+import { usageUnder } from "../management-commands.js";
 import { runRepoAdd } from "./repo-add.js";
 import { runRepoList } from "./repo-list.js";
+import { runManifestCommand } from "./manifest.js";
 import { runRepoRm } from "./repo-rm.js";
 
 const USAGE = `usage: auto-harness repo <subcommand> ...
@@ -14,5 +16,8 @@ export async function runRepo(argv, io) {
   if (subcommand === "add") return runRepoAdd(rest, io);
   if (subcommand === "list") return runRepoList(rest, io);
   if (subcommand === "rm") return runRepoRm(rest, io);
-  throw new CliUsageError(USAGE);
+  const manifestResult = await runManifestCommand(["repo", ...argv], io);
+  if (manifestResult !== undefined) return manifestResult;
+  const extra = usageUnder(["repo"]);
+  throw new CliUsageError(extra.length > 0 ? `${USAGE}\n${extra.join("\n")}` : USAGE);
 }

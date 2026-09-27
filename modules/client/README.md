@@ -272,7 +272,8 @@ aws ssm get-parameter --name /auto-harness/admin-password --with-decryption \
 
 It cannot be combined with an API key (`--api-key-file`, `HARNESS_API_KEY`, or
 `HARNESS_API_KEY_FILE` all make the identity ambiguous) or with a command that also reads stdin
-for its own input (`api --body-file -`, `host inventory set --file -`) — both are usage errors
+for its own input (`api --body-file -`, `host inventory set --file -`, `user create --body-file -`,
+`account password --body-file -`). Those combinations are usage errors
 (exit 2) before any request is made. A rejected password is `error: admin login failed (HTTP 401)`
 (exit 1), never anything about the password itself. `whoami` and `doctor` work in this mode too,
 reporting the admin identity instead of an API key's role.
@@ -289,6 +290,34 @@ auto-harness api GET /hosts
 auto-harness api POST /repositories --body '{"name":"org/repo","url":"https://github.com/org/repo"}'
 echo '{"prompt":"Review the latest changes"}' | auto-harness api POST /sessions --body-file -
 ```
+
+### Named management commands
+
+Every management HTTP operation has a named command. `auto-harness help` prints the full list,
+including commands added after this section was written. `auto-harness api` remains available for
+a raw request and does not replace those commands.
+
+Manifest commands print pretty JSON (nothing on `204`). A JSON body is `--body` or `--body-file`.
+`user create`, `account password`, and the Slack, GitHub, and custom integration writes
+accept only `--body-file`, so a password or signing secret does not land in shell history. `PUT`/`PATCH` pairs that share one handler are `update --method put|patch`
+(default `patch`), except Slack, where `replace` and `patch` are different requests. Paged lists
+accept `--limit`, `--cursor`, and `--all`. `--all` stops after 20 pages.
+
+| Group                                                                           | Examples                                                                           |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `repo`                                                                          | `get`, `update`, `pause`, `drain`, `activate`, `session-drain start\|get\|release` |
+| `session`                                                                       | `list`, `resume`, `clone`, `archive`, `children`, `usage`, `prior-context`         |
+| `host`                                                                          | `get`, `inventory list\|rm`, `exec-config set`, `update-config get\|set`           |
+| `provider`, `command`, `provider-account`                                       | catalog CRUD, usage-limit clear, lease list and release                            |
+| `schedule`                                                                      | `list`, `get`, `create`, `update`, `rm`, `trigger`                                 |
+| `worktree`, `workspace-pool`                                                    | list/get and pool exec-config                                                      |
+| `integration`                                                                   | `slack`, `github`, `custom`                                                        |
+| `user`, `account`                                                               | user accounts and `account password`                                               |
+| `audit-log`, `user-session`, `session-target`, `usage`, `settings session-logs` | operator reads and session-log settings                                            |
+
+`repo session-drain start` takes an optional `--idempotency-key`. `integration github rm` and
+`integration custom rm` require `--if-match` and `--if-match-generation` from the last read.
+`usage list` requires `--repository-id`.
 
 ### `auto-harness whoami [--json]`
 
@@ -541,9 +570,9 @@ each blocking dependency gets the concrete next step to actually clear it:
 
 | Dependency kind               | Next step                                                                            |
 | ----------------------------- | ------------------------------------------------------------------------------------ |
-| `schedule`                    | `auto-harness api DELETE /schedules/<id>`                                            |
-| `session` (live)              | wait for it, or `auto-harness api POST /sessions/<id>/cancel`                        |
-| `session-drain`               | `auto-harness api POST /repositories/<repositoryId>/session-drains/<id>/release`     |
+| `schedule`                    | `auto-harness schedule rm <id>`                                                      |
+| `session` (live)              | wait for it, or `auto-harness session cancel <id>`                                   |
+| `session-drain`               | `auto-harness repo session-drain release <repositoryId> <id>`                        |
 | `host-inventory`              | `auto-harness host repo rm <hostId> <repositoryId>`                                  |
 | `worktree`                    | same as `host-inventory` — worktrees go with detaching the repository from that host |
 | `integration: github-ingress` | remove this repository's binding from the GitHub ingress configuration               |

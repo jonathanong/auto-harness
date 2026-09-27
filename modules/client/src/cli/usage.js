@@ -1,5 +1,6 @@
-export function usage() {
-  return `auto-harness - operator CLI for the Auto Harness control plane API
+import { manifestUsageLines } from "./management-commands.js";
+
+const USAGE_HEAD = `auto-harness - operator CLI for the Auto Harness control plane API
 
 A global flag (--api-url, --api-key-file, --allow-insecure-http, --admin-password-stdin,
 --admin-username) is recognized before or after the command name — both
@@ -32,8 +33,9 @@ Usage:
   auto-harness session get <sessionId> [--json]
   auto-harness session logs <sessionId> [--limit N] [--cursor C] [--json]
   auto-harness session cancel <sessionId> [--json]
-  auto-harness help | --help | -h
+  auto-harness help | --help | -h`;
 
+const USAGE_TAIL = `
 Configuration:
   --api-url <url>        Control plane base URL (else HARNESS_API_URL, else HARNESS_API_HTTP)
   --api-key-file <path>  Read the API key from a file, trimmed (else HARNESS_API_KEY_FILE)
@@ -52,7 +54,9 @@ Admin bootstrap (no API key exists yet):
 once via POST /auth/login, and carries the session cookie on every later request instead of an
 API key — it never touches argv, shell history, or output. It cannot be combined with an API key
 (--api-key-file, HARNESS_API_KEY, or HARNESS_API_KEY_FILE), nor with a command that also reads
-stdin for its own input (\`api --body-file -\`, \`host inventory set --file -\`).
+stdin for its own input (\`api --body-file -\`, \`host inventory set --file -\`,
+\`user create --body-file -\`, \`account password --body-file -\`, or an integration write's
+\`--body-file -\`).
 
 Examples:
   auto-harness whoami
@@ -80,4 +84,7 @@ Examples:
   auto-harness session logs session-1 --limit 200
   auto-harness session cancel session-1
 `;
+
+export function usage() {
+  return `${USAGE_HEAD}\n${manifestUsageLines().join("\n")}\n${USAGE_TAIL}`;
 }
