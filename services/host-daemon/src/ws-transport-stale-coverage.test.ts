@@ -2,7 +2,26 @@ import { expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { createWsTransport } from "./ws-transport.ts";
-import { FakeSocket } from "../test-helpers/ws-transport-test-helpers.ts";
+import { FakeSocket, register, registered } from "../test-helpers/ws-transport-test-helpers.ts";
+
+it("ignores a registration acknowledgement until this socket sends its registration", async () => {
+  const socket = new FakeSocket();
+  const transport = createWsTransport({
+    url: "ws://fake/ws",
+    socketFactory: () => socket as unknown as WebSocket,
+  });
+  const accepted: number[] = [];
+  transport.onRegistered?.(() => accepted.push(1));
+  socket.open();
+  socket.server(registered());
+  expect(accepted).toEqual([]);
+
+  await transport.send(register());
+  socket.server(registered());
+  await transport.registered;
+  expect(accepted).toEqual([1]);
+  transport.close();
+});
 
 it("ignores a stale rejected write callback after disconnecting", async () => {
   vi.useFakeTimers();
