@@ -1,10 +1,7 @@
 import { parseFlags } from "../args.js";
 import { CliUsageError } from "../cli-errors.js";
 import { createClient, GLOBAL_BOOLEAN_FLAGS, GLOBAL_VALUE_FLAGS } from "../config.js";
-
-// This repo's list/history invariant forbids unbounded collection of pages at storage, so
-// `--all` stops here and warns rather than following `nextCursor` forever.
-const MAX_ALL_PAGES = 20;
+import { MAX_ALL_PAGES, collectAllPages } from "../page-all.js";
 
 /** `GET /hosts`, optionally filtered by `online`/`offline` and paged with `limit`/`cursor`.
  * `--all` follows `nextCursor` itself, capped at `MAX_ALL_PAGES` pages. */
@@ -49,23 +46,14 @@ async function runListOnePage(client, flags, io) {
 }
 
 async function runListAll(client, flags, io) {
-  const items = [];
-  const seenCursors = new Set();
-  let cursor = flags["--cursor"];
-  for (let pageCount = 0; pageCount < MAX_ALL_PAGES; pageCount += 1) {
-    const page = await client.request(buildQuery(flags, cursor));
-    items.push(...(page.items ?? []));
-    cursor = page.nextCursor || undefined;
-    if (!cursor) break;
-    // Mirrors the same guard in AutoHarnessClient#listCatalog: a server repeating a cursor is a
-    // bug worth failing loudly on, not something to paper over as "more pages than the cap".
-    if (seenCursors.has(cursor)) throw new Error("repeated pagination cursor for /hosts");
-    seenCursors.add(cursor);
-  }
-  if (cursor) {
+  const { items, nextCursor } = await collectAllPages(
+    (cursor) => client.request(buildQuery(flags, cursor)),
+    { startCursor: flags["--cursor"], resourcePath: "/hosts" },
+  );
+  if (nextCursor) {
     io.stderr.write(
       `warning: --all stopped after ${MAX_ALL_PAGES} pages; more hosts remain ` +
-        `(nextCursor: ${cursor})\n`,
+        `(nextCursor: ${nextCursor})\n`,
     );
   }
   if (flags["--json"]) {

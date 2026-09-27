@@ -1,10 +1,12 @@
 import { CliUsageError } from "../cli-errors.js";
+import { usageUnder } from "../management-commands.js";
 import { runHostDrain } from "./host-drain.js";
 import { runHostInventory } from "./host-inventory.js";
 import { runHostList } from "./host-list.js";
 import { runHostRepo } from "./host-repo.js";
 import { runHostResume } from "./host-resume.js";
 import { runHostSmoke } from "./host-smoke.js";
+import { runManifestCommand } from "./manifest.js";
 
 const USAGE = `usage: auto-harness host <subcommand> ...
   auto-harness host list [--online | --offline] [--limit N] [--cursor C] [--all] [--json]
@@ -27,5 +29,8 @@ export async function runHost(argv, io) {
   if (subcommand === "inventory") return runHostInventory(rest, io);
   if (subcommand === "repo") return runHostRepo(rest, io);
   if (subcommand === "smoke") return runHostSmoke(rest, io);
-  throw new CliUsageError(USAGE);
+  const manifestResult = await runManifestCommand(["host", ...argv], io);
+  if (manifestResult !== undefined) return manifestResult;
+  const extra = usageUnder(["host"]);
+  throw new CliUsageError(extra.length > 0 ? `${USAGE}\n${extra.join("\n")}` : USAGE);
 }

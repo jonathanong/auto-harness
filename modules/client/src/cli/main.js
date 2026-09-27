@@ -1,6 +1,8 @@
+import { CliUsageError } from "./cli-errors.js";
 import { runApi } from "./commands/api.js";
 import { runDoctor } from "./commands/doctor.js";
 import { runHost } from "./commands/host.js";
+import { isManifestRoot, runManifestCommand, usageForRoot } from "./commands/manifest.js";
 import { runRepo } from "./commands/repo.js";
 import { runServiceAccount } from "./commands/service-account.js";
 import { runSession } from "./commands/session.js";
@@ -63,6 +65,11 @@ export async function main(argv, io) {
     if (command === "repo") return await runRepo(rest, io);
     if (command === "service-account") return await runServiceAccount(rest, io);
     if (command === "session") return await runSession(rest, io);
+    if (isManifestRoot(command)) {
+      const result = await runManifestCommand([command, ...rest], io);
+      if (result !== undefined) return result;
+      throw new CliUsageError(usageForRoot(command));
+    }
     io.stderr.write(usage());
     return 2;
   } catch (error) {

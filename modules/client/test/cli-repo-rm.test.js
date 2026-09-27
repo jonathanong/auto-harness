@@ -71,12 +71,12 @@ test("409 prints the server message and one hint line per dependency kind, exit 
   assert.equal(exitCode, 1);
   const text = stderr();
   assert.match(text, /cannot delete repository; referenced by other records/);
-  assert.match(text, /schedule sched-1: auto-harness api DELETE \/schedules\/sched-1/);
+  assert.match(text, /schedule sched-1: auto-harness schedule rm sched-1/);
   assert.match(text, /session sess-1 is still running \(status: running\)/);
-  assert.match(text, /auto-harness api POST \/sessions\/sess-1\/cancel/);
+  assert.match(text, /auto-harness session cancel sess-1/);
   assert.match(
     text,
-    /session-drain drain-1 \(status: draining\): auto-harness api POST \/repositories\/repo-1\/session-drains\/drain-1\/release/,
+    /session-drain drain-1 \(status: draining\): auto-harness repo session-drain release repo-1 drain-1/,
   );
   assert.match(text, /host-inventory host-1: auto-harness host repo rm host-1 repo-1/);
   // worktree names the sibling host-inventory's host, not a placeholder.
