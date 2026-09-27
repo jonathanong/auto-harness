@@ -13,7 +13,7 @@ import { TEST_ONLY_SCAN_MANIFEST } from "./dynamo-scan-manifest-test-only.ts";
  *  - every table an entry marks `runsUnderLambdaRole: true` for must be present in
  *    services/cdk/src/foundation-data-access.ts's `SCAN_TABLE_NAMES` — the exact grant PR
  *    #748 discovered missing for WorkspacePools/WorkspaceSlots/Integrations. See invariant 13
- *    (docs/plan.md#5-invariants, CLAUDE.md): Scan is allowed as a small, documented, capped
+ *    (docs/plan.md#5-invariants, AGENTS.md): Scan is allowed as a small, documented, capped
  *    catalog — this file is that catalog, not a ban.
  *
  * Entries live in dynamo-scan-manifest-production.ts and dynamo-scan-manifest-test-only.ts

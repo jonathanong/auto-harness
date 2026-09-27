@@ -1052,7 +1052,7 @@ environment.
 
 Static analysis was already dense before this (oxlint, ~30 `no-mistakes` rules,
 knip, dependency-cruiser, patch-coverage gates). The real hole was that the four
-invariants `CLAUDE.md` states in prose were enforced by almost nothing — the repo
+invariants `AGENTS.md` states in prose were enforced by almost nothing — the repo
 had exactly **one** `ast-grep` rule.
 
 ### Still open

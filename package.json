@@ -33,7 +33,7 @@
     "local:e2e:isolated": "node scripts/worktree-e2e-env.mts --run",
     "knip": "knip",
     "depcruise": "depcruise actions/dispatch/src modules services --config .dependency-cruiser.cjs --output-type err",
-    "links": "lychee --config lychee.toml README.md AGENTS.md CLAUDE.md docs",
+    "links": "lychee --config lychee.toml README.md AGENTS.md AGENTS.md docs",
     "check:no-mistakes": "no-mistakes check",
     "check:data-pw": "pnpm check:no-mistakes",
     "check:systemd": "node scripts/check-systemd-service.mts",

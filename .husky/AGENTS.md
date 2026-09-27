@@ -3,7 +3,7 @@
 `pre-push` is the only hook here. It exists because `pnpm fmt:check` broke CI twice in one
 session when a changed-files-only check was run by hand instead — `oxfmt` also formats
 Markdown, YAML, and TOML, not just TypeScript, so a partial check misses real violations. This
-repo diverges here from the sibling `vouchington` repo's `.husky/CLAUDE.md`, which documents "no
+repo diverges here from the sibling `vouchington` repo's `.husky/AGENTS.md`, which documents "no
 pre-push hook" in favor of a before-pushing checklist: the checklist approach was tried in this
 repo first and it failed (the same bug shipped twice), so the check is enforced mechanically
 instead.
