@@ -1,15 +1,12 @@
 /* eslint-disable max-lines, no-shadow -- the end-to-end WebSocket reporting flow stays in one auditable scenario. */
 import { test, expect } from "@playwright/test";
 
-import {
-  createCatalogRepository,
-  putHostRepo,
-  removeHostRepo,
-  withLocalHostLock,
-} from "../local-1-host.ts";
+import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
 import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
 import { HOST_PROTOCOL_VERSION } from "../../modules/shared/src/constants.ts";
 import { expectNoLeakedNextDigest } from "../no-redirect-leak.ts";
+import { E2E_REPORTING_REPOSITORIES } from "../reporting-fixture.ts";
+import { waitForAssignment } from "../wait-for-assignment.ts";
 
 test.describe("control plane sessions", () => {
   test("sessions list page and filters", async ({ page, request }) => {
@@ -353,7 +350,7 @@ test.describe("control plane sessions", () => {
   }) => {
     const suffix = `${test.info().parallelIndex}-${Date.now()}`;
     const hostId = `pw-offline-host-${suffix}`;
-    const repoId = await createCatalogRepository(request, `pw-offline-repo-${suffix}`);
+    const repoId = E2E_REPORTING_REPOSITORIES.offline.id;
     const worktreeId = `pw-offline-worktree-${suffix}`;
     const inventory = await request.put(`${API_BASE}/api/v1/hosts/${hostId}/inventory`, {
       data: {
@@ -493,22 +490,34 @@ test.describe("control plane sessions", () => {
     const resumeRequest = page.waitForRequest(
       (request) => request.url().endsWith("/resume") && request.method() === "POST",
     );
+    const resumeResponse = page.waitForResponse(
+      (response) => response.url().endsWith("/resume") && response.request().method() === "POST",
+    );
     await page.getByTestId("session-resume-submit").click();
     expect((await resumeRequest).postDataJSON()).toEqual({
       prompt: "continue from review",
       timeout: 45,
       priority: 60,
     });
-    await expect(page).not.toHaveURL(`/sessions/${encodeURIComponent(sessionId)}`, {
-      timeout: 15_000,
-    });
-    await expect(page.getByTestId("session-detail-status")).toContainText("queued");
+    const resumed = await resumeResponse;
+    expect(resumed.status()).toBe(201);
+    const resumedId = ((await resumed.json()) as { id: string }).id;
+    expect(resumedId).not.toBe(sessionId);
+    try {
+      await expect(page).not.toHaveURL(`/sessions/${encodeURIComponent(sessionId)}`, {
+        timeout: 15_000,
+      });
+      await expect(page.getByTestId("session-detail-status")).toContainText("queued");
+    } finally {
+      const cancelled = await request.post(`${API_BASE}/api/v1/sessions/${resumedId}/cancel`);
+      expect(cancelled.status()).toBe(200);
+    }
   });
 
   test("session detail reports CLI usage and configured cost", async ({ page, request }) => {
     const suffix = `${test.info().parallelIndex}-${Date.now()}`;
     const hostId = `pw-usage-host-${suffix}`;
-    const repoId = await createCatalogRepository(request, `pw-usage-repo-${suffix}`);
+    const repoId = E2E_REPORTING_REPOSITORIES.usage.id;
     const worktreeId = `pw-usage-worktree-${suffix}`;
     const providerName = `pw-usage-provider-${suffix}`;
     let providerId: string | undefined;
@@ -634,11 +643,7 @@ test.describe("control plane sessions", () => {
       });
       expect(created.status()).toBe(201);
       const sessionId = ((await created.json()) as { id: string }).id;
-      expect((await request.post(`${API_BASE}/api/v1/scheduler/assign`)).ok()).toBe(true);
-
-      const assigned = await request.get(`${API_BASE}/api/v1/sessions/${sessionId}`);
-      expect(assigned.ok()).toBe(true);
-      const session = (await assigned.json()) as { attemptId: string; worktreeId: string };
+      const session = await waitForAssignment(request, API_BASE, sessionId);
       await page.evaluate(
         ({ sessionId, attemptId, worktreeId }) => {
           const socket = (globalThis as typeof globalThis & { usageSocket?: WebSocket })
@@ -752,16 +757,14 @@ test.describe("control plane sessions", () => {
     let commandId: string | undefined;
 
     try {
-      const repository = await request.post(`${API_BASE}/api/v1/repositories`, {
-        data: {
-          name: repositoryName,
-          url: `https://example.test/${repositoryName}.git`,
-          defaultBranch: "main",
-        },
-      });
-      const repositoryId = ((await repository.json()) as { id: string }).id;
+      const repositoryId = E2E_REPORTING_REPOSITORIES.terminalError.id;
       const command = await request.post(`${API_BASE}/api/v1/commands`, {
-        data: { name: `pw-error-code-${suffix}`, argv: ["echo"], appendPrompt: true },
+        data: {
+          name: `pw-error-code-${suffix}`,
+          argv: ["echo"],
+          appendPrompt: true,
+          providerId: null,
+        },
       });
       commandId = ((await command.json()) as { id: string }).id;
       expect(
@@ -858,10 +861,7 @@ test.describe("control plane sessions", () => {
         },
       });
       const sessionId = ((await created.json()) as { id: string }).id;
-      expect((await request.post(`${API_BASE}/api/v1/scheduler/assign`)).ok()).toBe(true);
-      const assigned = (await (
-        await request.get(`${API_BASE}/api/v1/sessions/${sessionId}`)
-      ).json()) as { attemptId: string; worktreeId: string };
+      const assigned = await waitForAssignment(request, API_BASE, sessionId);
       await page.evaluate(
         ({ sessionId, attemptId, worktreeId }) => {
           const socket = (globalThis as typeof globalThis & { errorCodeSocket?: WebSocket })

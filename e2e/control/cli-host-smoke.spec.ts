@@ -8,12 +8,17 @@ const API = API_BASE;
 test.setTimeout(120_000);
 
 test.describe("cli host smoke", () => {
-  test("a real echo-backed provider passes end to end and teardown leaves no trace", async ({
+  test("a real echo-backed provider passes and preserves its existing catalog repository", async ({
     request,
   }) => {
     const fixture = await setupSmokeFixture(request, "echo", ["echo"]);
     try {
-      const result = await runSmokeCli(fixture.hostId, fixture.repoPath, fixture.providerId);
+      const result = await runSmokeCli(
+        fixture.hostId,
+        fixture.repoPath,
+        fixture.providerId,
+        fixture.repositoryId,
+      );
       const parsed = JSON.parse(result.stdout);
       expect(parsed.ok, result.stderr).toBe(true);
       expect(parsed.providers).toHaveLength(1);
@@ -23,24 +28,41 @@ test.describe("cli host smoke", () => {
 
       const reposRes = await request.get(`${API}/api/v1/repositories`);
       const { items } = (await reposRes.json()) as { items: Array<{ id: string }> };
-      expect(items.some((repo) => repo.id === parsed.repositoryId)).toBe(false);
+      expect(parsed.repositoryId).toBe(fixture.repositoryId);
+      expect(items.some((repo) => repo.id === parsed.repositoryId)).toBe(true);
 
       // Attach/detach must round-trip providerAccounts untouched.
       const inventoryRes = await request.get(`${API}/api/v1/hosts/${fixture.hostId}/inventory`);
       const inventory = await inventoryRes.json();
-      expect(inventory.repositories).toEqual([]);
+      expect(inventory.repositories).toEqual([
+        expect.objectContaining({
+          id: fixture.repositoryId,
+          path: fixture.repoPath,
+          worktrees: [
+            expect.objectContaining({ id: fixture.worktreeId, path: fixture.worktreePath }),
+          ],
+        }),
+      ]);
       expect(inventory.providerAccounts).toEqual([{ providerAccountId: fixture.accountId }]);
     } finally {
       await fixture.cleanup();
+      expect((await request.get(`${API}/api/v1/hosts/${fixture.hostId}/inventory`)).status()).toBe(
+        404,
+      );
     }
   });
 
-  test("a failing command fails the provider, exits 1, and still tears down the repository", async ({
+  test("a failing command fails the provider, exits 1, and preserves the repository", async ({
     request,
   }) => {
     const fixture = await setupSmokeFixture(request, "false", ["false"]);
     try {
-      const result = await runSmokeCli(fixture.hostId, fixture.repoPath, fixture.providerId);
+      const result = await runSmokeCli(
+        fixture.hostId,
+        fixture.repoPath,
+        fixture.providerId,
+        fixture.repositoryId,
+      );
       const parsed = JSON.parse(result.stdout);
       expect(parsed.ok).toBe(false);
       expect(parsed.providers[0].pass).toBe(false);
@@ -49,9 +71,13 @@ test.describe("cli host smoke", () => {
 
       const reposRes = await request.get(`${API}/api/v1/repositories`);
       const { items } = (await reposRes.json()) as { items: Array<{ id: string }> };
-      expect(items.some((repo) => repo.id === parsed.repositoryId)).toBe(false);
+      expect(parsed.repositoryId).toBe(fixture.repositoryId);
+      expect(items.some((repo) => repo.id === parsed.repositoryId)).toBe(true);
     } finally {
       await fixture.cleanup();
+      expect((await request.get(`${API}/api/v1/hosts/${fixture.hostId}/inventory`)).status()).toBe(
+        404,
+      );
     }
   });
 });

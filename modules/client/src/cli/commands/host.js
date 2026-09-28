@@ -17,7 +17,7 @@ const USAGE = `usage: auto-harness host <subcommand> ...
   auto-harness host repo add <hostId> <repositoryId> --path <path> [--worktree <id>=<path>]...
     [--default-branch <branch>] [--dry-run] [--json]
   auto-harness host repo rm <hostId> <repositoryId> [--dry-run] [--json]
-  auto-harness host smoke <hostId> --repo-path <path> --provider <id|name>
+  auto-harness host smoke <hostId> --repository-id <id> --repo-path <path> --provider <id|name>
     [--provider <id|name>]... [--timeout <seconds>] [--json]`;
 
 /** Dispatches `host <subcommand>` to its own module — mirrors `main.js`'s own dispatch. */

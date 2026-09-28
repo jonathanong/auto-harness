@@ -24,8 +24,7 @@ function findAttachedRepository(record, repositoryId) {
  *
  * `{ dryRun: true }` does the same read and "already attached" check but returns before ever
  * writing, so `host repo add --dry-run` and a real attach can never disagree about whether the
- * attach would succeed. Exported (rather than folded into the command) because a later
- * `host smoke` command reuses this exact logic.
+ * attach would succeed. `host repo add` delegates to this helper.
  */
 export async function attachRepository(client, hostId, entry, { dryRun = false } = {}) {
   const record = await getInventory(client, hostId);

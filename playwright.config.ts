@@ -1,12 +1,50 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 import {
   API_BASE,
   API_PORT,
+  BLACKBOARD_PORT,
   CONTROL_PORT,
   DYNAMO_ENDPOINT,
   HOST_PANE_PORT,
 } from "./e2e/harness-endpoints.ts";
+import { E2E_REPORTING_REPOSITORIES } from "./e2e/reporting-fixture.ts";
+
+// The API uses the real published Blackboard client over HTTPS. Give only the local API
+// process this run's ephemeral CA certificate; never disable TLS verification globally.
+const tlsDirectory = mkdtempSync(join(tmpdir(), "auto-harness-e2e-blackboard-"));
+const blackboardKey = join(tlsDirectory, "key.pem");
+const blackboardCert = join(tlsDirectory, "cert.pem");
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+execFileSync(
+  "openssl",
+  [
+    "req",
+    "-x509",
+    "-newkey",
+    "rsa:2048",
+    "-sha256",
+    "-nodes",
+    "-days",
+    "1",
+    "-keyout",
+    blackboardKey,
+    "-out",
+    blackboardCert,
+    "-subj",
+    "/CN=localhost",
+    "-addext",
+    "subjectAltName=DNS:localhost,IP:127.0.0.1",
+  ],
+  { stdio: "ignore" },
+);
+process.on("exit", () => rmSync(tlsDirectory, { recursive: true, force: true }));
 
 const requiredAuthE2e = process.env.HARNESS_E2E_AUTH === "1";
 const controlOnly = process.env.HARNESS_E2E_CONTROL_ONLY === "1";
@@ -17,6 +55,21 @@ const hostPanePort = HOST_PANE_PORT;
 const dynamoEndpoint = DYNAMO_ENDPOINT;
 const apiUrl = API_BASE;
 const controlOrigin = `http://127.0.0.1:${controlPort}`;
+const blackboardConfig = JSON.stringify({
+  schemaVersion: 1,
+  version: 1,
+  url: `https://127.0.0.1:${BLACKBOARD_PORT}`,
+  token: "e2e-dedicated-writer",
+  policies: Object.values(E2E_REPORTING_REPOSITORIES).map((repository) => ({
+    repositoryId: repository.id,
+    repository: repository.repository,
+    principalIds: ["system"],
+  })),
+});
+const apiServe =
+  `HARNESS_BLACKBOARD_CONFIG=${shellQuote(blackboardConfig)} ` +
+  `NODE_EXTRA_CA_CERTS=${shellQuote(blackboardCert)} ` +
+  `node services/api/src/cli.ts serve --port ${apiPort}`;
 
 /**
  * Playwright E2E — see docs/e2e.md.
@@ -97,14 +150,34 @@ export default defineConfig({
   ],
   webServer: [
     {
+      name: "blackboard",
+      command: "node e2e/blackboard-provider.ts",
+      url: `https://127.0.0.1:${BLACKBOARD_PORT}/health`,
+      ignoreHTTPSErrors: true,
+      env: {
+        HARNESS_E2E_BLACKBOARD_KEY: blackboardKey,
+        HARNESS_E2E_BLACKBOARD_CERT: blackboardCert,
+      },
+      reuseExistingServer: false,
+      timeout: 30_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+    {
       name: "api",
       command: process.env.HARNESS_E2E_DDB_ENDPOINT
-        ? `HARNESS_DDB_ENDPOINT=${dynamoEndpoint} node scripts/ensure-dynamodb.mts && HARNESS_DDB_ENDPOINT=${dynamoEndpoint} node services/api/src/cli.ts serve --port ${apiPort}`
-        : "pnpm local:dynamodb:e2e && pnpm local:dynamodb:e2e:ready && pnpm local:api:e2e",
+        ? `node scripts/ensure-dynamodb.mts && node e2e/seed-reporting-repository.ts && ${apiServe}`
+        : `pnpm local:dynamodb:e2e && pnpm local:dynamodb:e2e:ready && node e2e/seed-reporting-repository.ts && ${apiServe}`,
       url: `${apiUrl}/health`,
       env: {
         ...process.env,
+        HARNESS_DDB_ENDPOINT: dynamoEndpoint,
         HARNESS_PUBLIC_BASE_URL: controlOrigin,
+        HARNESS_RATE_LIMIT_MODE: "disabled",
+        AGENT_BLACKBOARD_URL: "",
+        AGENT_BLACKBOARD_TOKEN: "",
+        HARNESS_BLACKBOARD_CONFIG: "",
+        NODE_EXTRA_CA_CERTS: "",
       },
       reuseExistingServer: false,
       timeout: 180_000,

@@ -23,15 +23,16 @@ describe("fnv1a", () => {
 });
 
 describe("computePorts", () => {
-  it("derives a stable, non-overlapping 4-port block above the shared default stack", () => {
+  it("derives a stable, non-overlapping 5-port block above the shared default stack", () => {
     const ports = computePorts("mellow-herding-mountain");
     expect(ports).toEqual(computePorts("mellow-herding-mountain"));
     expect(ports.offset).toBeGreaterThanOrEqual(10);
-    expect(ports.offset % 4).toBe(2); // 10 + 4*bucket ≡ 2 (mod 4)
+    expect(ports.offset % 5).toBe(0);
     expect(ports.apiPort).toBe(7430 + ports.offset);
     expect(ports.controlPort).toBe(ports.apiPort + 1);
     expect(ports.hostPanePort).toBe(ports.apiPort + 2);
     expect(ports.dynamoPort).toBe(ports.apiPort + 3);
+    expect(ports.blackboardPort).toBe(ports.apiPort + 4);
     expect(ports.containerName).toBe("mellow-herding-mountain-dynamodb-e2e");
   });
 
@@ -48,7 +49,7 @@ describe("computePorts", () => {
   });
 
   it("never lands on the shared default offset (0)", () => {
-    // 10 + bucket*4 is always >= 10, so it can never equal 0 regardless of the hash.
+    // 10 + bucket*5 is always >= 10, so it can never equal 0 regardless of the hash.
     expect(computePorts("").offset).toBeGreaterThanOrEqual(10);
   });
 });
@@ -60,12 +61,12 @@ describe("bucketFor / portsForBucket", () => {
     );
   });
 
-  it("walking to the next bucket shifts every port by exactly 4", () => {
+  it("walking to the next bucket shifts every port by exactly 5", () => {
     const bucket = bucketFor("worktree-a");
     const here = portsForBucket("worktree-a", bucket);
     const next = portsForBucket("worktree-a", bucket + 1);
-    expect(next.offset).toBe(here.offset + 4);
-    expect(next.apiPort).toBe(here.apiPort + 4);
+    expect(next.offset).toBe(here.offset + 5);
+    expect(next.apiPort).toBe(here.apiPort + 5);
   });
 });
 

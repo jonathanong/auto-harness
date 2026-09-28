@@ -7,13 +7,13 @@ import { expect, type APIRequestContext, test } from "@playwright/test";
 import { fetchHostInventory } from "../../services/host-daemon/src/bootstrap.ts";
 import { startDaemon } from "../../services/host-daemon/src/start-daemon.ts";
 import { runCommand } from "../../scripts/lib/run-command.mts";
-import { API_BASE } from "../harness-endpoints.ts";
+import { API_BASE as API } from "../harness-endpoints.ts";
+import { E2E_REPORTING_REPOSITORIES } from "../reporting-fixture.ts";
 
-const API = API_BASE;
 const CLI_PATH = fileURLToPath(new URL("../../modules/client/src/cli/index.js", import.meta.url));
 
-// Disable the periodic poll so attach -> immediate assignment can pass only through the daemon's
-// assignment-scoped refresh. Starting the daemon before `host smoke` preserves the production race.
+// Disable the periodic poll. The host already owns its inventory attachment; command dispatch
+// must use the daemon's assignment-scoped inventory refresh.
 const DAEMON_INVENTORY_POLL_MS = 0;
 
 async function git(cwd: string, args: string[]): Promise<void> {
@@ -49,10 +49,7 @@ async function enableSessionLogUploadAlways(request: APIRequestContext): Promise
   throw new Error("session-log-settings upload always: version conflict retries exhausted");
 }
 
-/** Local/e2e never auto-assigns a *queued* session on its own timer — every other real-daemon
- * spec here nudges the scheduler the same way. (A session's own creation does trigger one
- * best-effort assignment attempt immediately, which is exactly what exercises the daemon's
- * assignment-scoped inventory refresh; this nudge remains the missed-dispatch repair path.) */
+/** Nudge queued work as other real-daemon specs do; creation also attempts assignment. */
 function startSchedulerNudge(request: APIRequestContext) {
   let stopped = false;
   const interval = setInterval(() => {
@@ -64,21 +61,29 @@ function startSchedulerNudge(request: APIRequestContext) {
   };
 }
 
-/** Creates a Provider whose default Command runs `argv`, a bound ProviderAccount attached to
- * `hostId`'s inventory, a clean temp git repo with `.worktrees/` gitignored, and a real,
- * already-running host daemon for it — everything `host smoke` itself does not create. Points
+/** Creates a Provider whose default Command runs `argv`, a bound ProviderAccount, a
+ * policy-scoped repository attachment with one real worktree, and an already-running daemon.
+ * Points
  * `HARNESS_EXECUTION_PROFILES` at a directory under this fixture's own temp root, never the
  * real home: `echo`/`false` need no provider credentials, unlike the real-CLI specs this
  * mirrors. */
-export async function setupSmokeFixture(request: APIRequestContext, tag: string, argv: string[]) {
+export async function setupSmokeFixture(
+  request: APIRequestContext,
+  tag: "echo" | "false",
+  argv: string[],
+) {
+  const repositoryId = E2E_REPORTING_REPOSITORIES[tag === "echo" ? "smokeEcho" : "smokeFailure"].id;
   const hostId = `pw-smoke-${tag}-${test.info().parallelIndex}-${Date.now()}`;
   const name = `smoke-e2e-${tag}-${test.info().parallelIndex}-${Date.now()}`;
   const root = mkdtempSync(join(tmpdir(), `pw-cli-host-smoke-${tag}-`));
   const repoPath = join(root, "repo");
+  const worktreeId = `smoke-worktree-${test.info().parallelIndex}-${Date.now()}`;
+  const worktreePath = join(repoPath, ".worktrees", worktreeId);
   const home = join(root, "home");
 
   let daemon: Awaited<ReturnType<typeof startDaemon>> | undefined;
   let stopNudge: (() => void) | undefined;
+  let inventoryOwned = false;
   let cleanedUp = false;
   // Built before any resource below is created, and safe to call more than once, so both the
   // catch below (setup failed partway) and the spec's own `finally` (setup succeeded) can call
@@ -86,10 +91,26 @@ export async function setupSmokeFixture(request: APIRequestContext, tag: string,
   // taking new work (the nudge), stop the daemon, then reclaim the filesystem last.
   const cleanup = async () => {
     if (cleanedUp) return;
-    cleanedUp = true;
     stopNudge?.();
     await daemon?.stop();
+    if (inventoryOwned) {
+      const inventory = await request.get(`${API}/api/v1/hosts/${hostId}/inventory`);
+      expect(inventory.ok()).toBe(true);
+      const record = (await inventory.json()) as {
+        repositories: Array<{ id: string; path: string; worktrees: Array<{ id: string }> }>;
+      };
+      expect(record.repositories).toEqual([
+        expect.objectContaining({
+          id: repositoryId,
+          path: repoPath,
+          worktrees: [expect.objectContaining({ id: worktreeId })],
+        }),
+      ]);
+      const removed = await request.delete(`${API}/api/v1/hosts/${hostId}/inventory`);
+      expect(removed.status()).toBe(204);
+    }
     rmSync(root, { recursive: true, force: true });
+    cleanedUp = true;
   };
 
   try {
@@ -103,6 +124,7 @@ export async function setupSmokeFixture(request: APIRequestContext, tag: string,
     await git(repoPath, ["add", "."]);
     await git(repoPath, ["commit", "-m", "init"]);
     await git(repoPath, ["branch", "-M", "main"]);
+    await git(repoPath, ["worktree", "add", "-b", worktreeId, worktreePath, "HEAD"]);
 
     const providerRes = await request.post(`${API}/api/v1/providers`, { data: { name } });
     expect(providerRes.ok(), await providerRes.text()).toBeTruthy();
@@ -128,9 +150,27 @@ export async function setupSmokeFixture(request: APIRequestContext, tag: string,
     const account = await accountRes.json();
 
     const inventoryRes = await request.put(`${API}/api/v1/hosts/${hostId}/inventory`, {
-      data: { repositories: [], providerAccounts: [{ providerAccountId: account.id }] },
+      data: {
+        repositories: [
+          {
+            id: repositoryId,
+            path: repoPath,
+            defaultBranch: "main",
+            worktrees: [
+              {
+                id: worktreeId,
+                name: worktreeId,
+                path: worktreePath,
+                labels: [],
+              },
+            ],
+          },
+        ],
+        providerAccounts: [{ providerAccountId: account.id }],
+      },
     });
     expect(inventoryRes.ok(), await inventoryRes.text()).toBeTruthy();
+    inventoryOwned = true;
 
     const profilePath = join(root, "execution-profiles.json");
     writeFileSync(profilePath, JSON.stringify({ accounts: { [account.id]: { home } } }));
@@ -147,9 +187,12 @@ export async function setupSmokeFixture(request: APIRequestContext, tag: string,
 
     return {
       hostId,
+      repositoryId,
       providerId: provider.id,
       accountId: account.id,
       repoPath,
+      worktreeId,
+      worktreePath,
       cleanup,
     };
   } catch (error) {
@@ -159,7 +202,12 @@ export async function setupSmokeFixture(request: APIRequestContext, tag: string,
 }
 
 /** Runs the real CLI binary as a subprocess — never the API key, always against the e2e stack. */
-export function runSmokeCli(hostId: string, repoPath: string, providerId: string) {
+export function runSmokeCli(
+  hostId: string,
+  repoPath: string,
+  providerId: string,
+  repositoryId: string,
+) {
   const { HARNESS_API_KEY: _key, HARNESS_API_KEY_FILE: _keyFile, ...cleanEnv } = process.env;
   return runCommand(
     "node",
@@ -168,6 +216,8 @@ export function runSmokeCli(hostId: string, repoPath: string, providerId: string
       "host",
       "smoke",
       hostId,
+      "--repository-id",
+      repositoryId,
       "--repo-path",
       repoPath,
       "--provider",

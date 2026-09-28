@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { API_BASE } from "../harness-endpoints.ts";
+import { E2E_REPORTING_REPOSITORIES } from "../reporting-fixture.ts";
 import { closeSocket, connectHost, CONTROL_BASE, logFrame, shot } from "./lib.ts";
 
 const LINE_COUNT = 60;
@@ -24,7 +25,7 @@ test.describe("terminal clipping", () => {
   }) => {
     const suffix = `${test.info().parallelIndex}-${Date.now()}`;
     const hostId = `pw-clip-host-${suffix}`;
-    const repoId = `pw-clip-repo-${suffix}`;
+    const repoId = E2E_REPORTING_REPOSITORIES.terminalClipping.id;
     const worktreeId = `pw-clip-worktree-${suffix}`;
     const commandName = `pw-clip-command-${suffix}`;
     let host: Awaited<ReturnType<typeof connectHost>> | undefined;

@@ -17,9 +17,16 @@ test.describe("control plane dashboard", () => {
     await expect(page.getByTestId("stat-hosts-online-value")).toBeVisible();
     await expect(page.getByTestId("stat-worktree-utilization-value")).toBeVisible();
     await expect(page.getByTestId("live-updates-active")).toBeVisible();
-    await expect(page.getByTestId("dashboard-no-online-hosts")).toBeVisible();
     await expect(page.getByTestId("dashboard-recent-sessions")).toBeVisible();
     await expectNoLeakedNextDigest(page);
+  });
+
+  test("shows host setup guidance when the live inventory has no online host", async ({ page }) => {
+    await page.route("**/api/v1/hosts**", async (route) => {
+      await route.fulfill({ json: { items: [], nextCursor: null } });
+    });
+    await page.goto("/");
+    await expect(page.getByTestId("dashboard-no-online-hosts")).toBeVisible();
   });
 
   test("refreshes dashboard and session list from bounded production polling", async ({ page }) => {

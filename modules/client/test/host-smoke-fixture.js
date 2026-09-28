@@ -2,6 +2,7 @@
  * `host-repo-rm-fixture.js`'s own comment for why). */
 
 export const HOST_ID = "host-1";
+export const REPOSITORY_ID = "repo-1";
 export const REPO_PATH = "/repos/x";
 export const PROVIDER = "claude";
 export const env = { HARNESS_API_URL: "https://harness.test" };
@@ -10,6 +11,8 @@ export const BASE_ARGV = [
   "host",
   "smoke",
   HOST_ID,
+  "--repository-id",
+  REPOSITORY_ID,
   "--repo-path",
   REPO_PATH,
   "--provider",
@@ -19,23 +22,35 @@ export const BASE_ARGV = [
 const MARKER_RE = /Reply with exactly: (\S+)$/;
 
 /**
- * Builds a fetch router implementing a fully working happy path by default — create repository,
- * attach, one `completed`/`exitCode: 0` session whose logged stdout echoes back the prompt's own
- * marker, detach, delete — so each test only overrides the one leg it exercises. Every request
+ * Builds a fetch router with a preconfigured repository and host attachment, plus one
+ * `completed`/`exitCode: 0` session whose stdout echoes the prompt marker. Every request
  * is recorded into `calls` as `"<METHOD> <path>"`; `state` exposes what actually happened
- * (created repository id, session records by id, cancelled session ids, current inventory) for
+ * (session records by id, cancelled session ids, current inventory) for
  * assertions. `sessionStatuses(id, [...])` (below) is the usual way to script a `GET
  * /sessions/<id>` sequence; `overrides.getSession(id, session, callIndex)` is the general escape
  * hatch when a test needs something a status list can't express (e.g. `errorCode`).
  */
 export function makeSmokeFetch(overrides = {}) {
   const calls = [];
-  let inventory = {
+  const inventory = {
     version: 1,
-    repositories: [],
+    repositories: [
+      {
+        id: REPOSITORY_ID,
+        path: REPO_PATH,
+        defaultBranch: "main",
+        worktrees: [
+          {
+            id: "smoke-ready",
+            name: "smoke-ready",
+            path: `${REPO_PATH}/.worktrees/smoke-ready`,
+            labels: [],
+          },
+        ],
+      },
+    ],
     providerAccounts: [{ providerAccountId: "acct-1" }],
   };
-  let repositoryCount = 0;
   const sessionGetCounts = new Map();
   const state = {
     calls,
@@ -48,25 +63,13 @@ export function makeSmokeFetch(overrides = {}) {
 
   const providers = overrides.providers ?? [{ id: "prov-1", name: PROVIDER }];
 
-  async function handleCreateRepository(init) {
-    const body = JSON.parse(init.body);
-    repositoryCount += 1;
-    if (overrides.createRepository) return overrides.createRepository(body, repositoryCount);
-    return Response.json(
-      { id: `repo-${repositoryCount}`, name: body.name, url: body.url, defaultBranch: "main" },
-      { status: 201 },
-    );
+  async function handleGetRepository() {
+    if (overrides.getRepository) return overrides.getRepository();
+    return Response.json({ id: REPOSITORY_ID, name: "policy-smoke", defaultBranch: "main" });
   }
 
   async function handleInventoryGet() {
     if (overrides.getInventory) return overrides.getInventory(inventory);
-    return Response.json(inventory);
-  }
-
-  async function handleInventoryPut(init) {
-    const body = JSON.parse(init.body);
-    if (overrides.putInventory) return overrides.putInventory(body, inventory);
-    inventory = { ...body, version: (inventory.version ?? 0) + 1 };
     return Response.json(inventory);
   }
 
@@ -103,22 +106,15 @@ export function makeSmokeFetch(overrides = {}) {
     });
   }
 
-  async function handleDeleteRepository(repositoryId) {
-    if (overrides.deleteRepository) return overrides.deleteRepository(repositoryId);
-    return new Response(null, { status: 204 });
-  }
-
   const fetch = async (url, init) => {
     const u = new URL(url);
     const method = init?.method ?? "GET";
     calls.push(`${method} ${u.pathname}`);
-    if (u.pathname === "/api/v1/repositories" && method === "POST")
-      return handleCreateRepository(init);
+    if (u.pathname === `/api/v1/repositories/${REPOSITORY_ID}` && method === "GET")
+      return handleGetRepository();
     if (u.pathname === "/api/v1/providers") return Response.json({ items: providers });
     if (u.pathname === `/api/v1/hosts/${HOST_ID}/inventory` && method === "GET")
       return handleInventoryGet();
-    if (u.pathname === `/api/v1/hosts/${HOST_ID}/inventory` && method === "PUT")
-      return handleInventoryPut(init);
     if (u.pathname === "/api/v1/sessions" && method === "POST") return handleCreateSession(init);
     const cancelMatch = /^\/api\/v1\/sessions\/([^/]+)\/cancel$/.exec(u.pathname);
     if (cancelMatch && method === "POST") return handleCancelSession(cancelMatch[1]);
@@ -126,8 +122,6 @@ export function makeSmokeFetch(overrides = {}) {
     if (logsMatch) return handleLogs(logsMatch[1]);
     const sessionMatch = /^\/api\/v1\/sessions\/([^/]+)$/.exec(u.pathname);
     if (sessionMatch && method === "GET") return handleGetSession(sessionMatch[1]);
-    const deleteMatch = /^\/api\/v1\/repositories\/([^/]+)$/.exec(u.pathname);
-    if (deleteMatch && method === "DELETE") return handleDeleteRepository(deleteMatch[1]);
     throw new Error(`unexpected request in host smoke fixture: ${method} ${u.pathname}`);
   };
 

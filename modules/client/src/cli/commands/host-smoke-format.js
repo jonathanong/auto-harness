@@ -6,7 +6,7 @@ export function step(io, ok, message) {
 
 /**
  * The clean final summary on stdout: `--json` prints the full structured `result` verbatim;
- * otherwise one `PASS`/`FAIL` line per provider (only ever empty when repo create/attach itself
+ * otherwise one `PASS`/`FAIL` line per provider (only ever empty when repository preflight
  * failed, in which case `result.setupError` is printed instead), then one overall line.
  */
 export function printSummary(io, flags, result) {

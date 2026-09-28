@@ -44,6 +44,7 @@ export type WorktreePorts = {
   controlPort: number;
   hostPanePort: number;
   dynamoPort: number;
+  blackboardPort: number;
   containerName: string;
 };
 
@@ -52,12 +53,12 @@ export function bucketFor(slug: string): number {
 }
 
 /**
- * `10 + bucket * 4` keeps every worktree's 4-port block (api/control/host-pane/dynamo) aligned
+ * `10 + bucket * 5` keeps every worktree's 5-port block (api/control/host-pane/dynamo/Blackboard) aligned
  * the same way the default 7430-7433 block is, and starts past offset 0 so an isolated worktree
  * run can never collide with the shared default stack (`pnpm test:e2e`'s own 743x range).
  */
 export function portsForBucket(slug: string, bucket: number): WorktreePorts {
-  const offset = 10 + (bucket % OFFSET_BUCKETS) * 4;
+  const offset = 10 + (bucket % OFFSET_BUCKETS) * 5;
   return {
     slug,
     offset,
@@ -65,6 +66,7 @@ export function portsForBucket(slug: string, bucket: number): WorktreePorts {
     controlPort: 7431 + offset,
     hostPanePort: 7432 + offset,
     dynamoPort: 7433 + offset,
+    blackboardPort: 7434 + offset,
     containerName: `${slug}-dynamodb-e2e`,
   };
 }
@@ -123,7 +125,7 @@ function inspectContainer(name: string): ContainerInspection | undefined {
 }
 
 /**
- * Walk forward from this worktree's hash-seeded bucket until every one of the 4 ports is
+ * Walk forward from this worktree's hash-seeded bucket until every one of the 5 ports is
  * either free, or (for the DynamoDB port only) already bound to this exact worktree's own
  * container — reusing that container is the whole point, not a collision. A port genuinely
  * occupied by anything else (another worktree that landed on the same bucket, or a leftover
@@ -137,13 +139,14 @@ export async function findAvailablePorts(
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const ports = portsForBucket(slug, bucket);
     const dynamoIsOurs = inspectContainer(ports.containerName) !== undefined;
-    const [dynamoFree, apiFree, controlFree, hostPaneFree] = await Promise.all([
+    const [dynamoFree, apiFree, controlFree, hostPaneFree, blackboardFree] = await Promise.all([
       dynamoIsOurs ? Promise.resolve(true) : isPortOccupied(ports.dynamoPort).then((b) => !b),
       isPortOccupied(ports.apiPort).then((b) => !b),
       isPortOccupied(ports.controlPort).then((b) => !b),
       isPortOccupied(ports.hostPanePort).then((b) => !b),
+      isPortOccupied(ports.blackboardPort).then((b) => !b),
     ]);
-    if (dynamoFree && apiFree && controlFree && hostPaneFree) return ports;
+    if (dynamoFree && apiFree && controlFree && hostPaneFree && blackboardFree) return ports;
     bucket = (bucket + 1) % OFFSET_BUCKETS;
   }
   throw new Error(

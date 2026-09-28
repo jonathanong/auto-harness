@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { API_BASE } from "../harness-endpoints.ts";
+import { E2E_REPORTING_REPOSITORIES } from "../reporting-fixture.ts";
 import { closeSocket, connectHost, CONTROL_BASE, shot } from "./lib.ts";
 
 /**
@@ -18,7 +19,7 @@ test.describe("status badges", () => {
   }) => {
     const suffix = `${test.info().parallelIndex}-${Date.now()}`;
     const hostId = `pw-status-host-${suffix}`;
-    const repoId = `pw-status-repo-${suffix}`;
+    const repoId = E2E_REPORTING_REPOSITORIES.statusBadges.id;
     const busyWorktreeId = `pw-status-busy-wt-${suffix}`;
     const idleWorktreeId = `pw-status-idle-wt-${suffix}`;
     const commandName = `pw-status-command-${suffix}`;

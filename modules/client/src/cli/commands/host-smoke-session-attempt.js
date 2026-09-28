@@ -6,8 +6,8 @@ function defaultSleep(ms) {
 }
 
 /**
- * Creates one session and waits for it. Inventory freshness is enforced by the daemon before it
- * acknowledges the assignment, so this client does not retry a terminal setup failure. A
+ * Creates one session and waits for it. The daemon checks inventory freshness before it
+ * acknowledges the assignment; this client does not retry a terminal setup failure. A
  * `waitForSmokeSession` rejection (a genuine `getSession` failure — network error, 5xx — not a
  * `UsageLimitSignal`, which it already converts) fails only this provider. The created session's
  * id is deliberately left in `activeSessionIds` on that path so `teardownSmoke` retries cleanup.

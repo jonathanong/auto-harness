@@ -38,8 +38,7 @@ function extractRepository(record, hostId, repositoryId, { required = true } = {
  *
  * `{ dryRun: true }` does the same read and lookup but returns before ever writing, so
  * `host repo rm --dry-run` and a real detach can never disagree about what would be removed.
- * Exported (rather than folded into the command) because `host smoke` reuses this exact logic
- * for its own teardown.
+ * `host repo rm` delegates to this helper.
  */
 export async function detachRepository(client, hostId, repositoryId, { dryRun = false } = {}) {
   const record = await getInventory(client, hostId);

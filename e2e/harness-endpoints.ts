@@ -23,6 +23,7 @@ export const API_PORT = 7430 + offset;
 export const CONTROL_PORT = 7431 + offset;
 export const HOST_PANE_PORT = 7432 + offset;
 const DYNAMO_PORT = 7433 + offset;
+export const BLACKBOARD_PORT = 7434 + offset;
 
 export const API_BASE = `http://127.0.0.1:${API_PORT}`;
 export const WS_BASE = `ws://127.0.0.1:${API_PORT}/ws`;

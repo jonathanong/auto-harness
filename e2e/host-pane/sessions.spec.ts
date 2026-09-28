@@ -4,6 +4,8 @@ import { test, expect, type Page } from "@playwright/test";
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
 import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
 import { HOST_PROTOCOL_VERSION } from "../../modules/shared/src/constants.ts";
+import { E2E_REPORTING_REPOSITORIES } from "../reporting-fixture.ts";
+import { waitForAssignment } from "../wait-for-assignment.ts";
 
 const API = API_BASE;
 
@@ -28,17 +30,8 @@ test.describe("host pane sessions", () => {
 
   test("clicking a session opens its detail page", async ({ page, request }) => {
     await withLocalHostLock(async () => {
-      const suffix = `${test.info().parallelIndex}-${Date.now()}`;
-      const repositoryName = `pw-host-session-repository-${suffix}`;
-      const repository = await request.post(`${API}/api/v1/repositories`, {
-        data: {
-          name: repositoryName,
-          url: `https://git.example.test/pw-agent-sess-repo-${suffix}.git`,
-          defaultBranch: "main",
-        },
-      });
-      expect(repository.status()).toBe(201);
-      const repoId = ((await repository.json()) as { id: string }).id;
+      const repositoryName = E2E_REPORTING_REPOSITORIES.hostPane.name;
+      const repoId = E2E_REPORTING_REPOSITORIES.hostPane.id;
       const wtId = `wt-${test.info().parallelIndex}-${Date.now()}`;
       let detailPage: Page | undefined;
 
@@ -126,9 +119,16 @@ test.describe("host pane sessions", () => {
             protocolVersion: HOST_PROTOCOL_VERSION,
           },
         );
-        await request.post(`${API}/api/v1/scheduler/assign`);
-        const assigned = await request.get(`${API}/api/v1/sessions/${id}`);
-        const assignment = (await assigned.json()) as { attemptId: string; worktreeId: string };
+        await expect
+          .poll(async () => {
+            const response = await request.get(`${API}/api/v1/worktrees`);
+            const { items } = (await response.json()) as {
+              items: Array<{ id: string; online: boolean; status: string; labels: string[] }>;
+            };
+            return items.find((worktree) => worktree.id === wtId);
+          })
+          .toMatchObject({ online: true, status: "idle", labels: ["echo"] });
+        const assignment = await waitForAssignment(request, API, id);
         await page.evaluate(
           ({ sessionId, attemptId, worktreeId }) => {
             const socket = (globalThis as typeof globalThis & { timeoutSocket?: WebSocket })

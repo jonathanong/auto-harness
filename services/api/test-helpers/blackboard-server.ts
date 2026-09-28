@@ -1,13 +1,19 @@
-import { createServer } from "node:http";
+import { createServer as createHttpServer, type RequestListener } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import type { FeedbackEnvelope } from "vouchington-tooling/agent-blackboard";
 
 /** Real HTTP boundary used with the published agent-blackboard client and shared writer. */
-export async function blackboardServer() {
+export async function blackboardServer(
+  options: {
+    port?: number;
+    tls?: { key: string; cert: string };
+  } = {},
+) {
   const sessions = new Map<string, Record<string, unknown>>();
   const entries = new Map<string, Array<{ data: FeedbackEnvelope; createdAt: string }>>();
   const state = { refuse: false, hideReadback: false, loseAppendAck: false };
   const requests: string[] = [];
-  const server = createServer(async (request, response) => {
+  const handler: RequestListener = async (request, response) => {
     requests.push(`${request.method} ${request.url}`);
     response.setHeader("content-type", "application/json");
     if (state.refuse) {
@@ -21,6 +27,10 @@ export async function blackboardServer() {
       ? (JSON.parse(Buffer.concat(chunks).toString()) as Record<string, unknown>)
       : {};
     const path = new URL(request.url!, "http://127.0.0.1").pathname;
+    if (path === "/health" && request.method === "GET") {
+      response.end(JSON.stringify({ ok: true }));
+      return;
+    }
     if (path === "/sessions" && request.method === "POST") {
       const id = body.id as string;
       if (sessions.has(id)) {
@@ -66,12 +76,13 @@ export async function blackboardServer() {
     }
     response.writeHead(404);
     response.end("{}");
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  };
+  const server = options.tls ? createHttpsServer(options.tls, handler) : createHttpServer(handler);
+  await new Promise<void>((resolve) => server.listen(options.port ?? 0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("test server address unavailable");
   return {
-    url: `http://127.0.0.1:${address.port}`,
+    url: `${options.tls ? "https" : "http"}://127.0.0.1:${address.port}`,
     sessions,
     entries,
     state,

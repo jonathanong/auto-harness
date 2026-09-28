@@ -3,51 +3,42 @@ import test from "node:test";
 
 import { main } from "../src/cli/main.js";
 import { makeIo } from "./cli-helpers.js";
-import { BASE_ARGV, env, HOST_ID, makeSmokeFetch, REPO_PATH } from "./host-smoke-fixture.js";
+import {
+  BASE_ARGV,
+  env,
+  HOST_ID,
+  makeSmokeFetch,
+  REPOSITORY_ID,
+  REPO_PATH,
+} from "./host-smoke-fixture.js";
 
-test("happy path: create, attach, run, teardown, in order, exit 0", async () => {
+test("happy path verifies preconfigured attachment, runs and preserves it", async () => {
   const { fetch, calls, state } = makeSmokeFetch();
   const { io, stdout, stderr } = makeIo({ env, fetch });
   const exitCode = await main(BASE_ARGV, io);
   assert.equal(exitCode, 0);
 
-  // Step order: create -> attach -> create session -> poll -> logs -> detach -> delete.
   assert.deepEqual(
     calls.filter((call) => !call.startsWith("GET /api/v1/providers")),
     [
-      "POST /api/v1/repositories",
+      "GET /api/v1/repositories/repo-1",
       "GET /api/v1/hosts/host-1/inventory",
-      "PUT /api/v1/hosts/host-1/inventory",
       "POST /api/v1/sessions",
       "GET /api/v1/sessions/session-1",
       "GET /api/v1/sessions/session-1/logs",
-      "GET /api/v1/hosts/host-1/inventory",
-      "PUT /api/v1/hosts/host-1/inventory",
-      "DELETE /api/v1/repositories/repo-1",
     ],
   );
-  assert.deepEqual(state.inventory.repositories, []); // detached again by teardown
+  assert.equal(state.inventory.repositories[0].id, REPOSITORY_ID);
   assert.match(stdout(), /PASS {2}claude/);
   assert.match(stdout(), /1\/1 providers passed/);
   assert.match(stdout(), /teardown ok/);
   assert.match(stdout(), /host smoke PASSED for host host-1/);
-  assert.match(stderr(), /ok {2}created repository repo-1/);
-  assert.match(stderr(), /ok {2}attached repository repo-1 to host host-1 at \/repos\/x/);
+  assert.match(stderr(), /ok {2}verified existing repository repo-1/);
+  assert.match(
+    stderr(),
+    /ok {2}verified repository repo-1 is attached to host host-1 at \/repos\/x/,
+  );
   assert.match(stderr(), /ok {2}provider claude: PASS/);
-});
-
-test("the created repository's url is an inert, obviously-fake https placeholder", async () => {
-  let capturedBody;
-  const { fetch } = makeSmokeFetch({
-    createRepository: (body) => {
-      capturedBody = body;
-      return Response.json({ id: "repo-1", name: body.name, url: body.url, defaultBranch: "main" });
-    },
-  });
-  const { io } = makeIo({ env, fetch });
-  await main(BASE_ARGV, io);
-  assert.match(capturedBody.name, /^smoke-[0-9a-f]+$/);
-  assert.equal(capturedBody.url, `https://example.test/${capturedBody.name}.git`);
 });
 
 test("--json prints a structured result", async () => {
@@ -63,32 +54,7 @@ test("--json prints a structured result", async () => {
   assert.equal(parsed.providers[0].pass, true);
   assert.equal(parsed.providers[0].provider, "claude");
   assert.equal(parsed.teardown.ok, true);
-  assert.equal(parsed.teardown.detached, true);
-  assert.equal(parsed.teardown.repositoryDeleted, true);
-});
-
-test("attaches one worktree named after the throwaway repository, never a fixed name", async () => {
-  // Worktree names are one namespace across every host, so a fixed name like `smoke-1` would
-  // make two concurrent smokes on different hosts reject each other's attach.
-  let putBody;
-  const { fetch } = makeSmokeFetch({
-    putInventory: (body, inventory) => {
-      putBody ??= body; // first PUT is the attach; the second (teardown) removes it again
-      return Response.json({ ...body, version: (inventory.version ?? 0) + 1 });
-    },
-  });
-  const { io } = makeIo({ env, fetch });
-  await main(BASE_ARGV, io);
-  const [worktree] = putBody.repositories[0].worktrees;
-  assert.match(worktree.name, /^smoke-[0-9a-f]{12}$/);
-  assert.deepEqual(putBody.repositories[0].worktrees, [
-    {
-      id: worktree.name,
-      name: worktree.name,
-      path: `/repos/x/.worktrees/${worktree.name}`,
-      labels: [],
-    },
-  ]);
+  assert.deepEqual(parsed.teardown.cancelledSessionIds, []);
 });
 
 for (const argv of [
@@ -96,6 +62,7 @@ for (const argv of [
   ["host", "smoke", HOST_ID],
   ["host", "smoke", HOST_ID, "--repo-path", REPO_PATH],
   ["host", "smoke", HOST_ID, "--provider", "claude"],
+  ["host", "smoke", HOST_ID, "--repository-id", REPOSITORY_ID, "--provider", "claude"],
   ["host", "smoke", HOST_ID, "extra", "--repo-path", REPO_PATH, "--provider", "claude"],
 ]) {
   test(`usage error for ${JSON.stringify(argv)}`, async () => {
@@ -119,6 +86,8 @@ test("multiple --provider flags run in the given order", async () => {
       "host",
       "smoke",
       HOST_ID,
+      "--repository-id",
+      REPOSITORY_ID,
       "--repo-path",
       REPO_PATH,
       "--provider",

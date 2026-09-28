@@ -9,6 +9,7 @@ import {
   fakeClock,
   HOST_ID,
   makeSmokeFetch,
+  REPOSITORY_ID,
   REPO_PATH,
   sessionStatuses,
 } from "./host-smoke-fixture.js";
@@ -121,6 +122,8 @@ test("mixed results across providers: one PASS, one FAIL, exit 1, both reported"
       "host",
       "smoke",
       HOST_ID,
+      "--repository-id",
+      REPOSITORY_ID,
       "--repo-path",
       REPO_PATH,
       "--provider",

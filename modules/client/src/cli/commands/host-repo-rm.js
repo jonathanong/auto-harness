@@ -8,8 +8,8 @@ const USAGE = "usage: auto-harness host repo rm <hostId> <repositoryId> [--dry-r
 
 /**
  * Detaches one repository from a host's inventory — the counterpart of `host repo add`. A thin
- * wrapper: flag parsing and presentation live here, but the actual safe read-modify-write lives
- * in `detachRepository` (its own module, reused by `host smoke`'s teardown).
+ * wrapper: flag parsing and presentation live here, while the safe read-modify-write lives
+ * in `detachRepository`.
  */
 export async function runHostRepoRm(argv, io) {
   const { flags, positionals } = parseFlags(argv, {

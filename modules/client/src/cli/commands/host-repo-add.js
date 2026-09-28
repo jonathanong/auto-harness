@@ -12,8 +12,8 @@ const USAGE =
 
 /**
  * Attaches an existing repository to a host's inventory — the counterpart of `host repo rm`.
- * A thin wrapper: flag parsing and presentation live here, but the actual read-modify-write
- * lives in `attachRepository` (its own module, reused by a later `host smoke` command).
+ * A thin wrapper: flag parsing and presentation live here, while the read-modify-write
+ * lives in `attachRepository`.
  */
 export async function runHostRepoAdd(argv, io) {
   const { flags, positionals } = parseFlags(argv, {

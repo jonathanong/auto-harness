@@ -34,10 +34,9 @@ async function fetchStdout(client, sessionId) {
 
 /**
  * Runs one `--provider`'s end-to-end smoke session: resolve the target, then hand off to
- * `runSessionAttempts` (one create + wait), then check its logs. The daemon refreshes stale
- * inventory before acknowledging an assignment, so a just-attached repository needs no
- * client-side retry. Always
- * resolves to an outcome object — `{ provider, pass, ... }` — never throws or rejects, so a
+ * `runSessionAttempts` (one create + wait), then check its logs. The repository attachment
+ * and worktree were verified before the provider loop; no client-side inventory retry occurs.
+ * Always resolves to an outcome object — `{ provider, pass, ... }` — never throws or rejects, so a
  * bad `--provider` value or a mid-poll network blip fails only *this* provider rather than
  * aborting the ones after it; `host-smoke.js`'s loop relies on that to keep going.
  */

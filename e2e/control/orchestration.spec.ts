@@ -8,6 +8,7 @@ import { fetchHostInventory } from "../../services/host-daemon/src/bootstrap.ts"
 import { startDaemon } from "../../services/host-daemon/src/start-daemon.ts";
 import { runCommandOk } from "../../scripts/lib/run-command.mts";
 import { API_BASE } from "../harness-endpoints.ts";
+import { E2E_REPORTING_REPOSITORIES } from "../reporting-fixture.ts";
 
 const API = API_BASE;
 
@@ -16,16 +17,15 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 /**
- * The one e2e spec that runs a real agent daemon (real WebSocket, real
- * subprocess) instead of faking the agent side over REST like every other
- * e2e/*.spec.ts test — proves browser -> API -> WS -> daemon -> subprocess ->
+ * Runs a real agent daemon (real WebSocket and subprocess) to prove
+ * browser -> API -> WS -> daemon -> subprocess ->
  * WS -> API -> browser actually works end to end, not just each half
  * independently. See docs/host-daemon-e2e-testing.md.
  */
 test.describe("real orchestration", () => {
   test("browser-created session runs on a real agent and completes", async ({ page, request }) => {
     const hostId = `pw-orch-${test.info().parallelIndex}-${Date.now()}`;
-    const repoId = `pw-orch-repo-${test.info().parallelIndex}-${Date.now()}`;
+    const repositoryId = E2E_REPORTING_REPOSITORIES.orchestration.id;
     const wtId = `wt-${test.info().parallelIndex}-${Date.now()}`;
     const root = mkdtempSync(join(tmpdir(), "pw-orchestration-"));
     const repo = join(root, "repo");
@@ -51,11 +51,6 @@ test.describe("real orchestration", () => {
           batchMaxWaitMs: 1000,
         },
       });
-      const repository = await request.post(`${API}/api/v1/repositories`, {
-        data: { name: repoId, url: `https://example.test/${repoId}.git`, defaultBranch: "main" },
-      });
-      expect(repository.ok()).toBe(true);
-      const repositoryId = ((await repository.json()) as { id: string }).id;
       await request.put(`${API}/api/v1/hosts/${hostId}/inventory`, {
         data: {
           repositories: [

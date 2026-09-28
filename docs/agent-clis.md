@@ -313,13 +313,13 @@ command below isn't there yet; full flag reference is the CLI's own README):
 auto-harness repo add --name <name> --url <url> [--default-branch <branch>]
 auto-harness host repo add <hostId> <repositoryId> --path <path> [--worktree <id>=<path>]...
 auto-harness session create --repo <repositoryId> --provider <id|name> --prompt <text> --wait
-auto-harness host smoke <hostId> --repo-path <path> --provider <id|name> [--provider ...]
+auto-harness host smoke <hostId> --repository-id <id> --repo-path <path> --provider <id|name> [--provider ...]
 ```
 
-`host smoke` attaches a throwaway repository, runs one session per given provider that must echo
-a marker, and always detaches and deletes the repository afterwards — exit `0` only if every
-provider passes. `--repo-path` must be an existing git repository on the host with a clean `main`
-checkout (and `.worktrees/` ignored).
+`host smoke` uses an existing policy-scoped repository already attached to the target host with
+an idle worktree. It verifies the catalog ID and host path, then runs one session per provider
+that must echo a marker. It cancels only its own unresolved sessions, leaving the repository,
+attachment, and worktree intact. Exit `0` requires every provider and cleanup to succeed.
 
 ## Usage limits
 

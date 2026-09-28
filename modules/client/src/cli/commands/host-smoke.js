@@ -4,14 +4,13 @@ import { parseFlags } from "../args.js";
 import { CliUsageError } from "../cli-errors.js";
 import { createClient, GLOBAL_BOOLEAN_FLAGS, GLOBAL_VALUE_FLAGS } from "../config.js";
 import { pathSegment } from "../path-segment.js";
-import { attachRepository } from "./attach-repository.js";
 import { printSummary, step } from "./host-smoke-format.js";
 import { runProviderSmoke } from "./host-smoke-provider.js";
-import { createSmokeRepository, smokeInventoryEntry } from "./host-smoke-repository.js";
+import { loadSmokeRepository, verifySmokeAttachment } from "./host-smoke-repository.js";
 import { teardownSmoke } from "./host-smoke-teardown.js";
 
 const USAGE =
-  "usage: auto-harness host smoke <hostId> --repo-path <path> --provider <id|name> " +
+  "usage: auto-harness host smoke <hostId> --repository-id <id> --repo-path <path> --provider <id|name> " +
   "[--provider <id|name>]... [--timeout <seconds>] [--json]";
 
 // Copied from MAX_SESSION_TIMEOUT_SECONDS in modules/shared/src/validation.ts (7 days) — this
@@ -42,13 +41,19 @@ function parsePositiveNumber(value, label) {
 
 function parseArgs(argv) {
   const { flags, positionals } = parseFlags(argv, {
-    valueFlags: [...GLOBAL_VALUE_FLAGS, "--repo-path", "--timeout"],
+    valueFlags: [...GLOBAL_VALUE_FLAGS, "--repository-id", "--repo-path", "--timeout"],
     booleanFlags: [...GLOBAL_BOOLEAN_FLAGS, "--json"],
     repeatableFlags: ["--provider"],
   });
   const [hostId] = positionals;
   const providers = flags["--provider"] ?? [];
-  if (!hostId || positionals.length > 1 || !flags["--repo-path"] || providers.length === 0) {
+  if (
+    !hostId ||
+    positionals.length > 1 ||
+    !flags["--repository-id"] ||
+    !flags["--repo-path"] ||
+    providers.length === 0
+  ) {
     throw new CliUsageError(USAGE);
   }
   const timeoutSeconds =
@@ -58,15 +63,21 @@ function parseArgs(argv) {
   if (timeoutSeconds > MAX_SESSION_TIMEOUT_SECONDS) {
     throw new CliUsageError(`--timeout must be at most ${MAX_SESSION_TIMEOUT_SECONDS} seconds`);
   }
-  return { flags, hostId, providers, repoPath: flags["--repo-path"], timeoutSeconds };
+  return {
+    flags,
+    hostId,
+    repositoryId: flags["--repository-id"],
+    providers,
+    repoPath: flags["--repo-path"],
+    timeoutSeconds,
+  };
 }
 
 /**
- * `host smoke <hostId> --repo-path <path> --provider <id|name>... [--timeout <seconds>]
- * [--json]` — proves a host can run a real provider-routed session end to end, then cleans up
- * after itself. See `modules/client/README.md` for the full step-by-step contract and the
- * preconditions on `--repo-path` this command cannot verify itself (it is a HOST path; the CLI
- * may run elsewhere).
+ * `host smoke <hostId> --repository-id <id> --repo-path <path> --provider <id|name>...
+ * [--timeout <seconds>] [--json]` — uses an existing repository/host attachment to prove a
+ * provider-routed session end to end. It changes no repository or host inventory. See
+ * `modules/client/README.md` for the host-path preconditions.
  *
  * Every step logs `ok`/`FAIL` to stderr as it happens; stdout stays a clean final summary (or,
  * with `--json`, the full structured result). Teardown (`teardownSmoke`) always runs, in
@@ -75,35 +86,36 @@ function parseArgs(argv) {
  * path, exit 2, handled by `main.js` before this function is even called for that failure mode).
  */
 export async function runHostSmoke(argv, io) {
-  const { flags, hostId, providers, repoPath, timeoutSeconds } = parseArgs(argv);
+  const { flags, hostId, repositoryId, providers, repoPath, timeoutSeconds } = parseArgs(argv);
   pathSegment(hostId, "hostId"); // validate before createClient, which may log in
+  pathSegment(repositoryId, "repositoryId");
   const client = await createClient(flags, io);
   const randomHex = io.randomHex ?? defaultRandomHex;
   const sleep = io.sleep;
   const now = io.now;
 
   const activeSessionIds = new Set();
-  let repository;
-  let attached = false;
   let setupError;
   let teardownResult;
   const providerResults = [];
 
   try {
-    repository = await createSmokeRepository(client, randomHex);
-    step(io, true, `created repository ${repository.id} (${repository.name})`);
+    const repository = await loadSmokeRepository(client, repositoryId);
+    step(io, true, `verified existing repository ${repository.id} (${repository.name})`);
 
-    const entry = smokeInventoryEntry(repository, repoPath);
-    await attachRepository(client, hostId, entry);
-    attached = true;
-    step(io, true, `attached repository ${repository.id} to host ${hostId} at ${repoPath}`);
+    await verifySmokeAttachment(client, hostId, repositoryId, repoPath);
+    step(
+      io,
+      true,
+      `verified repository ${repositoryId} is attached to host ${hostId} at ${repoPath}`,
+    );
 
     const marker = `AH_SMOKE_${randomHex(8).toUpperCase()}`;
     for (const providerRef of providers) {
       const outcome = await runProviderSmoke({
         client,
         io,
-        repositoryId: repository.id,
+        repositoryId,
         providerRef,
         marker,
         timeoutSeconds,
@@ -118,29 +130,13 @@ export async function runHostSmoke(argv, io) {
     setupError = error;
     step(io, false, `setup: ${error.message}`);
   } finally {
-    teardownResult = repository
-      ? await teardownSmoke({
-          client,
-          io,
-          hostId,
-          repositoryId: repository.id,
-          attached,
-          activeSessionIds,
-          sleep,
-        })
-      : {
-          ok: true,
-          cancelledSessionIds: [],
-          uncancelledSessionIds: [],
-          detached: false,
-          repositoryDeleted: false,
-        };
+    teardownResult = await teardownSmoke({ client, io, activeSessionIds });
   }
 
   const ok = !setupError && providerResults.every((provider) => provider.pass) && teardownResult.ok;
   const result = {
     hostId,
-    repositoryId: repository?.id,
+    repositoryId,
     providers: providerResults,
     teardown: teardownResult,
     ok,

@@ -11,7 +11,7 @@ Related: [local-development.md](local-development.md), [host-daemon-e2e-testing.
 
 ## Prerequisites
 
-- Node ≥ 24, pnpm, Docker (DynamoDB Local)
+- Node ≥ 24, pnpm, Docker (DynamoDB Local), OpenSSL (an ephemeral loopback TLS certificate)
 - One-time browser install:
 
 ```bash
@@ -56,11 +56,12 @@ so neither build needs to rewrite `tsconfig.json` itself.
 
 `playwright.config.ts` uses **`webServer`** (array) so Playwright boots and waits for:
 
-| Name          | Command                                                                          | Ready URL                      |
-| ------------- | -------------------------------------------------------------------------------- | ------------------------------ |
-| `api`         | `pnpm local:dynamodb:e2e && pnpm local:dynamodb:e2e:ready && pnpm local:api:e2e` | `http://127.0.0.1:7430/health` |
-| `control-web` | `pnpm local:web:start:e2e` (`next start` on `:7431`)                             | `http://127.0.0.1:7431`        |
-| `host-pane`   | `pnpm local:host-pane:start:e2e` (`next start` on `:7432`)                       | `http://127.0.0.1:7432`        |
+| Name          | Command                                                                                            | Ready URL                       |
+| ------------- | -------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `blackboard`  | `node e2e/blackboard-provider.ts` (loopback TLS provider)                                          | `https://127.0.0.1:7434/health` |
+| `api`         | Start DynamoDB, seed the scoped reporting repositories, then start `services/api/src/cli.ts serve` | `http://127.0.0.1:7430/health`  |
+| `control-web` | `next start` on `:7431`                                                                            | `http://127.0.0.1:7431`         |
+| `host-pane`   | `next start` on `:7432`                                                                            | `http://127.0.0.1:7432`         |
 
 Every one of these is on the `743x` range — `+10` from the normal `local:*` dev ports (`742x`)
 and dev DynamoDB (`:7423`) — with its own `dynamodb-e2e` container (`:7433`), entirely separate
@@ -81,12 +82,22 @@ share one loopback source address and exercise far more requests than one real a
 source budget would make unrelated UI scenarios interfere with one another. Rate-limit behavior,
 including durable shared counters, is covered by the focused API/WebSocket/DynamoDB test suites.
 
+The API receives trusted reporting policies for preseeded, immutable catalog repositories, one
+per autonomous test scenario. Tests attach their own scenario's repository to distinct hosts and
+worktrees, so an earlier queued session cannot claim a later scenario's capacity. The local
+Blackboard fixture uses the published client over HTTPS and returns real
+append/readback receipts; the controller still performs both admission checks. Only the API
+receives the test writer token and the ephemeral certificate trust root. The host daemon and
+test commands receive neither. Tests that exercise only queued sessions may create other catalog
+repositories. The provider is an E2E dependency, so admission cannot silently fall back to an
+unreported run when it is unavailable.
+
 **Note:** The agent **daemon** (`pnpm local:daemon start`) is **not** started by Playwright as a
 `webServer`. Most tests that need profiles seed host config + `host:register` via REST, against
-the e2e API (`:7430`), rather than running a real daemon. The one exception is
+the e2e API (`:7430`), rather than running a real daemon. One full-flow example is
 `e2e/control/orchestration.spec.ts`, which starts a real daemon in-process (imports
-`startDaemon` directly) to prove the full real path works, not just the UI/REST-substituted
-half — see [Test inventory](#test-inventory) and
+`startDaemon` directly) to prove the full browser-to-daemon path. The host-smoke specs also
+start real daemons to exercise the CLI — see [Test inventory](#test-inventory) and
 [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).
 
 ---
@@ -123,7 +134,8 @@ pnpm exec playwright test e2e/control/dashboard.spec.ts
 
 - Config: `fullyParallel: true` — every **test** can run in parallel across workers.
 - Projects `control` and `host-pane` use different `baseURL`s; tests under `e2e/control/` and `e2e/host-pane/` match separately.
-- **No shared mutable fixtures — except `local-1`.** Every other mutation uses unique ids and
+- **No shared mutable fixtures — except `local-1`.** The reporting repositories are seeded once and
+  remain immutable; assignment scenarios use separate repositories, hosts, and worktrees. Every other mutation uses unique ids and
   needs no coordination:
 
 ```ts
@@ -270,41 +282,41 @@ so the field disappears after the session leaves the queue.
 
 ### Project `control` — baseURL `http://127.0.0.1:7431`
 
-| File                                          | Tests                                                                                        | What it covers                                                                                                                                    |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `e2e/control/dashboard.spec.ts`               | loads shell and dashboard stats                                                              | Shell, heading, stat cards                                                                                                                        |
-|                                               | refreshes dashboard and session list from bounded production polling                         | Running/utilization cards and a current-page session row update without navigation                                                                |
-|                                               | nav links are present                                                                        | All primary nav `data-pw` links                                                                                                                   |
-| `e2e/control/sessions.spec.ts`                | sessions list page and filters                                                               | List page; status filter updates URL                                                                                                              |
-|                                               | new session form is present                                                                  | Form fields visible                                                                                                                               |
-|                                               | create session via API-backed form when targets exist                                        | Seeds a standalone Command via REST; submits form; lands on detail page; cancel unlocks resume                                                    |
-|                                               | unknown session id shows a not-found state                                                   | `/sessions/[id]` 404-style state                                                                                                                  |
-| `e2e/control/session-priority-labels.spec.ts` | creates and lists a prioritized, label-constrained session                                   | Online-worktree label discovery, 0–100 priority control, API payload persistence, and list display                                                |
-| `e2e/control/filaments-consumer.spec.ts`      | creates a Filaments-shaped webhook session through the public API and opens it in the UI     | Real Dynamo persistence plus repository, prompt, source, priority, labels, concurrency, and detail presentation                                   |
-| `e2e/control/live-session-logs.spec.ts`       | browser tails host logs over real API WebSockets                                             | Production web build, browser viewer socket, API host socket, ordered history/live tail, lifecycle state                                          |
-| `e2e/control/repositories.spec.ts`            | repositories page loads with add-repository dialog closed                                    | Page + closed modal + nested worktrees section                                                                                                    |
-|                                               | loads and retries a bounded repository continuation                                          | Full catalog remains available to the attach picker; Load more appends a real cursor page without navigation                                      |
-|                                               | create catalog repository via modal, then land on its detail page                            | Opens modal; parallel-safe catalog create; toast + navigate                                                                                       |
-|                                               | unknown repository id shows a not-found state                                                | `/repositories/[id]` 404-style state                                                                                                              |
-| `e2e/control/worktrees.spec.ts`               | worktrees page loads                                                                         | Page + heading                                                                                                                                    |
-|                                               | unknown worktree id shows a not-found state                                                  | `/worktrees/[id]` 404-style state                                                                                                                 |
-|                                               | clicking a worktree opens its fleet-wide detail page                                         | Seeds host config via API; click-through to detail page                                                                                           |
-| `e2e/control/providers.spec.ts`               | providers page loads with add-provider dialog closed                                         | Page + closed modal                                                                                                                               |
-|                                               | create provider with its default command, then manage accounts/settings                      | Full lifecycle: 3-step create, add/remove account, default-command select, edit name, delete after clearing accounts/commands                     |
-|                                               | failed account removal stays open, reports the API error, and can be retried                 | Provider-account DELETE failure keeps confirmation open, exposes a stable error selector, then succeeds on retry                                  |
-|                                               | unknown provider id shows a not-found state                                                  | `/providers/[id]` 404-style state                                                                                                                 |
-| `e2e/control/commands.spec.ts`                | commands page loads with add-command dialog closed                                           | Page + closed modal                                                                                                                               |
-|                                               | create standalone command, edit it, assign a provider, then delete with confirm              | Standalone + provider-owned creation, edit, delete-confirm flow                                                                                   |
-|                                               | unknown command id shows a not-found state                                                   | `/commands/[id]` 404-style state                                                                                                                  |
-| `e2e/control/host-providers.spec.ts`          | attach an account with a command override, then change, clear, and detach it                 | Host detail's Provider accounts tab: attach, override, clear override, detach                                                                     |
-|                                               | failed detach stays open, reports the inventory error, and can be retried                    | Host-inventory PUT failure keeps confirmation open, exposes a stable error selector, then succeeds on retry                                       |
-| `e2e/control/provider-overrides.spec.ts`      | disable at repo scope, then re-enable and override the command at worktree scope, then reset | Repo/worktree `ProviderScopeTable`: disable inherits down to worktree; worktree override wins; reset restores inherited                           |
-|                                               | worktree with no host-attached provider accounts shows the empty state                       | `ProviderScopeTable`'s empty state                                                                                                                |
-| `e2e/control/schedules.spec.ts`               | schedules page and create form                                                               | Seeds repo + a standalone Command via API; creates schedule in UI                                                                                 |
-| `e2e/control/hosts.spec.ts`                   | hosts page loads with filters and add form                                                   | Page + add host form + online filter URL                                                                                                          |
-|                                               | add host creates empty host inventory slot                                                   | Parallel-safe empty host config                                                                                                                   |
-| `e2e/control/host-advanced.spec.ts`           | edits host setup and validates the raw inventory editor                                      | Structured setup, allowed roots, exec-config warning; JSON conflict via an inventory-only concurrent write (no setupScript)                       |
-| `e2e/control/orchestration.spec.ts`           | browser-created session runs on a real agent and completes                                   | Real agent daemon (real WS, real subprocess) — the only spec here that doesn't fake the agent side over REST; see docs/host-daemon-e2e-testing.md |
+| File                                          | Tests                                                                                        | What it covers                                                                                                                |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `e2e/control/dashboard.spec.ts`               | loads shell and dashboard stats                                                              | Shell, heading, stat cards                                                                                                    |
+|                                               | refreshes dashboard and session list from bounded production polling                         | Running/utilization cards and a current-page session row update without navigation                                            |
+|                                               | nav links are present                                                                        | All primary nav `data-pw` links                                                                                               |
+| `e2e/control/sessions.spec.ts`                | sessions list page and filters                                                               | List page; status filter updates URL                                                                                          |
+|                                               | new session form is present                                                                  | Form fields visible                                                                                                           |
+|                                               | create session via API-backed form when targets exist                                        | Seeds a standalone Command via REST; submits form; lands on detail page; cancel unlocks resume                                |
+|                                               | unknown session id shows a not-found state                                                   | `/sessions/[id]` 404-style state                                                                                              |
+| `e2e/control/session-priority-labels.spec.ts` | creates and lists a prioritized, label-constrained session                                   | Online-worktree label discovery, 0–100 priority control, API payload persistence, and list display                            |
+| `e2e/control/filaments-consumer.spec.ts`      | creates a Filaments-shaped webhook session through the public API and opens it in the UI     | Real Dynamo persistence plus repository, prompt, source, priority, labels, concurrency, and detail presentation               |
+| `e2e/control/live-session-logs.spec.ts`       | browser tails host logs over real API WebSockets                                             | Production web build, browser viewer socket, API host socket, ordered history/live tail, lifecycle state                      |
+| `e2e/control/repositories.spec.ts`            | repositories page loads with add-repository dialog closed                                    | Page + closed modal + nested worktrees section                                                                                |
+|                                               | loads and retries a bounded repository continuation                                          | Full catalog remains available to the attach picker; Load more appends a real cursor page without navigation                  |
+|                                               | create catalog repository via modal, then land on its detail page                            | Opens modal; parallel-safe catalog create; toast + navigate                                                                   |
+|                                               | unknown repository id shows a not-found state                                                | `/repositories/[id]` 404-style state                                                                                          |
+| `e2e/control/worktrees.spec.ts`               | worktrees page loads                                                                         | Page + heading                                                                                                                |
+|                                               | unknown worktree id shows a not-found state                                                  | `/worktrees/[id]` 404-style state                                                                                             |
+|                                               | clicking a worktree opens its fleet-wide detail page                                         | Seeds host config via API; click-through to detail page                                                                       |
+| `e2e/control/providers.spec.ts`               | providers page loads with add-provider dialog closed                                         | Page + closed modal                                                                                                           |
+|                                               | create provider with its default command, then manage accounts/settings                      | Full lifecycle: 3-step create, add/remove account, default-command select, edit name, delete after clearing accounts/commands |
+|                                               | failed account removal stays open, reports the API error, and can be retried                 | Provider-account DELETE failure keeps confirmation open, exposes a stable error selector, then succeeds on retry              |
+|                                               | unknown provider id shows a not-found state                                                  | `/providers/[id]` 404-style state                                                                                             |
+| `e2e/control/commands.spec.ts`                | commands page loads with add-command dialog closed                                           | Page + closed modal                                                                                                           |
+|                                               | create standalone command, edit it, assign a provider, then delete with confirm              | Standalone + provider-owned creation, edit, delete-confirm flow                                                               |
+|                                               | unknown command id shows a not-found state                                                   | `/commands/[id]` 404-style state                                                                                              |
+| `e2e/control/host-providers.spec.ts`          | attach an account with a command override, then change, clear, and detach it                 | Host detail's Provider accounts tab: attach, override, clear override, detach                                                 |
+|                                               | failed detach stays open, reports the inventory error, and can be retried                    | Host-inventory PUT failure keeps confirmation open, exposes a stable error selector, then succeeds on retry                   |
+| `e2e/control/provider-overrides.spec.ts`      | disable at repo scope, then re-enable and override the command at worktree scope, then reset | Repo/worktree `ProviderScopeTable`: disable inherits down to worktree; worktree override wins; reset restores inherited       |
+|                                               | worktree with no host-attached provider accounts shows the empty state                       | `ProviderScopeTable`'s empty state                                                                                            |
+| `e2e/control/schedules.spec.ts`               | schedules page and create form                                                               | Seeds repo + a standalone Command via API; creates schedule in UI                                                             |
+| `e2e/control/hosts.spec.ts`                   | hosts page loads with filters and add form                                                   | Page + add host form + online filter URL                                                                                      |
+|                                               | add host creates empty host inventory slot                                                   | Parallel-safe empty host config                                                                                               |
+| `e2e/control/host-advanced.spec.ts`           | edits host setup and validates the raw inventory editor                                      | Structured setup, allowed roots, exec-config warning; JSON conflict via an inventory-only concurrent write (no setupScript)   |
+| `e2e/control/orchestration.spec.ts`           | browser-created session runs on a real agent and completes                                   | Real agent daemon (real WS, real subprocess) proves the browser-to-daemon path; see docs/host-daemon-e2e-testing.md           |
 
 ### Project `agent` — baseURL `http://127.0.0.1:7432`
 

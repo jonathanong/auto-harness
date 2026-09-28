@@ -3,41 +3,61 @@ import test from "node:test";
 
 import { main } from "../src/cli/main.js";
 import { makeIo } from "./cli-helpers.js";
-import { BASE_ARGV, env, makeSmokeFetch, sessionStatuses } from "./host-smoke-fixture.js";
+import {
+  BASE_ARGV,
+  env,
+  makeSmokeFetch,
+  REPOSITORY_ID,
+  sessionStatuses,
+} from "./host-smoke-fixture.js";
 
-test("repo create fails: exit 1, no attach/session/teardown calls, no crash", async () => {
+test("repository is absent or out of scope: fail before inventory or session access", async () => {
   const { fetch, calls } = makeSmokeFetch({
-    createRepository: () =>
-      Response.json({ error: { code: "VALIDATION_ERROR", message: "bad name" } }, { status: 400 }),
+    getRepository: () =>
+      Response.json(
+        { error: { code: "NOT_FOUND", message: "resource not found" } },
+        { status: 404 },
+      ),
   });
   const { io, stdout, stderr } = makeIo({ env, fetch });
   const exitCode = await main(BASE_ARGV, io);
   assert.equal(exitCode, 1);
-  assert.deepEqual(calls, ["POST /api/v1/repositories"]);
-  assert.match(stderr(), /FAIL {2}setup: bad name/);
-  assert.match(stdout(), /FAIL {2}setup: bad name/);
-  assert.match(stdout(), /teardown ok/); // nothing to tear down; must not crash
+  assert.deepEqual(calls, [`GET /api/v1/repositories/${REPOSITORY_ID}`]);
+  assert.match(stderr(), /not found or outside this credential's scope/);
+  assert.match(stdout(), /FAIL {2}setup: repository repo-1/);
+  assert.match(stdout(), /teardown ok/);
 });
 
-test("attach fails: repo already created is still deleted by teardown", async () => {
+test("repository not attached: fail without changing host inventory", async () => {
   const { fetch, calls } = makeSmokeFetch({
-    putInventory: () =>
-      Response.json(
-        { error: { code: "VALIDATION_ERROR", message: "bad document" } },
-        { status: 400 },
-      ),
+    getInventory: (inventory) => Response.json({ ...inventory, repositories: [] }),
   });
   const { io, stdout } = makeIo({ env, fetch });
   const exitCode = await main(BASE_ARGV, io);
   assert.equal(exitCode, 1);
-  assert.match(stdout(), /FAIL {2}setup: bad document/);
-  assert.ok(calls.includes("DELETE /api/v1/repositories/repo-1"));
-  // Never attached, so detach must not even be attempted (it would just fail "not attached").
+  assert.match(stdout(), /must already be attached/);
   assert.equal(calls.filter((call) => call === "GET /api/v1/hosts/host-1/inventory").length, 1);
+  assert.ok(!calls.some((call) => call.startsWith("PUT ") || call.startsWith("POST ")));
 });
 
-test("session create fails: attach is still detached and the repo still deleted", async () => {
-  const { fetch, calls } = makeSmokeFetch({
+test("a mismatched host path or missing worktree fails before a session is created", async () => {
+  for (const repositories of [
+    [{ id: REPOSITORY_ID, path: "/other", worktrees: [{ id: "wt" }] }],
+    [{ id: REPOSITORY_ID, path: "/repos/x", worktrees: [] }],
+  ]) {
+    const { fetch, calls } = makeSmokeFetch({
+      getInventory: (inventory) => Response.json({ ...inventory, repositories }),
+    });
+    const { io, stdout } = makeIo({ env, fetch });
+    assert.equal(await main(BASE_ARGV, io), 1);
+    assert.match(stdout(), /FAIL {2}setup:/);
+    assert.ok(!calls.includes("POST /api/v1/sessions"));
+    assert.ok(!calls.some((call) => call.startsWith("PUT ") || call.startsWith("DELETE ")));
+  }
+});
+
+test("session create fails without changing the preconfigured attachment", async () => {
+  const { fetch, calls, state } = makeSmokeFetch({
     createSession: () =>
       Response.json(
         { error: { code: "VALIDATION_ERROR", message: "no such provider" } },
@@ -49,12 +69,13 @@ test("session create fails: attach is still detached and the repo still deleted"
   assert.equal(exitCode, 1);
   assert.match(stderr(), /FAIL {2}provider claude: create session failed: no such provider/);
   assert.match(stdout(), /FAIL {2}claude: no such provider/);
-  assert.equal(calls.filter((call) => call === "GET /api/v1/hosts/host-1/inventory").length, 2);
-  assert.ok(calls.includes("DELETE /api/v1/repositories/repo-1"));
+  assert.equal(calls.filter((call) => call === "GET /api/v1/hosts/host-1/inventory").length, 1);
+  assert.equal(state.inventory.repositories[0].id, REPOSITORY_ID);
+  assert.ok(!calls.some((call) => call.startsWith("PUT ") || call.startsWith("DELETE ")));
   assert.ok(!calls.some((call) => call.includes("/cancel"))); // no session was ever created
 });
 
-test("wait throws (network failure mid-poll): only that provider fails, session still cancelled by teardown's safety net", async () => {
+test("wait throws: only that provider fails and its session is cancelled", async () => {
   let getCalls = 0;
   const { fetch, calls, state } = makeSmokeFetch({
     getSession: () => {
@@ -70,7 +91,7 @@ test("wait throws (network failure mid-poll): only that provider fails, session 
   assert.match(stderr(), /provider claude: session wait failed: network down/);
   assert.match(stdout(), /FAIL {2}claude: network down/);
   assert.deepEqual(state.cancelledSessionIds, ["session-1"]);
-  assert.ok(calls.includes("DELETE /api/v1/repositories/repo-1"));
+  assert.ok(!calls.some((call) => call.startsWith("DELETE /api/v1/repositories")));
 });
 
 test("wait throws mid-poll on one provider: the next --provider still runs and passes", async () => {
@@ -94,6 +115,8 @@ test("wait throws mid-poll on one provider: the next --provider still runs and p
       "host",
       "smoke",
       "host-1",
+      "--repository-id",
+      REPOSITORY_ID,
       "--repo-path",
       "/repos/x",
       "--provider",
@@ -110,7 +133,7 @@ test("wait throws mid-poll on one provider: the next --provider still runs and p
   assert.match(stdout(), /1\/2 providers passed/);
 });
 
-test("logs fetch fails after a completed session: nothing left to cancel, repo still deleted", async () => {
+test("logs fetch fails after a completed session: nothing left to cancel", async () => {
   const { fetch, state } = makeSmokeFetch({
     logsFor: () => {
       throw new Error("logs unavailable");

@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- one end-to-end flow owns the host, viewer, and terminal lifecycle. */
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { createCatalogRepository } from "../local-1-host.ts";
+import { E2E_REPORTING_REPOSITORIES } from "../reporting-fixture.ts";
 import { HOST_PROTOCOL_VERSION } from "../../modules/shared/src/constants.ts";
 import { gzipJsonlLines } from "../../modules/shared/src/session-log-gzip.ts";
 
@@ -13,7 +13,7 @@ test.describe("live session logs", () => {
   }) => {
     const suffix = `${test.info().parallelIndex}-${Date.now()}`;
     const hostId = `pw-live-host-${suffix}`;
-    const repoId = await createCatalogRepository(request, `pw-live-repo-${suffix}`);
+    const repoId = E2E_REPORTING_REPOSITORIES.liveLogs.id;
     const worktreeId = `pw-live-worktree-${suffix}`;
     const commandName = `pw-live-command-${suffix}`;
     let host: Awaited<ReturnType<typeof connectHost>> | undefined;
