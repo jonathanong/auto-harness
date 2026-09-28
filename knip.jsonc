@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
     ".": {
-      "entry": ["scripts/*.mts"],
+      "entry": ["scripts/*.mts", "e2e/blackboard-provider.ts", "e2e/seed-reporting-repository.ts"],
       "project": ["scripts/**/*.{ts,mts}", "e2e/**/*.ts"],
     },
     "actions/dispatch": {
@@ -35,5 +35,5 @@
     },
   },
   "ignore": ["**/test-helpers/**"],
-  "ignoreBinaries": ["lychee", "systemd-analyze", "tofu"],
+  "ignoreBinaries": ["lychee", "openssl", "systemd-analyze", "tofu"],
 }
