@@ -61,19 +61,15 @@ async function eligibleHosts(state: ControlPlaneState, repositoryId: string) {
         state.storage !== undefined ||
         !state.mainCheckoutLeases.has(leaseKey(hostId, repositoryId)),
     );
+  const last = (id: string) =>
+    [...state.sessions.values()]
+      .filter((session) => session.type === "scheduled" && session.hostId === id)
+      .map((session) => session.startedAt ?? "")
+      .toSorted()
+      .at(-1) ?? "";
   const cursors = new Map<string, string>();
   for (const [hostId] of hosts) {
-    const cursor = state.storage
-      ? await state.storage.getMainCheckoutCursor(hostId)
-      : (() => {
-          const last = (id: string) =>
-            [...state.sessions.values()]
-              .filter((session) => session.type === "scheduled" && session.hostId === id)
-              .map((session) => session.startedAt ?? "")
-              .toSorted()
-              .at(-1) ?? "";
-          return last(hostId);
-        })();
+    const cursor = state.storage ? await state.storage.getMainCheckoutCursor(hostId) : last(hostId);
     cursors.set(hostId, cursor ?? "");
   }
   return hosts

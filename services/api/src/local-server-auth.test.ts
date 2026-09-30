@@ -12,6 +12,17 @@ function admins(): string {
   );
 }
 
+function setup() {
+  const plane = new ControlPlane();
+  plane.appendAuditLog = async () => {
+    throw new Error("audit unavailable");
+  };
+  const auth = new AuthService({ mode: "disabled", secret: "secret", admins: admins() });
+  const invoke = (method: string, path: string, body?: unknown) =>
+    invokeHandler(createLocalApp({ plane, authService: auth }).handler, method, path, body);
+  return { plane, auth, invoke };
+}
+
 describe("createLocalApp authentication routes", () => {
   it("refuses to orphan schedules when deleting their authenticated owner", async () => {
     const plane = new ControlPlane();
@@ -379,17 +390,6 @@ describe("createLocalApp authentication routes", () => {
   });
 
   it("fails closed for account conflict, deletion, and service-account audit writes", async () => {
-    function setup() {
-      const plane = new ControlPlane();
-      plane.appendAuditLog = async () => {
-        throw new Error("audit unavailable");
-      };
-      const auth = new AuthService({ mode: "disabled", secret: "secret", admins: admins() });
-      const invoke = (method: string, path: string, body?: unknown) =>
-        invokeHandler(createLocalApp({ plane, authService: auth }).handler, method, path, body);
-      return { plane, auth, invoke };
-    }
-
     const conflict = setup();
     conflict.plane.createRepository({
       id: "repo",

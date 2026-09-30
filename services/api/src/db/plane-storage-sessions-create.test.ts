@@ -13,6 +13,26 @@ function cancelled(index: number) {
   };
 }
 
+function attempt(session: Record<string, unknown>, index: number) {
+  return createSession(
+    {
+      doc: {
+        send: async (command: { input?: { TableName?: string } }) =>
+          command.input?.TableName === "SessionDrains"
+            ? { Item: { operationId: "drain" } }
+            : Promise.reject(cancelled(index)),
+      } as never,
+      tables: {
+        sessions: "Sessions",
+        repositories: "Repositories",
+        workspacePools: "Pools",
+        sessionDrains: "SessionDrains",
+      } as never,
+    },
+    session as never,
+  );
+}
+
 describe("marker-guarded session creation", () => {
   it("does not translate non-conditional transaction failures", async () => {
     const failure = new Error("Dynamo unavailable");
@@ -101,24 +121,6 @@ describe("marker-guarded session creation", () => {
       queueShard: 0,
       createdAt: "2026-01-01T00:00:00.000Z",
     };
-    const attempt = (session: Record<string, unknown>, index: number) =>
-      createSession(
-        {
-          doc: {
-            send: async (command: { input?: { TableName?: string } }) =>
-              command.input?.TableName === "SessionDrains"
-                ? { Item: { operationId: "drain" } }
-                : Promise.reject(cancelled(index)),
-          } as never,
-          tables: {
-            sessions: "Sessions",
-            repositories: "Repositories",
-            workspacePools: "Pools",
-            sessionDrains: "SessionDrains",
-          } as never,
-        },
-        session as never,
-      );
 
     await expect(attempt({ ...base, repositoryId: "repo" }, 0)).rejects.toMatchObject({
       name: "RepositoryAdmissionClosedError",

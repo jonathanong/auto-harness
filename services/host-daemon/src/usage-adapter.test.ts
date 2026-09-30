@@ -20,6 +20,31 @@ import { jsonLines, jsonObject, jsonObjects } from "./usage-adapter-json.ts";
 
 const observedAt = "2026-01-01T00:00:00.000Z";
 
+const parseProvider = (stem: "grok" | "gemini", envelope: object) =>
+  parseCliUsage({
+    argv: [stem, "-p", "--output-format", "json"],
+    output: JSON.stringify(envelope),
+    observedAt,
+  });
+
+// Shared by the chunk-boundary/overflow cases, which differ only in the chunks fed to
+// the PTY and (for the exit-0 usage case) the exit code — everything else about driving
+// UsageCapturingProcessRunner through the codex path is identical.
+function runCodexCapture(chunks: readonly string[], exitCode = 1): Promise<ProcessResult> {
+  const inner: ProcessRunner = {
+    async run(options: RunProcessOptions): Promise<ProcessResult> {
+      for (const data of chunks) options.onChunk({ stream: "stdout", data });
+      return { exitCode, timedOut: false, signal: null };
+    },
+  };
+  return new UsageCapturingProcessRunner(inner, () => observedAt).run({
+    argv: ["codex", "exec", "--json"],
+    cwd: "/",
+    timeoutMs: 1_000,
+    onChunk: () => undefined,
+  });
+}
+
 describe("CLI provider identity", () => {
   it("resolves trusted catalog argv stems", () => {
     expect(executableStem("C:\\\\bin\\\\Claude.EXE")).toBe("claude");
@@ -470,12 +495,6 @@ describe("parseCliUsage", () => {
   });
 
   it("detects grok/gemini CLI-authored usage-limit envelopes from first-party CLI source", () => {
-    const parseProvider = (stem: "grok" | "gemini", envelope: object) =>
-      parseCliUsage({
-        argv: [stem, "-p", "--output-format", "json"],
-        output: JSON.stringify(envelope),
-        observedAt,
-      });
     // Grok CLI 1.0.13 headless.rs: `{type:"error", message}` only. HTTP 429 maps to
     // ACP -32003, then format_rate_limited_user_message writes these sentences
     // (unicode apostrophe). Keep the structured-code arm as forward-compat.
@@ -1060,24 +1079,6 @@ describe("UsageCapturingProcessRunner", () => {
   // describe block above, restated here since that block's consts are scoped to it.
   const turnFailedLine =
     '{"type":"turn.failed","error":{"message":"You\'ve hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 6th, 2026 7:25 PM."}}';
-
-  // Shared by the chunk-boundary/overflow cases below, which differ only in the chunks fed to
-  // the PTY and (for the exit-0 usage case) the exit code — everything else about driving
-  // UsageCapturingProcessRunner through the codex path is identical.
-  function runCodexCapture(chunks: readonly string[], exitCode = 1): Promise<ProcessResult> {
-    const inner: ProcessRunner = {
-      async run(options: RunProcessOptions): Promise<ProcessResult> {
-        for (const data of chunks) options.onChunk({ stream: "stdout", data });
-        return { exitCode, timedOut: false, signal: null };
-      },
-    };
-    return new UsageCapturingProcessRunner(inner, () => observedAt).run({
-      argv: ["codex", "exec", "--json"],
-      cwd: "/",
-      timeoutMs: 1_000,
-      onChunk: () => undefined,
-    });
-  }
 
   it("detects a codex usage-limit line split across two chunks at an arbitrary byte offset", async () => {
     // No trailing newline: codex's last line may not be newline-terminated, exercising

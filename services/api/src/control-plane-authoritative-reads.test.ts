@@ -9,6 +9,19 @@ import {
 
 const now = () => "2026-01-01T00:00:00.000Z";
 
+function legacyCommand(id: string, name: string) {
+  return {
+    id,
+    name,
+    argv: ["echo"],
+    appendPrompt: true,
+    appendPromptSeparator: false,
+    providerId: null,
+    createdAt: now(),
+    updatedAt: now(),
+  };
+}
+
 function options(storage: never) {
   return {
     storage,
@@ -27,16 +40,6 @@ function options(storage: never) {
 describe("authoritative durable reads", () => {
   it("keeps legacy command names readable and permits non-name updates", async () => {
     const storage = createAuthoritativeReadStorage();
-    const legacyCommand = (id: string, name: string) => ({
-      id,
-      name,
-      argv: ["echo"],
-      appendPrompt: true,
-      appendPromptSeparator: false,
-      providerId: null,
-      createdAt: now(),
-      updatedAt: now(),
-    });
     await storage.putCommand(legacyCommand("invalid", "Legacy Name"));
     await storage.putCommand(legacyCommand("duplicate-a", "duplicate"));
     await storage.putCommand(legacyCommand("duplicate-b", "duplicate"));

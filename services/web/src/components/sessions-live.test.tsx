@@ -28,6 +28,23 @@ const listState: SessionListQuery = {
   status: "all",
 };
 
+function Harness() {
+  const [changed, setChanged] = useState(false);
+  const state = changed ? { ...listState, status: "running" } : listState;
+  return (
+    <>
+      <button data-pw="change-query" type="button" onClick={() => setChanged(true)} />
+      <SessionsLive
+        initialItems={[{ id: changed ? "new-query" : "old-query", status: "queued" }]}
+        initialNextCursor={changed ? "new-cursor" : null}
+        listState={state}
+        path={changed ? "/api/v1/sessions?status=running" : "/api/v1/sessions?limit=50"}
+        pollMs={10}
+      />
+    </>
+  );
+}
+
 describe("SessionsLive", () => {
   it.each([
     ["source", { ...listState, source: "manual" }],
@@ -165,23 +182,6 @@ describe("SessionsLive", () => {
       json({ items: [{ id: "polled", status: "running" }], nextCursor: null }),
     );
     vi.stubGlobal("fetch", request.request);
-
-    function Harness() {
-      const [changed, setChanged] = useState(false);
-      const state = changed ? { ...listState, status: "running" } : listState;
-      return (
-        <>
-          <button data-pw="change-query" type="button" onClick={() => setChanged(true)} />
-          <SessionsLive
-            initialItems={[{ id: changed ? "new-query" : "old-query", status: "queued" }]}
-            initialNextCursor={changed ? "new-cursor" : null}
-            listState={state}
-            path={changed ? "/api/v1/sessions?status=running" : "/api/v1/sessions?limit=50"}
-            pollMs={10}
-          />
-        </>
-      );
-    }
 
     const view = mountForm(<Harness />);
     await act(async () => vi.advanceTimersByTimeAsync(10));

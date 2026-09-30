@@ -356,52 +356,52 @@ describe("scheduled main-checkout dispatcher", () => {
   });
 });
 
-describe("scheduled reconnect fencing", () => {
-  function runningState() {
-    const state = createControlPlaneState({ now: () => NOW, reconnectGraceMs: 100 });
-    state.connections.set("old", {
-      connectionId: "old",
-      type: "host",
-      hostId: "host-1",
-      connectedAt: NOW,
-      lastHeartbeatAt: NOW,
-      commandProfiles: [],
-      repositoryIds: ["repo-1"],
-      capabilities: ["scheduled-main-checkout"],
-    });
-    state.hostConnection.set("host-1", "old");
-    state.mainCheckoutLeases.set("host-1\0repo-1", {
-      sessionId: "scheduled-1",
-      connectionId: "old",
-    });
-    state.sessions.set("scheduled-1", {
-      id: "scheduled-1",
-      repositoryId: "repo-1",
-      prompt: "scheduled:nightly",
-      target: { commandId: "cmd" },
-      targetLabel: "cmd",
-      timeout: 30,
-      priority: 0,
-      requiredLabels: [],
-      onConflict: "queue",
-      status: "running",
-      queueShard: 0,
-      createdAt: NOW,
-      startedAt: NOW,
-      ackReceivedAt: NOW,
-      primaryCommandStartState: "pending",
-      hostId: "host-1",
-      worktreeId: null,
-      assignmentConnectionId: "old",
-      mainCheckoutLease: true,
-      reconnectDeadlineAt: new Date(Date.parse(NOW) + 100).toISOString(),
-      type: "scheduled",
-      source: "schedule",
-      principalId: "system",
-    });
-    return state;
-  }
+function runningState() {
+  const state = createControlPlaneState({ now: () => NOW, reconnectGraceMs: 100 });
+  state.connections.set("old", {
+    connectionId: "old",
+    type: "host",
+    hostId: "host-1",
+    connectedAt: NOW,
+    lastHeartbeatAt: NOW,
+    commandProfiles: [],
+    repositoryIds: ["repo-1"],
+    capabilities: ["scheduled-main-checkout"],
+  });
+  state.hostConnection.set("host-1", "old");
+  state.mainCheckoutLeases.set("host-1\0repo-1", {
+    sessionId: "scheduled-1",
+    connectionId: "old",
+  });
+  state.sessions.set("scheduled-1", {
+    id: "scheduled-1",
+    repositoryId: "repo-1",
+    prompt: "scheduled:nightly",
+    target: { commandId: "cmd" },
+    targetLabel: "cmd",
+    timeout: 30,
+    priority: 0,
+    requiredLabels: [],
+    onConflict: "queue",
+    status: "running",
+    queueShard: 0,
+    createdAt: NOW,
+    startedAt: NOW,
+    ackReceivedAt: NOW,
+    primaryCommandStartState: "pending",
+    hostId: "host-1",
+    worktreeId: null,
+    assignmentConnectionId: "old",
+    mainCheckoutLease: true,
+    reconnectDeadlineAt: new Date(Date.parse(NOW) + 100).toISOString(),
+    type: "scheduled",
+    source: "schedule",
+    principalId: "system",
+  });
+  return state;
+}
 
+describe("scheduled reconnect fencing", () => {
   it("confirms a reported scheduled session and fences the lease to the new connection", async () => {
     const state = runningState();
     state.connections.set("new", {
