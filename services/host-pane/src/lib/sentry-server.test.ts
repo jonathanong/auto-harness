@@ -1,3 +1,4 @@
+import { sentryRestrictedDataCollection } from "@auto-harness/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@sentry/nextjs", () => ({
@@ -23,6 +24,7 @@ describe("initHostPaneSentryServer", () => {
     ).toBe(true);
     expect(Sentry.init).toHaveBeenCalledWith(
       expect.objectContaining({
+        dataCollection: sentryRestrictedDataCollection,
         dsn: "https://abc123@o1.ingest.sentry.io/450",
         environment: "local",
       }),
@@ -33,7 +35,12 @@ describe("initHostPaneSentryServer", () => {
         HARNESS_HOST_PANE_SENTRY_DSN_SERVER: "https://abc123@o1.ingest.sentry.io/450",
       }),
     ).toBe(true);
-    expect(Sentry.init).toHaveBeenCalledWith(expect.objectContaining({ environment: "qa" }));
+    expect(Sentry.init).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dataCollection: sentryRestrictedDataCollection,
+        environment: "qa",
+      }),
+    );
   });
 });
 

@@ -1,3 +1,4 @@
+import { sentryRestrictedDataCollection } from "@auto-harness/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@sentry/nextjs", () => ({
@@ -17,6 +18,7 @@ describe("host-pane browser Sentry helpers", () => {
     initBrowserSentry("https://abc123@o1.ingest.sentry.io/450");
     expect(Sentry.init).toHaveBeenCalledWith(
       expect.objectContaining({
+        dataCollection: sentryRestrictedDataCollection,
         environment: "local",
         tunnel: "/sentry-tunnel",
         tracesSampleRate: 0,
@@ -33,7 +35,10 @@ describe("host-pane browser Sentry helpers", () => {
     const { initBrowserSentry } = await import("./sentry-client.ts");
     initBrowserSentry("https://abc123@o1.ingest.sentry.io/450");
     expect(Sentry.init).toHaveBeenCalledWith(
-      expect.objectContaining({ environment: "production" }),
+      expect.objectContaining({
+        dataCollection: sentryRestrictedDataCollection,
+        environment: "production",
+      }),
     );
   });
 });

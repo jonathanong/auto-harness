@@ -367,6 +367,7 @@ export {
   parseSentryDsn,
   scrubSentryEvent,
   sentryIngestEnvelopeUrl,
+  sentryRestrictedDataCollection,
   type SentryDsnInspection,
   type SentryDsnParts,
 } from "./sentry-dsn.ts";

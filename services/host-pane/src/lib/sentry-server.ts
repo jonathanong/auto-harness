@@ -1,4 +1,8 @@
-import { optionalSentryDsn, scrubSentryEvent } from "@auto-harness/shared";
+import {
+  optionalSentryDsn,
+  scrubSentryEvent,
+  sentryRestrictedDataCollection,
+} from "@auto-harness/shared";
 import * as Sentry from "@sentry/nextjs";
 import type { Instrumentation } from "next";
 
@@ -12,7 +16,7 @@ export function initHostPaneSentryServer(
     dsn,
     environment: env.HARNESS_DEPLOY_ENVIRONMENT?.trim() || "local",
     initialScope: { tags: { plane: "host-pane", runtime: "server" } },
-    sendDefaultPii: false,
+    dataCollection: sentryRestrictedDataCollection,
     tracesSampleRate: 0,
   });
   return true;
