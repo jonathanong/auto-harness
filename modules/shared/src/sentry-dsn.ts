@@ -63,6 +63,27 @@ export function sentryIngestEnvelopeUrl(dsn: string): string | undefined {
   return `${parts.protocol}//${parts.host}${parts.pathPrefix}/api/${parts.projectId}/envelope/`;
 }
 
+/**
+ * SDK 11 collects more when `dataCollection` is omitted. This is the v10
+ * `sendDefaultPii: false` baseline, including `queues: false`, so Next.js
+ * inits do not widen PII collection. Not `as const`: readonly tuples are
+ * not assignable to Sentry's `dataCollection` arrays.
+ */
+export const sentryRestrictedDataCollection = {
+  userInfo: false,
+  cookies: false,
+  httpHeaders: {
+    request: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+    response: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+  },
+  httpBodies: [],
+  urlQueryParams: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+  genAI: { inputs: false, outputs: false },
+  databaseQueryData: false,
+  queues: false,
+  graphQL: { document: false, variables: false },
+};
+
 /** Drop cookie and authorization headers from a Sentry event payload. */
 export function scrubSentryEvent<T>(event: T): T {
   if (typeof event !== "object" || event === null) return event;

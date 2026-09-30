@@ -6,6 +6,7 @@ import {
   parseSentryDsn,
   scrubSentryEvent,
   sentryIngestEnvelopeUrl,
+  sentryRestrictedDataCollection,
 } from "./sentry-dsn.ts";
 
 const dsn = "https://abc123@o1.ingest.sentry.io/450";
@@ -57,6 +58,26 @@ describe("parseSentryDsn / sentryIngestEnvelopeUrl", () => {
     );
     expect(parseSentryDsn("https://o1.ingest.sentry.io/450")).toBeUndefined();
     expect(sentryIngestEnvelopeUrl("not-a-dsn")).toBeUndefined();
+  });
+});
+
+describe("sentryRestrictedDataCollection", () => {
+  it("keeps the v10 sendDefaultPii:false baseline, including queues", () => {
+    const deny = ["forwarded", "-ip", "remote-", "via", "-user"];
+    expect(sentryRestrictedDataCollection).toEqual({
+      userInfo: false,
+      cookies: false,
+      httpHeaders: {
+        request: { deny },
+        response: { deny },
+      },
+      httpBodies: [],
+      urlQueryParams: { deny },
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      queues: false,
+      graphQL: { document: false, variables: false },
+    });
   });
 });
 

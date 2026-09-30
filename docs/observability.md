@@ -95,8 +95,9 @@ URL — a closed proxy, not an open relay. This is why CSP `connect-src` never n
 `*.ingest.sentry.io` in either app.
 
 **Errors only.** Every init (`api/src/sentry.ts`, `host-daemon/src/sentry.ts`,
-`web`/`host-pane` client and server) sets `tracesSampleRate: 0` — no performance/tracing data — and
-`sendDefaultPii: false`. `scrubSentryEvent` (`modules/shared/src/sentry-dsn.ts`) additionally
+`web`/`host-pane` client and server) sets `tracesSampleRate: 0` — no performance/tracing data.
+API and host-daemon still set `sendDefaultPii: false`. Web and host-pane set `dataCollection`
+to the v10-restrictive baseline (no PII widening). `scrubSentryEvent` (`modules/shared/src/sentry-dsn.ts`) additionally
 strips `cookie`/`authorization` request headers from every event via `beforeSend`.
 
 **Crash handling ownership.** The two Node server inits (`api/src/sentry.ts`,
@@ -118,7 +119,7 @@ plausibly still reach Sentry via the SDK's own default handlers.
 **Next.js request errors.** Errors Next itself catches and renders (server-component and
 route-handler errors) reach Sentry through each app's `onRequestError` export in
 `instrumentation.ts`, wired to `captureWebRequestError`/`captureHostPaneRequestError` in
-`lib/sentry-server.ts`. Both call the installed `@sentry/nextjs@10.74.0`'s `captureRequestError`
+`lib/sentry-server.ts`. Both call the installed `@sentry/nextjs` 11's `captureRequestError`
 (the function Next 15+/16 documents this hook for) and then explicitly `await Sentry.flush(2_000)`
 — `captureRequestError`'s own internal flush is a Vercel/Cloudflare `waitUntil` that no-ops off
 those platforms, and `services/web` ships as a Lambda `DockerImageFunction`, so nothing else would
