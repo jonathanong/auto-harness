@@ -48,6 +48,29 @@ function session(status: SessionRecord["status"] = "queued"): SessionRecord {
   };
 }
 
+function planeWithRepositoryLookup(
+  store: InsertStore,
+  getRepository: () => Promise<{ id: string; name: string } | null>,
+) {
+  return createControlPlaneState({
+    storage: {
+      enqueue: store.enqueue.bind(store),
+      get: store.get.bind(store),
+      getSlackIntegration: async () => ({
+        id: "slack",
+        type: "slack",
+        defaultChannel: "#ops",
+        enabled: true,
+        notifications: DEFAULT_SLACK_NOTIFICATIONS,
+        botToken: "xoxb-test",
+        createdAt: now,
+        updatedAt: now,
+      }),
+      getRepository,
+    } as never,
+  });
+}
+
 function state() {
   return {
     repositories: new Map([
@@ -335,29 +358,6 @@ describe("Slack session lifecycle reconciliation", () => {
     });
     await expect(enqueueSlackSessionLifecycle(plane, session("failed"))).resolves.toBeUndefined();
   });
-
-  function planeWithRepositoryLookup(
-    store: InsertStore,
-    getRepository: () => Promise<{ id: string; name: string } | null>,
-  ) {
-    return createControlPlaneState({
-      storage: {
-        enqueue: store.enqueue.bind(store),
-        get: store.get.bind(store),
-        getSlackIntegration: async () => ({
-          id: "slack",
-          type: "slack",
-          defaultChannel: "#ops",
-          enabled: true,
-          notifications: DEFAULT_SLACK_NOTIFICATIONS,
-          botToken: "xoxb-test",
-          createdAt: now,
-          updatedAt: now,
-        }),
-        getRepository,
-      } as never,
-    });
-  }
 
   it("hydrates a cold repository-name cache before enqueueing (the production terminal-message bug)", async () => {
     const store = new InsertStore();

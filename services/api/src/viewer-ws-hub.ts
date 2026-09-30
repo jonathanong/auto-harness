@@ -34,6 +34,16 @@ export type ViewerWsHub = {
   close(): void;
 };
 
+function send(socket: WebSocket, message: object): boolean {
+  if (socket.readyState !== socket.OPEN) return false;
+  if (socket.bufferedAmount > MAX_BUFFERED_BYTES) {
+    socket.close(1013, "viewer backpressure");
+    return false;
+  }
+  socket.send(JSON.stringify(message));
+  return true;
+}
+
 /**
  * Browser logs have a distinct read-only endpoint from the host control
  * channel. A browser socket can only subscribe to sessions it may read.
@@ -47,15 +57,6 @@ export function attachViewerWsHub(
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_WS_FRAME_BYTES });
   const subscriptions = new Map<WebSocket, Map<string, Subscription>>();
 
-  const send = (socket: WebSocket, message: object): boolean => {
-    if (socket.readyState !== socket.OPEN) return false;
-    if (socket.bufferedAmount > MAX_BUFFERED_BYTES) {
-      socket.close(1013, "viewer backpressure");
-      return false;
-    }
-    socket.send(JSON.stringify(message));
-    return true;
-  };
   const viewerCountFor = (sessionId: string): number => {
     let count = 0;
     for (const requested of subscriptions.values()) {

@@ -85,6 +85,8 @@ exec node ${shellArgument(opts.fallbackLauncherPath)} start "$@"
 `;
 }
 
+const s = (value: string) => `<string>${xmlEscape(value)}</string>`;
+
 export function renderLaunchAgentPlist(opts: {
   nodePath: string;
   launcherPath: string;
@@ -95,7 +97,6 @@ export function renderLaunchAgentPlist(opts: {
   logPath: string;
   programArguments?: readonly string[];
 }): string {
-  const s = (value: string) => `<string>${xmlEscape(value)}</string>`;
   const programArguments = opts.programArguments ?? [opts.nodePath, opts.launcherPath, "start"];
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
