@@ -165,6 +165,9 @@ describe("ensureWorktree recovery from an interrupted add", () => {
     await expect(ensure(runner, root)).rejects.toThrow(/overlaps the repository/);
     await mkdir(join(repo, ".git", "modules"), { recursive: true });
     await expect(ensure(runner, join(repo, ".git", "modules"))).rejects.toThrow(/overlaps/);
+    // A component that merely starts with two dots is still inside the parent.
+    await mkdir(join(repo, ".git", "..cache"), { recursive: true });
+    await expect(ensure(runner, join(repo, ".git", "..cache"))).rejects.toThrow(/overlaps/);
     expect((await stat(join(repo, ".git"))).isDirectory()).toBe(true);
   });
 

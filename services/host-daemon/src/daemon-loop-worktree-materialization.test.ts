@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- end-to-end materialization scenarios share one gated git runner. */
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
 
@@ -166,6 +166,34 @@ describe("DaemonLoop worktree materialization", () => {
       await expect(loop.keepalive()).resolves.toBe(false);
       const last = sent.filter((m): m is Registered => m.type === "host:register").at(-1);
       expect(registeredIds(last)).toEqual(["wt-1", "wt-late"]);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("registers without a slow startup checkout and advertises it once it finishes", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const gates = new Map<string, Promise<"ok" | "fail">>();
+      let release!: (value: "ok") => void;
+      const slow = new Promise<"ok">((resolve) => (release = resolve));
+      gates.set(join(config.repositories[0]!.worktrees[0]!.path), slow);
+      gates.set(`/private${config.repositories[0]!.worktrees[0]!.path}`, slow);
+      const sent: HostToServerMessage[] = [];
+      const loop = new DaemonLoop({
+        config,
+        transport: createAcknowledgingLoopbackTransport({
+          sendToServer: (message) => sent.push(message),
+        }),
+        processRunner: gatedGit(gates),
+        startupMaterializeWaitMs: 20,
+      });
+      await loop.start();
+      const registers = () => sent.filter((m): m is Registered => m.type === "host:register");
+      expect(registeredIds(registers().at(-1))).toEqual([]);
+      release("ok");
+      await vi.waitFor(() => expect(registeredIds(registers().at(-1))).toEqual(["wt-1"]));
       loop.stop();
     } finally {
       cleanup();

@@ -1,5 +1,5 @@
 import { lstat, readFile, readdir, rename, rm } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import type { ProcessRunner } from "./executor.ts";
 import { runGit } from "./git-commands.ts";
@@ -13,7 +13,8 @@ export const WORKTREE_ADD_TIMEOUT_MS = 10 * 60_000;
 
 function within(parent: string, child: string): boolean {
   const rel = relative(parent, child);
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+  const escapes = rel === ".." || rel.startsWith(`..${sep}`);
+  return rel !== "" && !escapes && !isAbsolute(rel);
 }
 
 async function pathExists(path: string): Promise<boolean> {

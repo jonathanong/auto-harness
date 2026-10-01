@@ -96,6 +96,11 @@ export type DaemonLoopOptions = {
    * proceeds to the in-flight wait rather than retrying forever.
    */
   drainDeadlineMs?: number;
+  /**
+   * How long startup waits for missing checkouts before registering without them (default 20s).
+   * Slower checkouts keep materializing in the background.
+   */
+  startupMaterializeWaitMs?: number;
   timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   /** Stable process identity; injectable only to make restart semantics deterministic in tests. */
   daemonIdentity?: DaemonRuntimeIdentity;
@@ -344,6 +349,7 @@ export class DaemonLoop {
   /** Control-plane protocol from the latest accepted registration. */
   private serverProtocolVersion = 0;
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
+  private readonly startupMaterializeWaitMs: number;
   private readonly daemonIdentity: DaemonRuntimeIdentity;
   private readonly processRunner: ProcessRunner;
   private readonly childEnvSource: NodeJS.ProcessEnv;
@@ -392,6 +398,7 @@ export class DaemonLoop {
     // daemon-side margin only needs to stay well clear of whatever it is.
     this.keepaliveStallMs = options.keepaliveStallMs ?? 45_000;
     this.timers = options.timers ?? globalThis;
+    this.startupMaterializeWaitMs = options.startupMaterializeWaitMs ?? 20_000;
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
     this.processRunner = processRunner;
@@ -477,9 +484,19 @@ export class DaemonLoop {
     if (this.runtime.gitReady) await this.worktrees.ensureAll();
     await this.workspaces.ensureAll();
     await this.expireSetupCache();
-    // Startup has not registered yet, so create the initial checkouts before advertising them.
-    // A failing checkout is logged and left unadvertised rather than keeping the host down.
-    if (this.runtime.gitReady) await this.materializeWorktrees({ announce: false });
+    // Startup has not registered yet, so give the initial checkouts a short window to appear
+    // before advertising them. A slow or failing checkout never keeps the host down: it is
+    // withheld, keeps materializing in the background, and is advertised once it is ready.
+    if (this.runtime.gitReady) {
+      const startup = this.materializeWorktrees({ announce: false });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const waited = new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(true), this.startupMaterializeWaitMs);
+      });
+      const timedOut = await Promise.race([startup.then(() => false), waited]);
+      if (timer) clearTimeout(timer);
+      if (timedOut) void startup.then(() => this.announceReadiness());
+    }
     this.transport.onMessage((msg) => {
       void this.handleServerMessage(msg).catch((err: unknown) => {
         this.onLog?.(`server message failed: ${thrownMessage(err)}`);

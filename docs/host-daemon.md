@@ -1191,6 +1191,9 @@ ERROR: Failed to create worktree at /path/wt-1
   and fails when one cannot be created; the daemon's start preflight does not materialize, so each
   add runs once. A readiness registration is skipped while an inventory apply is in flight (the
   apply's own registration is authoritative and the keepalive republishes any change).
+- On start the daemon waits up to 20 seconds for pending checkouts before its first registration;
+  slower checkouts keep materializing in the background and the daemon re-registers as each
+  becomes ready, so a large clone never delays connecting.
 - A rejected inventory registration restores the previous pending set, so a failed apply never leaves
   a worktree marked ready or pending that the live inventory does not reflect.
 - An unlisted directory at a managed worktree path is recovered only when it is empty (removed) or
