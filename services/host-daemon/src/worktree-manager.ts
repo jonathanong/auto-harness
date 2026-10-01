@@ -243,8 +243,21 @@ export class WorktreeManager {
   }
 
   private async runMaterialization(hooks: MaterializeHooks): Promise<void> {
+    // An inventory apply replaces the pending map mid-pass; run again over the current one so
+    // newly pending targets are not left to the next keepalive.
+    let pass: Map<string, PendingWorktree> | undefined;
+    while (pass !== this.pending && !hooks.signal?.aborted) {
+      pass = this.pending;
+      await this.materializePass(pass, hooks);
+    }
+  }
+
+  private async materializePass(
+    pending: Map<string, PendingWorktree>,
+    hooks: MaterializeHooks,
+  ): Promise<void> {
     const now = hooks.now ?? Date.now;
-    for (const [key, entry] of this.pending) {
+    for (const [key, entry] of pending) {
       if (hooks.signal?.aborted) return;
       if (this.pending.get(key) !== entry || entry.retryAt > now()) continue;
       this.adding = entry;

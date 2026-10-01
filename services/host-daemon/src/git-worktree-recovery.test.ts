@@ -21,6 +21,7 @@ function fakeGit(options: {
   gitDir?: string;
   commonDir?: string;
   failDirs?: boolean;
+  onDirs?: () => void;
 }): { runner: ProcessRunner; calls: Call[] } {
   const calls: Call[] = [];
   const runner: ProcessRunner = {
@@ -34,6 +35,7 @@ function fakeGit(options: {
         args[0] === "rev-parse" &&
         (args[1] === "--absolute-git-dir" || args[1] === "--git-common-dir")
       ) {
+        options.onDirs?.();
         if (options.failDirs) return done(128);
         const dir = args[1] === "--absolute-git-dir" ? options.gitDir : options.commonDir;
         return (out(`${dir ?? join(repo, ".git")}\n`), done());
@@ -190,6 +192,22 @@ describe("ensureWorktree recovery from an interrupted add", () => {
     const { runner } = fakeGit({ gitDir: realGit, commonDir: common });
     await expect(ensure(runner, join(realGit, "modules", "x"))).rejects.toThrow(/overlaps/);
     await expect(ensure(runner, join(common, "worktrees"))).rejects.toThrow(/overlaps/);
+  });
+
+  it("does not touch the leftover when cancelled during recovery", async () => {
+    await interruptedCheckout(target);
+    const controller = new AbortController();
+    const { runner } = fakeGit({ onDirs: () => controller.abort() });
+    await expect(
+      createGitClient(runner).ensureWorktree({
+        repoPath: repo,
+        worktreePath: target,
+        branch: "main",
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow();
+    expect((await readdir(target)).length).toBeGreaterThan(0);
+    expect(await readdir(join(root, "managed"))).toEqual(["auto-4"]);
   });
 
   it("refuses recovery when the repository's git directories cannot be resolved", async () => {

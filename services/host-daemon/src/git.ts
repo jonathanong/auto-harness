@@ -138,7 +138,7 @@ export function createGitClient(
       // makes every later add fail with "already exists". Drop dangling registrations, then
       // remove the leftover only when it is provably an abandoned linked checkout.
       const leftover = await pathExists(worktreeIdentity);
-      if (leftover) await removeAbandonedWorktreeDir(runner, repoPath, worktreeIdentity);
+      if (leftover) await removeAbandonedWorktreeDir(runner, repoPath, worktreeIdentity, signal);
       else await runGit(runner, repoPath, ["worktree", "prune"], signal);
       signal?.throwIfAborted();
       let add;

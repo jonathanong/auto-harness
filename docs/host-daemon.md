@@ -1185,7 +1185,7 @@ ERROR: Failed to create worktree at /path/wt-1
 - `git worktree prune` for stale locks
 - A pending worktree is not advertised in `host:register` and cannot be assigned or claimed until its
   checkout succeeds; the daemon re-registers when it becomes ready. An assignment that targets one
-  waits for that checkout within its own acknowledgement window and is rejected locally ("not ready yet") if the checkout fails.
+  waits up to 10 seconds for that checkout (below the acknowledgement deadline) and is rejected locally ("not ready yet") if it is not ready by then or fails.
 - Pending checkouts are retried from the daemon's keepalive timer, independent of inventory polling.
   `run-session` is a one-shot caller with no retry loop, so its preflight alone creates worktrees
   and fails when one cannot be created; the daemon's start preflight does not materialize, so each

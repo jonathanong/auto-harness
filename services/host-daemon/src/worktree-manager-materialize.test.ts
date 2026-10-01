@@ -330,4 +330,35 @@ describe("WorktreeManager materialization", () => {
     await manager.materializePending();
     expect(created).toEqual(["/repo/wt-1"]);
   });
+
+  it("runs another pass for targets an inventory adds while a pass is in flight", async () => {
+    const { git, created } = fakeGit(new Set(["/repo/wt-2", "/repo2/wt-3"]));
+    const manager = new WorktreeManager(config, git);
+    await manager.ensureAll();
+    const ensure = git.ensureWorktree as ReturnType<typeof vi.fn>;
+    const original = ensure.getMockImplementation()!;
+    let added = false;
+    ensure.mockImplementation(async (opts) => {
+      const result = await original(opts);
+      if (!added && opts.worktreePath === "/repo/wt-1" && opts.createMissing !== false) {
+        added = true;
+        await manager.ensureAll(
+          parseDaemonConfig({
+            hostId: "a1",
+            repositories: [
+              {
+                id: "repo-1",
+                path: "/repo",
+                defaultBranch: "main",
+                worktrees: [wt("wt-1", "/repo/wt-1"), wt("wt-new", "/repo/wt-new")],
+              },
+            ],
+          }),
+        );
+      }
+      return result;
+    });
+    await manager.materializePending();
+    expect(created).toEqual(["/repo/wt-1", "/repo/wt-new"]);
+  });
 });

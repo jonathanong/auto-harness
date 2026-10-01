@@ -101,6 +101,8 @@ export type DaemonLoopOptions = {
    * Slower checkouts keep materializing in the background.
    */
   startupMaterializeWaitMs?: number;
+  /** Longest an assignment waits for its pending checkout; keep below the acknowledgement deadline. */
+  assignmentCheckoutWaitMs?: number;
   timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   /** Stable process identity; injectable only to make restart semantics deterministic in tests. */
   daemonIdentity?: DaemonRuntimeIdentity;
@@ -350,6 +352,7 @@ export class DaemonLoop {
   private serverProtocolVersion = 0;
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   private readonly startupMaterializeWaitMs: number;
+  private readonly assignmentCheckoutWaitMs: number;
   private readonly daemonIdentity: DaemonRuntimeIdentity;
   private readonly processRunner: ProcessRunner;
   private readonly childEnvSource: NodeJS.ProcessEnv;
@@ -400,6 +403,7 @@ export class DaemonLoop {
     this.keepaliveStallMs = options.keepaliveStallMs ?? 45_000;
     this.timers = options.timers ?? globalThis;
     this.startupMaterializeWaitMs = options.startupMaterializeWaitMs ?? 20_000;
+    this.assignmentCheckoutWaitMs = options.assignmentCheckoutWaitMs ?? 10_000;
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
     this.processRunner = processRunner;
@@ -499,10 +503,9 @@ export class DaemonLoop {
       });
       const timedOut = await Promise.race([startup.then(() => false), waited]);
       if (timer) clearTimeout(timer);
-      if (timedOut) {
-        publish = true;
-        this.announceReadiness();
-      }
+      // The single initial registration below carries everything ready by then; later checkouts
+      // announce themselves.
+      if (timedOut) publish = true;
     }
     this.transport.onMessage((msg) => {
       void this.handleServerMessage(msg).catch((err: unknown) => {
@@ -2219,6 +2222,7 @@ export class DaemonLoop {
     // Resolve as soon as this target's checkout is ready, not when every other pending checkout
     // in the same batch has finished (or timed out).
     let listener: (() => void) | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await this.waitForSignal(
         new Promise<void>((resolve) => {
@@ -2226,12 +2230,16 @@ export class DaemonLoop {
             if (!this.isPendingAssignmentTarget(msg)) resolve();
           };
           this.readyListeners.add(listener);
+          // Bounded below the control plane's acknowledgement deadline: past it the scheduler
+          // reassigns, so keeping this attempt would only produce a stale acknowledgement.
+          timer = setTimeout(resolve, this.assignmentCheckoutWaitMs);
           void this.materializeWorktrees({ announce: () => false }).then(() => resolve());
         }),
         signal,
       );
     } finally {
       if (listener) this.readyListeners.delete(listener);
+      if (timer) clearTimeout(timer);
     }
     if (this.isPendingAssignmentTarget(msg)) {
       throw new Error(

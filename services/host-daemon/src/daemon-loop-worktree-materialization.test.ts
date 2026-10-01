@@ -385,6 +385,32 @@ describe("DaemonLoop worktree materialization", () => {
     }
   });
 
+  it("rejects locally once the checkout outlasts the assignment wait", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const gates = new Map<string, Promise<"ok" | "fail">>();
+      let release!: (value: "ok") => void;
+      const gate = new Promise<"ok">((resolve) => (release = resolve));
+      for (const prefix of ["", "/private"])
+        gates.set(`${prefix}${config.repositories[0]!.worktrees[0]!.path}`, gate);
+      const transport = createAcknowledgingLoopbackTransport({ sendToServer: () => {} });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        processRunner: gatedGit(gates),
+        startupMaterializeWaitMs: 5,
+        assignmentCheckoutWaitMs: 20,
+      });
+      await loop.start();
+      transport.deliver(assign("wt-1"));
+      await expect(loop.waitForIdle()).rejects.toThrow(/not ready yet: demo\/wt-1/);
+      release("ok");
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("holds a pending target for its checkout even without an inventory loader", async () => {
     const { root, config, cleanup } = await makeRepo({ materializeWorktree: true });
     try {
