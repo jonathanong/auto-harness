@@ -2174,6 +2174,15 @@ export class DaemonLoop {
       await this.waitForInventoryRefresh(this.runInventoryRefresh(loadInventory), signal);
       signal.throwIfAborted();
     }
+    // A freshly attached worktree is usually checked out within moments; wait for it inside this
+    // assignment's own deadline rather than bouncing the assignment back to the scheduler.
+    if (
+      !this.assignmentTargetKnown(msg) &&
+      msg.repositoryId !== null &&
+      this.worktrees.isPendingTarget(msg.repositoryId, msg.worktreeId)
+    ) {
+      await this.waitForSignal(this.materializeWorktrees({ announce: false }), signal);
+    }
     if (!this.assignmentTargetKnown(msg)) {
       if (
         msg.repositoryId !== null &&

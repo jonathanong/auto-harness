@@ -110,14 +110,13 @@ describe("DaemonLoop worktree materialization", () => {
       expect(loop.isDraining()).toBe(false);
       expect(registeredIds(registers().at(-1))).toEqual(["wt-1"]);
 
-      // The not-yet-ready target is rejected locally instead of being claimed against a missing dir.
-      transport.deliver(assign("wt-slow"));
-      await expect(loop.waitForIdle()).rejects.toThrow(/not ready yet: demo\/wt-slow/);
-
-      const materializing = loop.materializeWorktrees();
+      // An assignment waits for its pending checkout inside its own deadline; one whose checkout
+      // fails is then rejected locally instead of being claimed against a missing directory.
+      transport.deliver(assign("wt-bad"));
       releaseSlow("ok");
       failBad("fail");
-      await materializing;
+      await expect(loop.waitForIdle()).rejects.toThrow(/not ready yet: demo\/wt-bad/);
+      await loop.materializeWorktrees();
 
       // The other repository and the slow worktree became assignable; the failed one did not.
       expect(registeredIds(registers().at(-1))).toEqual(["wt-1", "wt-other", "wt-slow"]);
@@ -276,6 +275,61 @@ describe("DaemonLoop worktree materialization", () => {
       await loop.keepalive();
       const last = sent.filter((m): m is Registered => m.type === "host:register").at(-1);
       expect(registeredIds(last)).toEqual(["wt-1", "wt-kept"]);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("lets an assignment wait for its pending checkout instead of bouncing it", async () => {
+    const { root, config, cleanup } = await makeRepo({ materializeWorktree: true });
+    try {
+      const sent: HostToServerMessage[] = [];
+      const transport = createAcknowledgingLoopbackTransport({
+        sendToServer: (message) => sent.push(message),
+      });
+      const repository = config.repositories[0]!;
+      const next: DaemonConfig = {
+        ...config,
+        repositories: [
+          {
+            ...repository,
+            worktrees: [
+              ...repository.worktrees,
+              { id: "wt-fast", name: "wt-fast", path: join(root, "wt-fast"), labels: [] },
+            ],
+          },
+        ],
+      };
+      const loop = new DaemonLoop({ config, transport, refreshInventory: async () => next });
+      await loop.start();
+      transport.deliver(assign("wt-fast"));
+      await loop.waitForIdle();
+      expect(sent.some((m) => m.type === "session:status" && m.sessionId === "s-wt-fast")).toBe(
+        true,
+      );
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("logs a materialization that rejects outright", async () => {
+    const { config, cleanup } = await makeRepo({ materializeWorktree: true });
+    try {
+      const logs: string[] = [];
+      const loop = new DaemonLoop({
+        config,
+        transport: createAcknowledgingLoopbackTransport({ sendToServer: () => {} }),
+        onLog: (line) => logs.push(line),
+      });
+      await loop.start();
+      const manager = (
+        loop as unknown as { worktrees: { materializePending: () => Promise<void> } }
+      ).worktrees;
+      vi.spyOn(manager, "materializePending").mockRejectedValueOnce(new Error("boom"));
+      await loop.materializeWorktrees();
+      expect(logs).toContain("worktree materialization failed: boom");
       loop.stop();
     } finally {
       cleanup();
