@@ -119,7 +119,11 @@ describe("DaemonLoop worktree materialization", () => {
       await loop.materializeWorktrees();
 
       // The other repository and the slow worktree became assignable; the failed one did not.
-      expect(registeredIds(registers().at(-1))).toEqual(["wt-1", "wt-other", "wt-slow"]);
+      // Readiness announcements are fire-and-forget; the keepalive republishes any that coalesced.
+      await vi.waitFor(async () => {
+        await loop.keepalive();
+        expect(registeredIds(registers().at(-1))).toEqual(["wt-1", "wt-other", "wt-slow"]);
+      });
       expect(logs.some((line) => line.includes("wt-bad") && line.includes("not ready"))).toBe(true);
       transport.deliver(assign("wt-slow"));
       await loop.waitForIdle();
