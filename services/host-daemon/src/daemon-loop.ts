@@ -357,6 +357,7 @@ export class DaemonLoop {
   private inventoryReloadTail: Promise<void> = Promise.resolve();
   private inventoryApplyTail: Promise<void> = Promise.resolve();
   private applyingInventory = 0;
+  private readinessDeferred = false;
   private advertisedProviderAccountReadiness = "";
   private advertisedWorktreeIds = "";
   private readonly materializationController = new AbortController();
@@ -513,6 +514,10 @@ export class DaemonLoop {
         await this.applyInventoryCandidate(next, options);
       } finally {
         this.applyingInventory--;
+        if (this.applyingInventory === 0 && this.readinessDeferred) {
+          this.readinessDeferred = false;
+          this.announceReadiness();
+        }
       }
     });
     this.inventoryApplyTail = apply.catch(() => undefined);
@@ -703,13 +708,12 @@ export class DaemonLoop {
       .materializePending({
         signal: this.materializationController.signal,
         onReady: () => {
+          if (!announce) return;
           // While an inventory is being applied its own registration is the authoritative
-          // publish; a registration from the still-old config here could supersede it. The
-          // keepalive republishes any readiness that changed in the meantime.
-          if (!announce || this.applyingInventory > 0 || this.hasPendingAcknowledgement()) return;
-          void this.register().catch((error: unknown) =>
-            this.onLog?.(`worktree registration update failed: ${thrownMessage(error)}`),
-          );
+          // publish; one from the still-old config here could supersede it. Defer until the
+          // apply finishes instead.
+          if (this.applyingInventory > 0) this.readinessDeferred = true;
+          else this.announceReadiness();
         },
         onError: (message) => this.onLog?.(message),
       })
@@ -717,6 +721,13 @@ export class DaemonLoop {
         this.onLog?.(`worktree materialization failed: ${thrownMessage(error)}`),
       );
   }
+  private announceReadiness(): void {
+    if (this.hasPendingAcknowledgement()) return;
+    void this.register().catch((error: unknown) =>
+      this.onLog?.(`worktree registration update failed: ${thrownMessage(error)}`),
+    );
+  }
+
   /** Resolves true only when an actual host:keepalive frame was sent this tick. */
   async keepalive(): Promise<boolean> {
     // Retries pending checkouts on the daemon's own timer, independent of inventory polling.

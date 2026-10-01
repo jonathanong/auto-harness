@@ -196,13 +196,20 @@ describe("DaemonLoop worktree materialization", () => {
           },
         ],
       });
-      const internals = loop as unknown as { applyingInventory: number };
+      const internals = loop as unknown as {
+        applyingInventory: number;
+        readinessDeferred: boolean;
+      };
       const before = sent.filter((m) => m.type === "host:register").length;
       internals.applyingInventory = 1;
       await loop.materializeWorktrees();
       await new Promise((resolve) => setImmediate(resolve));
       expect(sent.filter((m) => m.type === "host:register")).toHaveLength(before);
+      expect(internals.readinessDeferred).toBe(true);
       internals.applyingInventory = 0;
+      // The next apply to finish publishes the readiness that was deferred meanwhile.
+      await loop.applyInventory({ ...config });
+      expect(internals.readinessDeferred).toBe(false);
       await loop.keepalive();
       const last = sent.filter((m): m is Registered => m.type === "host:register").at(-1);
       expect(registeredIds(last)).toEqual(["wt-1", "wt-mid"]);
