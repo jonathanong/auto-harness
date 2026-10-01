@@ -79,7 +79,7 @@ describe("runtime helpers", () => {
     expect(calls.some((c) => c.includes("rev-parse"))).toBe(true);
   });
 
-  it("ensureDaemonReady creates configured worktrees that are missing", async () => {
+  it("ensureDaemonReady creates configured worktrees that are missing when required", async () => {
     const calls: string[] = [];
     const runner: ProcessRunner = {
       async run(opts) {
@@ -103,7 +103,7 @@ describe("runtime helpers", () => {
         },
       ],
     });
-    await ensureDaemonReady(missing, runner);
+    await ensureDaemonReady(missing, runner, { requireWorktrees: true });
     expect(calls.some((c) => c.includes("worktree add"))).toBe(true);
   });
 

@@ -85,13 +85,18 @@ export async function cleanupFailedWorktreeAdd(
 ): Promise<boolean> {
   try {
     const list = await runGit(runner, repoPath, ["worktree", "list", "--porcelain"]);
-    if (
-      list.exitCode === 0 &&
-      (await listedWorktreePaths(list.stdout, repoPath)).has(await canonicalPath(worktreePath))
-    ) {
-      await runGit(runner, repoPath, ["worktree", "remove", "--force", worktreePath]);
+    if (list.exitCode !== 0) return false;
+    if ((await listedWorktreePaths(list.stdout, repoPath)).has(await canonicalPath(worktreePath))) {
+      const removed = await runGit(runner, repoPath, [
+        "worktree",
+        "remove",
+        "--force",
+        worktreePath,
+      ]);
+      if (removed.exitCode !== 0) return false;
     }
-    await runGit(runner, repoPath, ["worktree", "prune"]);
+    const pruned = await runGit(runner, repoPath, ["worktree", "prune"]);
+    if (pruned.exitCode !== 0) return false;
     // The path did not exist before this attempt, so anything left is the partial checkout.
     await rm(worktreePath, { recursive: true, force: true });
     return true;

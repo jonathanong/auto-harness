@@ -172,6 +172,46 @@ describe("DaemonLoop worktree materialization", () => {
     }
   });
 
+  it("does not publish a readiness registration while an inventory apply is in flight", async () => {
+    const { root, config, cleanup } = await makeRepo({ materializeWorktree: true });
+    try {
+      const sent: HostToServerMessage[] = [];
+      const loop = new DaemonLoop({
+        config,
+        transport: createAcknowledgingLoopbackTransport({
+          sendToServer: (message) => sent.push(message),
+        }),
+      });
+      await loop.start();
+      const repository = config.repositories[0]!;
+      await loop.applyInventory({
+        ...config,
+        repositories: [
+          {
+            ...repository,
+            worktrees: [
+              ...repository.worktrees,
+              { id: "wt-mid", name: "wt-mid", path: join(root, "wt-mid"), labels: [] },
+            ],
+          },
+        ],
+      });
+      const internals = loop as unknown as { applyingInventory: number };
+      const before = sent.filter((m) => m.type === "host:register").length;
+      internals.applyingInventory = 1;
+      await loop.materializeWorktrees();
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(sent.filter((m) => m.type === "host:register")).toHaveLength(before);
+      internals.applyingInventory = 0;
+      await loop.keepalive();
+      const last = sent.filter((m): m is Registered => m.type === "host:register").at(-1);
+      expect(registeredIds(last)).toEqual(["wt-1", "wt-mid"]);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("retries pending checkouts from the keepalive without any inventory poll", async () => {
     const { root, config, cleanup } = await makeRepo({ materializeWorktree: true });
     try {

@@ -287,6 +287,32 @@ describe("ensureWorktree failed or aborted add", () => {
     ).resolves.toBe("missing");
   });
 
+  it.each(["list", "remove", "prune"])(
+    "keeps the target quarantined when cleanup's git %s exits nonzero",
+    async (failing) => {
+      let failed = false;
+      const { runner } = fakeGit({
+        listed: () => (failed ? `worktree ${target}\n` : ""),
+        onAdd: async () => {
+          failed = true;
+          return { exitCode: 128, stderr: "fatal: boom" };
+        },
+      });
+      const flaky: ProcessRunner = {
+        run: (opts) =>
+          failed && opts.argv.includes(failing) ? Promise.resolve(done(1)) : runner.run(opts),
+      };
+      const client = createGitClient(flaky);
+      const input = { repoPath: repo, worktreePath: target, branch: "main" };
+      await expect(client.ensureWorktree(input)).rejects.toThrow(/Failed to create worktree/);
+      // `list` failing makes the later probe itself fail; otherwise the listed leftover is
+      // reported missing, never ready.
+      const probe = client.ensureWorktree({ ...input, createMissing: false });
+      if (failing === "list") await expect(probe).rejects.toThrow(/Failed to list/);
+      else await expect(probe).resolves.toBe("missing");
+    },
+  );
+
   it("treats a failed worktree-list probe as an error, not as a missing checkout", async () => {
     const { runner, calls } = fakeGit({});
     const timedOut: ProcessRunner = {

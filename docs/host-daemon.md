@@ -1187,8 +1187,10 @@ ERROR: Failed to create worktree at /path/wt-1
   checkout succeeds; the daemon re-registers when it becomes ready. An assignment that targets one is
   rejected locally ("not ready yet") rather than held past the acknowledgement deadline.
 - Pending checkouts are retried from the daemon's keepalive timer, independent of inventory polling.
-  `run-session` is a one-shot caller with no retry loop, so its preflight fails when a configured
-  worktree cannot be created.
+  `run-session` is a one-shot caller with no retry loop, so its preflight alone creates worktrees
+  and fails when one cannot be created; the daemon's start preflight does not materialize, so each
+  add runs once. A readiness registration is skipped while an inventory apply is in flight (the
+  apply's own registration is authoritative and the keepalive republishes any change).
 - A rejected inventory registration restores the previous pending set, so a failed apply never leaves
   a worktree marked ready or pending that the live inventory does not reflect.
 - An unlisted directory at a managed worktree path is recovered only when it is empty (removed) or

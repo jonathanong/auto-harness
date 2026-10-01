@@ -356,6 +356,7 @@ export class DaemonLoop {
   /** Serializes authoritative fetch + policy handling + application in request order. */
   private inventoryReloadTail: Promise<void> = Promise.resolve();
   private inventoryApplyTail: Promise<void> = Promise.resolve();
+  private applyingInventory = 0;
   private advertisedProviderAccountReadiness = "";
   private advertisedWorktreeIds = "";
   private readonly materializationController = new AbortController();
@@ -506,7 +507,14 @@ export class DaemonLoop {
     next: DaemonConfig,
     options: { publishRegistration?: boolean; signal?: AbortSignal } = {},
   ): Promise<void> {
-    const apply = this.inventoryApplyTail.then(() => this.applyInventoryCandidate(next, options));
+    const apply = this.inventoryApplyTail.then(async () => {
+      this.applyingInventory++;
+      try {
+        await this.applyInventoryCandidate(next, options);
+      } finally {
+        this.applyingInventory--;
+      }
+    });
     this.inventoryApplyTail = apply.catch(() => undefined);
     return await apply;
   }
@@ -695,7 +703,10 @@ export class DaemonLoop {
       .materializePending({
         signal: this.materializationController.signal,
         onReady: () => {
-          if (!announce || this.hasPendingAcknowledgement()) return;
+          // While an inventory is being applied its own registration is the authoritative
+          // publish; a registration from the still-old config here could supersede it. The
+          // keepalive republishes any readiness that changed in the meantime.
+          if (!announce || this.applyingInventory > 0 || this.hasPendingAcknowledgement()) return;
           void this.register().catch((error: unknown) =>
             this.onLog?.(`worktree registration update failed: ${thrownMessage(error)}`),
           );

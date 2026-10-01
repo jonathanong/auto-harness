@@ -33,11 +33,14 @@ export async function ensureDaemonReady(
   const git = createGitClient(processRunner, loadGitHubPullRefConfigs());
   const worktrees = new WorktreeManager(config, git);
   await worktrees.ensureAll();
-  // A one-shot caller (run-session) has no retry loop, so a checkout that cannot be created
-  // fails readiness. A long-running daemon instead retries pending worktrees itself.
-  const failures: string[] = [];
-  await worktrees.materializePending({ onError: (message) => failures.push(message) });
-  if (options.requireWorktrees && failures.length > 0) throw new Error(failures.join("; "));
+  // Only a one-shot caller (run-session) materializes here: it has no retry loop, so a checkout
+  // that cannot be created fails readiness. The long-running daemon owns its own bounded,
+  // retried materialization and must not pay for each add twice.
+  if (options.requireWorktrees) {
+    const failures: string[] = [];
+    await worktrees.materializePending({ onError: (message) => failures.push(message) });
+    if (failures.length > 0) throw new Error(failures.join("; "));
+  }
   await workspaces.ensureAll();
   return runtime;
 }
