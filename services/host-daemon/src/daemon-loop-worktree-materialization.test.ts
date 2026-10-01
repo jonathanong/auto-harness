@@ -314,6 +314,39 @@ describe("DaemonLoop worktree materialization", () => {
     }
   });
 
+  it("holds a pending target for its checkout even without an inventory loader", async () => {
+    const { root, config, cleanup } = await makeRepo({ materializeWorktree: true });
+    try {
+      const sent: HostToServerMessage[] = [];
+      const transport = createAcknowledgingLoopbackTransport({
+        sendToServer: (message) => sent.push(message),
+      });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      const repository = config.repositories[0]!;
+      await loop.applyInventory({
+        ...config,
+        repositories: [
+          {
+            ...repository,
+            worktrees: [
+              ...repository.worktrees,
+              { id: "wt-solo", name: "wt-solo", path: join(root, "wt-solo"), labels: [] },
+            ],
+          },
+        ],
+      });
+      transport.deliver(assign("wt-solo"));
+      await loop.waitForIdle();
+      expect(sent.some((m) => m.type === "session:status" && m.sessionId === "s-wt-solo")).toBe(
+        true,
+      );
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("logs a materialization that rejects outright", async () => {
     const { config, cleanup } = await makeRepo({ materializeWorktree: true });
     try {

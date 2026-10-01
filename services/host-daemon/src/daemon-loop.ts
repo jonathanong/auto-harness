@@ -2162,7 +2162,13 @@ export class DaemonLoop {
     signal: AbortSignal,
   ): Promise<void> {
     const loadInventory = this.refreshInventory;
-    if (this.assignmentTargetKnown(msg) || !loadInventory) return;
+    if (this.assignmentTargetKnown(msg)) return;
+    if (!loadInventory) {
+      // Without an inventory loader a missing target is left to the claim path, but a target that
+      // is merely still checking out must wait or be rejected here, before ownership is acked.
+      if (this.isPendingAssignmentTarget(msg)) await this.requireMaterialized(msg, signal);
+      return;
+    }
     signal.throwIfAborted();
     const joinedExistingRefresh = this.inventoryRefresh !== undefined;
     await this.waitForInventoryRefresh(this.runInventoryRefresh(loadInventory), signal);
@@ -2174,26 +2180,36 @@ export class DaemonLoop {
       await this.waitForInventoryRefresh(this.runInventoryRefresh(loadInventory), signal);
       signal.throwIfAborted();
     }
-    // A freshly attached worktree is usually checked out within moments; wait for it inside this
-    // assignment's own deadline rather than bouncing the assignment back to the scheduler.
-    if (
-      !this.assignmentTargetKnown(msg) &&
-      msg.repositoryId !== null &&
-      this.worktrees.isPendingTarget(msg.repositoryId, msg.worktreeId)
-    ) {
-      await this.waitForSignal(this.materializeWorktrees({ announce: false }), signal);
-    }
+    await this.requireMaterialized(msg, signal);
     if (!this.assignmentTargetKnown(msg)) {
-      if (
-        msg.repositoryId !== null &&
-        this.worktrees.isPendingTarget(msg.repositoryId, msg.worktreeId)
-      ) {
-        throw new Error(
-          `assignment target worktree is not ready yet: ${msg.repositoryId}/${msg.worktreeId}`,
-        );
-      }
       throw new Error(
         `assignment target is absent from refreshed host inventory: ${msg.repositoryId ?? "workspace"}/${msg.worktreeId ?? "main"}`,
+      );
+    }
+  }
+
+  private isPendingAssignmentTarget(
+    msg: Extract<HostWireMessage, { type: "session:assign" }>,
+  ): boolean {
+    return (
+      msg.repositoryId !== null && this.worktrees.isPendingTarget(msg.repositoryId, msg.worktreeId)
+    );
+  }
+
+  /**
+   * A freshly attached worktree is usually checked out within moments; wait for it inside this
+   * assignment's own deadline rather than bouncing the assignment back to the scheduler, and
+   * reject it locally (leaving it unacknowledged) if the checkout does not succeed.
+   */
+  private async requireMaterialized(
+    msg: Extract<HostWireMessage, { type: "session:assign" }>,
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (!this.isPendingAssignmentTarget(msg)) return;
+    await this.waitForSignal(this.materializeWorktrees({ announce: false }), signal);
+    if (this.isPendingAssignmentTarget(msg)) {
+      throw new Error(
+        `assignment target worktree is not ready yet: ${msg.repositoryId}/${msg.worktreeId}`,
       );
     }
   }
