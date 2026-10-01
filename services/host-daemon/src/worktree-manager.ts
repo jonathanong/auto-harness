@@ -54,6 +54,8 @@ type PendingWorktree = {
   branch: string;
   failures: number;
   retryAt: number;
+  /** Set only while this entry's add runs, so an inventory that drops it can cancel the add. */
+  controller?: AbortController;
 };
 
 type MaterializeHooks = {
@@ -195,6 +197,11 @@ export class WorktreeManager {
         );
       }
     }
+    // An add whose target the new inventory no longer contains would leave a removed (or newly
+    // forbidden) checkout behind; cancel it so the add cleans up after itself.
+    if (this.adding && !new Set(pending.values()).has(this.adding)) {
+      this.adding.controller?.abort();
+    }
     this.pending = pending;
   }
 
@@ -241,15 +248,22 @@ export class WorktreeManager {
       if (hooks.signal?.aborted) return;
       if (this.pending.get(key) !== entry || entry.retryAt > now()) continue;
       this.adding = entry;
+      const controller = new AbortController();
+      entry.controller = controller;
+      const signal = hooks.signal
+        ? AbortSignal.any([hooks.signal, controller.signal])
+        : controller.signal;
       try {
         await this.git.ensureWorktree({
           repoPath: entry.repositoryPath,
           worktreePath: entry.worktreePath,
           branch: entry.branch,
-          ...(hooks.signal ? { signal: hooks.signal } : {}),
+          signal,
         });
       } catch (error) {
         if (hooks.signal?.aborted) return;
+        // Cancelled because an inventory dropped this target: not a failure of the checkout.
+        if (controller.signal.aborted) continue;
         entry.failures += 1;
         entry.retryAt = now() + Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** (entry.failures - 1));
         const message = error instanceof Error ? error.message : String(error);
@@ -257,6 +271,7 @@ export class WorktreeManager {
         continue;
       } finally {
         this.adding = undefined;
+        delete entry.controller;
       }
       if (this.pending.get(key) === entry) {
         this.pending.delete(key);

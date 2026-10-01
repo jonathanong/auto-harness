@@ -233,6 +233,40 @@ describe("WorktreeManager materialization", () => {
     expect(manager.isMaterialized("repo-1", wt("wt-9", "/repo/wt-9"))).toBe(false);
   });
 
+  it("cancels an in-flight add whose target a new inventory drops, without counting a failure", async () => {
+    const { git, created } = fakeGit(new Set(["/repo/wt-2", "/repo2/wt-3"]));
+    const manager = new WorktreeManager(config, git);
+    await manager.ensureAll();
+    const ensure = git.ensureWorktree as ReturnType<typeof vi.fn>;
+    const original = ensure.getMockImplementation()!;
+    let sawAbort = false;
+    ensure.mockImplementation(async (opts) => {
+      if (opts.worktreePath === "/repo/wt-1" && opts.createMissing !== false) {
+        await manager.ensureAll(
+          parseDaemonConfig({
+            hostId: "a1",
+            repositories: [
+              {
+                id: "repo-1",
+                path: "/repo",
+                defaultBranch: "main",
+                worktrees: [wt("wt-2", "/repo/wt-2")],
+              },
+            ],
+          }),
+        );
+        sawAbort = opts.signal?.aborted === true;
+        if (sawAbort) throw new Error("This operation was aborted");
+      }
+      return original(opts);
+    });
+    const errors: string[] = [];
+    await manager.materializePending({ onError: (message) => errors.push(message) });
+    expect(sawAbort).toBe(true);
+    expect(errors).toEqual([]);
+    expect(created).toEqual([]);
+  });
+
   it("rechecks readiness when a refresh moves the claimed worktree to a pending path", async () => {
     const { git } = fakeGit(new Set(["/repo/wt-1", "/repo/wt-2", "/repo2/wt-3"]));
     const manager = new WorktreeManager(config, git);
