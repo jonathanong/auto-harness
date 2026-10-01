@@ -61,6 +61,7 @@ describe("createGitClient ensureWorktree", () => {
   it("requires an exact path match instead of a path prefix", async () => {
     const git = gitWithListedWorktrees("worktree /repo/wt-old\nHEAD abc\n", [
       { match: ["rev-parse", "--verify", "main"], exitCode: 0, stdout: "def\n" },
+      { match: ["worktree", "prune"], exitCode: 0 },
       { match: ["worktree", "add", "--detach", "/repo/wt", "def"], exitCode: 0 },
     ]);
     await git.ensureWorktree({ repoPath: "/repo", worktreePath: "/repo/wt", branch: "main" });
@@ -82,6 +83,7 @@ describe("createGitClient ensureWorktree", () => {
       "not-worktree /repo/wt\nworktree\nworktree \nworktree /repo/wt-old\nHEAD abc\n",
       [
         { match: ["rev-parse", "--verify", "main"], exitCode: 0, stdout: "def\n" },
+        { match: ["worktree", "prune"], exitCode: 0 },
         { match: ["worktree", "add", "--detach", "/repo/wt", "def"], exitCode: 0 },
       ],
     );
@@ -102,6 +104,7 @@ describe("createGitClient ensureWorktree", () => {
           exitCode: 0,
           stdout: "abc\n",
         },
+        { match: ["worktree", "prune"], exitCode: 0 },
         {
           match: ["worktree", "add", "--detach", "/repo/wt-1", "abc"],
           exitCode: 0,
@@ -130,6 +133,7 @@ describe("createGitClient ensureWorktree", () => {
           exitCode: 0,
           stdout: "def\n",
         },
+        { match: ["worktree", "prune"], exitCode: 0 },
         {
           match: ["worktree", "add", "--detach", "/repo/wt-1", "def"],
           exitCode: 0,
@@ -183,6 +187,7 @@ describe("createGitClient ensureWorktree", () => {
             exitCode: 0,
             stdout: "abc\n",
           },
+          { match: ["worktree", "prune"], exitCode: 0 },
           {
             match: ["worktree", "add", "--detach", "/repo/wt-1", "abc"],
             exitCode: 1,

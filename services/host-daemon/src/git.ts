@@ -29,6 +29,12 @@ import {
   resetClaimedWorktree,
 } from "./git-worktree-checkout.ts";
 import { canonicalPath, listedWorktreePaths } from "./git-worktree-paths.ts";
+import {
+  WORKTREE_ADD_TIMEOUT_MS,
+  cleanupFailedWorktreeAdd,
+  pathExists,
+  removeAbandonedWorktreeDir,
+} from "./git-worktree-recovery.ts";
 import { resetInitializedSubmodules } from "./git-worktree-reset.ts";
 import { type GitHubPullRefConfigs } from "./github-pull-ref-config.ts";
 
@@ -39,7 +45,12 @@ export type GitClient = {
     worktreePath: string;
     branch: string;
     signal?: AbortSignal;
-  }): Promise<void>;
+    /**
+     * Report an unlisted worktree as "missing" instead of creating it, so inventory adoption
+     * stays fast and a slow checkout can run separately under its own bound.
+     */
+    createMissing?: boolean;
+  }): Promise<"missing" | void>;
   checkoutRef(opts: {
     cwd: string;
     repoPath: string;
@@ -81,6 +92,10 @@ export function createGitClient(
     return pullRefConfigs?.get(key) ?? pullRefConfigs?.get(resolve(path));
   }
 
+  // Targets whose failed add could not be fully cleaned up: git may still list a partial
+  // checkout there, which must never be mistaken for a ready worktree.
+  const incompleteCleanups = new Set<string>();
+
   return {
     async ensureRepo(path: string, signal?: AbortSignal) {
       const probe = await runGit(runner, path, ["rev-parse", "--is-inside-work-tree"], signal);
@@ -89,15 +104,27 @@ export function createGitClient(
       }
     },
 
-    async ensureWorktree({ repoPath, worktreePath, branch, signal }) {
+    async ensureWorktree({ repoPath, worktreePath, branch, signal, createMissing = true }) {
       await this.ensureRepo(repoPath, signal);
       const list = await runGit(runner, repoPath, ["worktree", "list", "--porcelain"], signal);
       signal?.throwIfAborted();
+      // A failed or timed-out probe is not proof the checkout is missing.
+      if (list.exitCode !== 0) {
+        throw gitFailure(`Failed to list worktrees for ${repoPath}`, list.stderr);
+      }
       const worktreeIdentity = await canonicalPath(resolve(repoPath, worktreePath));
       signal?.throwIfAborted();
       if ((await listedWorktreePaths(list.stdout, repoPath)).has(worktreeIdentity)) {
-        return;
+        if (!incompleteCleanups.has(worktreeIdentity)) return;
+        if (!createMissing) return "missing";
+        if (!(await cleanupFailedWorktreeAdd(runner, repoPath, worktreeIdentity))) {
+          throw new Error(
+            `Cleanup of the failed worktree add at ${worktreeIdentity} is incomplete`,
+          );
+        }
       }
+      incompleteCleanups.delete(worktreeIdentity);
+      if (!createMissing) return "missing";
       // Always add detached so the branch can remain checked out in the main tree.
       let tip = await runGit(runner, repoPath, ["rev-parse", "--verify", branch], signal);
       if (tip.exitCode !== 0) {
@@ -107,13 +134,35 @@ export function createGitClient(
         throw gitFailure(`Failed to resolve tip for worktree ${worktreePath}`, tip.stderr);
       }
       const sha = tip.stdout.trim();
-      const add = await runGit(
-        runner,
-        repoPath,
-        ["worktree", "add", "--detach", worktreeIdentity, sha],
-        signal,
-      );
+      // Git no longer lists the path, but an interrupted add can leave its files behind, which
+      // makes every later add fail with "already exists". Drop dangling registrations, then
+      // remove the leftover only when it is provably an abandoned linked checkout.
+      const leftover = await pathExists(worktreeIdentity);
+      if (leftover) await removeAbandonedWorktreeDir(runner, repoPath, worktreeIdentity, signal);
+      else await runGit(runner, repoPath, ["worktree", "prune"], signal);
+      signal?.throwIfAborted();
+      let add;
+      try {
+        add = await runGit(
+          runner,
+          repoPath,
+          ["worktree", "add", "--detach", worktreeIdentity, sha],
+          signal,
+          undefined,
+          undefined,
+          undefined,
+          { timeoutMs: WORKTREE_ADD_TIMEOUT_MS },
+        );
+      } catch (error) {
+        if (!(await cleanupFailedWorktreeAdd(runner, repoPath, worktreeIdentity))) {
+          incompleteCleanups.add(worktreeIdentity);
+        }
+        throw error;
+      }
       if (add.exitCode !== 0) {
+        if (!(await cleanupFailedWorktreeAdd(runner, repoPath, worktreeIdentity))) {
+          incompleteCleanups.add(worktreeIdentity);
+        }
         throw gitFailure(`Failed to create worktree at ${worktreeIdentity}`, add.stderr);
       }
     },

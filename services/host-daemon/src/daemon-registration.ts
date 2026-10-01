@@ -101,6 +101,7 @@ export async function applyDaemonInventory(
   // Older test-only managers may not expose the generation hook; real managers always do.
   workspaces?.beginInventoryUpdate?.();
   worktrees.noteInventoryChange?.();
+  const previousPending = worktrees.snapshotPending?.();
   try {
     // Validate and register the candidate without replacing the live config or
     // retained roots policy. Pending terminal hooks must remain fail-closed
@@ -132,6 +133,7 @@ export async function applyDaemonInventory(
     workspaces?.noteInventoryChange();
     afterApply?.();
   } catch (err) {
+    if (previousPending) worktrees.restorePending?.(previousPending);
     if (previousSetupScript === undefined) delete config.setupScript;
     else config.setupScript = previousSetupScript;
     if (previousInventoryVersion === undefined) delete config.inventoryVersion;

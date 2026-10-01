@@ -47,7 +47,34 @@ function sameStrings(left: readonly string[], right: readonly string[]): boolean
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+/** A configured worktree whose checkout is not on disk yet; it is neither advertised nor claimable. */
+type PendingWorktree = {
+  repositoryPath: string;
+  worktreePath: string;
+  branch: string;
+  failures: number;
+  retryAt: number;
+  /** Set only while this entry's add runs, so an inventory that drops it can cancel the add. */
+  controller?: AbortController;
+};
+
+type MaterializeHooks = {
+  signal?: AbortSignal;
+  onReady?: () => void;
+  onError?: (message: string) => void;
+  now?: () => number;
+};
+
+const RETRY_BASE_MS = 15_000;
+const RETRY_MAX_MS = 5 * 60_000;
+
+const pendingKey = (repositoryId: string, worktreeId: string, path: string) =>
+  `${repositoryId}\n${worktreeId}\n${path}`;
+
 export class WorktreeManager {
+  private pending = new Map<string, PendingWorktree>();
+  private materializing: Promise<void> | undefined;
+  private adding: PendingWorktree | undefined;
   private readonly busy = new Set<string>();
   private readonly mainBusy = new Set<string>();
   private readonly mainWaiters = new Map<string, MainWaiter[]>();
@@ -115,6 +142,7 @@ export class WorktreeManager {
       throw new Error("host inventory policy blocks execution");
     }
     const config = candidate ?? this.config;
+    const pending = new Map<string, PendingWorktree>();
     // Candidate validation must not replace an active retained policy: pending
     // terminal hooks continue to read `this.config` and `effectiveAllowedRoots()`
     // until the candidate registration has succeeded.
@@ -134,13 +162,133 @@ export class WorktreeManager {
       for (const wt of repo.worktrees) {
         const worktreePath = await assertPathWithinAllowedRoots(wt.path, roots);
         assertCurrent();
-        await this.git.ensureWorktree({
+        // Adoption only checks that git lists the worktree. Creating a missing checkout can take
+        // minutes on a large repository, so it runs in materializePending() under its own bound
+        // instead of inside the short assignment-refresh deadline, and one slow or failing
+        // checkout never blocks adopting the rest of the inventory.
+        const state = await this.git.ensureWorktree({
           repoPath: repositoryPath,
           worktreePath,
           branch: repo.defaultBranch,
+          createMissing: false,
           ...(signal ? { signal } : {}),
         });
         assertCurrent();
+        const key = pendingKey(repo.id, wt.id, wt.path);
+        const existing = this.pending.get(key);
+        // Git lists a path as soon as `worktree add` registers it, before the checkout finishes,
+        // so an entry whose add is still running stays pending.
+        if (state !== "missing" && !(existing && existing === this.adding)) continue;
+        // Keep the same object while its inputs are unchanged so an in-flight add still
+        // recognizes it; otherwise carry over only the failure counter.
+        const unchanged =
+          existing?.repositoryPath === repositoryPath && existing.branch === repo.defaultBranch;
+        pending.set(
+          key,
+          unchanged && existing
+            ? existing
+            : {
+                repositoryPath,
+                worktreePath,
+                branch: repo.defaultBranch,
+                failures: existing?.failures ?? 0,
+                retryAt: 0,
+              },
+        );
+      }
+    }
+    // An add whose target the new inventory no longer contains would leave a removed (or newly
+    // forbidden) checkout behind; cancel it so the add cleans up after itself.
+    if (this.adding && !new Set(pending.values()).has(this.adding)) {
+      this.adding.controller?.abort();
+    }
+    this.pending = pending;
+  }
+
+  /** Opaque snapshot so a rolled-back inventory can restore readiness. */
+  snapshotPending(): Map<string, PendingWorktree> {
+    return this.pending;
+  }
+
+  restorePending(snapshot: Map<string, PendingWorktree>): void {
+    this.pending = snapshot;
+  }
+
+  /** Whether the worktree's checkout exists, so it can be advertised and claimed. */
+  isMaterialized(repositoryId: string, worktree: WorktreeConfig): boolean {
+    return !this.pending.has(pendingKey(repositoryId, worktree.id, worktree.path));
+  }
+
+  /** A configured worktree that is still waiting for its checkout to exist. */
+  isPendingTarget(repositoryId: string, worktreeId: string | null): boolean {
+    if (worktreeId === null) return false;
+    const repository = this.config.repositories.find((candidate) => candidate.id === repositoryId);
+    return (
+      repository?.worktrees.some(
+        (worktree) => worktree.id === worktreeId && !this.isMaterialized(repositoryId, worktree),
+      ) ?? false
+    );
+  }
+
+  /**
+   * Create missing worktree checkouts one at a time. Single-flight; each checkout is bounded by
+   * the git worktree-add timeout and cleans up after itself, and a failure only backs off that
+   * worktree. `onReady` fires after each success so the new target can be advertised.
+   */
+  materializePending(hooks: MaterializeHooks = {}): Promise<void> {
+    this.materializing ??= this.runMaterialization(hooks).finally(() => {
+      this.materializing = undefined;
+    });
+    return this.materializing;
+  }
+
+  private async runMaterialization(hooks: MaterializeHooks): Promise<void> {
+    // An inventory apply replaces the pending map mid-pass; run again over the current one so
+    // newly pending targets are not left to the next keepalive.
+    let pass: Map<string, PendingWorktree> | undefined;
+    while (pass !== this.pending && !hooks.signal?.aborted) {
+      pass = this.pending;
+      await this.materializePass(pass, hooks);
+    }
+  }
+
+  private async materializePass(
+    pending: Map<string, PendingWorktree>,
+    hooks: MaterializeHooks,
+  ): Promise<void> {
+    const now = hooks.now ?? Date.now;
+    for (const [key, entry] of pending) {
+      if (hooks.signal?.aborted) return;
+      if (this.pending.get(key) !== entry || entry.retryAt > now()) continue;
+      this.adding = entry;
+      const controller = new AbortController();
+      entry.controller = controller;
+      const signal = hooks.signal
+        ? AbortSignal.any([hooks.signal, controller.signal])
+        : controller.signal;
+      try {
+        await this.git.ensureWorktree({
+          repoPath: entry.repositoryPath,
+          worktreePath: entry.worktreePath,
+          branch: entry.branch,
+          signal,
+        });
+      } catch (error) {
+        if (hooks.signal?.aborted) return;
+        // Cancelled because an inventory dropped this target: not a failure of the checkout.
+        if (controller.signal.aborted) continue;
+        entry.failures += 1;
+        entry.retryAt = now() + Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** (entry.failures - 1));
+        const message = error instanceof Error ? error.message : String(error);
+        hooks.onError?.(`worktree ${entry.worktreePath} not ready: ${message}`);
+        continue;
+      } finally {
+        this.adding = undefined;
+        delete entry.controller;
+      }
+      if (this.pending.get(key) === entry) {
+        this.pending.delete(key);
+        hooks.onReady?.();
       }
     }
   }
@@ -154,7 +302,10 @@ export class WorktreeManager {
     const repository = this.config.repositories.find((candidate) => candidate.id === repositoryId);
     if (!repository) return false;
     return (
-      worktreeId === null || repository.worktrees.some((worktree) => worktree.id === worktreeId)
+      worktreeId === null ||
+      repository.worktrees.some(
+        (worktree) => worktree.id === worktreeId && this.isMaterialized(repositoryId, worktree),
+      )
     );
   }
 
@@ -333,6 +484,11 @@ export class WorktreeManager {
               ? `Unknown repository: ${repositoryId}`
               : `Unknown worktree: ${worktreeId}`,
           );
+        }
+        // Checked against every generation snapshot: a refresh can move this id to a new
+        // path that is still pending.
+        if (!this.isMaterialized(repositoryId, currentWorktree)) {
+          throw new Error(`Worktree not ready: ${worktreeId}`);
         }
         let paths: ClaimedPathsAllowed;
         try {

@@ -93,6 +93,7 @@ export async function assertUnknownProfileFails(config: DaemonConfig): Promise<v
   const gitClient = createGitClient(runner);
   const worktrees = new WorktreeManager(config, gitClient);
   await worktrees.ensureAll();
+  await worktrees.materializePending();
   const sessionRunner = new SessionRunner({
     worktrees,
     processRunner: runner,
@@ -121,6 +122,7 @@ export async function runHappyPath(
   const gitClient = createGitClient(processRunner);
   const worktrees = new WorktreeManager(config, gitClient);
   await worktrees.ensureAll();
+  await worktrees.materializePending();
   const sessionRunner = new SessionRunner({
     worktrees,
     processRunner,

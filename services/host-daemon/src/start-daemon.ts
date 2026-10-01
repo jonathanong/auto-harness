@@ -176,7 +176,8 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
     minIntervalMs: options.errorLogIntervalMs ?? DEFAULT_ERROR_LOG_INTERVAL_MS,
   });
   const timer = setInterval(() => {
-    if (stopped || inFlight) return;
+    if (stopped) return;
+    if (inFlight) return;
     inFlight = true;
     const poll = (async () => {
       try {

@@ -96,6 +96,13 @@ export type DaemonLoopOptions = {
    * proceeds to the in-flight wait rather than retrying forever.
    */
   drainDeadlineMs?: number;
+  /**
+   * How long startup waits for missing checkouts before registering without them (default 20s).
+   * Slower checkouts keep materializing in the background.
+   */
+  startupMaterializeWaitMs?: number;
+  /** Longest an assignment waits for its pending checkout; keep below the acknowledgement deadline. */
+  assignmentCheckoutWaitMs?: number;
   timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   /** Stable process identity; injectable only to make restart semantics deterministic in tests. */
   daemonIdentity?: DaemonRuntimeIdentity;
@@ -344,6 +351,8 @@ export class DaemonLoop {
   /** Control-plane protocol from the latest accepted registration. */
   private serverProtocolVersion = 0;
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
+  private readonly startupMaterializeWaitMs: number;
+  private readonly assignmentCheckoutWaitMs: number;
   private readonly daemonIdentity: DaemonRuntimeIdentity;
   private readonly processRunner: ProcessRunner;
   private readonly childEnvSource: NodeJS.ProcessEnv;
@@ -356,7 +365,12 @@ export class DaemonLoop {
   /** Serializes authoritative fetch + policy handling + application in request order. */
   private inventoryReloadTail: Promise<void> = Promise.resolve();
   private inventoryApplyTail: Promise<void> = Promise.resolve();
+  private applyingInventory = 0;
+  private readinessDeferred = false;
   private advertisedProviderAccountReadiness = "";
+  private advertisedWorktreeIds = "";
+  private readonly materializationController = new AbortController();
+  private readonly readyListeners = new Set<() => void>();
   private runtime: HostRuntimeReport | undefined;
   private connectionEvents: { stop: () => void } | undefined;
   constructor(options: DaemonLoopOptions) {
@@ -388,6 +402,8 @@ export class DaemonLoop {
     // daemon-side margin only needs to stay well clear of whatever it is.
     this.keepaliveStallMs = options.keepaliveStallMs ?? 45_000;
     this.timers = options.timers ?? globalThis;
+    this.startupMaterializeWaitMs = options.startupMaterializeWaitMs ?? 20_000;
+    this.assignmentCheckoutWaitMs = options.assignmentCheckoutWaitMs ?? 10_000;
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
     this.processRunner = processRunner;
@@ -473,6 +489,24 @@ export class DaemonLoop {
     if (this.runtime.gitReady) await this.worktrees.ensureAll();
     await this.workspaces.ensureAll();
     await this.expireSetupCache();
+    // Startup has not registered yet, so give the initial checkouts a short window to appear
+    // before advertising them. A slow or failing checkout never keeps the host down: it is
+    // withheld, keeps materializing in the background, and is advertised once it is ready.
+    if (this.runtime.gitReady) {
+      // Readiness is published per checkout, but only once the startup wait is over: the first
+      // registration below already carries everything that finished in time.
+      let publish = false;
+      const startup = this.materializeWorktrees({ announce: () => publish });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const waited = new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(true), this.startupMaterializeWaitMs);
+      });
+      const timedOut = await Promise.race([startup.then(() => false), waited]);
+      if (timer) clearTimeout(timer);
+      // The single initial registration below carries everything ready by then; later checkouts
+      // announce themselves.
+      if (timedOut) publish = true;
+    }
     this.transport.onMessage((msg) => {
       void this.handleServerMessage(msg).catch((err: unknown) => {
         this.onLog?.(`server message failed: ${thrownMessage(err)}`);
@@ -501,7 +535,18 @@ export class DaemonLoop {
     next: DaemonConfig,
     options: { publishRegistration?: boolean; signal?: AbortSignal } = {},
   ): Promise<void> {
-    const apply = this.inventoryApplyTail.then(() => this.applyInventoryCandidate(next, options));
+    const apply = this.inventoryApplyTail.then(async () => {
+      this.applyingInventory++;
+      try {
+        await this.applyInventoryCandidate(next, options);
+      } finally {
+        this.applyingInventory--;
+        if (this.applyingInventory === 0 && this.readinessDeferred) {
+          this.readinessDeferred = false;
+          this.announceReadiness();
+        }
+      }
+    });
     this.inventoryApplyTail = apply.catch(() => undefined);
     return await apply;
   }
@@ -539,6 +584,7 @@ export class DaemonLoop {
           // It must not clear a policy fence that was already published (or that
           // appeared while validation awaited filesystem work); only a matching
           // ready registration may release that remote drain state.
+          void this.materializeWorktrees();
           if (
             options.publishRegistration === false ||
             this.inventoryPolicyGeneration !== policyGeneration
@@ -635,8 +681,11 @@ export class DaemonLoop {
     this.runtime ??= await probeGitReadiness(this.processRunner);
     const readiness = providerAccountReadiness(this.executionProfiles);
     const runningAttempts = this.confirmableOwnedAttempts();
+    // Snapshot once: a worktree that becomes ready while the registration is in flight is not in
+    // this payload, so it must not be recorded as advertised.
+    const advertised = this.advertisableConfig(config);
     await registerDaemon(
-      config,
+      advertised,
       this.transport,
       runningAttempts.map((attempt) => attempt.sessionId),
       draining,
@@ -647,12 +696,76 @@ export class DaemonLoop {
     );
     if (inventoryPolicyBlocked) this.inventoryPolicyDrainPublished = true;
     this.advertisedProviderAccountReadiness = JSON.stringify(readiness);
+    this.advertisedWorktreeIds = this.worktreeKey(advertised);
   }
+
+  /** Hide worktrees whose checkout is not on disk yet so the control plane cannot assign them. */
+  private advertisableConfig(config: DaemonConfig): DaemonConfig {
+    return {
+      ...config,
+      repositories: config.repositories.map((repository) => ({
+        ...repository,
+        worktrees: repository.worktrees.filter((worktree) =>
+          this.worktrees.isMaterialized(repository.id, worktree),
+        ),
+      })),
+    };
+  }
+
+  private advertisedWorktreeKey(config: DaemonConfig): string {
+    return this.worktreeKey(this.advertisableConfig(config));
+  }
+
+  private worktreeKey(advertised: DaemonConfig): string {
+    return JSON.stringify(
+      advertised.repositories.map((repository) =>
+        repository.worktrees.map((worktree) => `${repository.id}/${worktree.id}`),
+      ),
+    );
+  }
+
+  /**
+   * Create missing worktree checkouts in the background, outside any assignment-refresh deadline.
+   * Newly ready worktrees are re-advertised; failures only keep that worktree unassignable and
+   * are retried with backoff by the next poll tick.
+   */
+  materializeWorktrees({
+    announce = () => true,
+  }: { announce?: () => boolean } = {}): Promise<void> {
+    if (this.runtime?.gitReady === false) return Promise.resolve();
+    return this.worktrees
+      .materializePending({
+        signal: this.materializationController.signal,
+        onReady: () => {
+          for (const listener of this.readyListeners) listener();
+          if (!announce()) return;
+          // While an inventory is being applied its own registration is the authoritative
+          // publish; one from the still-old config here could supersede it. Defer until the
+          // apply finishes instead.
+          if (this.applyingInventory > 0) this.readinessDeferred = true;
+          else this.announceReadiness();
+        },
+        onError: (message) => this.onLog?.(message),
+      })
+      .catch((error: unknown) =>
+        this.onLog?.(`worktree materialization failed: ${thrownMessage(error)}`),
+      );
+  }
+  private announceReadiness(): void {
+    if (this.hasPendingAcknowledgement()) return;
+    void this.register().catch((error: unknown) =>
+      this.onLog?.(`worktree registration update failed: ${thrownMessage(error)}`),
+    );
+  }
+
   /** Resolves true only when an actual host:keepalive frame was sent this tick. */
   async keepalive(): Promise<boolean> {
+    // Retries pending checkouts on the daemon's own timer, independent of inventory polling.
+    void this.materializeWorktrees();
     if (
-      JSON.stringify(providerAccountReadiness(this.executionProfiles)) !==
-        this.advertisedProviderAccountReadiness &&
+      (JSON.stringify(providerAccountReadiness(this.executionProfiles)) !==
+        this.advertisedProviderAccountReadiness ||
+        this.advertisedWorktreeKey(this.config) !== this.advertisedWorktreeIds) &&
       !this.hasPendingAcknowledgement()
     ) {
       await this.register();
@@ -838,6 +951,7 @@ export class DaemonLoop {
   }
 
   stop(): void {
+    this.materializationController.abort();
     this.prepareForShutdown();
     this.setupCacheSweepStopped = true;
     if (this.setupCacheSweepTimer) this.timers.clearTimeout(this.setupCacheSweepTimer);
@@ -2061,7 +2175,13 @@ export class DaemonLoop {
     signal: AbortSignal,
   ): Promise<void> {
     const loadInventory = this.refreshInventory;
-    if (this.assignmentTargetKnown(msg) || !loadInventory) return;
+    if (this.assignmentTargetKnown(msg)) return;
+    if (!loadInventory) {
+      // Without an inventory loader a missing target is left to the claim path, but a target that
+      // is merely still checking out must wait or be rejected here, before ownership is acked.
+      if (this.isPendingAssignmentTarget(msg)) await this.requireMaterialized(msg, signal);
+      return;
+    }
     signal.throwIfAborted();
     const joinedExistingRefresh = this.inventoryRefresh !== undefined;
     await this.waitForInventoryRefresh(this.runInventoryRefresh(loadInventory), signal);
@@ -2073,9 +2193,57 @@ export class DaemonLoop {
       await this.waitForInventoryRefresh(this.runInventoryRefresh(loadInventory), signal);
       signal.throwIfAborted();
     }
+    await this.requireMaterialized(msg, signal);
     if (!this.assignmentTargetKnown(msg)) {
       throw new Error(
         `assignment target is absent from refreshed host inventory: ${msg.repositoryId ?? "workspace"}/${msg.worktreeId ?? "main"}`,
+      );
+    }
+  }
+
+  private isPendingAssignmentTarget(
+    msg: Extract<HostWireMessage, { type: "session:assign" }>,
+  ): boolean {
+    return (
+      msg.repositoryId !== null && this.worktrees.isPendingTarget(msg.repositoryId, msg.worktreeId)
+    );
+  }
+
+  /**
+   * A freshly attached worktree is usually checked out within moments; wait for it inside this
+   * assignment's own deadline rather than bouncing the assignment back to the scheduler, and
+   * reject it locally (leaving it unacknowledged) if the checkout does not succeed.
+   */
+  private async requireMaterialized(
+    msg: Extract<HostWireMessage, { type: "session:assign" }>,
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (!this.isPendingAssignmentTarget(msg)) return;
+    // Resolve as soon as this target's checkout is ready, not when every other pending checkout
+    // in the same batch has finished (or timed out).
+    let listener: (() => void) | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await this.waitForSignal(
+        new Promise<void>((resolve) => {
+          listener = () => {
+            if (!this.isPendingAssignmentTarget(msg)) resolve();
+          };
+          this.readyListeners.add(listener);
+          // Bounded below the control plane's acknowledgement deadline: past it the scheduler
+          // reassigns, so keeping this attempt would only produce a stale acknowledgement.
+          timer = setTimeout(resolve, this.assignmentCheckoutWaitMs);
+          void this.materializeWorktrees({ announce: () => false }).then(() => resolve());
+        }),
+        signal,
+      );
+    } finally {
+      if (listener) this.readyListeners.delete(listener);
+      if (timer) clearTimeout(timer);
+    }
+    if (this.isPendingAssignmentTarget(msg)) {
+      throw new Error(
+        `assignment target worktree is not ready yet: ${msg.repositoryId}/${msg.worktreeId}`,
       );
     }
   }

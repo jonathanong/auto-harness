@@ -61,6 +61,7 @@ export type RunSessionDeps = {
   }) => Promise<DaemonConfig> | DaemonConfig;
   ensureReady: (
     config: DaemonConfig,
+    options?: { requireWorktrees?: boolean },
   ) => Promise<import("@auto-harness/shared").HostRuntimeReport | void>;
   runSession: (
     config: DaemonConfig,
@@ -171,7 +172,7 @@ export function createDefaultRunSessionDeps(
     logResult: (payload) => {
       console.log(payload);
     },
-    ensureReady: (config) => ensureDaemonReady(config),
+    ensureReady: (config, options) => ensureDaemonReady(config, undefined, options),
     runSession: (config, assign, onLog, childEnvSource) =>
       runAssignedSession(config, assign, onLog, undefined, undefined, childEnvSource),
     installService: installHostService,
@@ -404,7 +405,7 @@ export async function runCli(
     }
     const config = await deps.loadConfig({ env: resolvedEnv });
     const assign = JSON.parse(deps.readFile(resolve(file))) as SessionAssign;
-    await deps.ensureReady(config);
+    await deps.ensureReady(config, { requireWorktrees: true });
     const result = await deps.runSession(config, assign, deps.log, resolvedEnv);
     deps.logResult(
       JSON.stringify({

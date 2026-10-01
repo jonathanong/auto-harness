@@ -100,7 +100,7 @@ export async function git(cwd: string, args: string[]): Promise<void> {
   await runOk("git", args, cwd);
 }
 
-export async function makeRepo(): Promise<{
+export async function makeRepo(options: { materializeWorktree?: boolean } = {}): Promise<{
   root: string;
   config: DaemonConfig;
   cleanup: () => void;
@@ -116,6 +116,7 @@ export async function makeRepo(): Promise<{
   await git(repo, ["add", "."]);
   await git(repo, ["commit", "-m", "init"]);
   await git(repo, ["branch", "-M", "main"]);
+  if (options.materializeWorktree) await git(repo, ["worktree", "add", "--detach", wt]);
   const hook = join(root, "hook.sh");
   writeFileSync(hook, "#!/bin/sh\necho ok\n", { mode: 0o755 });
 
