@@ -367,6 +367,7 @@ export class DaemonLoop {
   private advertisedProviderAccountReadiness = "";
   private advertisedWorktreeIds = "";
   private readonly materializationController = new AbortController();
+  private readonly readyListeners = new Set<() => void>();
   private runtime: HostRuntimeReport | undefined;
   private connectionEvents: { stop: () => void } | undefined;
   constructor(options: DaemonLoopOptions) {
@@ -488,14 +489,20 @@ export class DaemonLoop {
     // before advertising them. A slow or failing checkout never keeps the host down: it is
     // withheld, keeps materializing in the background, and is advertised once it is ready.
     if (this.runtime.gitReady) {
-      const startup = this.materializeWorktrees({ announce: false });
+      // Readiness is published per checkout, but only once the startup wait is over: the first
+      // registration below already carries everything that finished in time.
+      let publish = false;
+      const startup = this.materializeWorktrees({ announce: () => publish });
       let timer: ReturnType<typeof setTimeout> | undefined;
       const waited = new Promise<boolean>((resolve) => {
         timer = setTimeout(() => resolve(true), this.startupMaterializeWaitMs);
       });
       const timedOut = await Promise.race([startup.then(() => false), waited]);
       if (timer) clearTimeout(timer);
-      if (timedOut) void startup.then(() => this.announceReadiness());
+      if (timedOut) {
+        publish = true;
+        this.announceReadiness();
+      }
     }
     this.transport.onMessage((msg) => {
       void this.handleServerMessage(msg).catch((err: unknown) => {
@@ -719,13 +726,16 @@ export class DaemonLoop {
    * Newly ready worktrees are re-advertised; failures only keep that worktree unassignable and
    * are retried with backoff by the next poll tick.
    */
-  materializeWorktrees({ announce = true }: { announce?: boolean } = {}): Promise<void> {
+  materializeWorktrees({
+    announce = () => true,
+  }: { announce?: () => boolean } = {}): Promise<void> {
     if (this.runtime?.gitReady === false) return Promise.resolve();
     return this.worktrees
       .materializePending({
         signal: this.materializationController.signal,
         onReady: () => {
-          if (!announce) return;
+          for (const listener of this.readyListeners) listener();
+          if (!announce()) return;
           // While an inventory is being applied its own registration is the authoritative
           // publish; one from the still-old config here could supersede it. Defer until the
           // apply finishes instead.
@@ -2206,7 +2216,23 @@ export class DaemonLoop {
     signal: AbortSignal,
   ): Promise<void> {
     if (!this.isPendingAssignmentTarget(msg)) return;
-    await this.waitForSignal(this.materializeWorktrees({ announce: false }), signal);
+    // Resolve as soon as this target's checkout is ready, not when every other pending checkout
+    // in the same batch has finished (or timed out).
+    let listener: (() => void) | undefined;
+    try {
+      await this.waitForSignal(
+        new Promise<void>((resolve) => {
+          listener = () => {
+            if (!this.isPendingAssignmentTarget(msg)) resolve();
+          };
+          this.readyListeners.add(listener);
+          void this.materializeWorktrees({ announce: () => false }).then(() => resolve());
+        }),
+        signal,
+      );
+    } finally {
+      if (listener) this.readyListeners.delete(listener);
+    }
     if (this.isPendingAssignmentTarget(msg)) {
       throw new Error(
         `assignment target worktree is not ready yet: ${msg.repositoryId}/${msg.worktreeId}`,

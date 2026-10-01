@@ -18,6 +18,9 @@ function fakeGit(options: {
   listed?: () => string;
   onAdd?: (path: string) => Promise<{ exitCode: number; stderr?: string } | "abort">;
   failList?: boolean;
+  gitDir?: string;
+  commonDir?: string;
+  failDirs?: boolean;
 }): { runner: ProcessRunner; calls: Call[] } {
   const calls: Call[] = [];
   const runner: ProcessRunner = {
@@ -27,6 +30,14 @@ function fakeGit(options: {
       const out = (stdout: string) => opts.onChunk({ stream: "stdout", data: stdout });
       if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree")
         return (out("true\n"), done());
+      if (
+        args[0] === "rev-parse" &&
+        (args[1] === "--absolute-git-dir" || args[1] === "--git-common-dir")
+      ) {
+        if (options.failDirs) return done(128);
+        const dir = args[1] === "--absolute-git-dir" ? options.gitDir : options.commonDir;
+        return (out(`${dir ?? join(repo, ".git")}\n`), done());
+      }
       if (args[0] === "rev-parse") return (out("abc123\n"), done());
       if (args[0] === "worktree" && args[1] === "list") {
         if (options.failList) throw new Error("list failed");
@@ -169,6 +180,22 @@ describe("ensureWorktree recovery from an interrupted add", () => {
     await mkdir(join(repo, ".git", "..cache"), { recursive: true });
     await expect(ensure(runner, join(repo, ".git", "..cache"))).rejects.toThrow(/overlaps/);
     expect((await stat(join(repo, ".git"))).isDirectory()).toBe(true);
+  });
+
+  it("protects the real git and common directories of a linked or separate-git-dir repository", async () => {
+    const realGit = join(root, "elsewhere", "repo.git");
+    const common = join(root, "main-clone", ".git");
+    await mkdir(join(realGit, "modules", "x"), { recursive: true });
+    await mkdir(join(common, "worktrees"), { recursive: true });
+    const { runner } = fakeGit({ gitDir: realGit, commonDir: common });
+    await expect(ensure(runner, join(realGit, "modules", "x"))).rejects.toThrow(/overlaps/);
+    await expect(ensure(runner, join(common, "worktrees"))).rejects.toThrow(/overlaps/);
+  });
+
+  it("refuses recovery when the repository's git directories cannot be resolved", async () => {
+    await interruptedCheckout(target);
+    const { runner } = fakeGit({ failDirs: true });
+    await expect(ensure(runner)).rejects.toThrow(/could not resolve --absolute-git-dir/);
   });
 
   it("resolves a symlinked managed path before checking the repository overlap", async () => {

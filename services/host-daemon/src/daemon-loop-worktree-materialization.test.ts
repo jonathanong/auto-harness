@@ -199,6 +199,73 @@ describe("DaemonLoop worktree materialization", () => {
     }
   });
 
+  it.each(["publish", "assign"] as const)(
+    "does not wait for later stalled checkouts (%s)",
+    async (mode) => {
+      const { root, config, cleanup } = await makeRepo();
+      try {
+        const repository = config.repositories[0]!;
+        const first = repository.worktrees[0]!;
+        const stalledPath = join(root, "wt-stalled");
+        const gates = new Map<string, Promise<"ok" | "fail">>();
+        let releaseFirst!: (value: "ok") => void;
+        let releaseStalled!: (value: "ok") => void;
+        const firstGate = new Promise<"ok">((resolve) => (releaseFirst = resolve));
+        const stalledGate = new Promise<"ok">((resolve) => (releaseStalled = resolve));
+        for (const prefix of ["", "/private"]) {
+          gates.set(`${prefix}${first.path}`, firstGate);
+          gates.set(`${prefix}${stalledPath}`, stalledGate);
+        }
+        const sent: HostToServerMessage[] = [];
+        const transport = createAcknowledgingLoopbackTransport({
+          sendToServer: (message) => sent.push(message),
+        });
+        const loop = new DaemonLoop({
+          config: {
+            ...config,
+            repositories: [
+              {
+                ...repository,
+                worktrees: [
+                  ...repository.worktrees,
+                  { id: "wt-stalled", name: "wt-stalled", path: stalledPath, labels: [] },
+                ],
+              },
+            ],
+          },
+          transport,
+          processRunner: gatedGit(gates),
+          startupMaterializeWaitMs: 20,
+        });
+        await loop.start();
+        const registers = () => sent.filter((m): m is Registered => m.type === "host:register");
+        expect(registeredIds(registers().at(-1))).toEqual([]);
+
+        // The second checkout stays stalled: the first is published or unblocks its assignment alone.
+        if (mode === "assign") transport.deliver(assign("wt-1"));
+        releaseFirst("ok");
+        if (mode === "assign") {
+          await vi.waitFor(
+            () =>
+              expect(
+                sent.some((m) => m.type === "session:status" && m.sessionId === "s-wt-1"),
+              ).toBe(true),
+            { timeout: 10_000 },
+          );
+        } else {
+          await vi.waitFor(() => expect(registeredIds(registers().at(-1))).toEqual(["wt-1"]), {
+            timeout: 10_000,
+          });
+        }
+        releaseStalled("ok");
+        await loop.waitForIdle();
+        loop.stop();
+      } finally {
+        cleanup();
+      }
+    },
+  );
+
   it("does not publish a readiness registration while an inventory apply is in flight", async () => {
     const { root, config, cleanup } = await makeRepo({ materializeWorktree: true });
     try {

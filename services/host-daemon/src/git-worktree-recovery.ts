@@ -43,6 +43,22 @@ async function isAbandonedCheckout(path: string): Promise<boolean> {
   return !(await pathExists(resolve(path, match[1])));
 }
 
+async function repositoryGitDirs(
+  runner: ProcessRunner,
+  repoPath: string,
+  repo: string,
+): Promise<string[]> {
+  const dirs = [resolve(repo, ".git")];
+  for (const flag of ["--absolute-git-dir", "--git-common-dir"]) {
+    const result = await runGit(runner, repoPath, ["rev-parse", flag]);
+    if (result.exitCode !== 0 || !result.stdout.trim()) {
+      throw new Error(`Refusing to recover a worktree: could not resolve ${flag} for ${repo}`);
+    }
+    dirs.push(await canonicalPath(resolve(repo, result.stdout.trim())));
+  }
+  return dirs;
+}
+
 /**
  * Clear an unregistered directory left at a managed worktree path by an interrupted
  * `git worktree add`. Refuses (throws) for anything it cannot prove is an abandoned linked
@@ -57,10 +73,13 @@ export async function removeAbandonedWorktreeDir(
 ): Promise<void> {
   const repo = await canonicalPath(repoPath);
   const target = await canonicalPath(worktreePath);
+  // The repository may itself be a linked worktree or keep a separate git dir, so `.git` can be
+  // a mere gitfile; protect the real administrative and common directories too.
+  const protectedDirs = await repositoryGitDirs(runner, repoPath, repo);
   if (
     target === repo ||
     within(target, repo) ||
-    within(resolve(repo, ".git"), target) ||
+    protectedDirs.some((dir) => target === dir || within(dir, target) || within(target, dir)) ||
     dirname(target) === target
   ) {
     throw new Error(`Refusing to remove ${target}: it overlaps the repository`);
