@@ -107,6 +107,39 @@ describe("runtime helpers", () => {
     expect(calls.some((c) => c.includes("worktree add"))).toBe(true);
   });
 
+  it("fails readiness for an uncreatable worktree only when the caller requires it", async () => {
+    const runner: ProcessRunner = {
+      async run(opts) {
+        if (opts.argv.includes("--version")) {
+          opts.onChunk({ stream: "stdout", data: "git version 2.36.0\n" });
+        }
+        if (opts.argv.includes("add")) {
+          opts.onChunk({ stream: "stderr", data: "fatal: simulated" });
+          return { exitCode: 128, timedOut: false, signal: null };
+        }
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const missing = parseDaemonConfig({
+      hostId: "a1",
+      repositories: [
+        {
+          id: "repo-1",
+          path: runtimeRepo,
+          defaultBranch: "main",
+          worktrees: [
+            { id: "wt-bad", name: "wt-bad", path: join(runtimeRoot, "wt-bad"), labels: [] },
+          ],
+        },
+      ],
+    });
+    // A running daemon retries on its own, so the default preflight tolerates the failure.
+    await expect(ensureDaemonReady(missing, runner)).resolves.toMatchObject({ gitReady: true });
+    await expect(ensureDaemonReady(missing, runner, { requireWorktrees: true })).rejects.toThrow(
+      /simulated|not ready/,
+    );
+  });
+
   it("returns an unready runtime report without initializing worktrees", async () => {
     const calls: string[] = [];
     const runner: ProcessRunner = {

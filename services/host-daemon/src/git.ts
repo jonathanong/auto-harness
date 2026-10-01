@@ -92,6 +92,10 @@ export function createGitClient(
     return pullRefConfigs?.get(key) ?? pullRefConfigs?.get(resolve(path));
   }
 
+  // Targets whose failed add could not be fully cleaned up: git may still list a partial
+  // checkout there, which must never be mistaken for a ready worktree.
+  const incompleteCleanups = new Set<string>();
+
   return {
     async ensureRepo(path: string, signal?: AbortSignal) {
       const probe = await runGit(runner, path, ["rev-parse", "--is-inside-work-tree"], signal);
@@ -107,8 +111,15 @@ export function createGitClient(
       const worktreeIdentity = await canonicalPath(resolve(repoPath, worktreePath));
       signal?.throwIfAborted();
       if ((await listedWorktreePaths(list.stdout, repoPath)).has(worktreeIdentity)) {
-        return;
+        if (!incompleteCleanups.has(worktreeIdentity)) return;
+        if (!createMissing) return "missing";
+        if (!(await cleanupFailedWorktreeAdd(runner, repoPath, worktreeIdentity))) {
+          throw new Error(
+            `Cleanup of the failed worktree add at ${worktreeIdentity} is incomplete`,
+          );
+        }
       }
+      incompleteCleanups.delete(worktreeIdentity);
       if (!createMissing) return "missing";
       // Always add detached so the branch can remain checked out in the main tree.
       let tip = await runGit(runner, repoPath, ["rev-parse", "--verify", branch], signal);
@@ -139,11 +150,15 @@ export function createGitClient(
           { timeoutMs: WORKTREE_ADD_TIMEOUT_MS },
         );
       } catch (error) {
-        await cleanupFailedWorktreeAdd(runner, repoPath, worktreeIdentity);
+        if (!(await cleanupFailedWorktreeAdd(runner, repoPath, worktreeIdentity))) {
+          incompleteCleanups.add(worktreeIdentity);
+        }
         throw error;
       }
       if (add.exitCode !== 0) {
-        await cleanupFailedWorktreeAdd(runner, repoPath, worktreeIdentity);
+        if (!(await cleanupFailedWorktreeAdd(runner, repoPath, worktreeIdentity))) {
+          incompleteCleanups.add(worktreeIdentity);
+        }
         throw gitFailure(`Failed to create worktree at ${worktreeIdentity}`, add.stderr);
       }
     },

@@ -257,6 +257,15 @@ describe("runCli", () => {
     expect(ok.logs.some((l) => l.includes("completed"))).toBe(true);
   });
 
+  it("run-session requires its worktree to be ready, unlike the daemon preflight", async () => {
+    const seen: unknown[] = [];
+    const strict = deps({
+      ensureReady: async (_config: unknown, options: unknown) => void seen.push(options),
+    });
+    await runCli(["node", "x", "run-session", "--file", "s.json"], {}, strict);
+    expect(seen).toEqual([{ requireWorktrees: true }]);
+  });
+
   it("dispatches service installation and removal commands", async () => {
     const installed = deps({ installService: () => 7 });
     expect(await runCli(["node", "x", "install-service"], {}, installed)).toBe(7);

@@ -72,6 +72,7 @@ const pendingKey = (repositoryId: string, worktreeId: string, path: string) =>
 export class WorktreeManager {
   private pending = new Map<string, PendingWorktree>();
   private materializing: Promise<void> | undefined;
+  private adding: PendingWorktree | undefined;
   private readonly busy = new Set<string>();
   private readonly mainBusy = new Set<string>();
   private readonly mainWaiters = new Map<string, MainWaiter[]>();
@@ -171,21 +172,39 @@ export class WorktreeManager {
           ...(signal ? { signal } : {}),
         });
         assertCurrent();
-        if (state !== "missing") continue;
         const key = pendingKey(repo.id, wt.id, wt.path);
+        const existing = this.pending.get(key);
+        // Git lists a path as soon as `worktree add` registers it, before the checkout finishes,
+        // so an entry whose add is still running stays pending.
+        if (state !== "missing" && !(existing && existing === this.adding)) continue;
+        // Keep the same object while its inputs are unchanged so an in-flight add still
+        // recognizes it; otherwise carry over only the failure counter.
+        const unchanged =
+          existing?.repositoryPath === repositoryPath && existing.branch === repo.defaultBranch;
         pending.set(
           key,
-          this.pending.get(key) ?? {
-            repositoryPath,
-            worktreePath,
-            branch: repo.defaultBranch,
-            failures: 0,
-            retryAt: 0,
-          },
+          unchanged && existing
+            ? existing
+            : {
+                repositoryPath,
+                worktreePath,
+                branch: repo.defaultBranch,
+                failures: existing?.failures ?? 0,
+                retryAt: 0,
+              },
         );
       }
     }
     this.pending = pending;
+  }
+
+  /** Opaque snapshot so a rolled-back inventory can restore readiness. */
+  snapshotPending(): Map<string, PendingWorktree> {
+    return this.pending;
+  }
+
+  restorePending(snapshot: Map<string, PendingWorktree>): void {
+    this.pending = snapshot;
   }
 
   /** Whether the worktree's checkout exists, so it can be advertised and claimed. */
@@ -221,6 +240,7 @@ export class WorktreeManager {
     for (const [key, entry] of this.pending) {
       if (hooks.signal?.aborted) return;
       if (this.pending.get(key) !== entry || entry.retryAt > now()) continue;
+      this.adding = entry;
       try {
         await this.git.ensureWorktree({
           repoPath: entry.repositoryPath,
@@ -235,6 +255,8 @@ export class WorktreeManager {
         const message = error instanceof Error ? error.message : String(error);
         hooks.onError?.(`worktree ${entry.worktreePath} not ready: ${message}`);
         continue;
+      } finally {
+        this.adding = undefined;
       }
       if (this.pending.get(key) === entry) {
         this.pending.delete(key);

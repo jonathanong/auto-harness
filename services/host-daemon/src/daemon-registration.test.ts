@@ -393,6 +393,28 @@ describe("daemon registration", () => {
     expect(inventoryChanges).toEqual(["changed", "changed"]);
   });
 
+  it("restores the pending-checkout set when registration of the candidate fails", async () => {
+    const config = { hostId: "h", repositories: [], providerAccounts: [] };
+    const snapshot = new Map();
+    const restored: unknown[] = [];
+    await expect(
+      applyDaemonInventory(
+        config,
+        { ...config, repositories: [] },
+        {
+          noteInventoryChange: () => undefined,
+          ensureAll: async () => {},
+          snapshotPending: () => snapshot,
+          restorePending: (value: unknown) => void restored.push(value),
+        } as never,
+        async () => {
+          throw new Error("registration failed");
+        },
+      ),
+    ).rejects.toThrow("registration failed");
+    expect(restored).toEqual([snapshot]);
+  });
+
   it("restores a previously configured allowed-roots policy on failure", async () => {
     const config = {
       hostId: "h",

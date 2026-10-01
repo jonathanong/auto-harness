@@ -1,4 +1,4 @@
-import { lstat, readFile, readdir, rm } from "node:fs/promises";
+import { lstat, readFile, readdir, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import type { ProcessRunner } from "./executor.ts";
@@ -20,8 +20,11 @@ async function pathExists(path: string): Promise<boolean> {
   try {
     await lstat(path);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    // Only a definite absence counts; EACCES/ELOOP/EIO must not be read as "gitdir is gone".
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    throw error;
   }
 }
 
@@ -40,10 +43,11 @@ async function isAbandonedCheckout(path: string): Promise<boolean> {
 }
 
 /**
- * Remove an unregistered directory left at a managed worktree path by an interrupted
- * `git worktree add`. Refuses (throws) rather than deleting anything it cannot prove is an
- * abandoned linked checkout, and never touches the repository or paths enclosing it.
- * The caller has already established that git does not list the path.
+ * Clear an unregistered directory left at a managed worktree path by an interrupted
+ * `git worktree add`. Refuses (throws) for anything it cannot prove is an abandoned linked
+ * checkout, and never touches the repository or paths enclosing it. An empty directory is
+ * removed; a non-empty one may still hold user changes, so it is moved aside (never deleted)
+ * for manual recovery. The caller has already established that git does not list the path.
  */
 export async function removeAbandonedWorktreeDir(
   runner: ProcessRunner,
@@ -66,15 +70,19 @@ export async function removeAbandonedWorktreeDir(
     );
   }
   await runGit(runner, repoPath, ["worktree", "prune"]);
-  await rm(target, { recursive: true, force: true });
+  if ((await readdir(target)).length === 0) await rm(target, { recursive: true, force: true });
+  else await rename(target, `${target}.abandoned-${Date.now()}`);
 }
 
-/** Undo a failed or aborted `git worktree add` that started on a path that did not exist. */
+/**
+ * Undo a failed or aborted `git worktree add` that started on a path that did not exist.
+ * Returns false when cleanup could not complete, so the caller keeps the target quarantined.
+ */
 export async function cleanupFailedWorktreeAdd(
   runner: ProcessRunner,
   repoPath: string,
   worktreePath: string,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const list = await runGit(runner, repoPath, ["worktree", "list", "--porcelain"]);
     if (
@@ -86,8 +94,9 @@ export async function cleanupFailedWorktreeAdd(
     await runGit(runner, repoPath, ["worktree", "prune"]);
     // The path did not exist before this attempt, so anything left is the partial checkout.
     await rm(worktreePath, { recursive: true, force: true });
+    return true;
   } catch {
-    // Best effort: the next attempt re-detects any leftover through removeAbandonedWorktreeDir.
+    return false;
   }
 }
 

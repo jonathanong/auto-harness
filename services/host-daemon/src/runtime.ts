@@ -19,6 +19,7 @@ import { loadGitHubPullRefConfigs } from "./github-pull-ref-config.ts";
 export async function ensureDaemonReady(
   config: DaemonConfig,
   processRunner: ProcessRunner = new SpawnProcessRunner(),
+  options: { requireWorktrees?: boolean } = {},
 ): Promise<HostRuntimeReport> {
   const runtime = await probeGitReadiness(processRunner);
   const workspaces = new WorkspaceManager(config);
@@ -32,9 +33,11 @@ export async function ensureDaemonReady(
   const git = createGitClient(processRunner, loadGitHubPullRefConfigs());
   const worktrees = new WorktreeManager(config, git);
   await worktrees.ensureAll();
-  // Best effort: a worktree that cannot be created yet stays unadvertised and the running
-  // daemon retries it, rather than failing the whole preflight.
-  await worktrees.materializePending();
+  // A one-shot caller (run-session) has no retry loop, so a checkout that cannot be created
+  // fails readiness. A long-running daemon instead retries pending worktrees itself.
+  const failures: string[] = [];
+  await worktrees.materializePending({ onError: (message) => failures.push(message) });
+  if (options.requireWorktrees && failures.length > 0) throw new Error(failures.join("; "));
   await workspaces.ensureAll();
   return runtime;
 }

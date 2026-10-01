@@ -172,6 +172,41 @@ describe("DaemonLoop worktree materialization", () => {
     }
   });
 
+  it("retries pending checkouts from the keepalive without any inventory poll", async () => {
+    const { root, config, cleanup } = await makeRepo({ materializeWorktree: true });
+    try {
+      const sent: HostToServerMessage[] = [];
+      const loop = new DaemonLoop({
+        config,
+        transport: createAcknowledgingLoopbackTransport({
+          sendToServer: (message) => sent.push(message),
+        }),
+      });
+      await loop.start();
+      const repository = config.repositories[0]!;
+      await loop.applyInventory({
+        ...config,
+        repositories: [
+          {
+            ...repository,
+            worktrees: [
+              ...repository.worktrees,
+              { id: "wt-kept", name: "wt-kept", path: join(root, "wt-kept"), labels: [] },
+            ],
+          },
+        ],
+      });
+      await loop.keepalive();
+      await loop.materializeWorktrees();
+      await loop.keepalive();
+      const last = sent.filter((m): m is Registered => m.type === "host:register").at(-1);
+      expect(registeredIds(last)).toEqual(["wt-1", "wt-kept"]);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("logs a failed re-registration instead of leaking an unhandled rejection", async () => {
     const { root, config, cleanup } = await makeRepo({ materializeWorktree: true });
     try {

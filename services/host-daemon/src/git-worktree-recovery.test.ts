@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+/* eslint-disable max-lines -- recovery scenarios share one fake git boundary. */
+import { chmod, mkdir, mkdtemp, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -82,6 +83,34 @@ describe("ensureWorktree recovery from an interrupted add", () => {
     await ensure(runner);
     expect(calls.some((call) => call.args[1] === "prune")).toBe(true);
     expect(calls.filter((call) => call.args[1] === "add")).toHaveLength(1);
+  });
+
+  it("moves a non-empty leftover aside instead of deleting it", async () => {
+    await interruptedCheckout(target);
+    const { runner } = fakeGit({});
+    await ensure(runner);
+    const aside = (await readdir(join(root, "managed"))).filter((name) =>
+      name.startsWith("auto-4.abandoned-"),
+    );
+    expect(aside).toHaveLength(1);
+    expect((await stat(join(root, "managed", aside[0]!, "src", "partial.txt"))).isFile()).toBe(
+      true,
+    );
+  });
+
+  it("does not read an unreadable gitdir as proof the leftover is abandoned", async () => {
+    const locked = join(root, "locked");
+    await mkdir(locked);
+    await mkdir(target);
+    await writeFile(join(target, ".git"), `gitdir: ${join(locked, "gone")}\n`);
+    await chmod(locked, 0o000);
+    try {
+      const { runner, calls } = fakeGit({});
+      await expect(ensure(runner)).rejects.toThrow(/EACCES/);
+      expect(calls.some((call) => call.args[1] === "add")).toBe(false);
+    } finally {
+      await chmod(locked, 0o755);
+    }
   });
 
   it("removes an empty leftover directory", async () => {
@@ -193,6 +222,69 @@ describe("ensureWorktree failed or aborted add", () => {
           : runner.run(opts),
     };
     await expect(ensure(failing)).rejects.toThrow(/aborted/);
+  });
+
+  it("never reports a partially cleaned worktree as ready and retries its cleanup", async () => {
+    let phase: "add" | "cleanup-fails" | "cleanup-works" = "add";
+    const { runner, calls } = fakeGit({
+      listed: () => (phase === "add" ? "" : `worktree ${target}\n`),
+      onAdd: async () => {
+        if (phase === "add") {
+          phase = "cleanup-fails";
+          return "abort";
+        }
+        return { exitCode: 0 };
+      },
+    });
+    const flaky: ProcessRunner = {
+      run: (opts) =>
+        phase === "cleanup-fails" && opts.argv.includes("remove")
+          ? Promise.reject(new Error("remove failed"))
+          : runner.run(opts),
+    };
+    const client = createGitClient(flaky);
+    const input = { repoPath: repo, worktreePath: target, branch: "main" };
+    await expect(client.ensureWorktree(input)).rejects.toThrow(/aborted/);
+    // Git still lists the leftover, but it is quarantined, not ready.
+    await expect(client.ensureWorktree({ ...input, createMissing: false })).resolves.toBe(
+      "missing",
+    );
+    await expect(client.ensureWorktree(input)).rejects.toThrow(/cleanup .* is incomplete/i);
+    phase = "cleanup-works";
+    await expect(client.ensureWorktree(input)).resolves.toBeUndefined();
+    expect(calls.filter((call) => call.args[1] === "add")).toHaveLength(2);
+    await expect(
+      client.ensureWorktree({ ...input, createMissing: false }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("also quarantines after a non-zero add whose cleanup fails", async () => {
+    let failed = false;
+    const { runner } = fakeGit({
+      listed: () => (failed ? `worktree ${target}\n` : ""),
+      onAdd: async () => {
+        failed = true;
+        return { exitCode: 128, stderr: "fatal: boom" };
+      },
+    });
+    const flaky: ProcessRunner = {
+      run: (opts) =>
+        failed && opts.argv.includes("remove")
+          ? Promise.reject(new Error("remove failed"))
+          : runner.run(opts),
+    };
+    const client = createGitClient(flaky);
+    await expect(
+      client.ensureWorktree({ repoPath: repo, worktreePath: target, branch: "main" }),
+    ).rejects.toThrow(/Failed to create worktree/);
+    await expect(
+      client.ensureWorktree({
+        repoPath: repo,
+        worktreePath: target,
+        branch: "main",
+        createMissing: false,
+      }),
+    ).resolves.toBe("missing");
   });
 
   it("gives the add a long but bounded timeout and does not create when told not to", async () => {

@@ -641,8 +641,11 @@ export class DaemonLoop {
     this.runtime ??= await probeGitReadiness(this.processRunner);
     const readiness = providerAccountReadiness(this.executionProfiles);
     const runningAttempts = this.confirmableOwnedAttempts();
+    // Snapshot once: a worktree that becomes ready while the registration is in flight is not in
+    // this payload, so it must not be recorded as advertised.
+    const advertised = this.advertisableConfig(config);
     await registerDaemon(
-      this.advertisableConfig(config),
+      advertised,
       this.transport,
       runningAttempts.map((attempt) => attempt.sessionId),
       draining,
@@ -653,7 +656,7 @@ export class DaemonLoop {
     );
     if (inventoryPolicyBlocked) this.inventoryPolicyDrainPublished = true;
     this.advertisedProviderAccountReadiness = JSON.stringify(readiness);
-    this.advertisedWorktreeIds = this.advertisedWorktreeKey(config);
+    this.advertisedWorktreeIds = this.worktreeKey(advertised);
   }
 
   /** Hide worktrees whose checkout is not on disk yet so the control plane cannot assign them. */
@@ -670,8 +673,12 @@ export class DaemonLoop {
   }
 
   private advertisedWorktreeKey(config: DaemonConfig): string {
+    return this.worktreeKey(this.advertisableConfig(config));
+  }
+
+  private worktreeKey(advertised: DaemonConfig): string {
     return JSON.stringify(
-      this.advertisableConfig(config).repositories.map((repository) =>
+      advertised.repositories.map((repository) =>
         repository.worktrees.map((worktree) => `${repository.id}/${worktree.id}`),
       ),
     );
@@ -701,6 +708,8 @@ export class DaemonLoop {
   }
   /** Resolves true only when an actual host:keepalive frame was sent this tick. */
   async keepalive(): Promise<boolean> {
+    // Retries pending checkouts on the daemon's own timer, independent of inventory polling.
+    void this.materializeWorktrees();
     if (
       (JSON.stringify(providerAccountReadiness(this.executionProfiles)) !==
         this.advertisedProviderAccountReadiness ||

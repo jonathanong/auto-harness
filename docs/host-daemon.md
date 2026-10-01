@@ -1186,10 +1186,18 @@ ERROR: Failed to create worktree at /path/wt-1
 - A pending worktree is not advertised in `host:register` and cannot be assigned or claimed until its
   checkout succeeds; the daemon re-registers when it becomes ready. An assignment that targets one is
   rejected locally ("not ready yet") rather than held past the acknowledgement deadline.
-- An unlisted directory at a managed worktree path is removed only when it is empty or carries a
-  `.git` file pointing at a missing gitdir (the signature of an interrupted add). Registered
-  worktrees, standalone clones, live gitfiles, unrelated content and paths overlapping the
-  repository are never deleted; the worktree stays pending with an error asking for manual removal.
+- Pending checkouts are retried from the daemon's keepalive timer, independent of inventory polling.
+  `run-session` is a one-shot caller with no retry loop, so its preflight fails when a configured
+  worktree cannot be created.
+- A rejected inventory registration restores the previous pending set, so a failed apply never leaves
+  a worktree marked ready or pending that the live inventory does not reflect.
+- An unlisted directory at a managed worktree path is recovered only when it is empty (removed) or
+  carries a `.git` file pointing at a missing gitdir (the signature of an interrupted add); the
+  latter is moved aside to `<path>.abandoned-<timestamp>` rather than deleted, since it may hold
+  partial work. Registered worktrees, standalone clones, live gitfiles, unrelated content and paths
+  overlapping the repository are never touched; the worktree stays pending with an error asking for
+  manual removal. If cleanup after a failed add itself fails, the target stays quarantined (never
+  reported ready) and is retried before any new add.
 - Git ≥ 2.36 (supports checkout recovery for incomplete object stores)
 
 ### CLI not found

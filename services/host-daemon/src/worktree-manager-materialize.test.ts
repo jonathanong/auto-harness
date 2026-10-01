@@ -195,6 +195,44 @@ describe("WorktreeManager materialization", () => {
     expect(manager.isMaterialized("repo-1", wt("wt-1", "/repo/wt-1"))).toBe(true);
   });
 
+  it("keeps an in-flight entry through an unchanged re-adoption but refreshes a changed one", async () => {
+    const onDisk = new Set<string>();
+    const { git } = fakeGit(onDisk);
+    const manager = new WorktreeManager(config, git);
+    await manager.ensureAll();
+    const ensure = git.ensureWorktree as ReturnType<typeof vi.fn>;
+    const original = ensure.getMockImplementation()!;
+    let ready = 0;
+    ensure.mockImplementation(async (opts) => {
+      if (opts.worktreePath === "/repo/wt-1" && opts.createMissing !== false) {
+        // The same inventory is adopted again while this checkout is being created.
+        await manager.ensureAll(config);
+      }
+      return original(opts);
+    });
+    await manager.materializePending({ onReady: () => void ready++ });
+    expect(ready).toBeGreaterThan(0);
+
+    // A changed branch is a new target: it replaces the entry and keeps only the failure count.
+    const changed = parseDaemonConfig({
+      hostId: "a1",
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          defaultBranch: "develop",
+          worktrees: [wt("wt-9", "/repo/wt-9")],
+        },
+      ],
+    });
+    await manager.ensureAll(changed);
+    expect(manager.isMaterialized("repo-1", wt("wt-9", "/repo/wt-9"))).toBe(false);
+    const snapshot = manager.snapshotPending();
+    await manager.ensureAll(config);
+    manager.restorePending(snapshot);
+    expect(manager.isMaterialized("repo-1", wt("wt-9", "/repo/wt-9"))).toBe(false);
+  });
+
   it("skips an entry that was replaced by a newer inventory while it waited", async () => {
     const { git, created } = fakeGit(new Set());
     const manager = new WorktreeManager(config, git);
