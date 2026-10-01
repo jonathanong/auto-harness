@@ -79,6 +79,34 @@ describe("runtime helpers", () => {
     expect(calls.some((c) => c.includes("rev-parse"))).toBe(true);
   });
 
+  it("ensureDaemonReady creates configured worktrees that are missing", async () => {
+    const calls: string[] = [];
+    const runner: ProcessRunner = {
+      async run(opts) {
+        calls.push(opts.argv.join(" "));
+        if (opts.argv.includes("--version")) {
+          opts.onChunk({ stream: "stdout", data: "git version 2.36.0\n" });
+        }
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const missing = parseDaemonConfig({
+      hostId: "a1",
+      repositories: [
+        {
+          id: "repo-1",
+          path: runtimeRepo,
+          defaultBranch: "main",
+          worktrees: [
+            { id: "wt-new", name: "wt-new", path: join(runtimeRoot, "wt-new"), labels: [] },
+          ],
+        },
+      ],
+    });
+    await ensureDaemonReady(missing, runner);
+    expect(calls.some((c) => c.includes("worktree add"))).toBe(true);
+  });
+
   it("returns an unready runtime report without initializing worktrees", async () => {
     const calls: string[] = [];
     const runner: ProcessRunner = {

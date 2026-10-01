@@ -38,7 +38,7 @@ function scheduledAssignment(
 
 describe("DaemonLoop assignment inventory refresh races", () => {
   it("fetches again when a shared refresh snapshot predates another attached repository", async () => {
-    const { config: currentConfig, cleanup } = await makeRepo();
+    const { config: currentConfig, cleanup } = await makeRepo({ materializeWorktree: true });
     try {
       const staleConfig = { ...currentConfig, repositories: [] };
       const firstSnapshot = { ...currentConfig };
@@ -95,7 +95,7 @@ describe("DaemonLoop assignment inventory refresh races", () => {
   });
 
   it("serializes full reloads and accepts a recreated inventory with a lower version", async () => {
-    const { config: currentConfig, cleanup } = await makeRepo();
+    const { config: currentConfig, cleanup } = await makeRepo({ materializeWorktree: true });
     try {
       const staleConfig = { ...currentConfig, inventoryVersion: 8, repositories: [] };
       const sent: HostToServerMessage[] = [];
@@ -143,7 +143,7 @@ describe("DaemonLoop assignment inventory refresh races", () => {
   });
 
   it("aborts a sole in-flight refresh when its assignment is cancelled", async () => {
-    const { config: currentConfig, cleanup } = await makeRepo();
+    const { config: currentConfig, cleanup } = await makeRepo({ materializeWorktree: true });
     try {
       const staleConfig = { ...currentConfig, repositories: [] };
       const sent: HostToServerMessage[] = [];

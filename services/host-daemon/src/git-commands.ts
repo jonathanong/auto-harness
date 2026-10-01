@@ -184,7 +184,7 @@ export async function runGit(
   environment: NodeJS.ProcessEnv = { ...createChildEnv(), GIT_NO_REPLACE_OBJECTS: "1" },
   platform: NodeJS.Platform = process.platform,
   stdoutLimitBytes = MAX_CAPTURED_GIT_STDOUT_BYTES,
-  capture?: { stdoutEncoding?: GitStdoutEncoding; stdin?: Buffer },
+  capture?: { stdoutEncoding?: GitStdoutEncoding; stdin?: Buffer; timeoutMs?: number },
 ): Promise<GitResult> {
   let stdout = "";
   let stdoutCaptureTruncated = false;
@@ -196,7 +196,7 @@ export async function runGit(
     argv: [resolveTrustedExecutable("git", environment, platform), ...args],
     cwd,
     env: environment,
-    timeoutMs: 120_000,
+    timeoutMs: capture?.timeoutMs ?? 120_000,
     // Git stdout is protocol data, not a user-visible log stream. Preserve each read and
     // apply the total bound below so executor log truncation cannot inject a
     // marker into an authoritative filename.

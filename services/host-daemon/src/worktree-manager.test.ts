@@ -525,6 +525,7 @@ describe("WorktreeManager", () => {
       repoPath: await realpath(repository),
       worktreePath: await realpath(worktree),
       branch: "main",
+      createMissing: false,
     });
   });
 

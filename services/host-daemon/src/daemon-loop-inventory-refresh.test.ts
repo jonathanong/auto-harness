@@ -24,7 +24,7 @@ function assignment(): Extract<HostWireMessage, { type: "session:assign" }> {
 
 describe("DaemonLoop assignment inventory refresh", () => {
   it("refreshes a missing assignment target before acknowledging or executing it", async () => {
-    const { config: currentConfig, cleanup } = await makeRepo();
+    const { config: currentConfig, cleanup } = await makeRepo({ materializeWorktree: true });
     try {
       const staleConfig = { ...currentConfig, repositories: [] };
       const sent: HostToServerMessage[] = [];
@@ -67,7 +67,7 @@ describe("DaemonLoop assignment inventory refresh", () => {
   });
 
   it("withholds acknowledgement when the refreshed inventory still lacks the target", async () => {
-    const { config: currentConfig, cleanup } = await makeRepo();
+    const { config: currentConfig, cleanup } = await makeRepo({ materializeWorktree: true });
     try {
       const staleConfig = { ...currentConfig, repositories: [] };
       const sent: HostToServerMessage[] = [];
@@ -95,7 +95,7 @@ describe("DaemonLoop assignment inventory refresh", () => {
   });
 
   it("withholds acknowledgement when the authoritative inventory fetch fails", async () => {
-    const { config: currentConfig, cleanup } = await makeRepo();
+    const { config: currentConfig, cleanup } = await makeRepo({ materializeWorktree: true });
     try {
       const staleConfig = { ...currentConfig, repositories: [] };
       const sent: HostToServerMessage[] = [];
@@ -121,7 +121,7 @@ describe("DaemonLoop assignment inventory refresh", () => {
   });
 
   it("retains a policy drain that appears during an assignment refresh", async () => {
-    const { config: currentConfig, cleanup } = await makeRepo();
+    const { config: currentConfig, cleanup } = await makeRepo({ materializeWorktree: true });
     try {
       const staleConfig = { ...currentConfig, repositories: [] };
       const sent: HostToServerMessage[] = [];

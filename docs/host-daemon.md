@@ -140,8 +140,8 @@ sequenceDiagram
     participant AWS as Control plane
 
     Main->>Cfg: Load + validate JSON/env
-    Main->>WTM: Ensure repos exist - create missing worktrees
-    WTM->>WTM: git worktree add if needed - prune stale
+    Main->>WTM: Ensure repos exist - adopt inventory, materialize missing worktrees
+    WTM->>WTM: bounded worktree add, cleaned up on failure - recover abandoned leftovers
     Main->>Conn: Connect wss://...?token=
     Conn->>AWS: $connect
     Conn->>AWS: host:register { hostId, worktrees[], capabilities{features,maxConcurrentAssignments}, providerAccountReadiness[], protocolVersion, runningAttempts[] }
@@ -234,13 +234,14 @@ empty list and is reconciled the same way.
 
 ### Worktree Manager
 
-| Operation       | Behavior                                                                               |
-| --------------- | -------------------------------------------------------------------------------------- |
-| `ensureAll()`   | On startup: `git worktree list`; create missing via `git worktree add <path> <branch>` |
-| `claim(id)`     | Local mutex: fail if already busy; set busy + `currentSessionId`                       |
-| `release(id)`   | Clear session; set idle; emit `worktree:status`                                        |
-| `snapshot()`    | Array for `host:register` and status CLI                                               |
-| `markError(id)` | On unexpected git failures; report status `error`                                      |
+| Operation              | Behavior                                                                                                                                                                                                                                                                                |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ensureAll()`          | Adopt an inventory: list worktrees; any git does not list become pending (never created here, so a slow checkout cannot hit the 10s inventory-refresh deadline)                                                                                                                         |
+| `materializePending()` | Background, single-flight, one worktree at a time: recover an abandoned leftover at the managed path, then create it detached (10 minute bound). Failures clean up the partial checkout and retry with exponential backoff (15s to 5m) without blocking other worktrees or repositories |
+| `claim(id)`            | Local mutex: fail if already busy; set busy + `currentSessionId`                                                                                                                                                                                                                        |
+| `release(id)`          | Clear session; set idle; emit `worktree:status`                                                                                                                                                                                                                                         |
+| `snapshot()`           | Array for `host:register` and status CLI                                                                                                                                                                                                                                                |
+| `markError(id)`        | On unexpected git failures; report status `error`                                                                                                                                                                                                                                       |
 
 **Concurrency:** number of configured worktrees. Each worktree runs **at most one** session at a time.
 
@@ -1182,6 +1183,13 @@ ERROR: Failed to create worktree at /path/wt-1
 - Parent repo must already be cloned at `repositories[].path`
 - Permissions for agent user
 - `git worktree prune` for stale locks
+- A pending worktree is not advertised in `host:register` and cannot be assigned or claimed until its
+  checkout succeeds; the daemon re-registers when it becomes ready. An assignment that targets one is
+  rejected locally ("not ready yet") rather than held past the acknowledgement deadline.
+- An unlisted directory at a managed worktree path is removed only when it is empty or carries a
+  `.git` file pointing at a missing gitdir (the signature of an interrupted add). Registered
+  worktrees, standalone clones, live gitfiles, unrelated content and paths overlapping the
+  repository are never deleted; the worktree stays pending with an error asking for manual removal.
 - Git ≥ 2.36 (supports checkout recovery for incomplete object stores)
 
 ### CLI not found

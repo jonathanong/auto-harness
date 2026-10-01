@@ -64,6 +64,8 @@ type InventoryPollOptions = {
     shouldApply: (next: DaemonConfig) => boolean,
   ) => Promise<DaemonConfig>;
   isPolicyBlocked?: () => boolean;
+  /** Retry worktree checkouts that are not ready yet; independent of the inventory fetch. */
+  materializeWorktrees?: () => void;
   pollMs: number;
   log: (line: string) => void;
   error: (line: string) => void;
@@ -176,7 +178,9 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
     minIntervalMs: options.errorLogIntervalMs ?? DEFAULT_ERROR_LOG_INTERVAL_MS,
   });
   const timer = setInterval(() => {
-    if (stopped || inFlight) return;
+    if (stopped) return;
+    options.materializeWorktrees?.();
+    if (inFlight) return;
     inFlight = true;
     const poll = (async () => {
       try {
@@ -396,6 +400,7 @@ function startOptionalInventoryPoll(
     reloadInventory: (loadInventory, shouldApply) =>
       loop.reloadInventory(loadInventory, { shouldApply }),
     isPolicyBlocked: () => loop.isInventoryPolicyBlocked(),
+    materializeWorktrees: () => void loop.materializeWorktrees(),
     pollMs,
     log,
     error,

@@ -357,6 +357,8 @@ export class DaemonLoop {
   private inventoryReloadTail: Promise<void> = Promise.resolve();
   private inventoryApplyTail: Promise<void> = Promise.resolve();
   private advertisedProviderAccountReadiness = "";
+  private advertisedWorktreeIds = "";
+  private readonly materializationController = new AbortController();
   private runtime: HostRuntimeReport | undefined;
   private connectionEvents: { stop: () => void } | undefined;
   constructor(options: DaemonLoopOptions) {
@@ -473,6 +475,9 @@ export class DaemonLoop {
     if (this.runtime.gitReady) await this.worktrees.ensureAll();
     await this.workspaces.ensureAll();
     await this.expireSetupCache();
+    // Startup has not registered yet, so create the initial checkouts before advertising them.
+    // A failing checkout is logged and left unadvertised rather than keeping the host down.
+    if (this.runtime.gitReady) await this.materializeWorktrees({ announce: false });
     this.transport.onMessage((msg) => {
       void this.handleServerMessage(msg).catch((err: unknown) => {
         this.onLog?.(`server message failed: ${thrownMessage(err)}`);
@@ -539,6 +544,7 @@ export class DaemonLoop {
           // It must not clear a policy fence that was already published (or that
           // appeared while validation awaited filesystem work); only a matching
           // ready registration may release that remote drain state.
+          void this.materializeWorktrees();
           if (
             options.publishRegistration === false ||
             this.inventoryPolicyGeneration !== policyGeneration
@@ -636,7 +642,7 @@ export class DaemonLoop {
     const readiness = providerAccountReadiness(this.executionProfiles);
     const runningAttempts = this.confirmableOwnedAttempts();
     await registerDaemon(
-      config,
+      this.advertisableConfig(config),
       this.transport,
       runningAttempts.map((attempt) => attempt.sessionId),
       draining,
@@ -647,12 +653,58 @@ export class DaemonLoop {
     );
     if (inventoryPolicyBlocked) this.inventoryPolicyDrainPublished = true;
     this.advertisedProviderAccountReadiness = JSON.stringify(readiness);
+    this.advertisedWorktreeIds = this.advertisedWorktreeKey(config);
+  }
+
+  /** Hide worktrees whose checkout is not on disk yet so the control plane cannot assign them. */
+  private advertisableConfig(config: DaemonConfig): DaemonConfig {
+    return {
+      ...config,
+      repositories: config.repositories.map((repository) => ({
+        ...repository,
+        worktrees: repository.worktrees.filter((worktree) =>
+          this.worktrees.isMaterialized(repository.id, worktree),
+        ),
+      })),
+    };
+  }
+
+  private advertisedWorktreeKey(config: DaemonConfig): string {
+    return JSON.stringify(
+      this.advertisableConfig(config).repositories.map((repository) =>
+        repository.worktrees.map((worktree) => `${repository.id}/${worktree.id}`),
+      ),
+    );
+  }
+
+  /**
+   * Create missing worktree checkouts in the background, outside any assignment-refresh deadline.
+   * Newly ready worktrees are re-advertised; failures only keep that worktree unassignable and
+   * are retried with backoff by the next poll tick.
+   */
+  materializeWorktrees({ announce = true }: { announce?: boolean } = {}): Promise<void> {
+    if (this.runtime?.gitReady === false) return Promise.resolve();
+    return this.worktrees
+      .materializePending({
+        signal: this.materializationController.signal,
+        onReady: () => {
+          if (!announce || this.hasPendingAcknowledgement()) return;
+          void this.register().catch((error: unknown) =>
+            this.onLog?.(`worktree registration update failed: ${thrownMessage(error)}`),
+          );
+        },
+        onError: (message) => this.onLog?.(message),
+      })
+      .catch((error: unknown) =>
+        this.onLog?.(`worktree materialization failed: ${thrownMessage(error)}`),
+      );
   }
   /** Resolves true only when an actual host:keepalive frame was sent this tick. */
   async keepalive(): Promise<boolean> {
     if (
-      JSON.stringify(providerAccountReadiness(this.executionProfiles)) !==
-        this.advertisedProviderAccountReadiness &&
+      (JSON.stringify(providerAccountReadiness(this.executionProfiles)) !==
+        this.advertisedProviderAccountReadiness ||
+        this.advertisedWorktreeKey(this.config) !== this.advertisedWorktreeIds) &&
       !this.hasPendingAcknowledgement()
     ) {
       await this.register();
@@ -838,6 +890,7 @@ export class DaemonLoop {
   }
 
   stop(): void {
+    this.materializationController.abort();
     this.prepareForShutdown();
     this.setupCacheSweepStopped = true;
     if (this.setupCacheSweepTimer) this.timers.clearTimeout(this.setupCacheSweepTimer);
@@ -2074,6 +2127,14 @@ export class DaemonLoop {
       signal.throwIfAborted();
     }
     if (!this.assignmentTargetKnown(msg)) {
+      if (
+        msg.repositoryId !== null &&
+        this.worktrees.isPendingTarget(msg.repositoryId, msg.worktreeId)
+      ) {
+        throw new Error(
+          `assignment target worktree is not ready yet: ${msg.repositoryId}/${msg.worktreeId}`,
+        );
+      }
       throw new Error(
         `assignment target is absent from refreshed host inventory: ${msg.repositoryId ?? "workspace"}/${msg.worktreeId ?? "main"}`,
       );

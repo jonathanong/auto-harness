@@ -32,6 +32,9 @@ export async function ensureDaemonReady(
   const git = createGitClient(processRunner, loadGitHubPullRefConfigs());
   const worktrees = new WorktreeManager(config, git);
   await worktrees.ensureAll();
+  // Best effort: a worktree that cannot be created yet stays unadvertised and the running
+  // daemon retries it, rather than failing the whole preflight.
+  await worktrees.materializePending();
   await workspaces.ensureAll();
   return runtime;
 }
