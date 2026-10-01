@@ -287,6 +287,22 @@ describe("ensureWorktree failed or aborted add", () => {
     ).resolves.toBe("missing");
   });
 
+  it("treats a failed worktree-list probe as an error, not as a missing checkout", async () => {
+    const { runner, calls } = fakeGit({});
+    const timedOut: ProcessRunner = {
+      run: (opts) => (opts.argv.includes("list") ? Promise.resolve(done(1)) : runner.run(opts)),
+    };
+    await expect(
+      createGitClient(timedOut).ensureWorktree({
+        repoPath: repo,
+        worktreePath: target,
+        branch: "main",
+        createMissing: false,
+      }),
+    ).rejects.toThrow(/Failed to list worktrees/);
+    expect(calls.some((call) => call.args[1] === "add")).toBe(false);
+  });
+
   it("gives the add a long but bounded timeout and does not create when told not to", async () => {
     const { runner, calls } = fakeGit({});
     await ensure(runner);

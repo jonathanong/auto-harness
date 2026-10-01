@@ -108,6 +108,10 @@ export function createGitClient(
       await this.ensureRepo(repoPath, signal);
       const list = await runGit(runner, repoPath, ["worktree", "list", "--porcelain"], signal);
       signal?.throwIfAborted();
+      // A failed or timed-out probe is not proof the checkout is missing.
+      if (list.exitCode !== 0) {
+        throw gitFailure(`Failed to list worktrees for ${repoPath}`, list.stderr);
+      }
       const worktreeIdentity = await canonicalPath(resolve(repoPath, worktreePath));
       signal?.throwIfAborted();
       if ((await listedWorktreePaths(list.stdout, repoPath)).has(worktreeIdentity)) {

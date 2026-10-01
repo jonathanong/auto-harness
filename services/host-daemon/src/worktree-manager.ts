@@ -442,9 +442,6 @@ export class WorktreeManager {
     if (!worktree) {
       throw new Error(`Unknown worktree: ${worktreeId}`);
     }
-    if (!this.isMaterialized(repositoryId, worktree)) {
-      throw new Error(`Worktree not ready: ${worktreeId}`);
-    }
     this.busy.add(worktreeId);
     try {
       while (true) {
@@ -459,6 +456,11 @@ export class WorktreeManager {
               ? `Unknown repository: ${repositoryId}`
               : `Unknown worktree: ${worktreeId}`,
           );
+        }
+        // Checked against every generation snapshot: a refresh can move this id to a new
+        // path that is still pending.
+        if (!this.isMaterialized(repositoryId, currentWorktree)) {
+          throw new Error(`Worktree not ready: ${worktreeId}`);
         }
         let paths: ClaimedPathsAllowed;
         try {

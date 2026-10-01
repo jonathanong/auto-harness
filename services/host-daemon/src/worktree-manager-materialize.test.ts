@@ -233,6 +233,40 @@ describe("WorktreeManager materialization", () => {
     expect(manager.isMaterialized("repo-1", wt("wt-9", "/repo/wt-9"))).toBe(false);
   });
 
+  it("rechecks readiness when a refresh moves the claimed worktree to a pending path", async () => {
+    const { git } = fakeGit(new Set(["/repo/wt-1", "/repo/wt-2", "/repo2/wt-3"]));
+    const manager = new WorktreeManager(config, git);
+    await manager.ensureAll();
+    const moved = parseDaemonConfig({
+      hostId: "a1",
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          defaultBranch: "main",
+          worktrees: [wt("wt-1", "/repo/wt-1-moved")],
+        },
+      ],
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const internals = manager as unknown as {
+      config: unknown;
+      assertClaimPaths: () => Promise<unknown>;
+    };
+    internals.assertClaimPaths = async () => {
+      await gate;
+      return { cwd: "/repo/wt-1", repositoryPath: "/repo" };
+    };
+    const claim = manager.claim("repo-1", "wt-1");
+    // The refresh lands while the claim is validating paths.
+    await manager.ensureAll(moved);
+    internals.config = moved;
+    manager.noteInventoryChange();
+    release();
+    await expect(claim).rejects.toThrow("Worktree not ready: wt-1");
+  });
+
   it("skips an entry that was replaced by a newer inventory while it waited", async () => {
     const { git, created } = fakeGit(new Set());
     const manager = new WorktreeManager(config, git);
