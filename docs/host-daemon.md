@@ -247,8 +247,9 @@ empty list and is reconciled the same way.
 
 Worktree records in DynamoDB are written by the control plane from register/status messages; the agent is source of truth for **local** busy/idle.
 
-Registration adds and refreshes the worktrees a daemon advertises but never removes a configured one it omits
-(for example a checkout that is still materializing). Removing a worktree is a control-plane inventory edit.
+Within each repository the daemon registers, registration adds and refreshes the worktrees it advertises but
+never removes a configured one it omits (for example a checkout that is still materializing). Removing a
+worktree is a control-plane inventory edit. A repository the daemon omits is still dropped with its worktrees.
 
 ### Workspace pools and slots
 
@@ -1188,7 +1189,7 @@ ERROR: Failed to create worktree at /path/wt-1
 - `git worktree prune` for stale locks
 - A pending worktree is not advertised in `host:register` and cannot be assigned or claimed until its
   checkout succeeds; the daemon re-registers when it becomes ready. The control plane keeps it in the
-  host inventory meanwhile, so the next inventory poll does not undo the configuration. An assignment that targets one
+  host inventory meanwhile (as long as the daemon still registers its repository), so the next inventory poll does not undo the configuration. An assignment that targets one
   waits up to 10 seconds for that checkout (below the acknowledgement deadline) and is rejected locally ("not ready yet") if it is not ready by then or fails.
 - Pending checkouts are retried from the daemon's keepalive timer, independent of inventory polling.
   `run-session` is a one-shot caller with no retry loop, so its preflight alone creates worktrees
