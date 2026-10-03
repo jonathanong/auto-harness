@@ -64,4 +64,34 @@ describe("host registration keeps configured worktrees it does not advertise", (
 
     expect(configuredIds(plane)).toEqual(["a2", "b2"]);
   });
+
+  it("does not keep a worktree the daemon now advertises under another repository", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "connection" });
+    expect(register(plane, [worktree("a"), worktree("b")]).ok).toBe(true);
+
+    expect(
+      plane.registerHost({
+        hostId: "host",
+        repositories: [
+          { id: "repo", path: "/repo", defaultBranch: "main" },
+          { id: "other", path: "/other", defaultBranch: "main" },
+        ],
+        worktrees: [
+          { ...worktree("a"), repositoryId: "repo" },
+          { ...worktree("b"), repositoryId: "other" },
+        ],
+        replaceExisting: true,
+      }).ok,
+    ).toBe(true);
+
+    expect(
+      plane.getHostInventory("host")?.repositories.map((repository) => ({
+        id: repository.id,
+        worktrees: repository.worktrees.map((item) => item.id),
+      })),
+    ).toEqual([
+      { id: "repo", worktrees: ["a"] },
+      { id: "other", worktrees: ["b"] },
+    ]);
+  });
 });

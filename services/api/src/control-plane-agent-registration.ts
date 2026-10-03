@@ -186,6 +186,7 @@ export function resolveRegisteredRepositories(
  */
 function unadvertisedWorktrees(
   prior: HostInventoryRecord["repositories"][number] | undefined,
+  // Every worktree the host advertised, across repositories: ids, names and paths are host-wide.
   advertised: readonly RegisteredWorktree[],
 ): HostInventoryRecord["repositories"][number]["worktrees"] {
   const ids = new Set(advertised.map((worktree) => worktree.id));
@@ -193,7 +194,7 @@ function unadvertisedWorktrees(
   const paths = new Set(advertised.map((worktree) => worktree.path));
   return (prior?.worktrees ?? [])
     .filter(
-      // A daemon that re-identified a checkout replaces the old entry rather than duplicating it.
+      // A daemon that re-identified or moved a checkout replaces the old entry rather than duplicating it.
       (worktree) => !ids.has(worktree.id) && !names.has(worktree.name) && !paths.has(worktree.path),
     )
     .map((worktree) => ({
@@ -277,7 +278,7 @@ export function buildRegisteredInventory(
               daemonLabels: [...worktree.labels],
             };
           }),
-          ...unadvertisedWorktrees(prior, advertised),
+          ...unadvertisedWorktrees(prior, worktrees),
         ],
       };
     }),
