@@ -59,7 +59,10 @@ describe("scheduled dispatcher coverage edges", () => {
     expect(repos).toEqual([{ id: "repo", path: "/old", defaultBranch: "trunk" }]);
     expect(
       buildRegisteredInventory("host", [{ id: "repo", path: "/new" }], [], [], NOW, previous),
-    ).toMatchObject({ repositories: [{ path: "/new", defaultBranch: "trunk", worktrees: [] }] });
+    ).toMatchObject({
+      // A configured worktree the daemon did not advertise stays configured.
+      repositories: [{ path: "/new", defaultBranch: "trunk", worktrees: [{ id: "wt" }] }],
+    });
   });
 
   it("resolves only eligible scheduled main-checkout provider targets", () => {

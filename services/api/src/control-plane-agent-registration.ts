@@ -177,6 +177,33 @@ export function resolveRegisteredRepositories(
   return repositoriesFromWorktrees(worktrees);
 }
 
+/**
+ * Keep configured worktrees the daemon did not advertise. A checkout that is still materializing
+ * (or failed to apply) is withheld from registration; dropping it here would publish a shrunk
+ * inventory that the daemon then applies, deleting the operator's configuration. Removal goes
+ * through a control-plane inventory edit instead. Unadvertised worktrees get no schedulable row
+ * from registration, so they stay unassignable until the daemon advertises them.
+ */
+function unadvertisedWorktrees(
+  prior: HostInventoryRecord["repositories"][number] | undefined,
+  // Every worktree the host advertised, across repositories: ids, names and paths are host-wide.
+  advertised: readonly RegisteredWorktree[],
+): HostInventoryRecord["repositories"][number]["worktrees"] {
+  const ids = new Set(advertised.map((worktree) => worktree.id));
+  const names = new Set(advertised.map((worktree) => worktree.name));
+  const paths = new Set(advertised.map((worktree) => worktree.path));
+  return (prior?.worktrees ?? [])
+    .filter(
+      // A daemon that re-identified or moved a checkout replaces the old entry rather than duplicating it.
+      (worktree) => !ids.has(worktree.id) && !names.has(worktree.name) && !paths.has(worktree.path),
+    )
+    .map((worktree) => ({
+      ...worktree,
+      labels: [...worktree.labels],
+      ...(worktree.daemonLabels !== undefined ? { daemonLabels: [...worktree.daemonLabels] } : {}),
+    }));
+}
+
 export function buildRegisteredInventory(
   hostId: string,
   repositories: readonly HostRepositoryRegistration[],
@@ -239,17 +266,20 @@ export function buildRegisteredInventory(
         id: repository.id,
         path: repository.path,
         defaultBranch: repository.defaultBranch ?? prior?.defaultBranch ?? "main",
-        worktrees: advertised.map((worktree) => {
-          const priorWorktree = prior?.worktrees.find((item) => item.id === worktree.id);
-          return {
-            ...priorWorktree,
-            id: worktree.id,
-            name: worktree.name,
-            path: worktree.path,
-            labels: registeredWorktreeLabels(previous, worktree),
-            daemonLabels: [...worktree.labels],
-          };
-        }),
+        worktrees: [
+          ...advertised.map((worktree) => {
+            const priorWorktree = prior?.worktrees.find((item) => item.id === worktree.id);
+            return {
+              ...priorWorktree,
+              id: worktree.id,
+              name: worktree.name,
+              path: worktree.path,
+              labels: registeredWorktreeLabels(previous, worktree),
+              daemonLabels: [...worktree.labels],
+            };
+          }),
+          ...unadvertisedWorktrees(prior, worktrees),
+        ],
       };
     }),
     providerAccounts: previous?.providerAccounts.map((account) => ({ ...account })) ?? [],
