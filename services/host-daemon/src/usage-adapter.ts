@@ -171,7 +171,10 @@ function hasStructuredOutputMode(provider: CliProvider, argv: readonly string[])
     case "codex":
       return argv.includes("exec") && hasOption(argv, "--json");
     case "cursor":
-      return argv.includes("--print") && hasOption(argv, "--output-format", "json");
+      return (
+        (argv.includes("-p") || argv.includes("--print")) &&
+        hasOption(argv, "--output-format", "json")
+      );
     case "gemini":
       return (
         (argv.includes("-p") || argv.includes("--prompt")) &&

@@ -203,6 +203,16 @@ describe("parseCliUsage", () => {
       expect(parse(`${envelope}\n${line}`)).toEqual({ agentSummary: line });
     });
 
+    it("accepts the documented -p alias for --print", () => {
+      expect(
+        parseCliUsage({
+          argv: ["cursor-agent", "-p", "--output-format", "json"],
+          output: line,
+          observedAt,
+        }),
+      ).toEqual({ usageLimit: true });
+    });
+
     it("requires print mode and the JSON output flag", () => {
       expect(
         parseCliUsage({ argv: ["cursor-agent", "--print"], output: line, observedAt }),
