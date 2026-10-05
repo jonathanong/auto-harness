@@ -304,7 +304,7 @@ Do not read `web.md`. Follow nav labels.
    - name `claude`; default command name e.g. `claude-print`; argv one token
      per line: `claude`, `-p`, `--output-format`, `json`; append-prompt on
    - name `grok`; default command name e.g. `grok-print`; argv one token
-     per line: `grok`, `--always-approve`, `--output-format`, `json`, `-p`
+     per line: `grok`, `--sandbox`, `off`, `--always-approve`, `--output-format`, `json`, `-p`
      (`-p` / `--single` takes the prompt as its option value).
      Append-prompt **on**, append-prompt separator **off** — a `--`
      before the prompt makes grok 1.0.5 exit 2 with `a value is required
@@ -334,7 +334,7 @@ both CLIs:
 
 ```bash
 claude -p --output-format json 'Reply with exactly: OK'
-grok --always-approve --max-turns 3 --output-format json -p 'Reply with exactly: OK'
+grok --sandbox off --always-approve --max-turns 3 --output-format json -p 'Reply with exactly: OK'
 ```
 
 If either command does not return a successful JSON envelope containing `OK`, fix the CLI login before going
@@ -837,7 +837,7 @@ unique stack ID, not just its name, so there is no fetching it afterward.
 
 1. Documented grok argv (`-p` plus default `--` separator, often with
    `--output-format plain`) fails on grok 1.0.5. Working: argv
-   `["grok","--always-approve","--max-turns","3","-p"]`, append-prompt
+   `["grok","--sandbox","off","--always-approve","--max-turns","3","-p"]`, append-prompt
    on, separator off.
 2. `update`/`deploy` on a non-interactive Mac can fail Docker ECR login
    (`User interaction is not allowed. (-25308)`). Foundation may update

@@ -158,7 +158,7 @@ grok -p "reply with exactly: OK" --output-format json
 **Preset** (`grok-print`):
 
 ```text
-argv: ["grok", "--always-approve", "--output-format", "json", "-p"]
+argv: ["grok", "--sandbox", "off", "--always-approve", "--output-format", "json", "-p"]
 appendPrompt: true
 appendPromptSeparator: false
 ```
@@ -173,6 +173,21 @@ instead of the web UI needs that field set explicitly. `POST /commands` defaults
 `POST /commands` in [api.md](api.md)) — omitting it for Grok silently reintroduces the exit-2
 failure. `--always-approve` is Grok's equivalent of Cursor's `--force`: without it, a tool call
 stops for interactive approval and the session hangs.
+
+**Why `--sandbox off`:** Grok 1.0.41 applies its sandbox process-wide at startup and irreversibly;
+unlike Claude Code it has no per-command escalation. Every sandboxed profile (`workspace`,
+`devbox`, `read-only`, `strict`) hard-denies the macOS keychain mach services, so `gh` (token in
+the keyring) reports "token invalid"/401, anonymous reads make a private org member's comment look
+like `CONTRIBUTOR`, and writes to `~/.npm` fail. A user's `~/.grok/config.toml` with
+`[sandbox] profile = "workspace"` triggers this, so the presets pass `--sandbox off` explicitly.
+
+**Plan preset** (`grok-print-plan`, read-only planning runs):
+
+```text
+argv: ["grok", "--sandbox", "off", "--permission-mode", "plan", "--output-format", "json", "-p"]
+appendPrompt: true
+appendPromptSeparator: false
+```
 
 ## Wiring a CLI into Auto Harness
 

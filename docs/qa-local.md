@@ -198,7 +198,7 @@ Sanity the CLIs in the same unsandboxed shell **before** relying on them:
 
 ```bash
 claude -p --output-format json 'Reply with exactly: OK'
-grok --always-approve --max-turns 3 --output-format json -p 'Reply with exactly: OK'
+grok --sandbox off --always-approve --max-turns 3 --output-format json -p 'Reply with exactly: OK'
 # optional: codex exec --json 'Reply with exactly: OK'   # not `codex -p`
 ```
 
@@ -413,7 +413,7 @@ Troubleshooting table for local symptoms:
   with no error.
 - Documented grok argv (`-p` + `--` separator + `--output-format
 plain`) fails on grok 1.0.5. Use
-  `["grok","--always-approve","--max-turns","3","-p"]` with
+  `["grok","--sandbox","off","--always-approve","--max-turns","3","-p"]` with
   append-prompt on and the `--` separator **off**.
 - Whitespace-only prompts are accepted; `echo` prints them.
 - `"; rm -rf /` is not a shell — `echo` printed the string. Good.

@@ -144,7 +144,7 @@ if [ -n "$GROK_CMD" ]; then
   PROV=$(curl -fsS -X POST "$API/api/v1/providers" -H 'content-type: application/json' -d '{"name":"grok"}')
   PID=$(printf '%s' "$PROV" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).id))")
   CMD=$(curl -fsS -X POST "$API/api/v1/commands" -H 'content-type: application/json' \
-    -d "{\"name\":\"grok-print\",\"argv\":[\"$GROK_CMD\",\"--always-approve\",\"--max-turns\",\"3\",\"--output-format\",\"json\",\"-p\"],\"appendPrompt\":true,\"appendPromptSeparator\":false,\"providerId\":\"$PID\"}")
+    -d "{\"name\":\"grok-print\",\"argv\":[\"$GROK_CMD\",\"--sandbox\",\"off\",\"--always-approve\",\"--max-turns\",\"3\",\"--output-format\",\"json\",\"-p\"],\"appendPrompt\":true,\"appendPromptSeparator\":false,\"providerId\":\"$PID\"}")
   CID=$(printf '%s' "$CMD" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).id))")
   curl -fsS -X PATCH "$API/api/v1/providers/$PID" -H 'content-type: application/json' -d "{\"defaultCommandId\":\"$CID\"}"
   ACCT=$(curl -fsS -X POST "$API/api/v1/provider-accounts" -H 'content-type: application/json' \
@@ -449,7 +449,7 @@ rm -rf "$WORK"             # optional — drop demo workspace
 | Session stuck `queued`                   | Host not registered; labels mismatch; worktree offline/busy  | Check `GET /api/v1/hosts`, `requiredLabels` vs worktree `labels`, daemon log                               |
 | `EADDRINUSE` :7420                       | Previous API still running                                   | Kill listener on port; restart                                                                             |
 | Target missing from dropdown             | Catalog entry absent or `GET /api/v1/session-targets` failed | Create the Provider/Command and inspect that request; attach an account if a listed Provider cannot assign |
-| Grok hangs / interactive TUI             | Missing headless flags                                       | Use `-p` / `--single` + `--always-approve` + non-interactive output format                                 |
+| Grok hangs / interactive TUI             | Missing headless flags                                       | Use `-p` / `--single` + `--sandbox off` + `--always-approve` + non-interactive output format               |
 | Worktree checkout fails                  | Bad absolute paths; missing git                              | Fix config paths; ensure primary repo is a git root                                                        |
 | Unit tests green, E2E fails              | Not the same as deploy path                                  | Always run §1 + §5 before deploy claims                                                                    |
 
