@@ -164,17 +164,13 @@ function hasOption(argv: readonly string[], name: string, value?: string): boole
 function hasStructuredOutputMode(provider: CliProvider, argv: readonly string[]): boolean {
   switch (provider) {
     case "claude":
+    case "cursor":
       return (
         (argv.includes("-p") || argv.includes("--print")) &&
         hasOption(argv, "--output-format", "json")
       );
     case "codex":
       return argv.includes("exec") && hasOption(argv, "--json");
-    case "cursor":
-      return (
-        (argv.includes("-p") || argv.includes("--print")) &&
-        hasOption(argv, "--output-format", "json")
-      );
     case "gemini":
       return (
         (argv.includes("-p") || argv.includes("--prompt")) &&
