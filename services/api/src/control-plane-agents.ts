@@ -906,7 +906,10 @@ export function registerHost(
       connectionId,
     });
   }
-  const retainedOnly = retainedOnlyRepositoryIds(previousInventory, conn.repositoryIds);
+  const retainedOnly = retainedOnlyRepositoryIds(
+    previousInventory,
+    registeredRepositories.map((repository) => repository.id),
+  );
   for (const wt of state.worktrees.values()) {
     if (
       wt.hostId === opts.hostId &&
@@ -1128,7 +1131,10 @@ export async function registerHostDurable(
   // worktrees omitted by a refreshed daemon snapshot. A stale process must
   // still stamp safe idle rows with its exact new lease, while busy rows stay
   // exclusively owned by reconciliation.
-  const retainedOnly = retainedOnlyRepositoryIds(previousInventory, conn.repositoryIds);
+  const retainedOnly = retainedOnlyRepositoryIds(
+    previousInventory,
+    registeredRepositories.map((repository) => repository.id),
+  );
   const registeredIds = new Set(opts.worktrees.map((worktree) => worktree.id));
   for (const existingWorktree of await state.storage.listWorktreesByHost(opts.hostId)) {
     if (registeredIds.has(existingWorktree.id) || existingWorktree.status === "busy") continue;
