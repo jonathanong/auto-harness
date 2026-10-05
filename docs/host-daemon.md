@@ -447,9 +447,9 @@ an ordinary `failed`, not `usage_limit`. No account is paused.
 
 Classification keys off a provider-backed assignment (`providerAccountId`), the spawned catalog
 executable (basename of `resolvedArgv[0]`), and an adapter-supported structured output mode. The
-currently supported usage-limit adapter set is `claude`, `codex`, `gemini`, and `grok`; Cursor's
-structured success usage is supported, but its exhausted-account signal remains pending a real
-captured envelope. Each usage-limit adapter validates its provider's terminal/error envelope
+currently supported usage-limit adapter set is `claude`, `codex`, `cursor-agent`, `gemini`, and `grok`. Cursor's
+exhausted-account signal is a plain-text stdout line (`ActionRequiredError: … You're out of
+usage. …`), trusted only on a failed run that emitted no `{"type":"result"}` envelope. Each usage-limit adapter validates its provider's terminal/error envelope
 before emitting `usageLimit`. A generic phrase such as `rate limit`, `too many requests`, or a bare
 `429` is **never** enough, even with a trusted executable and a non-zero exit. The adapter signal is
 also ignored on success, on unknown/providerless argv, and when the assignment has no

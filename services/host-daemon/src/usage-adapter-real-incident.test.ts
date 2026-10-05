@@ -151,3 +151,39 @@ describe("real capture 2026-09-19: cursor-agent success", () => {
     });
   });
 });
+
+describe("real capture 2026-10-05: cursor-agent out of usage (plain-text ActionRequiredError)", () => {
+  // Production sessions sess-6b672ec6 and sess-f47c833b: ~20s after spawn cursor-agent wrote this
+  // one plain-text line to stdout (no JSON envelope), then a cursor-show escape, and exited 1.
+  const argv = ["cursor-agent", "--print", "--force", "--output-format", "json", "--", PROMPT];
+  const stdout =
+    "ActionRequiredError: Increase limits for faster responses You're out of usage. Switch to Auto, or ask your admin to increase your limit to continue.\x1b[?25h";
+
+  it("classifies as a usage limit through parseCliUsage + detectUsageLimit together", () => {
+    const parsed = parseCliUsage({ argv, output: stdout, observedAt });
+    expect(parsed).toEqual({ usageLimit: true });
+    expect(
+      detectUsageLimit({
+        argv,
+        failed: true,
+        providerAccountId: "acct-cursor-1",
+        adapterUsageLimit: parsed.usageLimit,
+      }),
+    ).toBe("adapter");
+  });
+
+  it("never classifies on a success exit or without a provider account", () => {
+    const parsed = parseCliUsage({ argv, output: stdout, observedAt });
+    expect(
+      detectUsageLimit({
+        argv,
+        failed: false,
+        providerAccountId: "acct-cursor-1",
+        adapterUsageLimit: parsed.usageLimit,
+      }),
+    ).toBeUndefined();
+    expect(
+      detectUsageLimit({ argv, failed: true, adapterUsageLimit: parsed.usageLimit }),
+    ).toBeUndefined();
+  });
+});

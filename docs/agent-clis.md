@@ -372,8 +372,15 @@ balance exhausted\", \"http_status\": 402\n}"`. Grok's CLI also re-prints that s
   field. Confirmed against a real successful `cursor-agent --print --force --output-format json`
   capture (2026-09-10 build): `{"type":"result","subtype":"success","is_error":false,
 "result":"hello world","usage":{"inputTokens":14615,"outputTokens":26,
-"cacheReadTokens":4352,"cacheWriteTokens":0}}`. Usage-limit classification is derived only from
-  Cursor's real structured exhausted-account envelope; it is never guessed from generic output.
+"cacheReadTokens":4352,"cacheWriteTokens":0}}`. An out-of-usage account does **not**
+  produce a JSON envelope: captured 2026-10-05 (sessions `sess-6b672ec6`, `sess-f47c833b`), about
+  20 seconds after spawn cursor-agent wrote one plain-text stdout line, `ActionRequiredError:
+Increase limits for faster responses You're out of usage. Switch to Auto, or ask your admin to
+increase your limit to continue.`, then a `\x1b[?25h` escape, and exited 1. The adapter
+  classifies a usage limit only when the run failed, **no** `{"type":"result"}` envelope was
+  emitted (agent-generated text can only appear inside that envelope, so an earlier plain-text
+  line is CLI-owned), and an ANSI-stripped stdout line starts with `ActionRequiredError:` and
+  contains `out of usage`. It is never guessed from other output.
   Regression fixtures for all of the above are pinned in
   [`usage-adapter-real-incident.test.ts`](../services/host-daemon/src/usage-adapter-real-incident.test.ts).
 
@@ -409,8 +416,8 @@ errorCode`). A session that eventually **completes** via fallback will _not_ sho
 
 **Running the opt-in regression spec:** [`e2e/real-cli/usage-limit.spec.ts`](../e2e/real-cli/usage-limit.spec.ts)
 drives this whole path for real, for each of `claude`/`codex`/`grok` named in
-`HARNESS_REAL_CLI_EXHAUSTED` (comma list) — never `cursor`, since there is nothing for it to
-detect. Like the other `e2e/real-cli/*.spec.ts` specs it only registers under `HARNESS_REAL_CLI`
+`HARNESS_REAL_CLI_EXHAUSTED` (comma list) — not `cursor`, whose limit is detected from plain text
+and pinned by the captured fixture instead (the spec has no cursor driver). Like the other `e2e/real-cli/*.spec.ts` specs it only registers under `HARNESS_REAL_CLI`
 and skips any CLI `hasCli()` can't find; unlike them it drives the whole flow over the API only (no
 browser), because the interesting assertions are on the Provider Account and session records, not
 on-screen text. **Only opt a CLI into `HARNESS_REAL_CLI_EXHAUSTED` when that account is genuinely
