@@ -181,7 +181,10 @@ the keyring) reports "token invalid"/401, anonymous reads make a private org mem
 like `CONTRIBUTOR`, and writes to `~/.npm` fail. A user's `~/.grok/config.toml` with
 `[sandbox] profile = "workspace"` triggers this, so the presets pass `--sandbox off` explicitly.
 
-**Plan preset** (`grok-print-plan`, read-only planning runs):
+**Plan preset** (`grok-print-plan`, planning runs). `--permission-mode plan` gates Grok's edit tools
+only; Bash commands are not inspected for writes and write-capable subagents sit outside that gate.
+With `--sandbox off` there is no filesystem backstop, so treat plan mode as a behavioral guardrail,
+not read-only enforcement, and do not grant Bash allow rules on plan Commands:
 
 ```text
 argv: ["grok", "--sandbox", "off", "--permission-mode", "plan", "--output-format", "json", "-p"]
