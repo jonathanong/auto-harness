@@ -65,7 +65,8 @@ export type ProcessResult = {
   usage?: SessionUsage;
   /**
    * Adapter-supplied vendor quota, read only from a CLI's own structured error envelope
-   * (including Codex's own error-path message text) — never from model/agent-generated content.
+   * (including Codex's own error-path message text, and Cursor's plain-text error line when no
+   * result envelope exists) — never from model/agent-generated content.
    */
   usageLimit?: boolean;
   /** Structured provider terminal response, never inferred from free-form output. */

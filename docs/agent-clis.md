@@ -325,7 +325,8 @@ checkout (and `.worktrees/` ignored).
 
 AI CLIs run out of plan/rate quota. The host daemon only ever reports a usage limit when a
 **provider-aware adapter validates the CLI's own structured result** — free-form stdout/stderr is
-never quota evidence, even when it contains an obvious phrase like "rate limit". Full policy and
+never quota evidence, even when it contains an obvious phrase like "rate limit" (the single
+exception is Cursor's CLI-owned `ActionRequiredError:` line, below). Full policy and
 the untrusted-vs-trusted-surface reasoning live in
 [host-daemon.md#usage-limits-ai-vendor--cli-quotas](host-daemon.md#usage-limits-ai-vendor--cli-quotas);
 this section is the operator-facing summary, keyed to the same four CLIs as the rest of this page.
