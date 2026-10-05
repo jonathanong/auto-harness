@@ -204,6 +204,29 @@ function unadvertisedWorktrees(
     }));
 }
 
+/**
+ * Keep configured repositories the daemon did not register, for the same reason as
+ * {@link unadvertisedWorktrees}: a registration that omits one (a failed or pending inventory
+ * apply) must not publish a shrunk inventory the daemon then applies. A daemon that re-registered
+ * the repository at the same path under another id replaces the old entry. Their worktrees
+ * still lose to anything the daemon advertised. Removal goes through a control-plane inventory
+ * edit; the connection's repositoryIds are unchanged, so nothing new becomes schedulable.
+ */
+function unregisteredRepositories(
+  previous: HostInventoryRecord | undefined,
+  registered: readonly HostRepositoryRegistration[],
+  advertised: readonly RegisteredWorktree[],
+): HostInventoryRecord["repositories"] {
+  const ids = new Set(registered.map((repository) => repository.id));
+  const paths = new Set(registered.map((repository) => repository.path));
+  return (previous?.repositories ?? [])
+    .filter((repository) => !ids.has(repository.id) && !paths.has(repository.path))
+    .map((repository) => ({
+      ...repository,
+      worktrees: unadvertisedWorktrees(repository, advertised),
+    }));
+}
+
 export function buildRegisteredInventory(
   hostId: string,
   repositories: readonly HostRepositoryRegistration[],
@@ -258,30 +281,33 @@ export function buildRegisteredInventory(
     version: (previous?.version ?? 0) + 1,
     ...nextDaemonRuntime(previous, daemonIdentity, updatedAt),
     ...(runtime ? { runtime } : {}),
-    repositories: repositories.map((repository) => {
-      const prior = priorById.get(repository.id);
-      const advertised = worktreesByRepo.get(repository.id) ?? [];
-      return {
-        ...prior,
-        id: repository.id,
-        path: repository.path,
-        defaultBranch: repository.defaultBranch ?? prior?.defaultBranch ?? "main",
-        worktrees: [
-          ...advertised.map((worktree) => {
-            const priorWorktree = prior?.worktrees.find((item) => item.id === worktree.id);
-            return {
-              ...priorWorktree,
-              id: worktree.id,
-              name: worktree.name,
-              path: worktree.path,
-              labels: registeredWorktreeLabels(previous, worktree),
-              daemonLabels: [...worktree.labels],
-            };
-          }),
-          ...unadvertisedWorktrees(prior, worktrees),
-        ],
-      };
-    }),
+    repositories: [
+      ...repositories.map((repository) => {
+        const prior = priorById.get(repository.id);
+        const advertised = worktreesByRepo.get(repository.id) ?? [];
+        return {
+          ...prior,
+          id: repository.id,
+          path: repository.path,
+          defaultBranch: repository.defaultBranch ?? prior?.defaultBranch ?? "main",
+          worktrees: [
+            ...advertised.map((worktree) => {
+              const priorWorktree = prior?.worktrees.find((item) => item.id === worktree.id);
+              return {
+                ...priorWorktree,
+                id: worktree.id,
+                name: worktree.name,
+                path: worktree.path,
+                labels: registeredWorktreeLabels(previous, worktree),
+                daemonLabels: [...worktree.labels],
+              };
+            }),
+            ...unadvertisedWorktrees(prior, worktrees),
+          ],
+        };
+      }),
+      ...unregisteredRepositories(previous, repositories, worktrees),
+    ],
     providerAccounts: previous?.providerAccounts.map((account) => ({ ...account })) ?? [],
     capabilities,
     updatedAt,
