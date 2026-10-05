@@ -14,21 +14,21 @@
   },
   "dependencies": {
     "@auto-harness/shared": "workspace:*",
-    "@aws-sdk/client-apigatewaymanagementapi": "^3.1141.0",
-    "@aws-sdk/client-dynamodb": "^3.1141.0",
-    "@aws-sdk/client-kms": "^3.1141.0",
-    "@aws-sdk/client-lambda": "^3.1141.0",
-    "@aws-sdk/client-s3": "^3.1141.0",
-    "@aws-sdk/client-secrets-manager": "^3.1141.0",
-    "@aws-sdk/client-ssm": "^3.1141.0",
-    "@aws-sdk/lib-dynamodb": "^3.1141.0",
-    "@aws-sdk/s3-request-presigner": "^3.1141.0",
-    "@sentry/node": "^11.0.0",
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.1145.0",
+    "@aws-sdk/client-dynamodb": "^3.1145.0",
+    "@aws-sdk/client-kms": "^3.1145.0",
+    "@aws-sdk/client-lambda": "^3.1145.0",
+    "@aws-sdk/client-s3": "^3.1145.0",
+    "@aws-sdk/client-secrets-manager": "^3.1145.0",
+    "@aws-sdk/client-ssm": "^3.1145.0",
+    "@aws-sdk/lib-dynamodb": "^3.1145.0",
+    "@aws-sdk/s3-request-presigner": "^3.1145.0",
+    "@sentry/node": "^11.3.0",
     "@smithy/node-http-handler": "^4.12.1",
     "bcryptjs": "^3.0.3",
-    "ws": "^8.21.3"
+    "ws": "^8.22.0"
   },
   "devDependencies": {
-    "@types/ws": "^8.18.1"
+    "@types/ws": "^8.18.2"
   }
 }
