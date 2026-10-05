@@ -76,6 +76,9 @@ describe("host registration keeps configured repositories it does not register",
     const plane = seeded();
     expect(register(plane, [A], [worktree("a1", "a")]).ok).toBe(true);
     expect(plane.state.connections.get("connection")?.repositoryIds).toEqual(["a"]);
+    // Rows already projected for the omitted repository are offline, so placement skips them.
+    expect(plane.state.worktrees.get("b1")?.online).toBe(false);
+    expect(plane.state.worktrees.get("a1")?.online).toBe(true);
   });
 
   it("replaces a retained repository the daemon re-registered at the same path", () => {
