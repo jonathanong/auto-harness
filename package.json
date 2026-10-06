@@ -72,19 +72,19 @@
   "devDependencies": {
     "@ast-grep/cli": "^0.45.3",
     "@playwright/test": "^1.63.0",
-    "@types/node": "^26.6.3",
-    "@vitest/coverage-v8": "^5.0.2",
+    "@types/node": "^26.6.4",
+    "@vitest/coverage-v8": "^5.0.3",
     "coverage-check": "^0.17.0",
-    "dependency-cruiser": "^18.4.0",
+    "dependency-cruiser": "^18.5.0",
     "esbuild": "^0.28.2",
     "happy-dom": "20.14.5",
     "husky": "^9.1.7",
-    "knip": "^6.38.0",
-    "no-mistakes": "^0.65.0",
-    "oxfmt": "^0.70.0",
-    "oxlint": "^1.85.0",
+    "knip": "^6.39.0",
+    "no-mistakes": "^0.68.0",
+    "oxfmt": "^0.71.0",
+    "oxlint": "^1.86.0",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "engines": {
     "node": ">=22.18.0"
