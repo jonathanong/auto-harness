@@ -18,10 +18,10 @@
   "dependencies": {
     "@auto-harness/shared": "workspace:*",
     "@replit/ruspty": "3.7.1",
-    "@sentry/node": "^11.0.0",
-    "ws": "^8.21.3"
+    "@sentry/node": "^11.3.0",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
-    "@types/ws": "^8.18.1"
+    "@types/ws": "^8.18.2"
   }
 }
