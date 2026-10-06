@@ -906,13 +906,19 @@ export function registerHost(
       connectionId,
     });
   }
+  const retainedOnly = retainedOnlyRepositoryIds(
+    previousInventory,
+    registeredRepositories.map((repository) => repository.id),
+  );
   for (const wt of state.worktrees.values()) {
     if (
       wt.hostId === opts.hostId &&
       wt.status !== "busy" &&
       !opts.worktrees.some((w) => w.id === wt.id)
     ) {
-      wt.online = !opts.draining;
+      // A repository the daemon did not register is retained in inventory only; its worktrees
+      // must not look placeable on this connection.
+      wt.online = !opts.draining && !retainedOnly.has(wt.repositoryId);
       persistWorktree(state, { ...wt, connectionId });
     }
   }
@@ -920,6 +926,19 @@ export function registerHost(
     void reconcileReportedRunningSessions(state, opts);
   }
   return { ok: true, connectionId };
+}
+
+/** Repositories kept in inventory only because the daemon omitted them from registration. */
+function retainedOnlyRepositoryIds(
+  previous: HostInventoryRecord | undefined,
+  registeredRepositoryIds: readonly string[],
+): Set<string> {
+  const registered = new Set(registeredRepositoryIds);
+  return new Set(
+    (previous?.repositories ?? [])
+      .map((repository) => repository.id)
+      .filter((id) => !registered.has(id)),
+  );
 }
 
 /** Durable registration. The host lease and connection row are committed
@@ -1112,10 +1131,19 @@ export async function registerHostDurable(
   // worktrees omitted by a refreshed daemon snapshot. A stale process must
   // still stamp safe idle rows with its exact new lease, while busy rows stay
   // exclusively owned by reconciliation.
+  const retainedOnly = retainedOnlyRepositoryIds(
+    previousInventory,
+    registeredRepositories.map((repository) => repository.id),
+  );
   const registeredIds = new Set(opts.worktrees.map((worktree) => worktree.id));
   for (const existingWorktree of await state.storage.listWorktreesByHost(opts.hostId)) {
     if (registeredIds.has(existingWorktree.id) || existingWorktree.status === "busy") continue;
-    nextWorktrees.push({ ...existingWorktree, online: !opts.draining, connectionId });
+    nextWorktrees.push({
+      ...existingWorktree,
+      // Retained-only repositories (not registered by the daemon) stay unplaceable.
+      online: !opts.draining && !retainedOnly.has(existingWorktree.repositoryId),
+      connectionId,
+    });
   }
   const publishedWorktrees = [] as Array<import("./db/types.ts").WorktreeRecord>;
   try {

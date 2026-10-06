@@ -247,9 +247,12 @@ empty list and is reconciled the same way.
 
 Worktree records in DynamoDB are written by the control plane from register/status messages; the agent is source of truth for **local** busy/idle.
 
-Within each repository the daemon registers, registration adds and refreshes the worktrees it advertises but
-never removes a configured one it omits (for example a checkout that is still materializing). Removing a
-worktree is a control-plane inventory edit. A repository the daemon omits is still dropped with its worktrees.
+Registration adds and refreshes the repositories and worktrees the daemon advertises but never removes a
+configured one it omits (for example a checkout that is still materializing, or a repository whose inventory
+apply failed). A retained repository keeps its worktrees, settings, but registration
+neither schedules nor writes worktree rows for it, so it stays unassignable until the daemon registers it. A
+daemon that re-registers a repository at the same path, or a worktree at the same name or path, replaces the
+old entry. Removing a repository or worktree is a control-plane inventory edit.
 
 ### Workspace pools and slots
 
@@ -1192,7 +1195,7 @@ ERROR: Failed to create worktree at /path/wt-1
 - `git worktree prune` for stale locks
 - A pending worktree is not advertised in `host:register` and cannot be assigned or claimed until its
   checkout succeeds; the daemon re-registers when it becomes ready. The control plane keeps it in the
-  host inventory meanwhile (as long as the daemon still registers its repository), so the next inventory poll does not undo the configuration. An assignment that targets one
+  host inventory meanwhile so the next inventory poll does not undo the configuration. An assignment that targets one
   waits up to 10 seconds for that checkout (below the acknowledgement deadline) and is rejected locally ("not ready yet") if it is not ready by then or fails.
 - Pending checkouts are retried from the daemon's keepalive timer, independent of inventory polling.
   `run-session` is a one-shot caller with no retry loop, so its preflight alone creates worktrees
