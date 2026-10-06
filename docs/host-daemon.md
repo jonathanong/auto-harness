@@ -423,7 +423,8 @@ names a fixed executable on `PATH` or a worktree-relative script (for example
 
 AI CLIs often hit **plan or rate limits** (monthly quota, TPM/RPM, “you've hit your limit”, etc.).
 Auto Harness reports a limit only when its provider-aware adapter validates a structured CLI result;
-ordinary stdout/stderr is never quota evidence. A reported limit lets the control plane pause the
+ordinary stdout/stderr is never quota evidence (the one narrow exception is Cursor's CLI-owned
+plain-text line, below). A reported limit lets the control plane pause the
 assigned account, try another eligible account/fallback, or queue-wait for cooldown recovery.
 
 **Policy: trusted identity + failure → classify → report → let the control plane route.**
@@ -447,16 +448,18 @@ an ordinary `failed`, not `usage_limit`. No account is paused.
 
 Classification keys off a provider-backed assignment (`providerAccountId`), the spawned catalog
 executable (basename of `resolvedArgv[0]`), and an adapter-supported structured output mode. The
-currently supported usage-limit adapter set is `claude`, `codex`, `gemini`, and `grok`; Cursor's
-structured success usage is supported, but its exhausted-account signal remains pending a real
-captured envelope. Each usage-limit adapter validates its provider's terminal/error envelope
+currently supported usage-limit adapter set is `claude`, `codex`, `cursor-agent`, `gemini`, and `grok`. Cursor's
+exhausted-account signal is a plain-text stdout line (`ActionRequiredError: … You're out of
+usage. …`), trusted only on a failed run that emitted no `{"type":"result"}` envelope. Each usage-limit adapter validates its provider's terminal/error envelope
 before emitting `usageLimit`. A generic phrase such as `rate limit`, `too many requests`, or a bare
 `429` is **never** enough, even with a trusted executable and a non-zero exit. The adapter signal is
 also ignored on success, on unknown/providerless argv, and when the assignment has no
 `providerAccountId`.
 
 The trusted surface is each CLI's own structured error envelope — never model/agent-generated
-content. For Codex this includes the sentence its own Rust CLI error path writes verbatim onto
+content. The sole exception is Cursor, which reports quota exhaustion as a plain-text line before
+any result envelope: that line is CLI-owned only because agent output can appear solely inside the
+`{"type":"result"}` envelope, so it is trusted only when no such envelope exists. For Codex this includes the sentence its own Rust CLI error path writes verbatim onto
 `turn.failed.error.message` or a top-level `{"type":"error"}.message` when it hits a usage limit;
 that text is as trustworthy as the `error.type`/`code`/`status` fields the other adapters key off,
 because it is written by the CLI process itself, not by the model. Codex's `item.*` records (agent
@@ -492,7 +495,7 @@ token as a whole word in `error.message` (the CLI copies the API body's `status:
 **What is not a usage limit:**
 
 - Successful commands (`exitCode === 0`), even when output contains vendor phrases
-- Prompt-controlled / adversarial stdout or stderr: free-form text cannot classify a limit
+- Prompt-controlled / adversarial stdout or stderr: free-form text cannot classify a limit (except Cursor's no-result-envelope `ActionRequiredError:` line)
 - Providerless commands (no `providerAccountId`), unknown executables, and non-structured provider commands (fail closed)
 - App under test returning 429
 - GitHub API secondary rate limits during a push (unless classified separately later)

@@ -171,6 +171,55 @@ describe("parseCliUsage", () => {
     }
   });
 
+  describe("Cursor plain-text usage limit", () => {
+    const argv = ["cursor-agent", "--print", "--force", "--output-format", "json"];
+    const line =
+      "ActionRequiredError: Increase limits for faster responses You're out of usage. Switch to Auto.";
+    const parse = (output: string) => parseCliUsage({ argv, output, observedAt });
+
+    it("detects the CLI-owned line through escapes, CRLF, and OSC sequences", () => {
+      expect(parse(`${line}\x1b[?25h\n`)).toEqual({ usageLimit: true });
+      expect(parse(`\x1b[31m${line}\x1b[0m\r\n`)).toEqual({ usageLimit: true });
+      expect(parse(`\x1b]0;title\x07\x1b]8;;x\x1b\\noise\nrunning\r${line}`)).toEqual({
+        usageLimit: true,
+      });
+    });
+
+    it("ignores lookalikes: wrong prefix, wrong sentence, mid-line, empty", () => {
+      expect(parse("Error: you're out of usage")).toEqual({});
+      expect(parse("ActionRequiredError: please sign in")).toEqual({});
+      expect(parse(`note: ${line}`)).toEqual({});
+      expect(parse("")).toEqual({});
+    });
+
+    it("never trusts the text once a result envelope was emitted", () => {
+      const envelope = JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: line,
+      });
+      expect(parse(`${line}\n${envelope}`)).toEqual({ agentSummary: line });
+      expect(parse(`${envelope}\n${line}`)).toEqual({ agentSummary: line });
+    });
+
+    it("accepts the documented -p alias for --print", () => {
+      expect(
+        parseCliUsage({
+          argv: ["cursor-agent", "-p", "--output-format", "json"],
+          output: line,
+          observedAt,
+        }),
+      ).toEqual({ usageLimit: true });
+    });
+
+    it("requires print mode and the JSON output flag", () => {
+      expect(
+        parseCliUsage({ argv: ["cursor-agent", "--print"], output: line, observedAt }),
+      ).toEqual({});
+    });
+  });
+
   it("accepts a sparse Cursor result without inventing usage or a summary", () => {
     expect(
       parseCliUsage({

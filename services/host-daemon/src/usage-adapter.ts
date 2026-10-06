@@ -8,7 +8,7 @@ import {
   type RunProcessOptions,
 } from "./executor.ts";
 import { createCodexUsageStream, parseCodexRecords } from "./usage-adapter-codex.ts";
-import { parseCursorRecord } from "./usage-adapter-cursor.ts";
+import { parseCursorOutput } from "./usage-adapter-cursor.ts";
 import { parseGrokRecords } from "./usage-adapter-grok.ts";
 import { jsonLines, jsonObject, jsonObjects } from "./usage-adapter-json.ts";
 import {
@@ -57,10 +57,10 @@ export function parseCliUsage(input: {
   if (provider === "grok") {
     return parseGrokRecords(jsonObjects(input.output), input.observedAt);
   }
+  if (provider === "cursor") return parseCursorOutput(input.output, input.observedAt);
   const envelope = jsonObject(input.output);
   if (!envelope) return {};
   if (provider === "claude") return parseClaudeRecord(envelope, input.observedAt);
-  if (provider === "cursor") return parseCursorRecord(envelope, input.observedAt);
   return parseGeminiRecord(envelope, input.observedAt);
 }
 
@@ -164,14 +164,13 @@ function hasOption(argv: readonly string[], name: string, value?: string): boole
 function hasStructuredOutputMode(provider: CliProvider, argv: readonly string[]): boolean {
   switch (provider) {
     case "claude":
+    case "cursor":
       return (
         (argv.includes("-p") || argv.includes("--print")) &&
         hasOption(argv, "--output-format", "json")
       );
     case "codex":
       return argv.includes("exec") && hasOption(argv, "--json");
-    case "cursor":
-      return argv.includes("--print") && hasOption(argv, "--output-format", "json");
     case "gemini":
       return (
         (argv.includes("-p") || argv.includes("--prompt")) &&

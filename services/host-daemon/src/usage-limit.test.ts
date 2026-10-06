@@ -41,6 +41,8 @@ describe("detectUsageLimit", () => {
       { argv: ["codex"], expected: undefined },
       { argv: ["gemini"], expected: undefined },
       { argv: ["grok"], expected: undefined },
+      { argv: ["cursor-agent", "--print"], expected: undefined },
+      { argv: ["cursor"], adapterUsageLimit: true, expected: undefined },
       {
         argv: ["codex"],
         providerAccountId: "",
@@ -53,6 +55,11 @@ describe("detectUsageLimit", () => {
   it("accepts a trusted adapter flag only with known provider context and failure", () => {
     const cases: Case[] = [
       { argv: ["codex", "exec"], adapterUsageLimit: true, expected: "adapter" },
+      {
+        argv: ["/usr/local/bin/cursor-agent", "--print"],
+        adapterUsageLimit: true,
+        expected: "adapter",
+      },
       {
         argv: ["codex"],
         adapterUsageLimit: true,
