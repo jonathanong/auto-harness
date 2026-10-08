@@ -2230,8 +2230,8 @@ components:
       required: [code, message]
       additionalProperties: false
       properties:
-        code: { type: string }
-        message: { type: string }
+        code: { type: string, minLength: 1, maxLength: 256 }
+        message: { type: string, maxLength: 256 }
     SessionOutputUnavailable:
       oneOf:
         - type: object

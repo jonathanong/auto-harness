@@ -77,6 +77,14 @@ Both endpoints use existing session visibility rules. Missing and inaccessible s
 `404`; successful responses use `Cache-Control: no-store`. `ready` with `output: null` is distinct
 from `none`.
 
+## Local API deployments
+
+Without an archive bucket, the API keeps artifact archives on its local disk. For a remote
+local/VPS API, set `HARNESS_API_PUBLIC_BASE_URL` to the externally reachable API origin, for
+example `https://api.example.com`. Upload and download links use that address; a bind address
+such as `0.0.0.0` is not a public address. `HARNESS_PUBLIC_BASE_URL` remains the control-plane
+UI origin.
+
 ## Storage and retention
 
 JSON text and compact collection metadata live in the dedicated DynamoDB `SessionOutputs`
