@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { SessionOutputSpool } from "./session-output-spool.ts";
+import { defaultSessionOutputsDir, SessionOutputSpool } from "./session-output-spool.ts";
 
 const temporary: string[] = [];
 
@@ -12,6 +12,14 @@ afterEach(async () => {
 });
 
 describe("SessionOutputSpool lifecycle", () => {
+  it("uses the per-user spool root by default without touching it", async () => {
+    const spool = new SessionOutputSpool({});
+    expect(defaultSessionOutputsDir("/tmp/harness-home")).toBe(
+      join("/tmp/harness-home", ".auto-harness", "session-outputs"),
+    );
+    spool.stop();
+  });
+
   it("reuses an uncaptured attempt directory and makes capture/discard idempotent", async () => {
     const root = await mkdtemp(join(tmpdir(), "harness-session-output-reuse-"));
     temporary.push(root);
@@ -63,6 +71,20 @@ describe("SessionOutputSpool lifecycle", () => {
     await mkdir(join(root, "jobs"));
     await Promise.all([attempt.capture(), attempt.capture()]);
     await attempt.capture();
+    expect(await readdir(join(root, "jobs"))).toHaveLength(1);
+  });
+
+  it("waits for an in-flight capture before discarding an attempt", async () => {
+    const root = await mkdtemp(join(tmpdir(), "harness-session-output-capture-discard-"));
+    temporary.push(root);
+    const spool = new SessionOutputSpool({ root });
+    const attempt = await spool.begin("session-capture-discard", "attempt-capture-discard");
+    await writeFile(attempt.env.HARNESS_OUTPUT_FILE, "null", "utf8");
+
+    const capture = attempt.capture();
+    const discard = attempt.discard();
+    await Promise.all([capture, discard]);
+
     expect(await readdir(join(root, "jobs"))).toHaveLength(1);
   });
 

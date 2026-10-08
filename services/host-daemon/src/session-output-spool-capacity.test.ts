@@ -67,4 +67,34 @@ describe("SessionOutputSpool staging capacity", () => {
       error: { code: "artifact_capture_failed" },
     });
   });
+
+  it("rejects an archive reservation that would exceed total staging capacity", async () => {
+    const root = await mkdtemp(join(tmpdir(), "harness-session-output-reserve-capacity-"));
+    temporary.push(root);
+    const otherSpoolFile = await open(join(root, "other-spool-data.bin"), "w");
+    await otherSpoolFile.truncate(950 * 1024 * 1024);
+    await otherSpoolFile.close();
+    let submission: { artifacts: { state: string; error?: { code: string } } } | undefined;
+    const spool = new SessionOutputSpool({
+      root,
+      identity: { apiUrl: "http://api.test" },
+      fetchFn: async (input, init) => {
+        if (String(input).endsWith("/outputs/prepare"))
+          submission = JSON.parse(String(init?.body)) as typeof submission;
+        return Response.json({});
+      },
+    });
+    const attempt = await spool.begin("session-reserve-limit", "attempt-reserve-limit");
+    const artifact = await open(join(attempt.env.HARNESS_ARTIFACTS_DIR, "sparse.bin"), "w");
+    await artifact.truncate(MAX_SESSION_ARTIFACT_SOURCE_BYTES);
+    await artifact.close();
+    await attempt.capture();
+
+    await spool.runPass();
+
+    expect(submission?.artifacts).toMatchObject({
+      state: "error",
+      error: { code: "artifact_capture_failed" },
+    });
+  });
 });

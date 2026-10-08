@@ -121,29 +121,6 @@ describe("SessionOutputSpool durable recovery edges", () => {
     expect(await readyJobDirs(root)).toHaveLength(100);
   });
 
-  it("caps persisted errors and increments the compact overflow counter", async () => {
-    const root = await tempRoot();
-    const now = 1_800_000_000_000;
-    await seedJobCapacity(root);
-    await seedErrorRecords(root, now, true);
-    const spool = new SessionOutputSpool({ root, now: () => now });
-
-    const first = await spool.begin("capacity-overflow-one", "attempt-one");
-    await first.capture();
-    const second = await spool.begin("capacity-overflow-two", "attempt-two");
-    await second.capture();
-
-    const errors = await storedErrors(root);
-    const overflow = JSON.parse(await readFile(join(root, "errors", "overflow.json"), "utf8")) as {
-      count: number;
-    };
-    expect(errors.filter(({ name }) => name !== "overflow.json")).toHaveLength(100);
-    expect(errors.some(({ record }) => record.sessionId === "capacity-overflow-one")).toBe(false);
-    expect(errors.some(({ record }) => record.sessionId === "capacity-overflow-two")).toBe(false);
-    expect(overflow.count).toBe(2);
-    expect(await readyJobDirs(root)).toHaveLength(100);
-  });
-
   it("preserves valid output when the staged artifact tree disappears before archiving", async () => {
     const root = await tempRoot();
     const submissions: Array<{

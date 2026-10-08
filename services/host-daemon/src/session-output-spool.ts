@@ -543,7 +543,6 @@ export class SessionOutputSpool {
     attemptId: string,
   ): Promise<SessionOutputAttempt | undefined> {
     const key = keyFor(sessionId, attemptId);
-    if (!/^[a-f0-9]{64}$/.test(key)) return undefined;
     const directory = join(this.attemptsDir, key);
     try {
       const intent = JSON.parse(await readFile(join(directory, "intent.json"), "utf8")) as {
