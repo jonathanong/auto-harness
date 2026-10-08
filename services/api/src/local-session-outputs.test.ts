@@ -418,6 +418,9 @@ describe("local session output publication and reads", () => {
       ),
     ]);
     expect(results.map((result) => result.status).toSorted()).toEqual(["fulfilled", "rejected"]);
+    await expect(store.complete(id, "attempt", "host", now)).rejects.toMatchObject({
+      code: "OUTPUTS_NOT_UPLOADED",
+    });
     const [first, second] = await Promise.all([
       store.complete(id, "attempt", "host", now, { key: "key", versionId: "v1" }),
       store.complete(id, "attempt", "host", now, { key: "key", versionId: "v2" }),

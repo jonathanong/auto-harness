@@ -282,6 +282,33 @@ describe("session output durable intent and fences", () => {
     ).toMatchObject({ completedAt: NOW });
   });
 
+  it("surfaces Dynamo service failures instead of labeling them stale attempts", async () => {
+    const unavailable = new (class extends DynamoSessionOutputsStore {
+      override getSession(sessionId: string) {
+        return store.getSession(sessionId);
+      }
+    })({ doc, tables: { ...tables, sessions: `${tables.sessions}-unavailable` } });
+    await seed("sess-service-new");
+    await expect(
+      unavailable.prepare("sess-service-new", intent, "host-1", NOW),
+    ).rejects.toMatchObject({
+      name: "ResourceNotFoundException",
+    });
+    await seed("sess-service-renew");
+    await store.prepare("sess-service-renew", intent, "host-1", NOW);
+    await expect(
+      unavailable.prepare("sess-service-renew", intent, "host-1", NOW),
+    ).rejects.toMatchObject({
+      name: "ResourceNotFoundException",
+    });
+    await expect(
+      unavailable.complete("sess-service-renew", "attempt-1", "host-1", NOW, {
+        key: "fixed",
+        versionId: "v1",
+      }),
+    ).rejects.toMatchObject({ name: "ResourceNotFoundException" });
+  });
+
   it("shares the public Dynamo facade store and clears its persisted output rows", async () => {
     const storage = new DynamoPlaneStorage(doc, tables);
     const outputs = storage.getSessionOutputsStore();

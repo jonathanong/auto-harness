@@ -96,6 +96,25 @@ describe("session artifact object boundaries", () => {
         url.searchParams.get("token"),
       ),
     ).toBe(false);
+    expect(store.verify("sess", "attempt", sha256, null, null)).toBe(false);
+    expect(store.verify("sess", "attempt", sha256, String(Date.now() - 1), "a".repeat(64))).toBe(
+      false,
+    );
+    expect(store.verify("sess", "attempt", sha256, url.searchParams.get("expires"), "bad")).toBe(
+      false,
+    );
+    const authenticated = await store.upload(
+      "sess",
+      "attempt",
+      bytes.length,
+      sha256,
+      new Date().toISOString(),
+      "http://127.0.0.1:9000",
+      "Bearer host-key",
+    );
+    expect(authenticated.method).toBe("PUT");
+    if (authenticated.method !== "PUT") throw new Error("expected PUT");
+    expect(authenticated.headers.authorization).toBe("Bearer host-key");
     const input = Readable.from([bytes]) as never;
     await store.put(input, "sess", "attempt", { size: bytes.length, sha256 });
     expect(await store.inspect("sess", "attempt")).toMatchObject({
@@ -116,13 +135,25 @@ describe("session artifact object boundaries", () => {
     ).toBe(true);
     await store.deleteSession("sess", "attempt");
     expect(await store.inspect("sess", "attempt")).toBeNull();
+    await store.deleteSession("sess", "attempt");
   });
 
   it("distinguishes absent, incomplete, and failed S3 HEAD responses", async () => {
     let status = 404;
+    let completeWithoutType = false;
+    const digest = createHash("sha256").update("payload").digest("hex");
     const server = createServer((_req, res) => {
       if (status === 200) {
-        res.writeHead(200, { "content-length": "7" });
+        res.writeHead(
+          200,
+          completeWithoutType
+            ? {
+                "x-amz-version-id": "v1",
+                "content-length": "7",
+                "x-amz-checksum-sha256": Buffer.from(digest, "hex").toString("base64"),
+              }
+            : { "content-length": "7" },
+        );
       } else {
         res.writeHead(status, { "content-type": "application/xml" });
       }
@@ -142,6 +173,11 @@ describe("session artifact object boundaries", () => {
       expect(await store.inspect("sess", "attempt")).toBeNull();
       status = 200;
       expect(await store.inspect("sess", "attempt")).toBeNull();
+      completeWithoutType = true;
+      expect(await store.inspect("sess", "attempt")).toMatchObject({
+        contentType: "",
+        sha256: digest,
+      });
       status = 500;
       await expect(store.inspect("sess", "attempt")).rejects.toThrow();
     } finally {
