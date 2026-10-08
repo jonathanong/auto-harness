@@ -3,6 +3,7 @@ import { SessionRunner } from "../src/session-runner.ts";
 import type { DaemonConfig } from "../src/config.ts";
 import type { GitClient } from "../src/git.ts";
 import { WorktreeManager } from "../src/worktree-manager.ts";
+import type { SessionOutputSpool } from "../src/session-output-spool.ts";
 
 export function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -12,7 +13,10 @@ export function deferred<T = void>() {
   return { promise, resolve };
 }
 
-export function makeRunner() {
+export function makeRunner(deps: {
+  sessionOutputSpool?: SessionOutputSpool;
+  childEnvSource?: NodeJS.ProcessEnv;
+} = {}) {
   const config: DaemonConfig = {
     hostId: "h",
     repositories: [
@@ -30,6 +34,8 @@ export function makeRunner() {
   const checkouts: string[] = [];
   const hooks: string[] = [];
   const starts: string[] = [];
+  const commandEnvs: NodeJS.ProcessEnv[] = [];
+  const hookEnvs: NodeJS.ProcessEnv[] = [];
   const throwPrimary = { value: false };
   const throwCheckout = { value: false };
   const throwSetup = { value: false };
@@ -64,9 +70,11 @@ export function makeRunner() {
       }
       if (options.argv[0] === "/bin/sh" && options.argv[1] === "/hook") {
         hooks.push(options.cwd);
+        hookEnvs.push(options.env ?? {});
         return { exitCode: 0, timedOut: false, signal: null };
       }
       starts.push(options.cwd);
+      commandEnvs.push(options.env ?? {});
       if (throwPrimary.value) {
         throwPrimary.value = false;
         throw new Error("primary failed");
@@ -82,11 +90,18 @@ export function makeRunner() {
     checkouts,
     hooks,
     starts,
+    commandEnvs,
+    hookEnvs,
     waits,
     throwPrimary,
     throwCheckout,
     throwSetup,
-    runner: new SessionRunner({ worktrees, processRunner }),
+    runner: new SessionRunner({
+      worktrees,
+      processRunner,
+      ...(deps.sessionOutputSpool ? { sessionOutputSpool: deps.sessionOutputSpool } : {}),
+      ...(deps.childEnvSource ? { childEnvSource: deps.childEnvSource } : {}),
+    }),
   };
 }
 

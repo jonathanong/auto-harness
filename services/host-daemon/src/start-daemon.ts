@@ -52,6 +52,8 @@ type StartDaemonOptions = {
   updateService?: HostServiceOpts;
   /** Host-owned directory for last-successful setup fingerprints. */
   setupCacheDir?: string;
+  /** Test seam for the daemon-private session output spool. */
+  sessionOutputsDir?: string;
 };
 
 type InventoryPollOptions = {
@@ -334,6 +336,7 @@ async function connectDaemon(
     ...(githubApp ? { githubApp } : {}),
     ...(options.runtime ? { runtime: options.runtime } : {}),
     ...(options.setupCacheDir !== undefined ? { setupCacheDir: options.setupCacheDir } : {}),
+    ...(options.sessionOutputsDir !== undefined ? { sessionOutputsDir: options.sessionOutputsDir } : {}),
   });
   await loop.start();
   try {

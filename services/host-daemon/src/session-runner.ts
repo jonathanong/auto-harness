@@ -26,6 +26,7 @@ import {
 } from "./github-app.ts";
 import type { WorktreeManager } from "./worktree-manager.ts";
 import { WorkspaceManager, type ClaimedWorkspace } from "./workspace-manager.ts";
+import type { SessionOutputAttempt, SessionOutputSpool } from "./session-output-spool.ts";
 
 export type { SessionRunResult } from "./session-outcome.ts";
 
@@ -54,6 +55,7 @@ export type SessionRunnerDeps = {
   setupCacheDir?: string;
   /** Sweep leftover/orphaned sidecars after an in-flight setup claim is released. */
   onSetupCacheClaimReleased?: () => void;
+  sessionOutputSpool?: SessionOutputSpool;
 };
 
 type SessionRunOptions = {
@@ -65,6 +67,7 @@ type SessionRunOptions = {
   deferCheckoutFetchFailureHook?: boolean;
   /** A v7 peer durably owns every pre-command terminal hook. */
   deferPreCommandFailureHook?: boolean;
+  outputAttempt?: SessionOutputAttempt;
 };
 
 export class SessionRunner {
@@ -75,6 +78,82 @@ export class SessionRunner {
   }
 
   async run(assign: SessionAssign, options: SessionRunOptions = {}): Promise<SessionRunResult> {
+    const outputEnabled = (assign as SessionAssign & { outputs?: boolean }).outputs === true;
+    let outputAttempt: SessionOutputAttempt | undefined;
+    if (outputEnabled && this.deps.sessionOutputSpool) {
+      try {
+        outputAttempt = await this.deps.sessionOutputSpool.begin(assign.sessionId, assign.attemptId);
+      } catch (error) {
+        this.deps.onLog?.({
+          sessionId: assign.sessionId,
+          attemptId: assign.attemptId,
+          seq: 0,
+          stream: "system",
+          timestamp: new Date().toISOString(),
+          content: `session output staging unavailable: ${thrownMessage(error)}`,
+        });
+      }
+    }
+    const runOptions = outputAttempt ? { ...options, outputAttempt } : options;
+    try {
+      const result = isWorkspaceAssign(assign)
+        ? await this.runWorkspace(assign, runOptions)
+        : await this.runClaimed(assign, runOptions);
+      if (outputAttempt) {
+        if (result.settleDeferredTerminalHook) {
+          const settle = result.settleDeferredTerminalHook;
+          let captured = false;
+          result.settleDeferredTerminalHook = async (runHook, deadlineAtMs) => {
+            const settled = await settle(runHook, deadlineAtMs);
+            if (!runHook && !captured) {
+              captured = true;
+              await outputAttempt.discard().catch((error: unknown) => {
+                this.logOutputFailure(assign, `session output discard failed: ${thrownMessage(error)}`);
+              });
+            } else if (runHook && !captured) {
+              captured = true;
+              if (await this.captureOutputAttempt(outputAttempt, assign))
+                result.outputsJobId = outputAttempt.jobId;
+            }
+            return settled;
+          };
+        } else {
+          if (await this.captureOutputAttempt(outputAttempt, assign))
+            result.outputsJobId = outputAttempt.jobId;
+        }
+      }
+      return result;
+    } catch (error) {
+      if (outputAttempt) await this.captureOutputAttempt(outputAttempt, assign);
+      throw error;
+    }
+  }
+
+  private async captureOutputAttempt(
+    outputAttempt: SessionOutputAttempt,
+    assign: SessionAssign,
+  ): Promise<boolean> {
+    try {
+      await outputAttempt.capture();
+      return true;
+    } catch (error) {
+      this.logOutputFailure(assign, `session output capture failed: ${thrownMessage(error)}`);
+      return false;
+    }
+  }
+
+  private logOutputFailure(assign: SessionAssign, message: string): void {
+    this.deps.onLog?.({
+      sessionId: assign.sessionId,
+      attemptId: assign.attemptId,
+      seq: 0,
+      stream: "system",
+      timestamp: new Date().toISOString(),
+      content: message,
+    });
+  }
+
+  private async runClaimed(assign: SessionAssign, options: SessionRunOptions): Promise<SessionRunResult> {
     if (isWorkspaceAssign(assign)) return await this.runWorkspace(assign, options);
     const childEnvSource = this.deps.childEnvSource ?? process.env;
     const mappedGitHubApp = assign.repositoryId
@@ -110,6 +189,7 @@ export class SessionRunner {
       } catch (error) {
         return await failSession(streamer, logs, "setup_failed", thrownMessage(error), null);
       }
+      if (options.outputAttempt) sessionChildEnv = { ...sessionChildEnv, ...options.outputAttempt.env };
 
       let expired = false;
       const timeout = new AbortController();
@@ -428,7 +508,7 @@ export class SessionRunner {
           () => expired,
           () => Math.max(1, deadlineMs - Date.now()),
           this.deps.commandRunner ?? this.deps.processRunner,
-          this.deps.childEnvSource ?? process.env,
+          withOutputEnv(this.deps.childEnvSource ?? process.env, options.outputAttempt),
           this.deps.executionProfiles,
           // Workspace validation rejects priorContext, so retaining the daemon
           // identity here cannot fetch/write one. It does preserve the
@@ -445,6 +525,10 @@ export class SessionRunner {
         );
       } catch (error) {
         result = await failSession(streamer, logs, "setup_failed", thrownMessage(error), null);
+      }
+      if (options.outputAttempt) {
+        if (await this.captureOutputAttempt(options.outputAttempt, assign))
+          result.outputsJobId = options.outputAttempt.jobId;
       }
       if (assign.destroyWorkspaceAfter) {
         try {
@@ -501,4 +585,11 @@ function workspaceFields(assign: SessionAssign): WorkspaceWireFields | null {
 
 function isWorkspaceAssign(assign: SessionAssign): boolean {
   return (assign.sessionType as string | undefined) === "workspace";
+}
+
+function withOutputEnv(
+  environment: NodeJS.ProcessEnv,
+  outputAttempt: SessionOutputAttempt | undefined,
+): NodeJS.ProcessEnv {
+  return outputAttempt ? { ...environment, ...outputAttempt.env } : environment;
 }

@@ -265,6 +265,12 @@ export async function runClaimedSession(
     );
   }
   if (setup.failure) return setup.failure;
+  // Setup scripts deliberately run in a filtered child environment. Restore the
+  // daemon-owned attempt paths afterward, before the profile and CLI environment.
+  for (const key of ["HARNESS_OUTPUT_FILE", "HARNESS_ARTIFACTS_DIR"] as const) {
+    const value = sessionChildEnv[key];
+    if (value !== undefined) setup.environment[key] = value;
+  }
 
   try {
     await claimed.currentExecutionTarget?.();
@@ -431,6 +437,12 @@ async function runProcessAndFinish(
   const commandEnv = profile
     ? applyExecutionProfile(terminalEnvironment, profile)
     : { ...terminalEnvironment };
+  // Output paths belong to this assignment and are written after profile merge so
+  // ambient/profile values cannot redirect an agent into another attempt's files.
+  for (const key of ["HARNESS_OUTPUT_FILE", "HARNESS_ARTIFACTS_DIR"] as const) {
+    const value = environment[key];
+    if (value !== undefined) commandEnv[key] = value;
+  }
   if (isolatedGitHubConfigDir) commandEnv.GH_CONFIG_DIR = isolatedGitHubConfigDir;
   delete commandEnv.HARNESS_API_KEY;
   delete commandEnv.HARNESS_SESSION_API_KEY;

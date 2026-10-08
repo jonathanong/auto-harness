@@ -35,6 +35,8 @@ export type SessionRunResult = {
   workspaceSlotError?: string;
   /** Echoed in the terminal frame so the control plane can release/quarantine this slot atomically. */
   workspaceSlotId?: string;
+  /** Host-local durable output job; never sent over the control-plane status frame. */
+  outputsJobId?: string;
 };
 
 type SessionOutcome = {
