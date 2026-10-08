@@ -156,6 +156,9 @@ async function prepare(
     baseUrl,
     authorization,
   );
+  // Signing may resolve fresh AWS credentials. Extend the upload hold from the
+  // time the URL is ready, and fence retention again before exposing it.
+  await store.prepare(sessionId, request, hostId, ctx.plane.state.now());
   return send(ctx.res, 200, { artifactUpload });
 }
 
