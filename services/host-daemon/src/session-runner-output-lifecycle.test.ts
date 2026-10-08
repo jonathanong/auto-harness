@@ -157,4 +157,36 @@ describe("SessionRunner output lifecycle", () => {
     expect(captureResult.status).toBe("completed");
     expect(captureResult.outputsJobId).toBeUndefined();
   });
+
+  it("captures a final output when the command runner throws", async () => {
+    const root = await tempRoot();
+    const test = makeRunner({
+      sessionOutputSpool: new SessionOutputSpool({ root }),
+      onCommand: async ({ env }) => {
+        await writeFile(env.HARNESS_OUTPUT_FILE!, '{"beforeError":true}', "utf8");
+      },
+    });
+    test.throwPrimary.value = true;
+
+    const result = await test.runner.run(outputAssign());
+
+    expect(result.status).toBe("failed");
+    expect(await readyJob(root)).toMatchObject({
+      output: { state: "ready", jsonText: '{"beforeError":true}' },
+    });
+  });
+
+  it("captures an attempt before propagating an unexpected runner error", async () => {
+    const root = await tempRoot();
+    const test = makeRunner({
+      sessionOutputSpool: new SessionOutputSpool({ root }),
+      now: () => {
+        throw new Error("clock unavailable");
+      },
+    });
+
+    await expect(test.runner.run(outputAssign())).rejects.toThrow("clock unavailable");
+
+    expect(await readyJob(root)).toMatchObject({ output: { state: "none" } });
+  });
 });

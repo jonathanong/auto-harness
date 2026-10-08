@@ -22,6 +22,7 @@ export function makeRunner(
     onHook?: (options: RunProcessOptions) => void | Promise<void>;
     commandResult?: ProcessResult;
     onLog?: (chunk: SessionLogChunk) => void;
+    now?: () => string;
   } = {},
 ) {
   const config: DaemonConfig = {
@@ -110,6 +111,7 @@ export function makeRunner(
       processRunner,
       ...(deps.sessionOutputSpool ? { sessionOutputSpool: deps.sessionOutputSpool } : {}),
       ...(deps.onLog ? { onLog: deps.onLog } : {}),
+      ...(deps.now ? { now: deps.now } : {}),
       ...(deps.childEnvSource ? { childEnvSource: deps.childEnvSource } : {}),
     }),
   };
