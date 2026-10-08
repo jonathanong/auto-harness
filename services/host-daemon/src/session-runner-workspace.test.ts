@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- workspace lifecycle and authorization cases share one fixture. */
-import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import type { SessionAssign } from "@auto-harness/shared";
 import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { SessionRunner } from "./session-runner.ts";
+import { SessionOutputSpool } from "./session-output-spool.ts";
 import { WorkspaceManager } from "./workspace-manager.ts";
 
 const roots: string[] = [];
@@ -18,7 +19,7 @@ afterEach(async () => {
   );
 });
 
-async function workspaceRunner() {
+async function workspaceRunner(sessionOutputSpool?: SessionOutputSpool, events?: string[]) {
   const root = await mkdtemp(join(tmpdir(), "ah-workspace-run-"));
   roots.push(root);
   const slot = join(root, "slot");
@@ -47,6 +48,7 @@ async function workspaceRunner() {
     async run(options) {
       commandCwds.push(options.cwd);
       await writeFile(join(options.cwd, "command-output"), "done");
+      events?.push("command");
       return { exitCode: 0, timedOut: false, signal: null };
     },
   };
@@ -64,6 +66,14 @@ async function workspaceRunner() {
     setupScript: "workspace-profile",
     destroyWorkspaceAfter: true,
   };
+  const workspaces = new WorkspaceManager(config);
+  if (events) {
+    const destroyWorkspaceAfter = workspaces.destroyWorkspaceAfter.bind(workspaces);
+    workspaces.destroyWorkspaceAfter = async (claimed) => {
+      events.push("cleanup");
+      await destroyWorkspaceAfter(claimed);
+    };
+  }
   return {
     slot,
     config,
@@ -74,9 +84,10 @@ async function workspaceRunner() {
     commandRunner,
     runner: new SessionRunner({
       worktrees: {} as never,
-      workspaces: new WorkspaceManager(config),
+      workspaces,
       processRunner,
       commandRunner,
+      ...(sessionOutputSpool ? { sessionOutputSpool } : {}),
     }),
   };
 }
@@ -94,6 +105,40 @@ describe("SessionRunner workspace sessions", () => {
     expect(test.setup[1]).toContain("workspace-profile");
     expect(await readdir(test.slot)).toEqual([]);
     expect(result.logs.some((entry) => entry.content.includes("Checking out ref"))).toBe(false);
+  });
+
+  it("captures workspace output before destroy-after cleanup removes command files", async () => {
+    const spoolRoot = await mkdtemp(join(tmpdir(), "ah-workspace-output-spool-"));
+    roots.push(spoolRoot);
+    const spool = new SessionOutputSpool({ root: spoolRoot });
+    const events: string[] = [];
+    const observingSpool = {
+      async begin(sessionId: string, attemptId: string) {
+        const attempt = await spool.begin(sessionId, attemptId);
+        return {
+          ...attempt,
+          capture: async () => {
+            events.push("capture");
+            await attempt.capture();
+          },
+        };
+      },
+    } as unknown as SessionOutputSpool;
+    const test = await workspaceRunner(observingSpool, events);
+
+    const result = await test.runner.run({ ...test.assign, outputs: true });
+
+    expect(result.status).toBe("completed");
+    expect(events.indexOf("command")).toBeGreaterThanOrEqual(0);
+    expect(events.indexOf("capture")).toBeGreaterThan(events.indexOf("command"));
+    expect(events.indexOf("cleanup")).toBeGreaterThan(events.indexOf("capture"));
+    expect(result.outputsJobId).toBeTruthy();
+    expect(await readdir(test.slot)).toEqual([]);
+    const jobs = await readdir(join(spoolRoot, "jobs"));
+    const saved = JSON.parse(
+      await readFile(join(spoolRoot, "jobs", jobs[0]!, "job.json"), "utf8"),
+    ) as { output: { state: string } };
+    expect(saved.output).toEqual({ state: "none" });
   });
 
   it("uses the process runner as the workspace command runner when none is supplied", async () => {

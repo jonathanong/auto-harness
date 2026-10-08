@@ -1,4 +1,5 @@
-import type { ProcessRunner } from "../src/executor.ts";
+import type { ProcessResult, ProcessRunner, RunProcessOptions } from "../src/executor.ts";
+import type { SessionLogChunk } from "@auto-harness/shared";
 import { SessionRunner } from "../src/session-runner.ts";
 import type { DaemonConfig } from "../src/config.ts";
 import type { GitClient } from "../src/git.ts";
@@ -17,6 +18,10 @@ export function makeRunner(
   deps: {
     sessionOutputSpool?: SessionOutputSpool;
     childEnvSource?: NodeJS.ProcessEnv;
+    onCommand?: (options: RunProcessOptions) => void | Promise<void>;
+    onHook?: (options: RunProcessOptions) => void | Promise<void>;
+    commandResult?: ProcessResult;
+    onLog?: (chunk: SessionLogChunk) => void;
   } = {},
 ) {
   const config: DaemonConfig = {
@@ -73,17 +78,19 @@ export function makeRunner(
       if (options.argv[0] === "/bin/sh" && options.argv[1] === "/hook") {
         hooks.push(options.cwd);
         hookEnvs.push(options.env ?? {});
+        await deps.onHook?.(options);
         return { exitCode: 0, timedOut: false, signal: null };
       }
       starts.push(options.cwd);
       commandEnvs.push(options.env ?? {});
+      await deps.onCommand?.(options);
       if (throwPrimary.value) {
         throwPrimary.value = false;
         throw new Error("primary failed");
       }
       const wait = waits.get(options.cwd);
       if (wait) await wait.promise;
-      return { exitCode: 0, timedOut: false, signal: null };
+      return deps.commandResult ?? { exitCode: 0, timedOut: false, signal: null };
     },
   };
   const worktrees = new WorktreeManager(config, git);
@@ -102,6 +109,7 @@ export function makeRunner(
       worktrees,
       processRunner,
       ...(deps.sessionOutputSpool ? { sessionOutputSpool: deps.sessionOutputSpool } : {}),
+      ...(deps.onLog ? { onLog: deps.onLog } : {}),
       ...(deps.childEnvSource ? { childEnvSource: deps.childEnvSource } : {}),
     }),
   };
