@@ -104,17 +104,18 @@ describe("SessionOutputAttemptPager", () => {
     const expected = await readdir(directory);
     const pending = pager.readPage(directory, 2);
     const closing = pager.close();
-    const result = await pending.then(
-      (page) => ({ page, error: undefined }),
-      (error: unknown) => ({ page: undefined, error }),
-    );
+    const result = await pending;
     await closing;
-    if (result.error) expect(result.error).toMatchObject({ code: "ERR_DIR_CLOSED" });
-    else expect(result.page?.names).toEqual(expected.slice(0, 2));
-    expect(await pager.readPage(directory, 2)).toMatchObject({
-      names: expected.slice(0, 2),
-      more: true,
-    });
+    expect(result.names).toHaveLength(2);
+    expect(result.more).toBe(true);
+    const reopened: string[] = [];
+    let page = await pager.readPage(directory, 2);
+    reopened.push(...page.names);
+    while (page.more) {
+      page = await pager.readPage(directory, 2);
+      reopened.push(...page.names);
+    }
+    expect(reopened.toSorted()).toEqual(expected.toSorted());
     await pager.close();
   });
 
@@ -132,17 +133,18 @@ describe("SessionOutputAttemptPager", () => {
 
     const pending = pager.readPage(directory, 10);
     const closing = pager.close();
-    const result = await pending.then(
-      (page) => ({ page, error: undefined }),
-      (error: unknown) => ({ page: undefined, error }),
-    );
+    const result = await pending;
     await closing;
-    if (result.error) expect(result.error).toMatchObject({ code: "ERR_DIR_CLOSED" });
-    else expect(result.page?.names.toSorted()).toEqual(expected.slice(1).toSorted());
-    expect(await pager.readPage(directory, 1)).toEqual({
-      names: expected.slice(0, 1),
-      more: true,
-    });
+    expect([...first.names, ...result.names].toSorted()).toEqual(expected.toSorted());
+    expect(result.more).toBe(false);
+    const reopened: string[] = [];
+    let page = await pager.readPage(directory, 2);
+    reopened.push(...page.names);
+    while (page.more) {
+      page = await pager.readPage(directory, 2);
+      reopened.push(...page.names);
+    }
+    expect(reopened.toSorted()).toEqual(expected.toSorted());
     await pager.close();
   });
 });
