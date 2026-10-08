@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gunzipSync } from "node:zlib";
 
 import { expect, test } from "@playwright/test";
 
@@ -23,7 +24,10 @@ async function git(cwd: string, args: string[]): Promise<string> {
  * independently. See docs/host-daemon-e2e-testing.md.
  */
 test.describe("real orchestration", () => {
-  test("browser-created session runs on a real agent and completes", async ({ page, request }) => {
+  test("browser-created session completes and exposes real JSON output and artifacts", async ({
+    page,
+    request,
+  }) => {
     const hostId = `pw-orch-${test.info().parallelIndex}-${Date.now()}`;
     const repoId = `pw-orch-repo-${test.info().parallelIndex}-${Date.now()}`;
     const wtId = `wt-${test.info().parallelIndex}-${Date.now()}`;
@@ -73,7 +77,15 @@ test.describe("real orchestration", () => {
       await request.post(`${API}/api/v1/commands`, {
         data: {
           name: commandName,
-          argv: ["node", "-e", "setTimeout(() => console.log('hello world'), 1000)"],
+          argv: [
+            "node",
+            "-e",
+            "const fs=require('node:fs'); const path=require('node:path'); " +
+              "setTimeout(() => { " +
+              "fs.writeFileSync(process.env.HARNESS_OUTPUT_FILE, JSON.stringify({checksPassed:12, notes:'browser output'})); " +
+              "fs.writeFileSync(path.join(process.env.HARNESS_ARTIFACTS_DIR,'report.txt'),'12 checks passed\\n'); " +
+              "console.log('hello world'); }, 1000)",
+          ],
           appendPrompt: false,
           providerId: null,
         },
@@ -87,6 +99,7 @@ test.describe("real orchestration", () => {
       });
       const daemon = await startDaemon({
         config,
+        sessionOutputsDir: join(root, "outputs"),
         log: () => undefined,
         error: () => undefined,
       });
@@ -154,6 +167,19 @@ test.describe("real orchestration", () => {
       expect(items.some((l) => l.stream === "stdout" && l.content.includes("hello world"))).toBe(
         true,
       );
+      await page.getByTestId("tab-outputs").click();
+      await expect(page.getByTestId("session-output-ready")).toContainText('"checksPassed": 12');
+      await expect(page.getByTestId("session-output-ready")).toContainText("browser output");
+      await expect(page.getByTestId("session-artifacts-download")).toBeEnabled();
+      const downloading = page.waitForEvent("download");
+      await page.getByTestId("session-artifacts-download").click();
+      const download = await downloading;
+      expect(download.suggestedFilename()).toBe("artifacts.tar.gz");
+      const downloadedPath = await download.path();
+      expect(downloadedPath).not.toBeNull();
+      const tar = gunzipSync(readFileSync(downloadedPath!));
+      expect(tar.includes(Buffer.from("report.txt"))).toBe(true);
+      expect(tar.includes(Buffer.from("12 checks passed\n"))).toBe(true);
     } finally {
       await stopDaemon?.();
       rmSync(root, { recursive: true, force: true });

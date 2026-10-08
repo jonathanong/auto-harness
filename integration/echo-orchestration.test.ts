@@ -117,6 +117,7 @@ describe.skipIf(process.platform === "win32")(
 
       const daemon = await startDaemon({
         config,
+        sessionOutputsDir: join(root, "outputs"),
         childEnvSource: {
           ...process.env,
           HARNESS_DAEMON_LIVE_LOG_PORT: "off",
