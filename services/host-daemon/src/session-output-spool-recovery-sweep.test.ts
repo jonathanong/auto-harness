@@ -130,34 +130,26 @@ describe("SessionOutputSpool abandoned attempt recovery", () => {
     );
     const directory = join(root, "attempts");
     const names = await readdir(directory);
-    const laterName = names.at(-1)!;
     original.stop();
 
     now += 9 * 24 * 60 * 60 * 1_000;
     const restarted = new SessionOutputSpool({ root, now: () => now });
     await restarted.runPass();
-    expect(
-      await stat(join(directory, laterName)).then(
-        () => true,
-        () => false,
-      ),
-    ).toBe(true);
-    now += 60 * 60_000;
+    now += 60_001;
     await restarted.runPass();
-    expect(
-      await stat(join(directory, laterName)).then(
-        () => true,
-        () => false,
+    for (let page = 1; page < 3; page += 1) {
+      now += 60 * 60_000;
+      await restarted.runPass();
+    }
+    const remaining = await Promise.all(
+      names.map((name) =>
+        stat(join(directory, name)).then(
+          () => true,
+          () => false,
+        ),
       ),
-    ).toBe(true);
-    now += 60 * 60_000;
-    await restarted.runPass();
-    expect(
-      await stat(join(directory, laterName)).then(
-        () => true,
-        () => false,
-      ),
-    ).toBe(false);
+    );
+    expect(remaining).toEqual(Array.from({ length: names.length }, () => false));
     expect(attempts).toHaveLength(205);
   });
 });

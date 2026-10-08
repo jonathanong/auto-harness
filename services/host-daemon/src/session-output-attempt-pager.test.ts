@@ -63,6 +63,24 @@ describe("SessionOutputAttemptPager", () => {
     expect(page.more).toBe(false);
   });
 
+  it("serializes concurrent page reads without skipping directory entries", async () => {
+    const root = await mkdtemp(join(tmpdir(), "harness-attempt-pager-concurrent-"));
+    temporary.push(root);
+    const directory = join(root, "attempts");
+    await mkdir(directory);
+    for (let index = 0; index < 4; index += 1)
+      await writeFile(join(directory, `attempt-${index}`), "intent", "utf8");
+    const expected = await readdir(directory);
+    const pager = new SessionOutputAttemptPager();
+    const [first, second] = await Promise.all([
+      pager.readPage(directory, 2),
+      pager.readPage(directory, 2),
+    ]);
+    expect([...first.names, ...second.names].toSorted()).toEqual(expected.toSorted());
+    expect(second.more).toBe(false);
+    await pager.close();
+  });
+
   it("propagates a directory-open error other than missing directory", async () => {
     const root = await mkdtemp(join(tmpdir(), "harness-attempt-pager-error-"));
     temporary.push(root);
@@ -72,26 +90,59 @@ describe("SessionOutputAttemptPager", () => {
     await expect(pager.readPage(file, 10)).rejects.toThrow();
   });
 
-  it("closes the cursor when stop races an in-progress bounded read", async () => {
+  it("does not retain a directory opened after stop starts", async () => {
     const root = await mkdtemp(join(tmpdir(), "harness-attempt-pager-stop-"));
     temporary.push(root);
     const directory = join(root, "attempts");
     await mkdir(directory);
     await Promise.all(
-      Array.from({ length: 4_000 }, (_, index) =>
+      Array.from({ length: 5 }, (_, index) =>
         writeFile(join(directory, `attempt-${index}`), "intent", "utf8"),
       ),
     );
     const pager = new SessionOutputAttemptPager();
-    const pending = pager.readPage(directory, 10_000);
-    const observed = pending.then(
-      () => ({ rejected: false, error: undefined }),
-      (error: unknown) => ({ rejected: true, error }),
+    const expected = await readdir(directory);
+    const pending = pager.readPage(directory, 2);
+    const closing = pager.close();
+    const result = await pending.then(
+      (page) => ({ page, error: undefined }),
+      (error: unknown) => ({ page: undefined, error }),
     );
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await closing;
+    if (result.error) expect(result.error).toMatchObject({ code: "ERR_DIR_CLOSED" });
+    else expect(result.page?.names).toEqual(expected.slice(0, 2));
+    expect(await pager.readPage(directory, 2)).toMatchObject({
+      names: expected.slice(0, 2),
+      more: true,
+    });
     await pager.close();
-    const result = await observed;
-    expect(result.rejected).toBe(true);
-    expect(result.error).toMatchObject({ code: "ERR_DIR_CLOSED" });
+  });
+
+  it("closes an existing cursor while a later bounded read is in progress", async () => {
+    const root = await mkdtemp(join(tmpdir(), "harness-attempt-pager-stop-read-"));
+    temporary.push(root);
+    const directory = join(root, "attempts");
+    await mkdir(directory);
+    for (let index = 0; index < 5; index += 1)
+      await writeFile(join(directory, `attempt-${index}`), "intent", "utf8");
+    const expected = await readdir(directory);
+    const pager = new SessionOutputAttemptPager();
+    const first = await pager.readPage(directory, 1);
+    expect(first.more).toBe(true);
+
+    const pending = pager.readPage(directory, 10);
+    const closing = pager.close();
+    const result = await pending.then(
+      (page) => ({ page, error: undefined }),
+      (error: unknown) => ({ page: undefined, error }),
+    );
+    await closing;
+    if (result.error) expect(result.error).toMatchObject({ code: "ERR_DIR_CLOSED" });
+    else expect(result.page?.names.toSorted()).toEqual(expected.slice(1).toSorted());
+    expect(await pager.readPage(directory, 1)).toEqual({
+      names: expected.slice(0, 1),
+      more: true,
+    });
+    await pager.close();
   });
 });
