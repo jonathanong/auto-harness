@@ -3,7 +3,7 @@ packages:
   - modules/*
   - services/*
 
-# One pin for the shared UI runtime. Apps and @auto-harness/ui must use `catalog:`.
+# One catalog for the shared UI runtime. Apps and @auto-harness/ui must use `catalog:`.
 # A per-package Next pin installs a second copy and splits App Router context.
 catalog:
   next: ^16.3.8
@@ -16,6 +16,6 @@ onlyBuiltDependencies:
   - sharp
 
 overrides:
-  nanoid: 3.3.18
-  postcss: 8.5.26
-  sharp: 0.35.4
+  nanoid: ^3.3.18
+  postcss: ^8.5.28
+  sharp: ^0.35.5
