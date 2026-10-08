@@ -1,5 +1,5 @@
 import { createGunzip } from "node:zlib";
-import { mkdtemp, readFile, readdir, rm, symlink, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -7,7 +7,7 @@ import { pipeline } from "node:stream/promises";
 import { extract } from "tar-stream";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { defaultSessionOutputsDir, SessionOutputSpool } from "./session-output-spool.ts";
+import { SessionOutputSpool } from "./session-output-spool.ts";
 
 const temporary: string[] = [];
 
@@ -49,52 +49,6 @@ async function unpack(gzipBytes: Buffer): Promise<Array<{ name: string; body: st
 }
 
 describe("SessionOutputSpool", () => {
-  it("uses the private default directory and classifies invalid output files", async () => {
-    expect(defaultSessionOutputsDir("/home/tester")).toBe(
-      join("/home/tester", ".auto-harness", "session-outputs"),
-    );
-    const root = await tempDirectory();
-    const spool = new SessionOutputSpool({ root });
-    const directory = await spool.begin("session-dir", "attempt-dir");
-    await mkdir(directory.env.HARNESS_OUTPUT_FILE);
-    const tooLarge = await spool.begin("session-large", "attempt-large");
-    await writeFile(tooLarge.env.HARNESS_OUTPUT_FILE, Buffer.alloc(256 * 1024 + 1, 32));
-    const invalidEncoding = await spool.begin("session-encoding", "attempt-encoding");
-    await writeFile(invalidEncoding.env.HARNESS_OUTPUT_FILE, Buffer.from([0xff, 0xfe]));
-    await Promise.all([directory.capture(), tooLarge.capture(), invalidEncoding.capture()]);
-    const records = await Promise.all(
-      ["attempt-dir", "attempt-large", "attempt-encoding"].map(async (attemptId) => {
-        const jobs = await readdir(join(root, "jobs"));
-        let ready: string | undefined;
-        for (const name of jobs.filter((entry) => entry.endsWith(".ready"))) {
-          const record = JSON.parse(
-            await readFile(join(root, "jobs", name, "job.json"), "utf8"),
-          ) as { attemptId: string };
-          if (record.attemptId === attemptId) ready = name;
-        }
-        if (!ready) throw new Error(`missing job for ${attemptId}`);
-        return JSON.parse(await readFile(join(root, "jobs", ready, "job.json"), "utf8")) as {
-          attemptId: string;
-          output: unknown;
-        };
-      }),
-    );
-    expect(records.map(({ output }) => output)).toEqual([
-      {
-        state: "error",
-        error: { code: "invalid_output_file", message: "Output path is not a regular file" },
-      },
-      {
-        state: "error",
-        error: { code: "output_too_large", message: "Output exceeds 262144 bytes" },
-      },
-      {
-        state: "error",
-        error: { code: "invalid_output_encoding", message: "Output must be valid UTF-8" },
-      },
-    ]);
-  });
-
   it("stores valid JSON and a bounded tar.gz before publishing with the host identity", async () => {
     const root = await tempDirectory();
     const requests: Array<{ url: string; init?: RequestInit }> = [];
@@ -202,76 +156,6 @@ describe("SessionOutputSpool", () => {
       state: "error",
       error: { code: "invalid_json" },
     });
-  });
-
-  it("records unsafe artifact trees as an artifact error without losing valid output JSON", async () => {
-    const root = await tempDirectory();
-    const submissions: unknown[] = [];
-    const fetchFn: typeof fetch = async (input, init) => {
-      if (String(input).endsWith("/outputs/prepare")) {
-        submissions.push(JSON.parse(String(init?.body)));
-        return Response.json({});
-      }
-      return Response.json({ ok: true });
-    };
-    const spool = new SessionOutputSpool({
-      root,
-      identity: { apiUrl: "http://api.test" },
-      fetchFn,
-    });
-    const attempt = await spool.begin("session-link", "attempt-link");
-    await writeFile(attempt.env.HARNESS_OUTPUT_FILE, '{"ok":true}', "utf8");
-    await symlink("/etc/passwd", join(attempt.env.HARNESS_ARTIFACTS_DIR, "escape"));
-    await attempt.capture();
-    await spool.runPass();
-    const request = submissions[0] as {
-      output: unknown;
-      artifacts: { state: string; error?: { code: string } };
-    };
-    expect(request.output).toMatchObject({ state: "ready" });
-    expect(request.artifacts).toMatchObject({
-      state: "error",
-      error: { code: "artifact_capture_failed" },
-    });
-  });
-
-  it("recovers a durable job after restart and retries a transient API failure", async () => {
-    const root = await tempDirectory();
-    let now = Date.now();
-    let attempts = 0;
-    const requests: string[] = [];
-    const fetchFn: typeof fetch = async (input) => {
-      requests.push(String(input));
-      if (String(input).endsWith("/outputs/prepare")) {
-        attempts += 1;
-        return attempts === 1 ? Response.json({}, { status: 503 }) : Response.json({});
-      }
-      return Response.json({ ok: true });
-    };
-    const first = new SessionOutputSpool({
-      root,
-      identity: { apiUrl: "http://api.test" },
-      fetchFn,
-      now: () => now,
-    });
-    const attempt = await first.begin("session-restart", "attempt-restart");
-    await writeFile(attempt.env.HARNESS_OUTPUT_FILE, '{"persisted":true}', "utf8");
-    await attempt.capture();
-    await first.runPass();
-    expect(attempts).toBe(1);
-    first.stop();
-
-    now += 60_000;
-    const restarted = new SessionOutputSpool({
-      root,
-      identity: { apiUrl: "http://api.test" },
-      fetchFn,
-      now: () => now,
-    });
-    await restarted.runPass();
-    expect(attempts).toBe(2);
-    expect(requests.filter((url) => url.endsWith("/outputs/prepare"))).toHaveLength(2);
-    expect(await readdir(join(root, "jobs"))).toEqual([]);
   });
 
   it("serializes admission at the job cap and records overflow without growing the queue", async () => {

@@ -41,4 +41,30 @@ describe("SessionOutputSpool staging capacity", () => {
       fileCount: 1,
     });
   });
+
+  it("reports artifact source bytes beyond the per-session limit independently", async () => {
+    const root = await mkdtemp(join(tmpdir(), "harness-session-output-source-limit-"));
+    temporary.push(root);
+    let submission: { artifacts: { state: string; error?: { code: string } } } | undefined;
+    const fetchFn: typeof fetch = async (input, init) => {
+      if (String(input).endsWith("/outputs/prepare"))
+        submission = JSON.parse(String(init?.body)) as typeof submission;
+      return Response.json({ ok: true });
+    };
+    const spool = new SessionOutputSpool({
+      root,
+      identity: { apiUrl: "http://api.test" },
+      fetchFn,
+    });
+    const attempt = await spool.begin("session-over-source", "attempt-over-source");
+    const file = await open(join(attempt.env.HARNESS_ARTIFACTS_DIR, "too-large.bin"), "w");
+    await file.truncate(MAX_SESSION_ARTIFACT_SOURCE_BYTES + 1);
+    await file.close();
+    await attempt.capture();
+    await spool.runPass();
+    expect(submission?.artifacts).toMatchObject({
+      state: "error",
+      error: { code: "artifact_capture_failed" },
+    });
+  });
 });

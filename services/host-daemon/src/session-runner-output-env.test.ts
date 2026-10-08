@@ -27,7 +27,7 @@ describe("SessionRunner output environment", () => {
           worktreeId: null,
           sessionType: "scheduled",
           outputs: true,
-        } as Partial<import("@auto-harness/shared").SessionAssign>),
+        }),
       );
       expect(result.outputsJobId).toBeTruthy();
       expect(test.starts).toEqual(["/repo-1"]);
