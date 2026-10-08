@@ -41,6 +41,7 @@ import * as repositoryCounts from "./plane-storage-repository-counts.ts";
 import * as workspaces from "./plane-storage-workspaces.ts";
 import { backfillArchiveRetryIndexPage } from "./ensure-archive-retry-index.ts";
 import { DynamoSessionRetentionStore } from "./plane-storage-session-retention.ts";
+import { DynamoSessionOutputsStore } from "./plane-storage-session-outputs.ts";
 import * as operationalRead from "./plane-storage-operational-read.ts";
 import * as operationalCursor from "./plane-storage-operational-cursor.ts";
 import { markTerminalHookLifecycleEnqueued } from "./plane-storage-terminal-hook-lifecycle.ts";
@@ -66,6 +67,10 @@ export class DynamoPlaneStorageBase {
 
   getSessionRetentionStore(): DynamoSessionRetentionStore {
     return new DynamoSessionRetentionStore(this.ctx);
+  }
+
+  getSessionOutputsStore(): DynamoSessionOutputsStore {
+    return new DynamoSessionOutputsStore(this.ctx);
   }
 
   markTerminalHookLifecycleEnqueued(session: SessionRecord, at: string): Promise<boolean> {
@@ -447,6 +452,7 @@ export class DynamoPlaneStorageBase {
     legacyAssignmentCount?: number;
     primaryCommandStartState?: "pending" | "authorized";
     queueShard: number;
+    sessionOutputsSupported?: boolean;
   }): Promise<AssignmentWriteResult> {
     return sessions.tryAssignSession(this.ctx, opts);
   }
@@ -548,6 +554,7 @@ export class DynamoPlaneStorageBase {
     primaryCommandStartState?: "pending" | "authorized";
     queueShard: number;
     attemptId: string;
+    sessionOutputsSupported?: boolean;
   }): Promise<AssignmentWriteResult> {
     return mainCheckout.tryAssignMainCheckoutSession(this.ctx, opts);
   }

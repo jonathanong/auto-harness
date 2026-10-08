@@ -70,6 +70,7 @@ export async function tryAssignMainCheckoutSession(
     queueShard: number;
     attemptId: string;
     sessionApiKeyHash?: string;
+    sessionOutputsSupported?: boolean;
   },
 ): Promise<AssignmentWriteResult> {
   const lease = { sessionId: opts.sessionId, connectionId: opts.connectionId };
@@ -154,7 +155,7 @@ export async function tryAssignMainCheckoutSession(
           (opts.resumeSpec ? ", resumeSpec = if_not_exists(resumeSpec, :resumeSpec)" : "") +
           (opts.providerAccountLease ? ", providerAccountLease = :providerAccountLease" : "") +
           (opts.sessionApiKeyHash ? ", sessionApiKeyHash = :sessionApiKeyHash" : "") +
-          ", hostAssignmentLease = :hostAssignmentLease" +
+          ", hostAssignmentLease = :hostAssignmentLease, sessionOutputsSupported = :outputsSupported" +
           " REMOVE ackReceivedAt, reconnectDeadlineAt, completedAt, exitCode, errorCode, errorMessage, retryAfter, retryCount" +
           (opts.sessionApiKeyHash ? "" : ", sessionApiKeyHash"),
         ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
@@ -175,6 +176,7 @@ export async function tryAssignMainCheckoutSession(
           ":attemptId": opts.attemptId,
           ":primaryCommandStartState": opts.primaryCommandStartState ?? "pending",
           ":hostAssignmentLease": hostAssignmentLease,
+          ":outputsSupported": opts.sessionOutputsSupported ?? false,
           ...(opts.sessionApiKeyHash ? { ":sessionApiKeyHash": opts.sessionApiKeyHash } : {}),
           ...(opts.resumeSpec ? { ":resumeSpec": opts.resumeSpec } : {}),
           ...(opts.providerAccountLease

@@ -141,6 +141,8 @@ export type HostWireMessage =
       repositoryId: string | null;
       prompt: string;
       sessionApiKey?: string;
+      /** Additive opt-in; only advertised by hosts that support output collection. */
+      outputs?: true;
       resolvedArgv: string[];
       timeout: number;
       worktreeId: string | null;

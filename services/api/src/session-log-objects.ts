@@ -4,6 +4,7 @@ import {
   gzipJsonlLines,
   sessionLogArchiveKey,
   sessionLogPartKey,
+  isSessionLogObjectKey,
 } from "@auto-harness/shared";
 
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -154,9 +155,13 @@ export async function readSessionLogObjects(
   query?: LogQuery,
 ): Promise<LogRecord[] | undefined> {
   const prefix = `sessions/${sessionId}/`;
-  const keys = new Set([...state.logObjects.keys()].filter((key) => key.startsWith(prefix)));
+  const keys = new Set(
+    [...state.logObjects.keys()].filter(
+      (key) => key.startsWith(prefix) && isSessionLogObjectKey(key),
+    ),
+  );
   const listed = await state.archiveWriter?.listKeys?.(prefix);
-  for (const key of listed ?? []) keys.add(key);
+  for (const key of listed ?? []) if (isSessionLogObjectKey(key)) keys.add(key);
   if (keys.size === 0) return undefined;
   const archiveKey = sessionLogArchiveKey(sessionId);
   if (keys.has(archiveKey)) {

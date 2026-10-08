@@ -9,6 +9,7 @@ export const HOST_CAPABILITIES = [
   "prior-session-context",
   "workspace-sessions",
   "session-spawn",
+  "session-outputs",
 ] as const;
 
 export type HostCapability = (typeof HOST_CAPABILITIES)[number];

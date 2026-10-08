@@ -392,6 +392,7 @@ export async function tryAssignWorkspaceSession(
     hostAssignmentCap?: number;
     legacyAssignmentCount?: number;
     primaryCommandStartState?: "pending" | "authorized";
+    sessionOutputsSupported?: boolean;
     queueShard: number;
   },
 ): Promise<AssignmentWriteResult> {
@@ -411,6 +412,7 @@ export async function tryAssignWorkspaceSession(
     ":hostAssignmentLease": opts.hostAssignmentLease ?? { hostId: opts.hostId },
     ":activeHostOrder": activeHostOrder(opts.now, opts.sessionId),
     ":primaryCommandStartState": opts.primaryCommandStartState ?? "pending",
+    ":outputsSupported": opts.sessionOutputsSupported ?? false,
   };
   const sets = [
     "#s = :running",
@@ -430,6 +432,7 @@ export async function tryAssignWorkspaceSession(
     "assignmentConnectionId = :connectionId",
     "hostAssignmentLease = :hostAssignmentLease",
     "primaryCommandStartState = :primaryCommandStartState",
+    "sessionOutputsSupported = :outputsSupported",
   ];
   values[":null"] = null;
   if (opts.providerAccountLease) {

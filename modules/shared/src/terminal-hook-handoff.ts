@@ -17,6 +17,10 @@ export type TerminalHookHandoffMessage = {
   type: "session:terminal-hook";
   handoffId: string;
   sessionId: string;
+  /** Original assignment attempt for matching a retained local output spool. */
+  outputAttemptId?: string;
+  /** Original daemon advertised output capture for this assignment. */
+  outputs?: true;
   repositoryId: string;
   worktreeId: string | null;
   status: Extract<SessionStatus, "completed" | "failed" | "cancelled" | "timed_out">;

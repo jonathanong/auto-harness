@@ -90,6 +90,8 @@ export async function pendingTerminalHookHandoffs(
       type: "session:terminal-hook",
       handoffId: handoff.handoffId,
       sessionId: session.id,
+      ...(handoff.attemptId ? { outputAttemptId: handoff.attemptId } : {}),
+      ...(session.sessionOutputsSupported ? { outputs: true } : {}),
       repositoryId: handoff.repositoryId,
       worktreeId: handoff.worktreeId,
       status: handoff.status,

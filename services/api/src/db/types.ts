@@ -10,6 +10,10 @@ export type SessionRecord = {
   /** Internal deletion fence; retained until versioned transcript cleanup has succeeded. */
   retentionToken?: string;
   retentionClaimedAt?: string;
+  /** Current attempt can publish output metadata when its host advertised support. */
+  sessionOutputsSupported?: boolean;
+  /** Latest artifact upload validity window, fenced by retention claim. */
+  outputsUploadExpiresAt?: string;
   /** Durable confirmation that a deferred terminal-hook lifecycle intent was enqueued. */
   terminalHookLifecycleEnqueuedAt?: string;
   id: string;

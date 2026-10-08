@@ -58,6 +58,7 @@ export async function claimSessionRetention(
     ),
     ...flags.map((field) => `(attribute_not_exists(${field}) OR ${field} = :false)`),
     "(attribute_not_exists(errorCode) OR errorCode <> :checkout OR (attribute_not_exists(terminalHookHandoffSettled) AND attribute_not_exists(terminalHookHandoffExpiredAt)) OR attribute_exists(terminalHookLifecycleEnqueuedAt))",
+    "(attribute_not_exists(outputsUploadExpiresAt) OR outputsUploadExpiresAt <= :now)",
   ].join(" AND ");
   try {
     await ctx.doc.send(

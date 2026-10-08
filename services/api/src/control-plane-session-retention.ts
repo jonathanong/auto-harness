@@ -72,6 +72,8 @@ async function processJob(
   if (!deleteMemoryObjectPage(state, job, objectLimit)) return { deleted: 0, objects: objectLimit };
   if (!(await store.deleteRelatedPage(job.sessionId, "usage"))) return { deleted: 0, objects: 0 };
   if (!(await store.deleteRelatedPage(job.sessionId, "logs"))) return { deleted: 0, objects: 0 };
+  if (!(await store.deleteRelatedPage(job.sessionId, "outputs"))) return { deleted: 0, objects: 0 };
+  await state.sessionArtifactStore?.deleteSession?.(job.sessionId, job.activityGeneration);
   if (!(await store.finish(job, owner, state.now()))) return { deleted: 0, objects: 0 };
   state.sessions.delete(job.sessionId);
   state.logs.delete(job.sessionId);
