@@ -25,6 +25,7 @@ import { nextPageKey } from "./plane-storage-types.ts";
 
 const SESSION_DRAIN_LEDGER_SCOPE_KEY = "__session-drain-ledger__";
 const SESSION_DRAIN_LEDGER_RECORD_KEY = "ACTIVITY-V1";
+const OPERATIONAL_LEDGER_SCOPE_KEY = "__operational-activity#v2#ready";
 
 /** Test helper: wipe all items in every table (DynamoDB Local). */
 export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
@@ -209,12 +210,11 @@ async function clearSessionDrains(ctx: PlaneStorageCtx): Promise<void> {
       new ScanCommand({ TableName: ctx.tables.sessionDrains, ExclusiveStartKey: startKey }),
     );
     for (const item of result.Items ?? []) {
-      if (
-        item.scopeKey === SESSION_DRAIN_LEDGER_SCOPE_KEY &&
-        item.recordKey === SESSION_DRAIN_LEDGER_RECORD_KEY
-      ) {
-        continue;
-      }
+      const principalScope = item.scopeKey === SESSION_DRAIN_LEDGER_SCOPE_KEY;
+      const principalKey = item.recordKey === SESSION_DRAIN_LEDGER_RECORD_KEY;
+      const operationalScope = item.scopeKey === OPERATIONAL_LEDGER_SCOPE_KEY;
+      const readyKey = item.recordKey === "READY";
+      if ((principalScope && principalKey) || (operationalScope && readyKey)) continue;
       await ctx.doc.send(
         new DeleteCommand({
           TableName: ctx.tables.sessionDrains,

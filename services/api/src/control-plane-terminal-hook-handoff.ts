@@ -247,5 +247,12 @@ function noteDeferredCheckoutFailureLifecycle(
   const errorCode = session.terminalHookHandoff?.errorCode ?? session.errorCode;
   if (errorCode !== "checkout_fetch_failed") return;
   if (!state.storage || typeof state.storage.enqueue !== "function") return;
-  return enqueueSlackSessionLifecycle(state, session);
+  return enqueueSlackSessionLifecycle(state, session).then(async () => {
+    if (
+      (session.terminalHookHandoffSettled || session.terminalHookHandoffExpiredAt) &&
+      typeof state.storage?.markTerminalHookLifecycleEnqueued === "function"
+    ) {
+      await state.storage.markTerminalHookLifecycleEnqueued(session, state.now());
+    }
+  });
 }

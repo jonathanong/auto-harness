@@ -131,6 +131,12 @@ describe("CDK table catalog", () => {
       ],
     });
     const sessions = DYNAMO_TABLES.find((t) => t.name === "Sessions");
+    expect(sessions?.gsis).toContainEqual({
+      name: "statusShard-completedAt",
+      partitionKey: { name: "statusShard", type: "S" },
+      sortKey: { name: "completedAt", type: "S" },
+      projectionType: "KEYS_ONLY",
+    });
     expect(sessions?.gsis?.some((g) => g.name === "statusShard-createdAt")).toBe(true);
     expect(sessions?.gsis?.some((g) => g.name === "statusShard-createdOrder")).toBe(true);
     expect(sessions?.gsis?.some((g) => g.name === "statusShard-queueOrder")).toBe(true);

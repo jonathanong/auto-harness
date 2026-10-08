@@ -1,4 +1,8 @@
 import { gzipSync } from "node:zlib";
+import {
+  deleteSessionObjectVersionsPage,
+  type SessionObjectDeletionPage,
+} from "./session-object-retention.ts";
 
 import { isSessionLogObjectKey } from "@auto-harness/shared";
 import {
@@ -17,6 +21,7 @@ export type ArchiveWriter = {
   putGzipObject?(key: string, body: Buffer): Promise<ArchiveWriteResult | void>;
   getGzipObject?(key: string): Promise<Buffer | undefined>;
   listKeys?(prefix: string): Promise<string[]>;
+  deleteSessionObjectsPage?(sessionId: string, limit: number): Promise<SessionObjectDeletionPage>;
 };
 
 export type ArchiveWriteResult = {
@@ -26,8 +31,10 @@ export type ArchiveWriteResult = {
 };
 
 type ArchiveS3Client = {
-  send(command: unknown): Promise<unknown>;
+  send(command: unknown, options?: { abortSignal?: AbortSignal }): Promise<unknown>;
 };
+
+const ARCHIVE_PUT_TIMEOUT_MS = 60_000;
 
 export class S3ArchiveWriter implements ArchiveWriter {
   private readonly client: ArchiveS3Client;
@@ -36,6 +43,10 @@ export class S3ArchiveWriter implements ArchiveWriter {
   constructor(client: ArchiveS3Client, bucket: string) {
     this.client = client;
     this.bucket = bucket;
+  }
+
+  deleteSessionObjectsPage(sessionId: string, limit: number): Promise<SessionObjectDeletionPage> {
+    return deleteSessionObjectVersionsPage(this.client, this.bucket, sessionId, limit);
   }
 
   async putArchive(object: {
@@ -56,7 +67,10 @@ export class S3ArchiveWriter implements ArchiveWriter {
         ContentEncoding: "gzip",
         ServerSideEncryption: "AES256",
       }),
-    )) as { VersionId?: unknown };
+      { abortSignal: AbortSignal.timeout(ARCHIVE_PUT_TIMEOUT_MS) },
+    )) as {
+      VersionId?: unknown;
+    };
     if (typeof result.VersionId !== "string" || result.VersionId.length === 0) {
       throw new Error("S3 archive upload did not return a version id");
     }
@@ -80,7 +94,10 @@ export class S3ArchiveWriter implements ArchiveWriter {
         ContentEncoding: "gzip",
         ServerSideEncryption: "AES256",
       }),
-    )) as { VersionId?: unknown };
+      { abortSignal: AbortSignal.timeout(ARCHIVE_PUT_TIMEOUT_MS) },
+    )) as {
+      VersionId?: unknown;
+    };
     if (typeof result.VersionId !== "string" || result.VersionId.length === 0) {
       throw new Error("S3 archive upload did not return a version id");
     }

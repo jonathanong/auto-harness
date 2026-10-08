@@ -102,7 +102,7 @@ describe("DynamoDB repository session pagination", () => {
     });
   });
 
-  it("falls back to a filtered scan while the index is unavailable", async () => {
+  it("fails closed without scanning when the repository index is unavailable", async () => {
     let queryAttempts = 0;
     const send = async (command: { input: Record<string, unknown> }) => {
       if (command.input.IndexName === "repositoryId-createdAt") {
@@ -120,9 +120,9 @@ describe("DynamoDB repository session pagination", () => {
       tables: { sessions: "Sessions" },
     } as unknown as PlaneStorageCtx;
 
-    await expect(listSessionsByRepository(ctx, "repo-1")).resolves.toMatchObject([
-      { id: "session-1" },
-    ]);
+    await expect(listSessionsByRepository(ctx, "repo-1")).rejects.toMatchObject({
+      name: "ValidationException",
+    });
     expect(queryAttempts).toBe(1);
   });
 
@@ -144,18 +144,14 @@ describe("DynamoDB repository session pagination", () => {
     await expect(listSessionsByRepository(failed, "repo-1")).rejects.toThrow("query unavailable");
   });
 
-  it("pages the compatibility scan and normalizes an omitted first page", async () => {
-    let scans = 0;
+  it("pages the indexed query and normalizes an omitted first page", async () => {
+    let queries = 0;
     const ctx = {
       doc: {
         send: async (command: { input: Record<string, unknown> }) => {
-          if (command.input.IndexName === "repositoryId-createdAt") {
-            const error = new Error("index is still being created");
-            error.name = "ValidationException";
-            throw error;
-          }
-          scans += 1;
-          return scans === 1
+          expect(command.input.IndexName).toBe("repositoryId-createdAt");
+          queries += 1;
+          return queries === 1
             ? { LastEvaluatedKey: { id: "page-1" } }
             : { Items: [{ id: "session-2", repositoryId: "repo-1", createdAt: "2026-01-02" }] };
         },
@@ -166,6 +162,6 @@ describe("DynamoDB repository session pagination", () => {
     await expect(listSessionsByRepository(ctx, "repo-1")).resolves.toMatchObject([
       { id: "session-2" },
     ]);
-    expect(scans).toBe(2);
+    expect(queries).toBe(2);
   });
 });

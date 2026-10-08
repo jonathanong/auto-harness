@@ -149,7 +149,7 @@ export async function reclaimReconnectDeadlines(
 ): Promise<string[]> {
   const requeued: string[] = [];
   const sessions = state.storage
-    ? await state.storage.listAllSessions()
+    ? await state.storage.listOperationalRecoveryPage("reconnect", state.shardCount)
     : [...state.sessions.values()];
   for (const session of sessions) {
     if (await expireTerminalHookHandoffIfNeeded(state, session, nowMs)) continue;

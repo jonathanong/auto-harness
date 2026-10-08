@@ -1,8 +1,9 @@
 import {
-  normalizeSessionLogSettings,
-  publicSessionLogSettings,
+  normalizeControlPlaneSessionLogSettings,
+  publicControlPlaneSessionLogSettings,
   SESSION_LOG_SETTINGS_ID,
-  type PublicSessionLogSettings,
+  type ControlPlaneSessionLogSettings,
+  type PublicControlPlaneSessionLogSettings,
   type SessionLogSettings,
 } from "@auto-harness/shared";
 
@@ -10,25 +11,33 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { SessionLogSettingsRecord } from "./db/plane-storage-types.ts";
 
 export function assignLogSettings(state: ControlPlaneState): SessionLogSettings {
-  return normalizeSessionLogSettings(state.sessionLogSettings);
+  const settings = normalizeControlPlaneSessionLogSettings(state.sessionLogSettings);
+  return {
+    uploadMode: settings.uploadMode,
+    batchMaxKb: settings.batchMaxKb,
+    batchMaxLines: settings.batchMaxLines,
+    batchMaxWaitMs: settings.batchMaxWaitMs,
+    controlPlanePollMs: settings.controlPlanePollMs,
+  };
 }
 
 export async function getSessionLogSettings(
   state: ControlPlaneState,
-): Promise<PublicSessionLogSettings> {
+): Promise<PublicControlPlaneSessionLogSettings> {
   const record =
     state.storage && typeof state.storage.getSessionLogSettings === "function"
       ? await state.storage.getSessionLogSettings()
       : state.sessionLogSettings;
   if (record) state.sessionLogSettings = record;
-  return publicSessionLogSettings(record ?? undefined);
+  return publicControlPlaneSessionLogSettings(record ?? undefined);
 }
 
 export async function putSessionLogSettings(
   state: ControlPlaneState,
-  input: Partial<SessionLogSettings> & { version: number },
+  input: Partial<ControlPlaneSessionLogSettings> & { version: number },
 ): Promise<
-  { ok: true; settings: PublicSessionLogSettings } | { ok: false; error: string; conflict?: true }
+  | { ok: true; settings: PublicControlPlaneSessionLogSettings }
+  | { ok: false; error: string; conflict?: true }
 > {
   if (!Number.isSafeInteger(input.version) || input.version < 0) {
     return { ok: false, error: "version must contain the observed non-negative integer version" };
@@ -37,10 +46,18 @@ export async function putSessionLogSettings(
     state.storage && typeof state.storage.getSessionLogSettings === "function"
       ? await state.storage.getSessionLogSettings()
       : state.sessionLogSettings;
-  const settings = normalizeSessionLogSettings({
-    ...current,
-    ...input,
-  });
+  let settings: ControlPlaneSessionLogSettings;
+  try {
+    settings = normalizeControlPlaneSessionLogSettings({
+      ...current,
+      ...input,
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "invalid session log settings",
+    };
+  }
   if ((current?.version ?? 0) !== input.version) {
     return { ok: false, error: "version conflict", conflict: true };
   }
@@ -61,5 +78,5 @@ export async function putSessionLogSettings(
     if (!written) return { ok: false, error: "version conflict", conflict: true };
   }
   state.sessionLogSettings = record;
-  return { ok: true, settings: publicSessionLogSettings(record) };
+  return { ok: true, settings: publicControlPlaneSessionLogSettings(record) };
 }

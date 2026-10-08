@@ -61,15 +61,23 @@ export type {
 } from "./workspace.ts";
 
 export {
+  DEFAULT_SESSION_RETENTION_DAYS,
   DEFAULT_SESSION_LOG_SETTINGS,
+  SESSION_RETENTION_DAYS_MAX,
+  SESSION_RETENTION_DAYS_MIN,
   SESSION_LOG_SETTINGS_ID,
   SESSION_LOG_UPLOAD_MODES,
+  isSessionRetentionDays,
   isSessionLogObjectKey,
   isSessionLogUploadMode,
+  normalizeControlPlaneSessionLogSettings,
   normalizeSessionLogSettings,
+  publicControlPlaneSessionLogSettings,
   publicSessionLogSettings,
   sessionLogArchiveKey,
   sessionLogPartKey,
+  type ControlPlaneSessionLogSettings,
+  type PublicControlPlaneSessionLogSettings,
   type PublicSessionLogSettings,
   type SessionLogSettings,
   type SessionLogUploadMode,

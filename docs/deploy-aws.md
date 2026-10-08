@@ -436,6 +436,28 @@ pnpm deploy:aws -- --yes-priority-order
 
 The wrapper refuses to restore scheduler admission if the marker is absent.
 
+### Operational activity and session retention rollout
+
+The session-retention revision uses the same maintenance fence: disable external admission
+before `pnpm deploy:aws`, and leave it disabled until the wrapper succeeds. The wrapper disables
+EventBridge, fences the scheduler Lambda, waits for old writers, and verifies there are no queued
+or running sessions. It stages Sessions indexes one at a time, including the new
+`statusShard-completedAt` retention index, before enabling their readers.
+
+While scheduling remains fenced, a resumable migration strongly reads at most 25 Sessions rows
+per page and backfills the active/repository activity ledger in `SessionDrains`. Terminal rows
+without `completedAt` receive the migration time, so their retention window starts conservatively
+at migration. The readiness marker is `scopeKey=__operational-activity#v2#ready`,
+`recordKey=READY`, `recordType=operational-activity-ready-v2`. Runtime activity reads fail closed
+until that marker exists; Cron never falls back to scanning Sessions. The wrapper verifies
+readiness before restoring scheduler concurrency and the rule's original state. If migration
+fails or reaches its page cap, rerun the wrapper with external admission still disabled.
+
+The default policy deletes terminal sessions and their logs 30 days after completion. Set
+`sessionRetentionDays` in the session-log settings form before re-enabling scheduling if a
+different window is needed. Existing terminal history is included. See
+[session retention](aws.md#cron-evaluator) for cleanup semantics.
+
 ### Fresh environment cutover for breaking coordination schemas
 
 The sparse active-host claim index and later attempt/transcript protocol changes are a fresh

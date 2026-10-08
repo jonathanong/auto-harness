@@ -17,6 +17,12 @@ export type SessionLogSettings = {
   controlPlanePollMs: number;
 };
 
+/** Control-plane settings include lifecycle retention; only SessionLogSettings is sent to hosts. */
+export type ControlPlaneSessionLogSettings = SessionLogSettings & {
+  /** Number of days after completion before terminal session and log data expires. */
+  sessionRetentionDays: number;
+};
+
 export const DEFAULT_SESSION_LOG_SETTINGS: SessionLogSettings = {
   uploadMode: "off",
   batchMaxKb: 256,
@@ -24,6 +30,10 @@ export const DEFAULT_SESSION_LOG_SETTINGS: SessionLogSettings = {
   batchMaxWaitMs: 60_000,
   controlPlanePollMs: 60_000,
 };
+
+export const DEFAULT_SESSION_RETENTION_DAYS = 30;
+export const SESSION_RETENTION_DAYS_MIN = 1;
+export const SESSION_RETENTION_DAYS_MAX = 3650;
 
 const SESSION_LOG_POLL_MS_MIN = 5_000;
 const SESSION_LOG_POLL_MS_MAX = 5 * 60_000;
@@ -76,6 +86,37 @@ export function normalizeSessionLogSettings(
   };
 }
 
+export function isSessionRetentionDays(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= SESSION_RETENTION_DAYS_MIN &&
+    value <= SESSION_RETENTION_DAYS_MAX
+  );
+}
+
+/**
+ * Normalize a persisted control-plane settings snapshot. Older records may omit retention and
+ * receive the default; an explicitly invalid value is rejected instead of being clamped.
+ */
+export function normalizeControlPlaneSessionLogSettings(
+  over: Partial<ControlPlaneSessionLogSettings> | undefined,
+): ControlPlaneSessionLogSettings {
+  const sessionRetentionDays =
+    over?.sessionRetentionDays === undefined
+      ? DEFAULT_SESSION_RETENTION_DAYS
+      : over.sessionRetentionDays;
+  if (!isSessionRetentionDays(sessionRetentionDays)) {
+    throw new Error(
+      `sessionRetentionDays must be an integer from ${SESSION_RETENTION_DAYS_MIN} to ${SESSION_RETENTION_DAYS_MAX}`,
+    );
+  }
+  return {
+    ...normalizeSessionLogSettings(over),
+    sessionRetentionDays,
+  };
+}
+
 export function sessionLogPartKey(sessionId: string, seqStart: number, seqEnd: number): string {
   return `sessions/${sessionId}/parts/${seqStart}-${seqEnd}.jsonl.gz`;
 }
@@ -95,12 +136,27 @@ export const SESSION_LOG_SETTINGS_ID = "session-log-settings" as const;
 
 export type PublicSessionLogSettings = SessionLogSettings & { version: number };
 
+export type PublicControlPlaneSessionLogSettings = ControlPlaneSessionLogSettings & {
+  version: number;
+};
+
 export function publicSessionLogSettings(
   over?: Partial<SessionLogSettings> & { version?: number },
 ): PublicSessionLogSettings {
   const version = over?.version;
   return {
     ...normalizeSessionLogSettings(over),
+    version:
+      typeof version === "number" && Number.isSafeInteger(version) && version >= 0 ? version : 0,
+  };
+}
+
+export function publicControlPlaneSessionLogSettings(
+  over?: Partial<ControlPlaneSessionLogSettings> & { version?: number },
+): PublicControlPlaneSessionLogSettings {
+  const version = over?.version;
+  return {
+    ...normalizeControlPlaneSessionLogSettings(over),
     version:
       typeof version === "number" && Number.isSafeInteger(version) && version >= 0 ? version : 0,
   };

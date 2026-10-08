@@ -40,6 +40,10 @@ import * as sessionDrains from "./plane-storage-session-drains.ts";
 import * as repositoryCounts from "./plane-storage-repository-counts.ts";
 import * as workspaces from "./plane-storage-workspaces.ts";
 import { backfillArchiveRetryIndexPage } from "./ensure-archive-retry-index.ts";
+import { DynamoSessionRetentionStore } from "./plane-storage-session-retention.ts";
+import * as operationalRead from "./plane-storage-operational-read.ts";
+import * as operationalCursor from "./plane-storage-operational-cursor.ts";
+import { markTerminalHookLifecycleEnqueued } from "./plane-storage-terminal-hook-lifecycle.ts";
 
 /**
  * Sessions/worktrees/locks/schedules/repositories/archives/agent-hosts delegators.
@@ -58,6 +62,14 @@ export class DynamoPlaneStorageBase {
       archives: this.ctx.tables.archives,
       sessionDrains: this.ctx.tables.sessionDrains,
     });
+  }
+
+  getSessionRetentionStore(): DynamoSessionRetentionStore {
+    return new DynamoSessionRetentionStore(this.ctx);
+  }
+
+  markTerminalHookLifecycleEnqueued(session: SessionRecord, at: string): Promise<boolean> {
+    return markTerminalHookLifecycleEnqueued(this.ctx, session, at);
   }
 
   putSession(session: SessionRecord): Promise<void> {
@@ -93,6 +105,45 @@ export class DynamoPlaneStorageBase {
 
   listAllSessions(consistentRead = false): Promise<SessionRecord[]> {
     return sessions.listAllSessions(this.ctx, consistentRead);
+  }
+
+  listOperationalSessions(shardCount: number): Promise<SessionRecord[]> {
+    return operationalRead.listOperationalSessions(this.ctx, shardCount);
+  }
+
+  listOperationalRecoveryPage(
+    kind: operationalRead.OperationalRecoverySweep,
+    shardCount: number,
+  ): Promise<SessionRecord[]> {
+    return operationalRead.listOperationalRecoveryPage(this.ctx, kind, shardCount);
+  }
+
+  listRepositoryOperationalPage(
+    repositoryId: string,
+    cursor?: Record<string, unknown>,
+  ): Promise<{
+    sessions: SessionRecord[];
+    observedMembers: number;
+    nextKey?: Record<string, unknown>;
+  }> {
+    return operationalRead.listRepositoryOperationalPage(this.ctx, repositoryId, cursor);
+  }
+
+  loadRepositoryActivityCursor(repositoryId: string, drainRequestedAt: string) {
+    return operationalCursor.loadRepositoryActivityCursor(this.ctx, repositoryId, drainRequestedAt);
+  }
+
+  saveRepositoryActivityCursor(
+    repositoryId: string,
+    drainRequestedAt: string,
+    nextKey?: Record<string, unknown>,
+  ) {
+    return operationalCursor.saveRepositoryActivityCursor(
+      this.ctx,
+      repositoryId,
+      drainRequestedAt,
+      nextKey,
+    );
   }
 
   listSessionsByRepository(repositoryId: string): Promise<SessionRecord[]> {

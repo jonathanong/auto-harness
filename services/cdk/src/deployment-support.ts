@@ -43,6 +43,7 @@ export function cdkContext(
   config: DeploymentConfig,
   sessionPriorityIndexStage: "status" | "both" = "both",
   sessionCreatedOrderIndexStage: "none" | "status" = "status",
+  sessionRetentionIndexStage: "none" | "status" = "status",
 ): string[] {
   return [
     "--app",
@@ -65,6 +66,8 @@ export function cdkContext(
     `sessionPriorityIndexStage=${sessionPriorityIndexStage}`,
     "-c",
     `sessionCreatedOrderIndexStage=${sessionCreatedOrderIndexStage}`,
+    "-c",
+    `sessionRetentionIndexStage=${sessionRetentionIndexStage}`,
     ...(config.alarmEmails.length > 0
       ? (["-c", `alarmEmails=${config.alarmEmails.join(",")}`] as const)
       : []),
@@ -87,13 +90,14 @@ export async function applySessionPriorityIndexStage(
   config: DeploymentConfig,
   dependencies: DeploymentDependencies,
   stage: "status" | "both",
+  retentionStage: "none" | "status" = "none",
 ): Promise<void> {
   await dependencies.run("pnpm", [
     "exec",
     "cdk",
     "deploy",
     config.foundationStackName,
-    ...cdkContext(config, stage, "none"),
+    ...cdkContext(config, stage, "none", retentionStage),
     "--require-approval",
     "never",
   ]);
@@ -103,13 +107,30 @@ export async function applySessionPriorityIndexStage(
 export async function applySessionCreatedOrderIndexStage(
   config: DeploymentConfig,
   dependencies: DeploymentDependencies,
+  retentionStage: "none" | "status" = "none",
 ): Promise<void> {
   await dependencies.run("pnpm", [
     "exec",
     "cdk",
     "deploy",
     config.foundationStackName,
-    ...cdkContext(config, "both", "status"),
+    ...cdkContext(config, "both", "status", retentionStage),
+    "--require-approval",
+    "never",
+  ]);
+}
+
+/** Add the terminal-retention GSI after every earlier Sessions GSI is ACTIVE. */
+export async function applySessionRetentionIndexStage(
+  config: DeploymentConfig,
+  dependencies: DeploymentDependencies,
+): Promise<void> {
+  await dependencies.run("pnpm", [
+    "exec",
+    "cdk",
+    "deploy",
+    config.foundationStackName,
+    ...cdkContext(config, "both", "status", "status"),
     "--require-approval",
     "never",
   ]);

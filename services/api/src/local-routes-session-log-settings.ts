@@ -1,7 +1,8 @@
 import {
+  isSessionRetentionDays,
   isSessionLogUploadMode,
   thrownMessage,
-  type SessionLogSettings,
+  type ControlPlaneSessionLogSettings,
 } from "@auto-harness/shared";
 
 import { writeRouteAudit } from "./local-audit.ts";
@@ -14,6 +15,7 @@ const ALLOWED = new Set([
   "batchMaxLines",
   "batchMaxWaitMs",
   "controlPlanePollMs",
+  "sessionRetentionDays",
   "version",
 ]);
 
@@ -28,7 +30,7 @@ export async function handleSessionLogSettingsRoutes(ctx: RouteCtx): Promise<boo
     return true;
   }
   if (ctx.method !== "PUT") return false;
-  let input: Partial<SessionLogSettings> & { version: number };
+  let input: Partial<ControlPlaneSessionLogSettings> & { version: number };
   try {
     input = parseBody(await readJson(ctx.req));
   } catch (error) {
@@ -62,7 +64,7 @@ export async function handleSessionLogSettingsRoutes(ctx: RouteCtx): Promise<boo
   return true;
 }
 
-function parseBody(value: unknown): Partial<SessionLogSettings> & { version: number } {
+function parseBody(value: unknown): Partial<ControlPlaneSessionLogSettings> & { version: number } {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("configuration must be an object");
   }
@@ -75,6 +77,12 @@ function parseBody(value: unknown): Partial<SessionLogSettings> & { version: num
   }
   if (body.uploadMode !== undefined && !isSessionLogUploadMode(body.uploadMode)) {
     throw new Error("uploadMode must be off, subscribed, or always");
+  }
+  if (
+    body.sessionRetentionDays !== undefined &&
+    !isSessionRetentionDays(body.sessionRetentionDays)
+  ) {
+    throw new Error("sessionRetentionDays must be an integer from 1 to 3650");
   }
   for (const key of [
     "batchMaxKb",
@@ -94,6 +102,9 @@ function parseBody(value: unknown): Partial<SessionLogSettings> & { version: num
     ...(typeof body.batchMaxWaitMs === "number" ? { batchMaxWaitMs: body.batchMaxWaitMs } : {}),
     ...(typeof body.controlPlanePollMs === "number"
       ? { controlPlanePollMs: body.controlPlanePollMs }
+      : {}),
+    ...(typeof body.sessionRetentionDays === "number"
+      ? { sessionRetentionDays: body.sessionRetentionDays }
       : {}),
   };
 }

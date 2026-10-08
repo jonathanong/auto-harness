@@ -381,6 +381,9 @@ export function toPublic(
     terminalHookHandoff: _terminalHookHandoff,
     terminalHookHandoffSettled: _terminalHookHandoffSettled,
     terminalHookHandoffExpiredAt: _terminalHookHandoffExpiredAt,
+    terminalHookLifecycleEnqueuedAt: _terminalHookLifecycleEnqueuedAt,
+    retentionToken: _retentionToken,
+    retentionClaimedAt: _retentionClaimedAt,
     infrastructureRetryAttemptId: _infrastructureRetryAttemptId,
     ...publicSession
   } = session;

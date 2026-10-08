@@ -15,6 +15,7 @@ import {
   type HostAssignmentLease,
 } from "./plane-storage-host-assignment.ts";
 import { sessionDrainAdmissionCheck } from "./plane-storage-session-drains.ts";
+import { activeActivityForAssignment, activityPut } from "./plane-storage-operational-activity.ts";
 import type { SessionRecord } from "./types.ts";
 
 /**
@@ -155,6 +156,7 @@ export async function tryAssignSession(
         ExpressionAttributeValues: sessionValues,
       },
     },
+    activityPut(ctx, activeActivityForAssignment(opts)),
     hostAssignmentAcquireItem(ctx, {
       ...hostAssignmentLease,
       connectionId: opts.connectionId,

@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 
+import { DeleteObjectsCommand, ListObjectVersionsCommand } from "@aws-sdk/client-s3";
+
 import { configuredArchiveWriter, S3ArchiveWriter } from "./archive-writer.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 
 describe("S3ArchiveWriter", () => {
   it("uploads only the bounded private session archive contract", async () => {
     const commands: unknown[] = [];
+    const sendOptions: Array<{ abortSignal?: AbortSignal } | undefined> = [];
     const writer = new S3ArchiveWriter(
       {
-        send: async (command) => {
+        send: async (command, options) => {
           commands.push(command);
+          sendOptions.push(options);
           return { VersionId: "archive-v1" };
         },
       },
@@ -27,6 +31,7 @@ describe("S3ArchiveWriter", () => {
       bodyBytes: expect.any(Number),
     });
     expect(commands).toHaveLength(1);
+    expect(sendOptions[0]?.abortSignal).toBeInstanceOf(AbortSignal);
     expect((commands[0] as { input: Record<string, unknown> }).input).toEqual({
       Body: expect.any(Uint8Array),
       Bucket: "private-archives",
@@ -96,6 +101,29 @@ describe("S3ArchiveWriter", () => {
     expect(tokens).toEqual([undefined, "page-2"]);
   });
 
+  it("exposes bounded version deletion through the archive writer", async () => {
+    const commands: unknown[] = [];
+    const writer = new S3ArchiveWriter(
+      {
+        send: async (command) => {
+          commands.push(command);
+          return command instanceof ListObjectVersionsCommand
+            ? { Versions: [{ Key: "sessions/s/parts/1-1.jsonl.gz", VersionId: "v1" }] }
+            : {};
+        },
+      },
+      "private-archives",
+    );
+    await expect(writer.deleteSessionObjectsPage("s", 8)).resolves.toEqual({
+      deleted: 1,
+      done: false,
+    });
+    expect(commands.map((command) => command.constructor)).toEqual([
+      ListObjectVersionsCommand,
+      DeleteObjectsCommand,
+    ]);
+  });
+
   it("skips list entries without string keys", async () => {
     const writer = new S3ArchiveWriter(
       {
@@ -114,11 +142,13 @@ describe("S3ArchiveWriter", () => {
 
   it("puts and gets gzip session log objects", async () => {
     const stored = new Map<string, Buffer>();
+    const putSignals: Array<AbortSignal | undefined> = [];
     const writer = new S3ArchiveWriter(
       {
-        send: async (command) => {
+        send: async (command, options) => {
           const input = (command as { input?: { Key?: string; Body?: Buffer } }).input;
           if (input?.Body && input.Key) {
+            putSignals.push(options?.abortSignal);
             stored.set(input.Key, Buffer.from(input.Body));
             return { VersionId: "part-v1" };
           }
@@ -137,6 +167,7 @@ describe("S3ArchiveWriter", () => {
       contentType: "application/gzip",
       bodyBytes: gzipped.length,
     });
+    expect(putSignals).toEqual([expect.any(AbortSignal)]);
     await expect(writer.getGzipObject("sessions/s/parts/1-1.jsonl.gz")).resolves.toEqual(gzipped);
     await expect(
       writer.getGzipObject("sessions/s/parts/missing.jsonl.gz"),

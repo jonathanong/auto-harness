@@ -52,6 +52,18 @@ Workspace placement uses an idle slot on a `workspace-sessions` host instead of 
 The EventBridge one-minute rule is a repair sweep (ack deadlines, running timeouts, stale hosts,
 missed assigns). Create, resume, clone, register, and terminal also invoke the scheduler.
 
+The repair sweep reads a sparse, strongly checked activity ledger: repository sessions join a
+repository scope at admission, and prompt, scheduled, and workspace sessions join an active scope
+when assignment commits. Settled terminal history does not enter the per-minute ack, timeout, reconnect,
+or provider-capacity reads. Ack, timeout, and reconnect each advance a durable, independent
+25-member cursor through the active scope; repair latency includes the time to rotate through
+shards and pages. Assignment builds a complete lease snapshot. A one-time,
+maintenance-fenced backfill prepares older sessions before those readers run. If the active snapshot
+exceeds its fixed per-run ceiling, assignment fails closed above 2,000 active members instead of
+rebuilding an incomplete lease view; recovery cursors continue to advance while operators reduce the
+active backlog. Repository drains page their own strongly consistent scope, then
+require a fresh empty sweep and a strong worktree-claim check before pausing admission.
+
 ## Ack deadline
 
 A `session:assign` that does not receive `session:ack` inside the deadline returns the session to

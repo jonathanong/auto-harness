@@ -34,6 +34,19 @@ async function flush(): Promise<void> {
 }
 
 describe("LocalScheduler", () => {
+  it("runs the configured retention sweep after scheduler repairs", async () => {
+    const { calls, plane } = makePlane();
+    const scheduler = new LocalScheduler(plane, {
+      retentionSweep: async () => {
+        calls.push("retention");
+      },
+    });
+    scheduler.start();
+    await flush();
+    await scheduler.stop();
+    expect(calls.at(-1)).toBe("retention");
+    expect(calls.indexOf("retention")).toBeGreaterThan(calls.indexOf("assignment"));
+  });
   it("runs every durable scheduler operation immediately and at its configured cadence", async () => {
     vi.useFakeTimers();
     try {

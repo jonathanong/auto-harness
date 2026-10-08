@@ -17,6 +17,7 @@ import {
 } from "./lambda-handlers.ts";
 import { resetApiSentryForTests, type SentryClient } from "./sentry.ts";
 import * as slackRuntime from "./slack-runtime.ts";
+import { OperationalSnapshotOverflowError } from "./db/plane-storage-operational-read.ts";
 
 function hostPrincipal(hostId = "host-1") {
   return {
@@ -131,6 +132,29 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async listAllSessions() {
       recordSchedulerCall("sessions");
       return [...sessions.values()];
+    },
+    async listOperationalSessions() {
+      recordSchedulerCall("operational-sessions");
+      return [...sessions.values()].filter((session) => session.status !== "queued");
+    },
+    async listOperationalRecoveryPage() {
+      recordSchedulerCall("operational-recovery");
+      return [...sessions.values()].filter((session) => session.status !== "queued");
+    },
+    async loadRepositoryActivityCursor() {
+      return undefined;
+    },
+    async saveRepositoryActivityCursor() {},
+    async listRepositoryOperationalPage(repositoryId: string) {
+      recordSchedulerCall("repository-activity");
+      const records = [...sessions.values()].filter(
+        (session) =>
+          session.repositoryId === repositoryId &&
+          (session.status === "queued" ||
+            session.status === "running" ||
+            session.mainCheckoutLease === true),
+      );
+      return { sessions: records, observedMembers: records.length };
     },
     async listAllWorktrees() {
       return [...worktrees.values()];
@@ -2090,6 +2114,41 @@ describe("Lambda runtime adapters", () => {
     expect(create).toHaveBeenCalledTimes(1);
   });
 
+  it("continues safety repairs when the complete capacity snapshot overflows", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-08-12T00:00:00.000Z");
+    const logger = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const fixture = runtimeFixture();
+      seedSchedulerSweep(fixture);
+      fixture.storage.listOperationalSessions = async () => {
+        throw new OperationalSnapshotOverflowError("active snapshot exceeds its bound");
+      };
+      await expect((await fixture.runtime).cron()).resolves.toMatchObject({
+        ackDeadlinesEnforced: 1,
+        runningTimeoutsEnforced: 1,
+        queuedAssigned: 0,
+        scheduledAssigned: 0,
+      });
+      expect(fixture.schedulerCalls).toContain("operational-recovery");
+      expect(logger).toHaveBeenCalledWith(
+        "assignment deferred: operational capacity snapshot exceeds its bound",
+        expect.any(OperationalSnapshotOverflowError),
+      );
+    } finally {
+      logger.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("propagates storage failures instead of treating them as capacity overflow", async () => {
+    const fixture = runtimeFixture();
+    fixture.plane.refreshSchedulerReadModelDurable = async () => {
+      throw new Error("storage unavailable");
+    };
+    await expect((await fixture.runtime).cron()).rejects.toThrow("storage unavailable");
+  });
+
   it("runs a complete durable scheduler sweep and reports its work", async () => {
     vi.useFakeTimers();
     vi.setSystemTime("2026-08-12T00:00:00.000Z");
@@ -2108,38 +2167,9 @@ describe("Lambda runtime adapters", () => {
         schedulesFired: 1,
         staleHostsReclaimed: 1,
       });
-      expect(fixture.schedulerCalls).toEqual([
-        "schedules",
-        "sessions",
-        "connections",
-        "repositories",
-        "running:0",
-        "running:1",
-        "running:2",
-        "running:3",
-        "sessions",
-        "running:0",
-        "running:1",
-        "running:2",
-        "running:3",
-        "connections",
-        "repositories",
-        "running:0",
-        "running:1",
-        "running:2",
-        "running:3",
-        "stale-release",
-        "repositories",
-        "sessions",
-        "sessions",
-        "session-drains",
-        "connections",
-        "repositories",
-        "running:0",
-        "running:1",
-        "running:2",
-        "running:3",
-      ]);
+      expect(fixture.schedulerCalls).not.toContain("sessions");
+      expect(fixture.schedulerCalls).toContain("operational-sessions");
+      expect(fixture.schedulerCalls).toContain("repository-activity");
       // The reclaimed host's physical connection must be force-closed, not just
       // dropped from durable state — otherwise its daemon keeps an open,
       // unregistered socket forever with no signal telling it to reconnect.
@@ -2233,6 +2263,29 @@ describe("Lambda runtime adapters", () => {
     await (await fixture.runtime).cron({ getRemainingTimeInMillis: () => 9_000 });
     expect(retry).toHaveBeenCalledWith(25, expect.any(Function));
     expect(retry.mock.calls[0]?.[1]?.()).toBe(false);
+  });
+
+  it("reserves the final Lambda budget before claiming retention candidates", async () => {
+    const fixture = runtimeFixture();
+    const cursors: string[] = [];
+    Object.assign(fixture.storage, {
+      getSessionRetentionStore: () => ({
+        async loadCursor() {
+          return undefined;
+        },
+        async listJobs() {
+          return { records: [] };
+        },
+        async saveCursor(name: string) {
+          cursors.push(name);
+        },
+        async nextPartition() {
+          throw new Error("retention candidate work exceeded its budget");
+        },
+      }),
+    });
+    await (await fixture.runtime).cron({ getRemainingTimeInMillis: () => 9_000 });
+    expect(cursors).toEqual(["JOBS"]);
   });
 
   it("keeps retrying archives when the cron context omits a remaining-time budget", async () => {

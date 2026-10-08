@@ -8,9 +8,31 @@ import { createDynamoTestCtx } from "../test-helpers/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("ArcWr");
 
+async function seedCompletedSession(id: string): Promise<void> {
+  if (!ctx.storage) return;
+  await ctx.storage.putSession({
+    id,
+    repositoryId: "repo",
+    prompt: "prompt",
+    target: { commandId: "command" },
+    fallbacks: [],
+    targetDisplayNames: ["command"],
+    queueTtlSeconds: 60,
+    queueExpiresAt: "2026-01-01T00:00:00.000Z",
+    timeout: 60,
+    priority: 0,
+    requiredLabels: [],
+    status: "completed",
+    queueShard: 0,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    completedAt: "2026-01-01T00:00:00.000Z",
+  });
+}
+
 describe("archive writer with real DynamoDB Local", () => {
   it("reads authoritative durable logs and stores only bounded metadata", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
+    await seedCompletedSession("session-success");
     const order: string[] = [];
     const state = createControlPlaneState({
       storage: ctx.storage,
@@ -52,6 +74,7 @@ describe("archive writer with real DynamoDB Local", () => {
 
   it("leaves a bounded pending row and retries an interrupted upload", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
+    await seedCompletedSession("session-failure");
     let unavailable = true;
     const state = createControlPlaneState({
       storage: ctx.storage,
@@ -78,6 +101,7 @@ describe("archive writer with real DynamoDB Local", () => {
 
   it("keeps metadata bounded for archives above the DynamoDB item limit", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
+    await seedCompletedSession("session-large");
     const state = createControlPlaneState({
       storage: ctx.storage,
       archiveWriter: { putArchive: async () => undefined },

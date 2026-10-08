@@ -319,6 +319,10 @@ accept `--limit`, `--cursor`, and `--all`. `--all` stops after 20 pages.
 `integration custom rm` require `--if-match` and `--if-match-generation` from the last read.
 `usage list` requires `--repository-id`.
 
+`settings session-logs get` reads upload and retention settings. `settings session-logs set` accepts
+a versioned partial JSON update; for example, `--body '{"version":0,"sessionRetentionDays":90}'`
+sets retention to 90 days while preserving the other settings.
+
 ### `auto-harness whoami [--json]`
 
 `GET /auth/me`, printing only an allowlist of fields (`id`, `kind`, `username`, `name`, `role`,

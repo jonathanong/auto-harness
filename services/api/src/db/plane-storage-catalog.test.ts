@@ -31,6 +31,7 @@ import {
   completeArchiveRetry,
   expireArchive,
   listPendingArchives,
+  putArchive,
   recordArchiveRetryCapture,
   releaseArchiveRetry,
   replaceCompleteArchive,
@@ -51,7 +52,10 @@ const archive = {
 };
 
 function archiveCtx(send: (command: unknown) => Promise<unknown>): PlaneStorageCtx {
-  return { doc: { send } as never, tables: { archives: "Archives" } as never };
+  return {
+    doc: { send } as never,
+    tables: { archives: "Archives", sessionDrains: "SessionDrains" } as never,
+  };
 }
 
 function logCtx(send: (command: unknown) => Promise<unknown>): PlaneStorageCtx {
@@ -100,6 +104,28 @@ function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorage
 }
 
 describe("archive retry storage", () => {
+  it("writes expired session archive metadata behind the deletion fence", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const expired = { ...archive, status: "expired" as const, objectStored: false };
+    await putArchive(archiveCtx(send), expired);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: {
+          TransactItems: [
+            {
+              ConditionCheck: {
+                TableName: "SessionDrains",
+                Key: { scopeKey: "__retention#v1#deleted", recordKey: "session" },
+                ConditionExpression: "attribute_not_exists(scopeKey)",
+              },
+            },
+            { Put: { TableName: "Archives", Item: expired } },
+          ],
+        },
+      }),
+    );
+  });
+
   it("lists the oldest pending and stale-processing rows through the retry index", async () => {
     const send = vi
       .fn()
@@ -987,17 +1013,6 @@ describe("durable schedule creation", () => {
   });
 
   it("returns a live concurrency holder and releases a stale lock", async () => {
-    const lockFailure = {
-      name: "TransactionCanceledException",
-      CancellationReasons: [
-        { Code: "None" },
-        { Code: "None" },
-        { Code: "None" },
-        { Code: "None" },
-        { Code: "None" },
-        { Code: "ConditionalCheckFailed" },
-      ],
-    };
     const queued = {
       id: "holder",
       repositoryId: "repo-1",
@@ -1025,7 +1040,17 @@ describe("durable schedule creation", () => {
               }
               return { Item: { ...queued, status } };
             }
-            if (command instanceof TransactWriteCommand) throw lockFailure;
+            if (command instanceof TransactWriteCommand) {
+              const items = command.input.TransactItems ?? [];
+              const lockIndex = items.findIndex((item) => item.Put?.TableName === "Locks");
+              expect(lockIndex).toBeGreaterThanOrEqual(0);
+              throw {
+                name: "TransactionCanceledException",
+                CancellationReasons: items.map((_, index) => ({
+                  Code: index === lockIndex ? "ConditionalCheckFailed" : "None",
+                })),
+              };
+            }
             return {};
           },
         } as never,

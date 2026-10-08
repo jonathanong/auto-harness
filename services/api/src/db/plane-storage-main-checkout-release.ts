@@ -249,7 +249,9 @@ function updateExpression(
       ? "primaryCommandStartState"
       : "assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt, primaryCommandStartState") +
     ", sessionApiKeyHash" +
-    (opts.terminalHookHandoff ? ", terminalHookHandoffSettled" : "") +
+    (opts.terminalHookHandoff
+      ? ", terminalHookHandoffSettled, terminalHookLifecycleEnqueuedAt"
+      : "") +
     (opts.preserveHostAssignmentLease || opts.terminalHookHandoff
       ? ""
       : ", activeHostId, activeHostOrder") +

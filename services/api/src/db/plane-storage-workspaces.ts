@@ -25,6 +25,7 @@ import { providerAccountLastAssignedTransactItem } from "./plane-storage-provide
 import { hostAssignmentAcquireItem } from "./plane-storage-host-assignment.ts";
 import type { SessionRecord, WorkspaceSlotRecord } from "./types.ts";
 import { ownedDelete, type OwnedDeletionMarker } from "./plane-storage-deletion-markers.ts";
+import { activeActivityForAssignment, activityPut } from "./plane-storage-operational-activity.ts";
 
 /** Public pool options are intentionally capped until the endpoint grows a cursor. */
 const MAX_WORKSPACE_POOL_SUMMARIES = 100;
@@ -475,6 +476,15 @@ export async function tryAssignWorkspaceSession(
         ExpressionAttributeValues: values,
       },
     },
+    activityPut(
+      ctx,
+      activeActivityForAssignment({
+        sessionId: opts.sessionId,
+        repositoryId: "",
+        queueShard: opts.queueShard,
+        attemptId: opts.attemptId,
+      }),
+    ),
     hostAssignmentAcquireItem(ctx, {
       ...lease,
       connectionId: opts.connectionId,

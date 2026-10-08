@@ -556,6 +556,7 @@ describe("durable host disconnect", () => {
       getHostLock: async () => "B",
       deleteConnection: async () => undefined,
       listAllSessions: async () => [],
+      listOperationalRecoveryPage: async () => [],
       tryAssignSession: async (opts: Record<string, unknown>) => (assigns.push(opts), true),
     });
 

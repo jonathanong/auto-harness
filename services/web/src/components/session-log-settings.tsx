@@ -13,9 +13,10 @@ import {
   showToast,
 } from "@auto-harness/ui";
 import {
+  DEFAULT_SESSION_RETENTION_DAYS,
   DEFAULT_SESSION_LOG_SETTINGS,
   SESSION_LOG_UPLOAD_MODES,
-  type PublicSessionLogSettings,
+  type PublicControlPlaneSessionLogSettings,
   type SessionLogUploadMode,
 } from "@auto-harness/shared";
 
@@ -40,6 +41,9 @@ export function SessionLogSettingsForm() {
   const [controlPlanePollMs, setControlPlanePollMs] = useState(
     String(DEFAULT_SESSION_LOG_SETTINGS.controlPlanePollMs),
   );
+  const [sessionRetentionDays, setSessionRetentionDays] = useState(
+    String(DEFAULT_SESSION_RETENTION_DAYS),
+  );
 
   useEffect(() => {
     void apiFetch("/api/v1/session-log-settings", { cache: "no-store" })
@@ -52,12 +56,13 @@ export function SessionLogSettingsForm() {
           setLoadState("error");
           return;
         }
-        const value = (await response.json()) as PublicSessionLogSettings;
+        const value = (await response.json()) as PublicControlPlaneSessionLogSettings;
         setUploadMode(value.uploadMode);
         setBatchMaxKb(String(value.batchMaxKb));
         setBatchMaxLines(String(value.batchMaxLines));
         setBatchMaxWaitMs(String(value.batchMaxWaitMs));
         setControlPlanePollMs(String(value.controlPlanePollMs));
+        setSessionRetentionDays(String(value.sessionRetentionDays));
         setVersion(value.version);
         setLoadState("ready");
       })
@@ -108,6 +113,7 @@ export function SessionLogSettingsForm() {
             batchMaxLines: Number(batchMaxLines),
             batchMaxWaitMs: Number(batchMaxWaitMs),
             controlPlanePollMs: Number(controlPlanePollMs),
+            sessionRetentionDays: Number(sessionRetentionDays),
           }),
         });
         if (!response.ok) {
@@ -117,13 +123,14 @@ export function SessionLogSettingsForm() {
           });
           return;
         }
-        const saved = (await response.json()) as PublicSessionLogSettings;
+        const saved = (await response.json()) as PublicControlPlaneSessionLogSettings;
         setVersion(saved.version);
         setUploadMode(saved.uploadMode);
         setBatchMaxKb(String(saved.batchMaxKb));
         setBatchMaxLines(String(saved.batchMaxLines));
         setBatchMaxWaitMs(String(saved.batchMaxWaitMs));
         setControlPlanePollMs(String(saved.controlPlanePollMs));
+        setSessionRetentionDays(String(saved.sessionRetentionDays));
         showToast("Session log settings saved.", { pw: "session-log-settings-success" });
       } catch {
         showToast("Unable to save session log settings.", {
@@ -210,6 +217,23 @@ export function SessionLogSettingsForm() {
               value={controlPlanePollMs}
               onChange={(event) => setControlPlanePollMs(event.target.value)}
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="session-retention-days">Session retention (days)</Label>
+            <Input
+              id="session-retention-days"
+              data-pw="session-retention-days"
+              type="number"
+              min={1}
+              max={3650}
+              step={1}
+              value={sessionRetentionDays}
+              onChange={(event) => setSessionRetentionDays(event.target.value)}
+            />
+            <p className="text-sm text-muted-foreground">
+              After expiry, old session links stop working, sessions cannot be resumed or cloned,
+              and logs are permanently deleted.
+            </p>
           </div>
           <Button type="submit" disabled={pending} data-pw="session-log-settings-save">
             {pending ? "Saving…" : "Save"}

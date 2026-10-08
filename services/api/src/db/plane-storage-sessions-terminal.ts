@@ -147,7 +147,9 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     values,
     sets,
     removes: [
-      ...(opts.terminalHookHandoff ? ["terminalHookHandoffSettled"] : []),
+      ...(opts.terminalHookHandoff
+        ? ["terminalHookHandoffSettled", "terminalHookLifecycleEnqueuedAt"]
+        : []),
       ...(opts.preserveReconnectDeadlineAt ? [] : ["reconnectDeadlineAt"]),
       "assignmentConnectionId",
       ...(opts.preserveHostAssignmentLease || opts.terminalHookHandoff

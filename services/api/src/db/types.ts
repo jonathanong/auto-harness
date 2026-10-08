@@ -7,6 +7,11 @@ import type {
 export type { UsageRecord } from "../usage.ts";
 
 export type SessionRecord = {
+  /** Internal deletion fence; retained until versioned transcript cleanup has succeeded. */
+  retentionToken?: string;
+  retentionClaimedAt?: string;
+  /** Durable confirmation that a deferred terminal-hook lifecycle intent was enqueued. */
+  terminalHookLifecycleEnqueuedAt?: string;
   id: string;
   /** Empty only for workspace sessions; public and host-wire shapes expose that as null. */
   repositoryId: string;

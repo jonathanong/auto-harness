@@ -9,7 +9,7 @@ describe("session log settings routes", () => {
     const { handler } = createLocalApp({ authMode: "off" });
     const got = await invokeHandler(handler, "GET", "/api/v1/session-log-settings");
     expect(got.status).toBe(200);
-    expect(got.json).toMatchObject({ uploadMode: "off", version: 0 });
+    expect(got.json).toMatchObject({ uploadMode: "off", sessionRetentionDays: 30, version: 0 });
     const saved = await invokeHandler(handler, "PUT", "/api/v1/session-log-settings", {
       version: 0,
       uploadMode: "always",
@@ -17,6 +17,17 @@ describe("session log settings routes", () => {
     });
     expect(saved.status).toBe(200);
     expect(saved.json).toMatchObject({ uploadMode: "always", batchMaxKb: 32, version: 1 });
+    const retentionSaved = await invokeHandler(handler, "PUT", "/api/v1/session-log-settings", {
+      version: 1,
+      sessionRetentionDays: 90,
+    });
+    expect(retentionSaved.status).toBe(200);
+    expect(retentionSaved.json).toMatchObject({ sessionRetentionDays: 90, version: 2 });
+    const omittedRetention = await invokeHandler(handler, "PUT", "/api/v1/session-log-settings", {
+      version: 2,
+      uploadMode: "off",
+    });
+    expect(omittedRetention.json).toMatchObject({ sessionRetentionDays: 90, version: 3 });
     const conflict = await invokeHandler(handler, "PUT", "/api/v1/session-log-settings", {
       version: 0,
       uploadMode: "off",
@@ -40,6 +51,10 @@ describe("session log settings routes", () => {
       { version: -1 },
       { version: 0, uploadMode: "sometimes" },
       { version: 0, batchMaxKb: "big" },
+      { version: 0, sessionRetentionDays: 0 },
+      { version: 0, sessionRetentionDays: 3651 },
+      { version: 0, sessionRetentionDays: 30.5 },
+      { version: 0, sessionRetentionDays: null },
     ]) {
       const response = await invokeHandler(handler, "PUT", "/api/v1/session-log-settings", body);
       expect(response.status).toBe(400);

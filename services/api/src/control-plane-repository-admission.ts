@@ -157,22 +157,34 @@ async function reconcileOne(
   repository: RepositoryRecord,
 ): Promise<RepositoryRecord> {
   if (!state.storage || !repository.drainRequestedAt) return repository;
-  const sessions = (await state.storage.listAllSessions(true)).filter(
-    (session) => session.repositoryId === repository.id,
+  const cursor = await state.storage.loadRepositoryActivityCursor(
+    repository.id,
+    repository.drainRequestedAt,
   );
-  for (const session of sessions
-    .filter((item) => isActiveSessionStatus(item.status))
-    .slice(0, 100)) {
+  const page = await state.storage.listRepositoryOperationalPage(repository.id, cursor);
+  for (const session of page.sessions.filter((item) => isActiveSessionStatus(item.status))) {
     await cancelSessionDurable(state, session.id);
   }
-  const remaining = (await state.storage.listAllSessions(true)).filter(
-    (session) => session.repositoryId === repository.id,
-  );
+  if (page.nextKey) {
+    await state.storage.saveRepositoryActivityCursor(
+      repository.id,
+      repository.drainRequestedAt,
+      page.nextKey,
+    );
+    return repository;
+  }
+  if (cursor) {
+    // The final page does not prove earlier members were released. Start one
+    // fresh strongly consistent sweep before declaring the drain complete.
+    await state.storage.saveRepositoryActivityCursor(repository.id, repository.drainRequestedAt);
+    return repository;
+  }
+  const remaining = await state.storage.listRepositoryOperationalPage(repository.id);
   const worktrees = await state.storage.listWorktreesForRepo(repository.id, true);
   const leased =
-    remaining.some(
-      (session) => isActiveSessionStatus(session.status) || session.mainCheckoutLease === true,
-    ) || worktrees.some((worktree) => !!worktree.currentSessionId);
+    remaining.observedMembers > 0 ||
+    !!remaining.nextKey ||
+    worktrees.some((worktree) => !!worktree.currentSessionId);
   if (leased) return repository;
   const completed = await state.storage.completeRepositoryDrain(
     repository.id,

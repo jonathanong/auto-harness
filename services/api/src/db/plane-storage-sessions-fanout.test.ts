@@ -43,6 +43,15 @@ function cancelled(...failed: number[]) {
   };
 }
 
+function rootBudgetIndex(command: TransactWriteCommand): number {
+  const index =
+    command.input.TransactItems?.findIndex((item) =>
+      item.Update?.UpdateExpression?.includes("descendantCount"),
+    ) ?? -1;
+  expect(index).toBeGreaterThanOrEqual(0);
+  return index;
+}
+
 describe("durable session fan-out budget", () => {
   it("updates the lineage root atomically with the lock and child row", async () => {
     const commands: TransactWriteCommand[] = [];
@@ -111,7 +120,7 @@ describe("durable session fan-out budget", () => {
       ctx(async (candidate) => {
         if (candidate instanceof TransactWriteCommand && transaction) {
           transaction = false;
-          throw cancelled(4);
+          throw cancelled(rootBudgetIndex(candidate));
         }
         if (candidate instanceof GetCommand && candidate.input.TableName === "Locks") {
           return { Item: { sessionId: "existing" } };
@@ -134,7 +143,7 @@ describe("durable session fan-out budget", () => {
       ctx(async (candidate) => {
         if (candidate instanceof TransactWriteCommand && transaction) {
           transaction = false;
-          throw cancelled(4);
+          throw cancelled(rootBudgetIndex(candidate));
         }
         if (candidate instanceof GetCommand) return {};
         throw new Error("unexpected storage command");
@@ -151,7 +160,8 @@ describe("durable session fan-out budget", () => {
     await expect(
       createSession(
         ctx(async (candidate) => {
-          if (candidate instanceof TransactWriteCommand) throw cancelled(1, 3);
+          if (candidate instanceof TransactWriteCommand)
+            throw cancelled(1, rootBudgetIndex(candidate));
           if (candidate instanceof GetCommand) return { Item: { ...session, status: "queued" } };
           throw new Error("unexpected storage command");
         }),

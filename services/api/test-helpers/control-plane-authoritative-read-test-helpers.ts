@@ -194,6 +194,22 @@ export function createAuthoritativeReadStorage() {
     },
     getSession: async (id: string) => copy(sessions, id),
     listAllSessions: async () => list(sessions),
+    listOperationalSessions: async () =>
+      list(sessions).filter(
+        (record) =>
+          record.status === "running" ||
+          record.reconnectDeadlineAt !== undefined ||
+          record.hostAssignmentLeaseId !== undefined ||
+          record.workspaceSlotLeaseId !== undefined,
+      ),
+    listOperationalRecoveryPage: async () =>
+      list(sessions).filter(
+        (record) =>
+          record.status === "running" ||
+          record.reconnectDeadlineAt !== undefined ||
+          record.hostAssignmentLeaseId !== undefined ||
+          record.workspaceSlotLeaseId !== undefined,
+      ),
     listSessionsByStatus: async (status: string, shard: number) =>
       list(sessions).filter((record) => record.status === status && record.queueShard === shard),
     putLog: async (record: LogRecord) =>

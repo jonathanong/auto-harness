@@ -33,6 +33,8 @@ import { parseHostMessage } from "./ws-hub.ts";
 import { durableConnectionProtocolVersion } from "./control-plane-protocol.ts";
 import { assignQueuedAndScheduledDurable } from "./request-assignment.ts";
 import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read-catalog.ts";
+import { runSessionRetention } from "./control-plane-session-retention.ts";
+import { OperationalSnapshotOverflowError } from "./db/plane-storage-operational-read.ts";
 
 import {
   createLambdaResponseCapture,
@@ -46,6 +48,16 @@ import { parseSlackAppCredentials } from "./slack-app-config.ts";
 import type { SlackAppCredentials, SlackOAuthClient } from "./slack-oauth-types.ts";
 import type { SlackIdentityClient } from "./slack-oauth-types.ts";
 import { createSlackIdentityClient } from "./slack-identity-client.ts";
+
+async function withCapacityFallback<T>(operation: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!(error instanceof OperationalSnapshotOverflowError)) throw error;
+    console.error("assignment deferred: operational capacity snapshot exceeds its bound", error);
+    return fallback;
+  }
+}
 
 type HeaderMap = Record<string, string | undefined>;
 
@@ -530,7 +542,10 @@ export async function createLambdaRuntime(
     async cron(eventOrContext?: unknown, lambdaContext?: LambdaCronContext) {
       if (isAssignmentEnqueue(eventOrContext)) {
         return runInvocation(async () => {
-          const assignments = await assignQueuedAndScheduledDurable(created.plane.state);
+          const assignments = await withCapacityFallback(
+            () => assignQueuedAndScheduledDurable(created.plane.state),
+            { queuedAssigned: [], scheduledAssigned: [], workspaceAssigned: [] },
+          );
           return emptyCronResult({
             queuedAssigned: assignments.queuedAssigned.length,
             scheduledAssigned: assignments.scheduledAssigned.length,
@@ -541,10 +556,16 @@ export async function createLambdaRuntime(
         lambdaContext ?? (isLambdaCronContext(eventOrContext) ? eventOrContext : undefined);
       return runInvocation(async () => {
         await created.plane.migrateArchiveRetryIndexPage();
-        const schedulesFired = await created.plane.evaluateCronDurable();
+        const schedulesFired = await withCapacityFallback(
+          () => created.plane.evaluateCronDurable(),
+          [],
+        );
         const ackDeadlinesEnforced = await created.plane.enforceAckDeadlinesDurable();
         const runningTimeoutsEnforced = await created.plane.enforceRunningTimeoutsDurable();
-        await created.plane.refreshSchedulerReadModelDurable();
+        await withCapacityFallback(
+          () => created.plane.refreshSchedulerReadModelDurable(),
+          undefined,
+        );
         const staleHostsReclaimed = await created.plane.reclaimStaleHostsDurable(
           Date.now(),
           (hostId, connectionId) =>
@@ -552,9 +573,10 @@ export async function createLambdaRuntime(
         );
         const repositoriesReconciled = await created.plane.reconcileRepositoryDrainsDurable();
         const sessionDrainsReconciled = await created.plane.reconcileSessionDrainsDurable();
-        const assignments = await assignQueuedAndScheduledDurable(created.plane.state, {
-          fullScan: true,
-        });
+        const assignments = await withCapacityFallback(
+          () => assignQueuedAndScheduledDurable(created.plane.state, { fullScan: true }),
+          { queuedAssigned: [], scheduledAssigned: [], workspaceAssigned: [] },
+        );
         const archivesRetried = await created.plane.retryPendingArchivesDurable(
           25,
           () => (context?.getRemainingTimeInMillis?.() ?? Number.POSITIVE_INFINITY) > 10_000,
@@ -563,6 +585,10 @@ export async function createLambdaRuntime(
           25,
           () => (context?.getRemainingTimeInMillis?.() ?? Number.POSITIVE_INFINITY) > 10_000,
         );
+        await runSessionRetention(created.plane.state, {
+          shouldContinue: () =>
+            (context?.getRemainingTimeInMillis?.() ?? Number.POSITIVE_INFINITY) > 10_000,
+        });
         const queuedForMetrics = await listQueuedSessionsDurableForMetric(created.plane.state);
         await flushPendingWrites();
         if (slackWorker) await slackWorker.runOnce();

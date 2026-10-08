@@ -32,6 +32,21 @@ describe("archive retry state", () => {
     });
   });
 
+  it("does not upload an archive after retention removes its session", async () => {
+    let uploads = 0;
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => void (uploads += 1) },
+      storage: {
+        putArchive: async () => undefined,
+        getSessionRetentionStore: () => ({ getSession: async () => null }),
+      } as never,
+    });
+    await expect(archiveSessionLogs(state, "deleted-session")).rejects.toThrow(
+      "missing or retained session",
+    );
+    expect(uploads).toBe(0);
+  });
+
   it("stores gzip contentType and compressed bodyBytes from the writer", async () => {
     const state = createControlPlaneState({
       archiveWriter: {

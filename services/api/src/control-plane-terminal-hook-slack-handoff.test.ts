@@ -82,6 +82,11 @@ function coldState(stored: SessionRecord, outbox: Outbox, expire = false) {
     },
     enqueue: outbox.enqueue.bind(outbox),
     get: outbox.get.bind(outbox),
+    markTerminalHookLifecycleEnqueued: async (_session: SessionRecord, at: string) => {
+      expect(outbox.items.has("slack:session:session_failed:reply")).toBe(true);
+      stored.terminalHookLifecycleEnqueuedAt = at;
+      return true;
+    },
     getSlackIntegration: async () => ({
       id: "slack",
       type: "slack",
@@ -110,6 +115,7 @@ describe("deferred checkout-failure Slack lifecycle", () => {
     await expect(settleTerminalHookHandoff(state, settleInput)).resolves.toBe(true);
     await settleStorage(state);
     expect([...outbox.items.keys()]).toContain("slack:session:session_failed:reply");
+    expect(stored.terminalHookLifecycleEnqueuedAt).toBe(NOW);
     const ids = [...outbox.items.keys()];
     await expect(settleTerminalHookHandoff(state, settleInput)).resolves.toBe(true);
     await settleStorage(state);
@@ -125,6 +131,7 @@ describe("deferred checkout-failure Slack lifecycle", () => {
     ).resolves.toBe(true);
     await settleStorage(state);
     expect([...outbox.items.keys()]).toContain("slack:session:session_failed:reply");
+    expect(stored.terminalHookLifecycleEnqueuedAt).toBe(EXPIRED);
     const ids = [...outbox.items.keys()];
     await expect(
       expireTerminalHookHandoffIfNeeded(state, structuredClone(stored), Date.parse(EXPIRED)),
@@ -140,5 +147,6 @@ describe("deferred checkout-failure Slack lifecycle", () => {
     await expect(settleTerminalHookHandoff(state, settleInput)).resolves.toBe(true);
     await settleStorage(state);
     expect(outbox.calls).toBe(0);
+    expect(stored.terminalHookLifecycleEnqueuedAt).toBeUndefined();
   });
 });

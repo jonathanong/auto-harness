@@ -456,9 +456,15 @@ ingress webhook secret. It never receives the credential App private key or inst
 ### Session log settings
 
 `GET /session-log-settings` is an authenticated read of the operator knobs (upload mode, batch
-size/time, control-plane poll). Missing config returns defaults with `version: 0`.
-`PUT /session-log-settings` is admin-only (`integrations:write`) and compare-and-swaps on
-`version`. Host daemons receive a snapshot of these knobs on `session:assign.logSettings`.
+size/time, control-plane poll, and session retention). Missing config returns defaults, including
+`sessionRetentionDays: 30`, with `version: 0`.
+`PUT /session-log-settings` is admin-only (`integrations:write`), accepts a partial settings object,
+and compare-and-swaps on `version`; omitted values keep their current setting. Retention must be an
+integer from 1 to 3650 days and invalid values are rejected. The current retention policy applies to
+all undeleted terminal sessions based on `completedAt`, so lowering it can expire existing history
+on the next cleanup run. Once deleted, sessions and logs cannot be restored. Retention controls
+terminal session and log data together. Host daemons receive only upload and poll knobs on
+`session:assign.logSettings`.
 
 Host `PUT /sessions/:id/log-parts` and `PUT /sessions/:id/log-archive` require `agent:protocol`
 and write gzip objects under `sessions/{id}/`.

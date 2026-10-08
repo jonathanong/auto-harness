@@ -31,9 +31,11 @@ import {
   ensureSessionsRepositoryIndex,
 } from "./ensure-session-index.ts";
 import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
+import { migrateOperationalActivityLedgerPage } from "./ensure-operational-activity-ledger.ts";
 import { migrateSessionPriorityOrderPage } from "./ensure-session-priority-order.ts";
 import { ensureArchivesRetryIndex } from "./ensure-archive-retry-index.ts";
 import { ensureSessionsActiveHostIndex } from "./ensure-active-host-index.ts";
+import { ensureSessionRetentionIndex } from "./ensure-session-retention-index.ts";
 import {
   ensureHostLocksOfflineAlertIndex,
   HOST_LOCKS_OFFLINE_ALERT_INDEX,
@@ -125,6 +127,7 @@ export async function ensureControlPlaneTables(opts: {
       { AttributeName: "parentSessionId", AttributeType: ScalarAttributeType.S },
       { AttributeName: "activeHostId", AttributeType: ScalarAttributeType.S },
       { AttributeName: "activeHostOrder", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "completedAt", AttributeType: ScalarAttributeType.S },
     ],
     KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
     GlobalSecondaryIndexes: [
@@ -135,6 +138,14 @@ export async function ensureControlPlaneTables(opts: {
           { AttributeName: "createdAt", KeyType: KeyType.RANGE },
         ],
         Projection: { ProjectionType: ProjectionType.ALL },
+      },
+      {
+        IndexName: "statusShard-completedAt",
+        KeySchema: [
+          { AttributeName: "statusShard", KeyType: KeyType.HASH },
+          { AttributeName: "completedAt", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.KEYS_ONLY },
       },
       {
         IndexName: "statusShard-createdOrder",
@@ -200,6 +211,7 @@ export async function ensureControlPlaneTables(opts: {
   await ensureSessionsQueueOrderIndex(ddb, names.sessions);
   await ensureSessionsPriorityIndexes(ddb, names.sessions);
   await ensureSessionsActiveHostIndex(ddb, names.sessions);
+  await ensureSessionRetentionIndex(ddb, names.sessions);
 
   await createIfMissing(ddb, {
     TableName: names.sessionDrains,
@@ -213,10 +225,17 @@ export async function ensureControlPlaneTables(opts: {
       { AttributeName: "recordKey", KeyType: KeyType.RANGE },
     ],
   });
+  await enableTableTtl(ddb, names.sessionDrains, "ttl");
   await migrateSessionDrainActivityLedgerPage(DynamoDBDocumentClient.from(ddb), {
     sessions: names.sessions,
     sessionDrains: names.sessionDrains,
   });
+  await completeLocalSessionListMigration(
+    DynamoDBDocumentClient.from(ddb),
+    { sessions: names.sessions, sessionDrains: names.sessionDrains },
+    LOCAL_SESSION_LIST_MIGRATION_MAX_ATTEMPTS,
+    migrateOperationalActivityLedgerPage,
+  );
   // Lambda production paths use skipEnsureTables and the fenced deployment driver.
   // Local/bootstrap callers must complete the resumable migration before reads
   // switch to the sparse created-order GSI.

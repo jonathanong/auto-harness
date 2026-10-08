@@ -6,6 +6,7 @@ import { AuthService } from "./auth.ts";
 import { createLocalApp } from "./local-app.ts";
 import { resolvePublicBaseUrl, type LocalServerOptions } from "./local-http.ts";
 import { LocalScheduler } from "./local-scheduler.ts";
+import { runSessionRetention } from "./control-plane-session-retention.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 import { createSlackLifecycleWorker } from "./slack-runtime.ts";
 import { createSlackIdentityClient } from "./slack-identity-client.ts";
@@ -93,7 +94,10 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   });
   const { store: resolvedStore, plane: resolvedPlane, handler } = app;
   await auth.hydrate(resolvedPlane.state.storage);
-  const scheduler = new LocalScheduler(resolvedPlane, options.scheduler);
+  const scheduler = new LocalScheduler(resolvedPlane, {
+    retentionSweep: () => runSessionRetention(resolvedPlane.state),
+    ...options.scheduler,
+  });
   const slackWorker = createSlackWorker(resolvedPlane, options);
   const webhookWorker = createWebhookWorker(resolvedPlane, options);
   const server = createServer((req, res) => {

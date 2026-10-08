@@ -9,6 +9,7 @@ import {
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { LogQuery, LogRecord } from "./control-plane-types.ts";
 import { selectLogs } from "./log-query.ts";
+import { assertSessionLogWritesAllowed } from "./session-log-write-fence.ts";
 
 type RawLogLine = {
   timestamp?: unknown;
@@ -110,8 +111,11 @@ export async function putSessionLogPart(
 ): Promise<string> {
   assertGzipJsonlPart(sessionId, seqStart, seqEnd, gzipped);
   const key = sessionLogPartKey(sessionId, seqStart, seqEnd);
-  if (!state.archiveWriter?.putGzipObject) state.logObjects.set(key, gzipped);
-  await state.archiveWriter?.putGzipObject?.(key, gzipped);
+  const putGzipObject = state.archiveWriter?.putGzipObject;
+  await assertSessionLogWritesAllowed(state, sessionId);
+  if (putGzipObject) {
+    await putGzipObject.call(state.archiveWriter, key, gzipped);
+  } else state.logObjects.set(key, gzipped);
   state.onLogPartCommitted?.({ sessionId, key, seqStart, seqEnd });
   return key;
 }
@@ -123,8 +127,11 @@ export async function putSessionLogArchive(
 ): Promise<string> {
   parseGzipJsonlLogs(sessionId, gzipped);
   const key = sessionLogArchiveKey(sessionId);
-  if (!state.archiveWriter?.putGzipObject) state.logObjects.set(key, gzipped);
-  await state.archiveWriter?.putGzipObject?.(key, gzipped);
+  const putGzipObject = state.archiveWriter?.putGzipObject;
+  await assertSessionLogWritesAllowed(state, sessionId);
+  if (putGzipObject) {
+    await putGzipObject.call(state.archiveWriter, key, gzipped);
+  } else state.logObjects.set(key, gzipped);
   return key;
 }
 

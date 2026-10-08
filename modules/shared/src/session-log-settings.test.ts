@@ -2,14 +2,49 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_SESSION_LOG_SETTINGS,
+  DEFAULT_SESSION_RETENTION_DAYS,
+  SESSION_RETENTION_DAYS_MAX,
+  SESSION_RETENTION_DAYS_MIN,
+  isSessionRetentionDays,
   isSessionLogObjectKey,
+  normalizeControlPlaneSessionLogSettings,
   normalizeSessionLogSettings,
+  publicControlPlaneSessionLogSettings,
   publicSessionLogSettings,
   sessionLogArchiveKey,
   sessionLogPartKey,
 } from "./session-log-settings.ts";
 
 describe("session log settings", () => {
+  it("defaults legacy control-plane settings and validates retention without clamping", () => {
+    expect(normalizeControlPlaneSessionLogSettings(undefined)).toEqual({
+      ...DEFAULT_SESSION_LOG_SETTINGS,
+      sessionRetentionDays: DEFAULT_SESSION_RETENTION_DAYS,
+    });
+    expect(
+      normalizeControlPlaneSessionLogSettings({ uploadMode: "always" }).sessionRetentionDays,
+    ).toBe(30);
+    expect(isSessionRetentionDays(SESSION_RETENTION_DAYS_MIN)).toBe(true);
+    expect(isSessionRetentionDays(SESSION_RETENTION_DAYS_MAX)).toBe(true);
+    for (const invalid of [0, 3651, -1, 1.5, Number.NaN, "30", null]) {
+      expect(isSessionRetentionDays(invalid)).toBe(false);
+      expect(() =>
+        normalizeControlPlaneSessionLogSettings({ sessionRetentionDays: invalid as number }),
+      ).toThrow("sessionRetentionDays must be an integer");
+    }
+  });
+
+  it("includes the retention policy in public control-plane snapshots", () => {
+    expect(publicControlPlaneSessionLogSettings(undefined)).toEqual({
+      ...DEFAULT_SESSION_LOG_SETTINGS,
+      sessionRetentionDays: DEFAULT_SESSION_RETENTION_DAYS,
+      version: 0,
+    });
+    expect(
+      publicControlPlaneSessionLogSettings({ sessionRetentionDays: 90, version: 7 }),
+    ).toMatchObject({ sessionRetentionDays: 90, version: 7 });
+  });
+
   it("defaults to upload off and a one-minute flush and poll", () => {
     expect(normalizeSessionLogSettings(undefined)).toEqual(DEFAULT_SESSION_LOG_SETTINGS);
     expect(DEFAULT_SESSION_LOG_SETTINGS.uploadMode).toBe("off");
