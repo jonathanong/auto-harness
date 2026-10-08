@@ -11,6 +11,7 @@ import {
 
 const config: DeploymentConfig = {
   accessLogsEnabled: false,
+  alarmsEnabled: false,
   adminsSsmParam: "/auto-harness/review/harness-admins",
   alarmEmails: [],
   cursorSecretSsmParam: "/auto-harness/review/harness-cursor-secret",

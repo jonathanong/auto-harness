@@ -647,34 +647,36 @@ strings, headers, or bodies) to 14-day CloudWatch log groups are opt-in and off 
 [HARNESS_ACCESS_LOGS_ENABLED](deploy-aws.md#api-gateway-access-logs-opt-in). They require a
 one-time, account-level API Gateway CloudWatch Logs role that `deploy`/`update` do not provision.
 
-| Signal                  | Source                                                                                                                                                                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API latency / 5xx       | API Gateway `5xx` + Lambda `Errors`                                                                                                                                                                                       |
-| Queue age               | Cron EMF `QueueAgeSeconds` (oldest `queued` session)                                                                                                                                                                      |
-| Assign failures         | EMF `AssignmentFailures` when `postToConnection` fails for a reason other than a gone socket                                                                                                                              |
-| ACK timeouts            | Cron EMF `AckTimeouts`                                                                                                                                                                                                    |
-| Stale hosts             | Cron EMF `StaleHosts`                                                                                                                                                                                                     |
-| Cooldowns               | EMF `Cooldowns` when a `usage_limit` pauses a Provider Account                                                                                                                                                            |
-| Log drops               | EMF `LogDrops` from persisted `session:log.dropped` telemetry (legacy in-memory/test WS path). Host-pane SSE and gzip part ingest do not emit this metric.                                                                |
-| Log seq gaps (alarmed)  | EMF `LogSeqGaps`: lines missing from a session's stored transcript, detected from a discontinuity in the agent-assigned `seq` — silent loss the ingest pipeline itself caused, not one the agent reported                 |
-| Stale-attempt log drops | EMF `StaleAttemptLogDrops`: a log message discarded because it belonged to an attempt the session already moved past, while its batch-mates still committed — the one silent-discard site whose batch-mates commit anyway |
-| WS messages discarded   | EMF `WsMessagesDiscarded`: a host WebSocket message dropped because the connection was being closed (rate limit, invalid frame, stale/unauthorized connection) — logged with its specific reason                          |
-| Infrastructure retries  | EMF `InfrastructureRetries` when a bounded checkout-fetch or pre-launch host-loss retry is committed; expected recovery telemetry, not alarmed                                                                            |
-| Retry exhaustion        | EMF `InfrastructureRetryExhausted` once, when the invocation that commits the terminal transition exhausts the one retry budget; an idempotent already-terminal conflict does not emit; alarmed                           |
-| Function logs           | CloudWatch Logs per Lambda; retention 14 days                                                                                                                                                                             |
-| Sentry (opt-in)         | Optional `HARNESS_API_SENTRY_DSN` / web client+server DSNs. Unhandled errors only; not a CloudWatch alarm source. Unset by default.                                                                                       |
+| Signal                     | Source                                                                                                                                                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API latency / 5xx          | API Gateway `5xx` + Lambda `Errors`                                                                                                                                                                                       |
+| Queue age                  | Cron EMF `QueueAgeSeconds` (oldest `queued` session)                                                                                                                                                                      |
+| Assign failures            | EMF `AssignmentFailures` when `postToConnection` fails for a reason other than a gone socket                                                                                                                              |
+| ACK timeouts               | Cron EMF `AckTimeouts`                                                                                                                                                                                                    |
+| Stale hosts                | Cron EMF `StaleHosts`                                                                                                                                                                                                     |
+| Cooldowns                  | EMF `Cooldowns` when a `usage_limit` pauses a Provider Account                                                                                                                                                            |
+| Log drops                  | EMF `LogDrops` from persisted `session:log.dropped` telemetry (legacy in-memory/test WS path). Host-pane SSE and gzip part ingest do not emit this metric.                                                                |
+| Log seq gaps (metric-only) | EMF `LogSeqGaps`: lines missing from a session's stored transcript, detected from a discontinuity in the agent-assigned `seq` — silent loss the ingest pipeline itself caused, not one the agent reported                 |
+| Stale-attempt log drops    | EMF `StaleAttemptLogDrops`: a log message discarded because it belonged to an attempt the session already moved past, while its batch-mates still committed — the one silent-discard site whose batch-mates commit anyway |
+| WS messages discarded      | EMF `WsMessagesDiscarded`: a host WebSocket message dropped because the connection was being closed (rate limit, invalid frame, stale/unauthorized connection) — logged with its specific reason                          |
+| Infrastructure retries     | EMF `InfrastructureRetries` when a bounded checkout-fetch or pre-launch host-loss retry is committed; expected recovery telemetry, not alarmed                                                                            |
+| Retry exhaustion           | EMF `InfrastructureRetryExhausted` once, when the invocation that commits the terminal transition exhausts the one retry budget; an idempotent already-terminal conflict does not emit; alarmed                           |
+| Function logs              | CloudWatch Logs per Lambda; retention 14 days                                                                                                                                                                             |
+| Sentry (opt-in)            | Optional `HARNESS_API_SENTRY_DSN` / web client+server DSNs. Unhandled errors only; not a CloudWatch alarm source. Unset by default.                                                                                       |
 
 Successful REST requests use API Gateway metrics and, when enabled, redacted access logs rather
 than duplicate application lifecycle lines. Successful `host:keepalive-ack` deliveries are also
 silent because they occur every 20 seconds; delivery failures remain structured function logs,
 and lower-frequency session/host control deliveries retain one structured success line.
 
-Alarms in the runtime stack (namespace `AutoHarness`, dimension `Environment` = table prefix,
-missing data not breaching): Lambda errors, API 5xx, queue age ≥ 30 minutes, assignment failures,
-ACK timeouts, stale hosts, cooldowns, log drops, log seq gaps, and infrastructure retry exhaustion.
-`InfrastructureRetries`, stale-attempt log drops, and
-discarded WS messages are metrics/logs only (not alarmed) — expected to occur occasionally during
-ordinary reconnects, unlike the others.
+The runtime stack can opt into seven alarms: three Lambda errors, HTTP API 5xx, WebSocket API
+errors, queue age ≥ 30 minutes, and infrastructure retry exhaustion. The Lambda and API Gateway
+alarms use AWS-native metrics; only `QueueAge` and `InfrastructureRetryExhausted` use the
+`AutoHarness` namespace with the `Environment` dimension set to the table prefix. Missing data is
+not breaching. Set `HARNESS_DEPLOY_ALARMS=true` or configure `HARNESS_DEPLOY_ALARM_EMAILS`; otherwise
+the alarms and SNS topic are omitted. The other EMF signals, including bounded retries, ACK
+timeouts, stale hosts, cooldowns, and transcript drop/gap telemetry, remain available as metrics
+without paging.
 
 ---
 

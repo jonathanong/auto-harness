@@ -8,7 +8,8 @@ export type DeploymentConfig = {
   accessLogsEnabled: boolean;
   accountId?: string;
   adminsSsmParam: string;
-  /** Empty by default. The alarm topic is created either way — see runtime-alarms.ts. */
+  /** Only the literal `true` opts in; a non-empty email list also opts in. */
+  alarmsEnabled: boolean;
   alarmEmails: string[];
   apiSentryDsn?: string;
   cursorSecretSsmParam: string;
@@ -93,13 +94,15 @@ export function deploymentConfig(
       );
     }
   }
+  const configuredAlarmEmails = alarmEmails(env, "HARNESS_DEPLOY_ALARM_EMAILS");
   return {
     // Default-safe opt-in, matching HARNESS_DEPLOY_PURGE_SSM: only the literal "1" enables it.
     // Access logs need a one-time, account-wide API Gateway CloudWatch Logs role that this
     // deploy does not provision — see scripts/bootstrap-apigateway-account.sh.
     accessLogsEnabled: env.HARNESS_ACCESS_LOGS_ENABLED?.trim() === "1",
     adminsSsmParam: env.HARNESS_ADMINS_SSM_PARAM?.trim() || `${base}/harness-admins`,
-    alarmEmails: alarmEmails(env, "HARNESS_DEPLOY_ALARM_EMAILS"),
+    alarmsEnabled: env.HARNESS_DEPLOY_ALARMS === "true" || configuredAlarmEmails.length > 0,
+    alarmEmails: configuredAlarmEmails,
     cursorSecretSsmParam:
       env.HARNESS_CURSOR_SECRET_SSM_PARAM?.trim() || `${base}/harness-cursor-secret`,
     environment,

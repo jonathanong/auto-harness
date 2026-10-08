@@ -60,6 +60,8 @@ export function cdkContext(
     "-c",
     `accessLogsEnabled=${String(config.accessLogsEnabled)}`,
     "-c",
+    `alarmsEnabled=${String(config.alarmsEnabled)}`,
+    "-c",
     `sessionPriorityIndexStage=${sessionPriorityIndexStage}`,
     "-c",
     `sessionCreatedOrderIndexStage=${sessionCreatedOrderIndexStage}`,

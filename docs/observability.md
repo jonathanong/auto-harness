@@ -14,20 +14,21 @@ deployed Lambdas set that var (`runtime-stack.ts`, to `props.tablePrefix`).
 
 | EMF metric                     | Alarmed | Alarm construct ID / threshold     | Meaning                                                                                                                            |
 | ------------------------------ | ------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `AckTimeouts`                  | Yes     | `AckTimeouts` ≥ 1                  | Cron: a host failed to ACK an assignment before timeout                                                                            |
-| `AssignmentFailures`           | Yes     | `AssignmentFailures` ≥ 1           | `postToConnection` failed for a reason other than a gone socket                                                                    |
+| `AckTimeouts`                  | No      | metric-only                        | Cron: a host failed to ACK an assignment before timeout                                                                            |
+| `AssignmentFailures`           | No      | metric-only                        | `postToConnection` failed for a reason other than a gone socket                                                                    |
 | `InfrastructureRetries`        | No      | metric-only                        | A bounded checkout-fetch or pre-launch host-loss retry committed — expected recovery, not a failure                                |
 | `InfrastructureRetryExhausted` | Yes     | `InfrastructureRetryExhausted` ≥ 1 | The invocation committing the terminal transition exhausted the one-retry budget                                                   |
-| `Cooldowns`                    | Yes     | `Cooldowns` ≥ 1                    | A `usage_limit` paused a Provider Account                                                                                          |
-| `LogDrops`                     | Yes     | `LogDrops` ≥ 1                     | Persisted `session:log.dropped` telemetry (legacy in-memory/test WS path only — host-pane SSE/gzip part ingest does not emit this) |
-| `LogSeqGaps`                   | Yes     | `LogSeqGaps` ≥ 1                   | Transcript lines missing, detected from a discontinuity in the agent-assigned `seq` — silent loss the ingest pipeline caused       |
+| `Cooldowns`                    | No      | metric-only                        | A `usage_limit` paused a Provider Account                                                                                          |
+| `LogDrops`                     | No      | metric-only                        | Persisted `session:log.dropped` telemetry (legacy in-memory/test WS path only — host-pane SSE/gzip part ingest does not emit this) |
+| `LogSeqGaps`                   | No      | metric-only                        | Transcript lines missing, detected from a discontinuity in the agent-assigned `seq` — silent loss the ingest pipeline caused       |
 | `StaleAttemptLogDrops`         | No      | metric-only                        | A log message discarded because its attempt was already superseded, while its batch-mates still committed                          |
 | `QueueAgeSeconds`              | Yes     | **`QueueAge`** ≥ 1800 (30 min)     | Age of the oldest `queued` session — note the alarm's construct ID does not match the metric name                                  |
-| `StaleHosts`                   | Yes     | `StaleHosts` ≥ 1                   | Cron found hosts that stopped reporting                                                                                            |
+| `StaleHosts`                   | No      | metric-only                        | Cron found hosts that stopped reporting                                                                                            |
 | `WsMessagesDiscarded`          | No      | metric-only                        | A host WebSocket message dropped because the connection was being closed (rate limit, invalid frame, stale/unauthorized)           |
 
-3 of the 11 are metrics-only by design (`InfrastructureRetries`, `StaleAttemptLogDrops`,
-`WsMessagesDiscarded`) — expected during ordinary reconnects/recovery, not alarmed.
+9 of the 11 are metrics-only: successful bounded recovery signals and events designed to
+recover automatically remain visible without paging. Only `InfrastructureRetryExhausted` and
+`QueueAge` have operational metric alarms.
 
 Alongside these, `services/cdk/src/runtime-observability.ts` also alarms on AWS-native metrics
 (not EMF, no `Environment` dimension):
@@ -134,16 +135,22 @@ have its server errors silently skipped until `register()` initializes Sentry th
 
 ## Alarm notifications
 
-Every alarm above publishes to one SNS topic, created by
-`services/cdk/src/runtime-alarms.ts` and exported as the runtime stack's **`AlarmTopicArn`**
-output.
+Alarms are **opt-in**. By default the runtime stack creates no CloudWatch alarms, SNS topic, or
+`AlarmTopicArn` output. Set `HARNESS_DEPLOY_ALARMS=true` or supply one or more addresses in
+`HARNESS_DEPLOY_ALARM_EMAILS` to create the seven retained alarms and one shared topic. Email
+addresses take effect at deploy time; SNS requires recipients to confirm each email
+subscription. A malformed address fails the deploy rather than being silently dropped.
 
-The topic is created **unconditionally, even with no subscribers**. Until it existed, all 13
-alarms were constructed with no action at all: they changed state and notified nobody, which is
-operationally indistinguishable from having no alarms. Making the topic unconditional turns
-"every alarm has an action" into a property of the synthesized template, asserted over _every_
-alarm in `runtime-alarm-routing.test.ts` rather than over a list that a fourteenth alarm could
-silently escape — and it makes subscribing a one-line operation rather than a code change:
+The seven alarms are `RestFunctionErrors`, `WebSocketFunctionErrors`, `CronFunctionErrors`,
+`HttpApi5xx`, `WebSocketApiErrors`, `QueueAge`, and `InfrastructureRetryExhausted`. All route to
+the shared topic. The WebSocket API math alarm references two metrics, so this set uses eight
+standard alarm metrics in total (six single-metric alarms plus two inputs to one expression).
+At $0.10 per standard alarm metric, that is approximately **$0.80/month** before applicable
+CloudWatch allowances; actual pricing depends on account/region and current
+[CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/).
+
+If alarms are enabled, the topic's **`AlarmTopicArn`** output lets operators add a manual
+subscription without changing code:
 
 ```bash
 aws sns subscribe --topic-arn "$(aws cloudformation describe-stacks \
@@ -152,10 +159,11 @@ aws sns subscribe --topic-arn "$(aws cloudformation describe-stacks \
   --protocol email --notification-endpoint you@example.com
 ```
 
-Subscribers can also be set at deploy time with **`HARNESS_DEPLOY_ALARM_EMAILS`**, a
-comma-separated list. A malformed address **fails the deploy** rather than being dropped, on the
-same reasoning as an invalid Sentry DSN: silently discarding it would leave an operator
-believing alarms reach them until an incident proved otherwise.
+Existing environments that use a manually subscribed topic must set
+`HARNESS_DEPLOY_ALARMS=true` on every deploy/update. Without the flag or an email list, a stack
+update removes the topic, alarms, and output; enabling alarms later recreates them, but the
+former topic ARN and its manual subscriptions do not carry over. EMF metric publication remains
+independent and continues whether or not alarms are enabled.
 
 Two deliberate limits:
 
@@ -172,9 +180,9 @@ Two deliberate limits:
 
 ## Known gaps
 
-- **Nothing is subscribed to `AlarmTopicArn` by default.** The wiring above is unconditional,
-  but a topic with zero subscribers still notifies nobody. Subscribe an address per environment,
-  or set `HARNESS_DEPLOY_ALARM_EMAILS`, before treating an environment as monitored.
+- **Nothing is monitored by default.** Set `HARNESS_DEPLOY_ALARMS=true` or configure
+  `HARNESS_DEPLOY_ALARM_EMAILS` to provision alarms and their notification topic before treating
+  an environment as monitored.
 - **`HARNESS_HOST_PANE_SENTRY_DSN_CLIENT` / `_SERVER` have no deploy or persist path.** Neither
   var appears anywhere in `services/cdk/` (`DeploymentConfig` only has `apiSentryDsn`,
   `webSentryDsnClient`, `webSentryDsnServer`), and neither is in the persisted-env allowlist in

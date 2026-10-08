@@ -6,22 +6,14 @@ import { AutoHarnessFoundationStack } from "./foundation-stack.ts";
 import { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
 import { HTTP_THROTTLE, WEBSOCKET_THROTTLE } from "./runtime-observability.ts";
 
-/** The alarm set both the default and accessLogsEnabled stacks provision identically. */
+/** The exact opt-in alarm set. */
 function assertStandardAlarms(template: Template): void {
-  template.resourceCountIs("AWS::CloudWatch::Alarm", 13);
+  template.resourceCountIs("AWS::CloudWatch::Alarm", 7);
   template.hasResourceProperties("AWS::CloudWatch::Alarm", {
     MetricName: "QueueAgeSeconds",
     Namespace: "AutoHarness",
     Threshold: 1800,
     TreatMissingData: "notBreaching",
-  });
-  template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-    MetricName: "LogDrops",
-    Namespace: "AutoHarness",
-  });
-  template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-    MetricName: "LogSeqGaps",
-    Namespace: "AutoHarness",
   });
   template.hasResourceProperties("AWS::CloudWatch::Alarm", {
     MetricName: "InfrastructureRetryExhausted",
@@ -43,7 +35,7 @@ function assertStandardAlarms(template: Template): void {
 }
 
 describe("runtime observability", () => {
-  it("adds throttles and operational alarms, with access logs off by default", () => {
+  it("keeps throttles and function logs while alarms and access logs default off", () => {
     const app = new App();
     const foundation = new AutoHarnessFoundationStack(app, "Foundation", {
       tablePrefix: "ReviewRuntime",
@@ -87,7 +79,8 @@ describe("runtime observability", () => {
       StageName: "prod",
     });
 
-    assertStandardAlarms(template);
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 0);
+    template.resourceCountIs("AWS::SNS::Topic", 0);
   });
 
   it("adds redacted access logs when accessLogsEnabled is set", () => {
@@ -96,6 +89,7 @@ describe("runtime observability", () => {
       tablePrefix: "ReviewRuntime",
     });
     const runtime = new AutoHarnessRuntimeStack(app, "Runtime", {
+      alarmsEnabled: true,
       accessLogsEnabled: true,
       foundation: foundation.resources,
       tablePrefix: "ReviewRuntime",
@@ -143,7 +137,6 @@ describe("runtime observability", () => {
       expect(format).not.toContain("header");
       expect(format).not.toContain("authorizer");
     }
-
     assertStandardAlarms(template);
   });
 });
