@@ -26,6 +26,7 @@ describe("CDK deployment context", () => {
       "alarmsEnabled=true",
       "sessionPriorityIndexStage=both",
       "sessionCreatedOrderIndexStage=status",
+      "sessionRetentionIndexStage=status",
     ]);
     expect(args.filter((argument) => argument === "-c")).toHaveLength(contextPairs(args).length);
   });
@@ -54,6 +55,7 @@ describe("CDK deployment context", () => {
       "alarmsEnabled=true",
       "sessionPriorityIndexStage=both",
       "sessionCreatedOrderIndexStage=status",
+      "sessionRetentionIndexStage=status",
       "alarmEmails=ops@example.com",
     ]);
     expect(args.filter((argument) => argument === "-c")).toHaveLength(contextPairs(args).length);
