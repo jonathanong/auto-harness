@@ -7,12 +7,9 @@ import type { Construct } from "constructs";
 /**
  * The topic every runtime alarm publishes to.
  *
- * Created unconditionally, even with zero subscribers. Until this existed, all 13 alarms in
- * runtime-observability.ts were constructed with no action at all: they changed state and
- * notified nobody, which is operationally indistinguishable from having no alarms. A topic
- * with no subscribers is still strictly better, because "every alarm has an action" becomes a
- * property of the synthesized template — asserted over *every* alarm in
- * runtime-alarm-routing.test.ts rather than over a list of 13 that a fourteenth alarm could
+ * Created only when runtime observability is opted into. The topic is shared by all seven
+ * runtime alarms, ensuring "every alarm has an action" is asserted over *every* alarm in
+ * runtime-alarm-routing.test.ts rather than over a list that a later alarm could
  * silently escape — and subscribing then costs one `aws sns subscribe`, not a code change and
  * a redeploy.
  *

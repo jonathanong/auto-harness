@@ -83,8 +83,7 @@ void stack;
 const apiSentryDsn = contextString(app, "apiSentryDsn");
 const webSentryDsnClient = contextString(app, "webSentryDsnClient");
 const webSentryDsnServer = contextString(app, "webSentryDsnServer");
-// Absent context means no subscribers, not no topic: the topic and every alarm action are
-// created unconditionally. See services/cdk/src/runtime-alarms.ts.
+// A non-empty email list opts in independently of the explicit alarm flag.
 const alarmEmails = contextString(app, "alarmEmails")
   ?.split(",")
   .map((entry) => entry.trim())
@@ -96,6 +95,7 @@ const runtime = new AutoHarnessRuntimeStack(
     foundation: stack.resources,
     tablePrefix,
     accessLogsEnabled: contextBoolean(app, "accessLogsEnabled"),
+    alarmsEnabled: contextBoolean(app, "alarmsEnabled"),
     ...(alarmEmails !== undefined ? { alarmEmails } : {}),
     ...(apiSentryDsn !== undefined ? { sentryDsn: apiSentryDsn } : {}),
   },

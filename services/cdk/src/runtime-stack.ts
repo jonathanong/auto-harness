@@ -25,7 +25,9 @@ type RuntimeStackProps = StackProps & {
   tablePrefix: string;
   /** Defaults to false — see addRuntimeObservability's account-role prerequisite. */
   accessLogsEnabled?: boolean;
-  /** Subscribers for the alarm topic. Empty still creates the topic — see runtime-alarms.ts. */
+  /** Explicit opt-in; a non-empty alarmEmails list also enables alarms. Defaults to false. */
+  alarmsEnabled?: boolean;
+  /** Email subscribers; a non-empty list enables alarms even when alarmsEnabled is false. */
   alarmEmails?: readonly string[];
   sentryDsn?: string;
 };
@@ -180,6 +182,7 @@ export class AutoHarnessRuntimeStack extends Stack {
       scope: this,
       environment: props.tablePrefix,
       accessLogsEnabled: props.accessLogsEnabled ?? false,
+      alarmsEnabled: props.alarmsEnabled ?? false,
       ...(props.alarmEmails ? { alarmEmails: props.alarmEmails } : {}),
       rest: restFunction,
       websocket: websocketFunction,
@@ -198,9 +201,9 @@ export class AutoHarnessRuntimeStack extends Stack {
 
     const restApiUrl = httpApi.attrApiEndpoint;
     const websocketUrl = Fn.join("", [websocketApi.attrApiEndpoint, "/prod"]);
-    // Published so an operator can subscribe without a redeploy:
+    // Published when alarms are enabled so an operator can add subscriptions without a redeploy:
     //   aws sns subscribe --topic-arn <this> --protocol email --notification-endpoint <you>
-    void new CfnOutput(this, "AlarmTopicArn", { value: alarmTopic.topicArn });
+    if (alarmTopic) void new CfnOutput(this, "AlarmTopicArn", { value: alarmTopic.topicArn });
     void new CfnOutput(this, "RestApiUrl", { value: restApiUrl });
     void new CfnOutput(this, "WebSocketUrl", { value: websocketUrl });
     void new CfnOutput(this, "IntegrationKeyArn", {

@@ -669,12 +669,12 @@ than duplicate application lifecycle lines. Successful `host:keepalive-ack` deli
 silent because they occur every 20 seconds; delivery failures remain structured function logs,
 and lower-frequency session/host control deliveries retain one structured success line.
 
-Alarms in the runtime stack (namespace `AutoHarness`, dimension `Environment` = table prefix,
-missing data not breaching): Lambda errors, API 5xx, queue age ≥ 30 minutes, assignment failures,
-ACK timeouts, stale hosts, cooldowns, log drops, log seq gaps, and infrastructure retry exhaustion.
-`InfrastructureRetries`, stale-attempt log drops, and
-discarded WS messages are metrics/logs only (not alarmed) — expected to occur occasionally during
-ordinary reconnects, unlike the others.
+The runtime stack can opt into seven alarms (namespace `AutoHarness`, dimension `Environment` =
+table prefix, missing data not breaching): Lambda errors, API 5xx, WebSocket API errors, queue age
+≥ 30 minutes, and infrastructure retry exhaustion. Set `HARNESS_DEPLOY_ALARMS=true` or configure
+`HARNESS_DEPLOY_ALARM_EMAILS`; otherwise the alarms and SNS topic are omitted. The other EMF
+signals, including bounded retries, ACK timeouts, stale hosts, cooldowns, and transcript drop/gap
+telemetry, remain available as metrics without paging.
 
 ---
 

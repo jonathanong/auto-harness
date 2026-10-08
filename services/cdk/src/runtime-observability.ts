@@ -135,13 +135,14 @@ function operationalMetric(
  * CloudWatch Logs role (`scripts/bootstrap-apigateway-account.sh`) that this stack
  * deliberately does not provision — see docs/deploy-aws.md.
  *
- * Returns the alarm topic so the stack can publish its ARN, which is how an operator
- * subscribes without a redeploy.
+ * Creates alarms only when enabled or when emails are configured. Access logs and stage
+ * throttles are independent of this opt-in. Returns the shared alarm topic when enabled.
  */
 export function addRuntimeObservability(input: {
   scope: Construct;
   environment: string;
   accessLogsEnabled: boolean;
+  alarmsEnabled?: boolean;
   alarmEmails?: readonly string[];
   rest: NodejsFunction;
   websocket: NodejsFunction;
@@ -150,7 +151,7 @@ export function addRuntimeObservability(input: {
   httpStage: apigatewayv2.CfnStage;
   websocketApi: apigatewayv2.CfnApi;
   websocketStage: apigatewayv2.CfnStage;
-}): sns.Topic {
+}): sns.Topic | undefined {
   configureStage(
     input.httpStage,
     HTTP_ACCESS_LOG_FORMAT,
@@ -164,7 +165,9 @@ export function addRuntimeObservability(input: {
     input.accessLogsEnabled ? accessLogGroup(input.scope, "WebSocketAccessLogs") : undefined,
   );
 
-  const topic = createAlarmTopic(input.scope, input.environment, input.alarmEmails ?? []);
+  const emails = input.alarmEmails ?? [];
+  if (!(input.alarmsEnabled ?? false) && emails.length === 0) return undefined;
+  const topic = createAlarmTopic(input.scope, input.environment, emails);
   const errors = { period: Duration.minutes(5), statistic: "Sum" } as const;
   addErrorAlarm(input.scope, "RestFunctionErrors", input.rest.metricErrors(errors), 1, topic);
   addErrorAlarm(
@@ -192,24 +195,14 @@ export function addRuntimeObservability(input: {
     1800,
     topic,
   );
-  for (const name of [
-    "AssignmentFailures",
-    "AckTimeouts",
-    "StaleHosts",
-    "Cooldowns",
-    "LogDrops",
-    "LogSeqGaps",
-    // A retry is an expected bounded recovery. Alarm only when the one-retry budget is
-    // exhausted and the logical session still cannot proceed.
+  // A retry is an expected bounded recovery. Alarm only when its one-retry budget is
+  // exhausted and the logical session still cannot proceed.
+  addErrorAlarm(
+    input.scope,
     "InfrastructureRetryExhausted",
-  ] as const) {
-    addErrorAlarm(
-      input.scope,
-      name,
-      operationalMetric(name, env, "Sum", cloudwatch.Unit.COUNT),
-      1,
-      topic,
-    );
-  }
+    operationalMetric("InfrastructureRetryExhausted", env, "Sum", cloudwatch.Unit.COUNT),
+    1,
+    topic,
+  );
   return topic;
 }

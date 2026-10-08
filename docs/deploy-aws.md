@@ -238,20 +238,21 @@ All lifecycle commands use the same settings. Environment names are lowercase,
 start with a letter, contain only letters, numbers, and dashes, and are at most 32
 characters.
 
-| Variable                             | Required             | Purpose                                                                                                                                                                                                            |
-| ------------------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `HARNESS_DEPLOY_ENVIRONMENT`         | Always               | Isolates stack, table, bucket, and SSM names                                                                                                                                                                       |
-| `AWS_REGION` or `AWS_DEFAULT_REGION` | One required         | AWS deployment region                                                                                                                                                                                              |
-| `HARNESS_DEPLOY_REMOVAL_POLICY`      | No; default `retain` | `retain` for durable data or `destroy` for disposable data                                                                                                                                                         |
-| `AWS_ACCOUNT_ID`                     | No                   | Avoids the STS account lookup when already known                                                                                                                                                                   |
-| `HARNESS_DEPLOY_CONFIRM`             | Teardown/purge only  | Must exactly match `HARNESS_DEPLOY_ENVIRONMENT`                                                                                                                                                                    |
-| `HARNESS_DEPLOY_PURGE_CONFIRM`       | Purge only           | Must exactly match `destroy-all-data-in-<environment>`                                                                                                                                                             |
-| `HARNESS_DEPLOY_PURGE_SSM`           | No; default off      | Set to `1` to also delete the four bootstrap/public-base-url SSM parameters; the optional Slack app parameter is always retained                                                                                   |
-| `HARNESS_ACCESS_LOGS_ENABLED`        | No; default off      | Set to exactly `1` to enable redacted HTTP/WS access logs (see below)                                                                                                                                              |
-| `HARNESS_API_SENTRY_DSN`             | No                   | Optional Sentry DSN for REST/WebSocket/Cron Lambdas. Invalid non-empty values fail deploy.                                                                                                                         |
-| `HARNESS_WEB_SENTRY_DSN_CLIENT`      | No                   | Optional browser Sentry DSN for the CloudFront UI                                                                                                                                                                  |
-| `HARNESS_WEB_SENTRY_DSN_SERVER`      | No                   | Optional Next.js server Sentry DSN for the web Lambda                                                                                                                                                              |
-| `HARNESS_DEPLOY_ALARM_EMAILS`        | No; default none     | Comma-separated addresses to subscribe to the alarm topic. Malformed addresses fail deploy. The topic and every alarm action are created either way — see [observability.md](observability.md#alarm-notifications) |
+| Variable                             | Required             | Purpose                                                                                                                                                                      |
+| ------------------------------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HARNESS_DEPLOY_ENVIRONMENT`         | Always               | Isolates stack, table, bucket, and SSM names                                                                                                                                 |
+| `AWS_REGION` or `AWS_DEFAULT_REGION` | One required         | AWS deployment region                                                                                                                                                        |
+| `HARNESS_DEPLOY_REMOVAL_POLICY`      | No; default `retain` | `retain` for durable data or `destroy` for disposable data                                                                                                                   |
+| `AWS_ACCOUNT_ID`                     | No                   | Avoids the STS account lookup when already known                                                                                                                             |
+| `HARNESS_DEPLOY_CONFIRM`             | Teardown/purge only  | Must exactly match `HARNESS_DEPLOY_ENVIRONMENT`                                                                                                                              |
+| `HARNESS_DEPLOY_PURGE_CONFIRM`       | Purge only           | Must exactly match `destroy-all-data-in-<environment>`                                                                                                                       |
+| `HARNESS_DEPLOY_PURGE_SSM`           | No; default off      | Set to `1` to also delete the four bootstrap/public-base-url SSM parameters; the optional Slack app parameter is always retained                                             |
+| `HARNESS_ACCESS_LOGS_ENABLED`        | No; default off      | Set to exactly `1` to enable redacted HTTP/WS access logs (see below)                                                                                                        |
+| `HARNESS_DEPLOY_ALARMS`              | No; default off      | Set to exactly `true` to create the seven CloudWatch alarms, shared SNS topic, and `AlarmTopicArn` output; email subscribers also enable alarms                              |
+| `HARNESS_API_SENTRY_DSN`             | No                   | Optional Sentry DSN for REST/WebSocket/Cron Lambdas. Invalid non-empty values fail deploy.                                                                                   |
+| `HARNESS_WEB_SENTRY_DSN_CLIENT`      | No                   | Optional browser Sentry DSN for the CloudFront UI                                                                                                                            |
+| `HARNESS_WEB_SENTRY_DSN_SERVER`      | No                   | Optional Next.js server Sentry DSN for the web Lambda                                                                                                                        |
+| `HARNESS_DEPLOY_ALARM_EMAILS`        | No; default none     | Comma-separated addresses to subscribe to the alarm topic and opt into alarms. Malformed addresses fail deploy. See [observability.md](observability.md#alarm-notifications) |
 
 The generated names are `AutoHarness-<environment>-Foundation`,
 `AutoHarness-<environment>-Runtime`, `AutoHarness-<environment>-Web`, and
@@ -297,10 +298,24 @@ After that succeeds, opt individual environments into access logs:
 HARNESS_ACCESS_LOGS_ENABLED=1 pnpm deploy:aws
 ```
 
-Only the literal string `1` opts in; any other value (including `true`) keeps
-access logs off. Throttles, CloudWatch alarms, and app-emitted operational EMF
-metrics are unaffected either way — they don't depend on the account-level
-role.
+Only the literal string `1` opts into access logs; any other value (including
+`true`) keeps them off. Throttles and app-emitted operational EMF metrics remain
+independent of both access logs and the CloudWatch alarm opt-in. See
+[Alarm notifications](observability.md#alarm-notifications) for the separate
+alarm setting.
+
+### CloudWatch alarms (opt-in)
+
+CloudWatch alarms and their shared SNS topic are omitted by default. Set
+`HARNESS_DEPLOY_ALARMS=true` to create them, or configure one or more valid
+`HARNESS_DEPLOY_ALARM_EMAILS` addresses. A non-empty email list enables alarms
+even if `HARNESS_DEPLOY_ALARMS=false`. Existing environments with manually
+subscribed topic ARNs must set `HARNESS_DEPLOY_ALARMS=true` on every future
+deploy/update; otherwise the next stack update removes the alarms and topic.
+Setting the flag preserves the topic output so additional email subscriptions
+can still be made without another deploy. Alarm state actions alone do not make
+EMF publication conditional: deployed Lambdas continue emitting metrics either
+way.
 
 ## Deploy a new environment
 
