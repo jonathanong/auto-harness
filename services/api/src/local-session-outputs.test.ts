@@ -114,7 +114,7 @@ describe("local session output publication and reads", () => {
     };
     const prepared = await fetch(`${base}/api/v1/sessions/sess/outputs/prepare`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", authorization: "Bearer host-key" },
       body: JSON.stringify(request),
     });
     expect(prepared.status).toBe(200);
@@ -122,6 +122,7 @@ describe("local session output publication and reads", () => {
       artifactUpload: { method: string; url: string; headers: Record<string, string> };
     };
     expect(artifactUpload.method).toBe("PUT");
+    expect(artifactUpload.headers.authorization).toBe("Bearer host-key");
     expect((await postPrepare(base, "sess", request)).status).toBe(200);
     expect(await (await fetch(`${base}/api/v1/sessions/sess/output`)).text()).toContain(
       '"output":null',
@@ -165,6 +166,8 @@ describe("local session output publication and reads", () => {
     expect(download.headers.get("cache-control")).toBe("no-store");
     const tampered = new URL(artifacts.downloadUrl);
     tampered.searchParams.set("version", "wrong");
+    expect((await fetch(tampered)).status).toBe(404);
+    tampered.searchParams.delete("version");
     expect((await fetch(tampered)).status).toBe(404);
     plane.state.sessions.get("sess")!.retentionToken = "claimed";
     expect((await fetch(artifacts.downloadUrl)).status).toBe(404);
@@ -225,6 +228,19 @@ describe("local session output publication and reads", () => {
     });
     delete plane.state.sessions.get("hook")!.terminalHookHandoff;
     expect((await postPrepare(base, "hook", body)).status).toBe(200);
+    expect((await postPrepare(base, "hook", body)).status).toBe(200);
+    expect(await (await fetch(`${base}/api/v1/sessions/hook/output`)).json()).toEqual({
+      state: "none",
+    });
+    expect(
+      (
+        await fetch(`${base}/api/v1/sessions/hook/outputs/complete`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ attemptId: "attempt" }),
+        })
+      ).status,
+    ).toBe(200);
     expect(
       await (
         await postPrepare(base, "hook", {
@@ -395,6 +411,7 @@ describe("local session output publication and reads", () => {
     const id = "parallel-memory";
     plane.state.sessions.set(id, session(id));
     const store = new MemorySessionOutputsStore(plane.state);
+    expect(await store.getPayload(id)).toBeNull();
     const request = {
       attemptId: "attempt",
       capturedAt: new Date().toISOString(),

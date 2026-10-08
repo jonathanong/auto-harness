@@ -52,8 +52,33 @@ describe("session output route error boundaries", () => {
     );
     const server = createServer((req, res) => {
       const url = new URL(req.url ?? "/", "http://localhost");
+      const principal =
+        req.headers["x-test-principal"] === "unbound"
+          ? {
+              id: "operator",
+              username: "operator",
+              role: "operator" as const,
+              kind: "user" as const,
+            }
+          : req.headers["x-test-principal"] === "wrong-host"
+            ? {
+                id: "other-host",
+                username: "other-host",
+                role: "operator" as const,
+                kind: "service-account" as const,
+                boundHostId: "other",
+              }
+            : req.headers["x-test-principal"] === "assigned-host"
+              ? {
+                  id: "assigned-host",
+                  username: "assigned-host",
+                  role: "operator" as const,
+                  kind: "service-account" as const,
+                  boundHostId: "host",
+                }
+              : undefined;
       void handleSessionOutputRoutes(
-        { plane, req, res, url, method: req.method ?? "GET" },
+        { plane, req, res, url, method: req.method ?? "GET", principal },
         store,
         artifacts,
         "http://127.0.0.1",
@@ -70,6 +95,51 @@ describe("session output route error boundaries", () => {
       const url = `http://127.0.0.1:${port}/api/v1/sessions/corrupt-payload/output`;
       expect((await fetch(url)).status).toBe(500);
       expect((await fetch(url, { method: "PATCH" })).status).toBe(404);
+      expect((await fetch(url.replace(/output$/, "unrelated"))).status).toBe(404);
+      expect((await fetch(url, { headers: { "x-test-principal": "wrong-host" } })).status).toBe(
+        404,
+      );
+      delete plane.state.sessions.get("corrupt-payload")!.hostId;
+      expect(
+        (
+          await fetch(url.replace(/output$/, "artifacts"), {
+            headers: { "x-test-principal": "assigned-host" },
+          })
+        ).status,
+      ).toBe(200);
+      const unbound = { "x-test-principal": "unbound", "content-type": "application/json" };
+      expect(
+        (
+          await fetch(url.replace(/output$/, "outputs/prepare"), {
+            method: "POST",
+            headers: unbound,
+            body: JSON.stringify({
+              attemptId: "attempt",
+              capturedAt: now,
+              output: { state: "none" },
+              artifacts: { state: "none" },
+            }),
+          })
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await fetch(url.replace(/output$/, "outputs/complete"), {
+            method: "POST",
+            headers: unbound,
+            body: JSON.stringify({ attemptId: "attempt" }),
+          })
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await fetch(url.replace(/output$/, "outputs/upload/attempt"), {
+            method: "PUT",
+            headers: unbound,
+            body: "payload",
+          })
+        ).status,
+      ).toBe(404);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

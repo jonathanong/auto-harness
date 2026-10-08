@@ -280,6 +280,14 @@ describe("session output durable intent and fences", () => {
     expect(
       await winner.complete("sess-race-complete-winner", "attempt-1", "host-1", NOW),
     ).toMatchObject({ completedAt: NOW });
+
+    await seed("sess-race-identical");
+    const sameWinner = storeWithChangeAfterManifestRead(async () => {
+      await store.prepare("sess-race-identical", intent, "host-1", NOW);
+    });
+    expect(await sameWinner.prepare("sess-race-identical", intent, "host-1", NOW)).toEqual(
+      await store.getManifest("sess-race-identical"),
+    );
   });
 
   it("surfaces Dynamo service failures instead of labeling them stale attempts", async () => {
@@ -319,6 +327,16 @@ describe("session output durable intent and fences", () => {
       "host-1",
       NOW,
     );
+    expect(
+      await outputs.prepare(
+        "sess-facade",
+        { ...intent, artifacts: { state: "none" } },
+        "host-1",
+        NOW,
+      ),
+    ).toEqual(await outputs.getManifest("sess-facade"));
+    const finished = await outputs.complete("sess-facade", "attempt-1", "host-1", NOW);
+    expect(await outputs.complete("sess-facade", "attempt-1", "host-1", NOW)).toEqual(finished);
     expect(await storage.getSessionOutputsStore().getPayload("sess-facade")).toMatchObject({
       jsonText: "null",
     });
