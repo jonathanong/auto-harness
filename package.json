@@ -80,9 +80,9 @@
     "happy-dom": "^20.14.5",
     "husky": "^9.1.7",
     "knip": "^6.39.0",
-    "no-mistakes": "^0.68.0",
-    "oxfmt": "^0.71.0",
-    "oxlint": "^1.86.0",
+    "no-mistakes": "^0.73.0",
+    "oxfmt": "^0.72.0",
+    "oxlint": "^1.87.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   },
