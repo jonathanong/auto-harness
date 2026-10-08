@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- output upload/read flows share one live HTTP server fixture. */
 import { createHash } from "node:crypto";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { createServer as createTcpServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -222,5 +222,134 @@ describe("local session output publication and reads", () => {
         })
       ).json(),
     ).toMatchObject({ error: { code: "OUTPUT_CONFLICT" } });
+  });
+
+  it("validates submissions and exposes independent error and expired states", async () => {
+    expect((await fetch(`${base}/api/v1/sessions/missing/output`)).status).toBe(404);
+    expect((await postPrepare(base, "missing", { attemptId: "attempt" })).status).toBe(400);
+    plane.state.sessions.set("errors", session("errors"));
+    expect((await postPrepare(base, "errors", { attemptId: "attempt" })).status).toBe(400);
+    expect(
+      (
+        await fetch(`${base}/api/v1/sessions/errors/outputs/prepare`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{invalid",
+        })
+      ).status,
+    ).toBe(400);
+    const request = {
+      attemptId: "attempt",
+      capturedAt: new Date().toISOString(),
+      output: { state: "error", error: { code: "NO_FILE", message: "missing output" } },
+      artifacts: { state: "error", error: { code: "NO_DIR", message: "missing artifacts" } },
+    };
+    expect((await postPrepare(base, "errors", request)).status).toBe(200);
+    expect(await (await fetch(`${base}/api/v1/sessions/errors/output`)).json()).toMatchObject({
+      state: "error",
+      error: { code: "NO_FILE" },
+    });
+    expect(await (await fetch(`${base}/api/v1/sessions/errors/artifacts`)).json()).toMatchObject({
+      state: "error",
+      error: { code: "NO_DIR" },
+    });
+    expect((await postPrepare(base, "missing", request)).status).toBe(404);
+    expect(
+      (
+        await fetch(`${base}/api/v1/sessions/errors/outputs/complete`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{bad",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await fetch(`${base}/api/v1/sessions/errors/outputs/complete`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        })
+      ).status,
+    ).toBe(400);
+    plane.state.sessions.set(
+      "expired",
+      session("expired", { completedAt: new Date(Date.now() - 25 * 3600_000).toISOString() }),
+    );
+    expect(await (await fetch(`${base}/api/v1/sessions/expired/output`)).json()).toMatchObject({
+      state: "error",
+      error: { code: "OUTPUTS_UNAVAILABLE" },
+    });
+  });
+
+  it("rejects unprepared, unauthenticated and corrupted local artifact transfers", async () => {
+    const id = "integrity";
+    plane.state.sessions.set(id, session(id));
+    const bytes = Buffer.from("gzip bytes for integrity");
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const uploadPath = `${base}/api/v1/sessions/${id}/outputs/upload/attempt`;
+    expect((await fetch(uploadPath, { method: "PUT", body: bytes })).status).toBe(409);
+    const prepared = await postPrepare(base, id, {
+      attemptId: "attempt",
+      capturedAt: new Date().toISOString(),
+      output: { state: "none" },
+      artifacts: {
+        state: "pending",
+        compressedBytes: bytes.length,
+        sourceBytes: bytes.length,
+        fileCount: 1,
+        sha256,
+      },
+    });
+    const { artifactUpload } = (await prepared.json()) as {
+      artifactUpload: { url: string; headers: Record<string, string> };
+    };
+    expect((await fetch(uploadPath, { method: "PUT", body: bytes })).status).toBe(403);
+    expect((await fetch(artifactUpload.url, { method: "PUT", body: bytes })).status).toBe(400);
+    expect(
+      await (
+        await fetch(`${base}/api/v1/sessions/${id}/outputs/complete`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ attemptId: "attempt" }),
+        })
+      ).json(),
+    ).toMatchObject({ error: { code: "OUTPUTS_NOT_UPLOADED" } });
+    expect(
+      (
+        await fetch(artifactUpload.url, {
+          method: "PUT",
+          headers: artifactUpload.headers,
+          body: Buffer.from("wrong bytes but same length"),
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await fetch(artifactUpload.url, {
+          method: "PUT",
+          headers: artifactUpload.headers,
+          body: bytes,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await fetch(`${base}/api/v1/sessions/${id}/outputs/complete`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ attemptId: "attempt" }),
+        })
+      ).status,
+    ).toBe(200);
+    const ready = (await (await fetch(`${base}/api/v1/sessions/${id}/artifacts`)).json()) as {
+      downloadUrl: string;
+    };
+    const file = join(
+      local.directory,
+      createHash("sha256").update(`${id}\0attempt`).digest("hex") + ".tar.gz",
+    );
+    await writeFile(file, "changed on disk");
+    expect((await fetch(ready.downloadUrl)).status).toBe(404);
   });
 });

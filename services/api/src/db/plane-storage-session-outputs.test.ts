@@ -127,6 +127,26 @@ describe("session output durable intent and fences", () => {
     });
   });
 
+  it("rejects missing capability and submissions beyond the terminal retry window", async () => {
+    await expect(store.prepare("unknown", intent, "host-1", NOW)).rejects.toMatchObject({
+      code: "STALE_ATTEMPT",
+    });
+    await seed("sess-unsupported", { sessionOutputsSupported: false });
+    await expect(store.prepare("sess-unsupported", intent, "host-1", NOW)).rejects.toMatchObject({
+      code: "STALE_ATTEMPT",
+    });
+    await seed("sess-expired", { completedAt: "2026-10-07T11:00:00.000Z" });
+    await expect(store.prepare("sess-expired", intent, "host-1", NOW)).rejects.toMatchObject({
+      code: "OUTPUTS_EXPIRED",
+    });
+    await seed("sess-unprepared");
+    await expect(
+      store.complete("sess-unprepared", "attempt-1", "host-1", NOW),
+    ).rejects.toMatchObject({
+      code: "OUTPUTS_NOT_PREPARED",
+    });
+  });
+
   it("is first-wins under simultaneous distinct manifests and refuses completion after attempt change", async () => {
     await seed("sess-race");
     const other = { ...intent, output: { state: "none" as const } };

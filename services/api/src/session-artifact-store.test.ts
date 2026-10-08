@@ -118,6 +118,38 @@ describe("session artifact object boundaries", () => {
     expect(await store.inspect("sess", "attempt")).toBeNull();
   });
 
+  it("distinguishes absent, incomplete, and failed S3 HEAD responses", async () => {
+    let status = 404;
+    const server = createServer((_req, res) => {
+      if (status === 200) {
+        res.writeHead(200, { "content-length": "7" });
+      } else {
+        res.writeHead(status, { "content-type": "application/xml" });
+      }
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as { port: number }).port;
+    const client = new S3Client({
+      region: "us-east-1",
+      endpoint: `http://127.0.0.1:${port}`,
+      forcePathStyle: true,
+      maxAttempts: 1,
+      credentials: { accessKeyId: "test", secretAccessKey: "secret" },
+    });
+    const store = new S3SessionArtifactStore(client, "bucket");
+    try {
+      expect(await store.inspect("sess", "attempt")).toBeNull();
+      status = 200;
+      expect(await store.inspect("sess", "attempt")).toBeNull();
+      status = 500;
+      await expect(store.inspect("sess", "attempt")).rejects.toThrow();
+    } finally {
+      client.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it("rejects unsafe raw session key segments", () => {
     expect(() => sessionArtifactKey("../other", "attempt")).toThrow("invalid session artifact id");
   });
