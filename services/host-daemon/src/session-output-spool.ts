@@ -40,7 +40,7 @@ import { httpBaseFromApiUrl } from "./bootstrap.ts";
 const JOB_LIMIT = 100;
 const ERROR_RECORD_LIMIT = 100;
 const ERROR_RECORD_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-const STAGING_LIMIT = 1024 * 1024 * 1024;
+const STAGING_LIMIT = 2 * 1024 * 1024 * 1024;
 const PASS_LIMIT = 25;
 const CONCURRENCY = 2;
 const API_TIMEOUT_MS = 30_000;
@@ -78,13 +78,17 @@ function keyFor(sessionId: string, attemptId: string): string {
 }
 
 function outputError(code: string, message: string) {
-  return { state: "error" as const, error: { code: code.slice(0, 64), message: message.slice(0, 256) } };
+  return {
+    state: "error" as const,
+    error: { code: code.slice(0, 64), message: message.slice(0, 256) },
+  };
 }
 
 async function readOutput(path: string): Promise<SessionOutputSubmission> {
   try {
     const info = await lstat(path);
-    if (!info.isFile()) return outputError("invalid_output_file", "Output path is not a regular file");
+    if (!info.isFile())
+      return outputError("invalid_output_file", "Output path is not a regular file");
     if (info.size > MAX_SESSION_OUTPUT_BYTES)
       return outputError("output_too_large", `Output exceeds ${MAX_SESSION_OUTPUT_BYTES} bytes`);
     const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
@@ -96,7 +100,11 @@ async function readOutput(path: string): Promise<SessionOutputSubmission> {
     const chunks: Buffer[] = [];
     let byteLength = 0;
     try {
-      const stream = handle.createReadStream({ autoClose: false, start: 0, end: MAX_SESSION_OUTPUT_BYTES });
+      const stream = handle.createReadStream({
+        autoClose: false,
+        start: 0,
+        end: MAX_SESSION_OUTPUT_BYTES,
+      });
       for await (const chunk of stream) {
         const bytes = Buffer.from(chunk);
         byteLength += bytes.byteLength;
@@ -109,7 +117,13 @@ async function readOutput(path: string): Promise<SessionOutputSubmission> {
     if (byteLength > MAX_SESSION_OUTPUT_BYTES)
       return outputError("output_too_large", `Output exceeds ${MAX_SESSION_OUTPUT_BYTES} bytes`);
     const after = await lstat(path);
-    if (!after.isFile() || after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size || after.mtimeMs !== before.mtimeMs)
+    if (
+      !after.isFile() ||
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      after.size !== before.size ||
+      after.mtimeMs !== before.mtimeMs
+    )
       return outputError("output_changed", "Output changed while being read");
     if (byteLength === 0) return outputError("invalid_json", "Output file is empty");
     const bytes = Buffer.concat(chunks, byteLength);
@@ -126,7 +140,10 @@ async function readOutput(path: string): Promise<SessionOutputSubmission> {
     return { state: "ready", jsonText, sha256: createHash("sha256").update(bytes).digest("hex") };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { state: "none" };
-    return outputError("output_read_failed", error instanceof Error ? error.message : String(error));
+    return outputError(
+      "output_read_failed",
+      error instanceof Error ? error.message : String(error),
+    );
   }
 }
 
@@ -140,12 +157,19 @@ type TreeEntry = {
   ancestors: Array<{ path: string; dev: number; ino: number; mtimeMs: number }>;
 };
 
-async function listArtifacts(root: string): Promise<{ entries: TreeEntry[]; sourceBytes: number; fileCount: number }> {
+async function listArtifacts(
+  root: string,
+): Promise<{ entries: TreeEntry[]; sourceBytes: number; fileCount: number }> {
   const entries: TreeEntry[] = [];
+  const suppliedRoot = await lstat(root);
+  if (!suppliedRoot.isDirectory() || suppliedRoot.isSymbolicLink())
+    throw new Error("artifact root must be a real directory");
   const rootPath = await realpath(root);
-  const directoryQueue: Array<{ absolute: string; relativePath: string; ancestors: Array<{ path: string; dev: number; ino: number; mtimeMs: number }> }> = [
-    { absolute: rootPath, relativePath: "", ancestors: [] },
-  ];
+  const directoryQueue: Array<{
+    absolute: string;
+    relativePath: string;
+    ancestors: Array<{ path: string; dev: number; ino: number; mtimeMs: number }>;
+  }> = [{ absolute: rootPath, relativePath: "", ancestors: [] }];
   let sourceBytes = 0;
   let fileCount = 0;
   let traversed = 0;
@@ -161,8 +185,12 @@ async function listArtifacts(root: string): Promise<{ entries: TreeEntry[]; sour
     }
     const sortedChildren = children.toSorted((a, b) => a.localeCompare(b));
     const dirStat = await lstat(directory.absolute);
-    if (!dirStat.isDirectory() || dirStat.isSymbolicLink()) throw new Error("artifact directory changed during scan");
-    const ancestors = [...directory.ancestors, { path: directory.absolute, dev: dirStat.dev, ino: dirStat.ino, mtimeMs: dirStat.mtimeMs }];
+    if (!dirStat.isDirectory() || dirStat.isSymbolicLink())
+      throw new Error("artifact directory changed during scan");
+    const ancestors = [
+      ...directory.ancestors,
+      { path: directory.absolute, dev: dirStat.dev, ino: dirStat.ino, mtimeMs: dirStat.mtimeMs },
+    ];
     for (const name of sortedChildren) {
       if (!name || name === "." || name === ".." || name.includes("/") || name.includes("\\"))
         throw new Error("artifact path contains an unsafe component");
@@ -170,26 +198,37 @@ async function listArtifacts(root: string): Promise<{ entries: TreeEntry[]; sour
       const info = await lstat(absolute);
       const path = directory.relativePath ? `${directory.relativePath}/${name}` : name;
       if (info.isSymbolicLink()) throw new Error(`symbolic links are not allowed: ${path}`);
-      const snapshot = { dev: info.dev, ino: info.ino, size: info.size, mtimeMs: info.mtimeMs, mode: info.mode };
+      const snapshot = {
+        dev: info.dev,
+        ino: info.ino,
+        size: info.size,
+        mtimeMs: info.mtimeMs,
+        mode: info.mode,
+      };
       if (info.isDirectory()) {
         entries.push({ path, absolute, kind: "directory", size: 0, stat: snapshot, ancestors });
         directoryQueue.push({ absolute, relativePath: path, ancestors });
       } else if (info.isFile()) {
         fileCount += 1;
         sourceBytes += info.size;
-        if (fileCount > MAX_SESSION_ARTIFACT_FILES) throw new Error("artifact file count exceeds limit");
-        if (sourceBytes > MAX_SESSION_ARTIFACT_SOURCE_BYTES) throw new Error("artifact source bytes exceed limit");
+        if (fileCount > MAX_SESSION_ARTIFACT_FILES)
+          throw new Error("artifact file count exceeds limit");
+        if (sourceBytes > MAX_SESSION_ARTIFACT_SOURCE_BYTES)
+          throw new Error("artifact source bytes exceed limit");
         entries.push({ path, absolute, kind: "file", size: info.size, stat: snapshot, ancestors });
       } else {
         throw new Error(`special files are not allowed: ${path}`);
       }
     }
   }
-  if (await realpath(root) !== rootPath) throw new Error("artifact root changed during scan");
+  if ((await realpath(root)) !== rootPath) throw new Error("artifact root changed during scan");
   return { entries, sourceBytes, fileCount };
 }
 
-async function createArchive(root: string, destination: string): Promise<{ bytes: number; sourceBytes: number; fileCount: number; sha256: string }> {
+async function createArchive(
+  root: string,
+  destination: string,
+): Promise<{ bytes: number; sourceBytes: number; fileCount: number; sha256: string }> {
   const { entries, sourceBytes, fileCount } = await listArtifacts(root);
   if (fileCount === 0) return { bytes: 0, sourceBytes: 0, fileCount: 0, sha256: "" };
   const output = createWriteStream(destination, { flags: "wx", mode: 0o600 });
@@ -202,7 +241,9 @@ async function createArchive(root: string, destination: string): Promise<{ bytes
     transform(chunk: Buffer, _encoding, callback) {
       compressedBytes += chunk.byteLength;
       if (compressedBytes > MAX_SESSION_ARTIFACT_BYTES) {
-        compressionLimitError = new Error(`compressed artifacts exceed ${MAX_SESSION_ARTIFACT_BYTES} bytes`);
+        compressionLimitError = new Error(
+          `compressed artifacts exceed ${MAX_SESSION_ARTIFACT_BYTES} bytes`,
+        );
         callback(compressionLimitError);
       } else callback(null, chunk);
     },
@@ -211,14 +252,28 @@ async function createArchive(root: string, destination: string): Promise<{ bytes
   void archiveDone.catch(() => undefined);
   try {
     for (const entry of entries) {
-      if (await realpath(root) !== frozenRoot) throw new Error("artifact root changed while archiving");
+      if ((await realpath(root)) !== frozenRoot)
+        throw new Error("artifact root changed while archiving");
       for (const ancestor of entry.ancestors) {
         const info = await lstat(ancestor.path);
-        if (!info.isDirectory() || info.isSymbolicLink() || info.dev !== ancestor.dev || info.ino !== ancestor.ino || info.mtimeMs !== ancestor.mtimeMs)
+        if (
+          !info.isDirectory() ||
+          info.isSymbolicLink() ||
+          info.dev !== ancestor.dev ||
+          info.ino !== ancestor.ino ||
+          info.mtimeMs !== ancestor.mtimeMs
+        )
           throw new Error(`artifact parent changed while archiving: ${entry.path}`);
       }
       const before = await lstat(entry.absolute);
-      if (before.isSymbolicLink() || (entry.kind === "file" ? !before.isFile() : !before.isDirectory()) || before.dev !== entry.stat.dev || before.ino !== entry.stat.ino || before.size !== entry.stat.size || before.mtimeMs !== entry.stat.mtimeMs)
+      if (
+        before.isSymbolicLink() ||
+        (entry.kind === "file" ? !before.isFile() : !before.isDirectory()) ||
+        before.dev !== entry.stat.dev ||
+        before.ino !== entry.stat.ino ||
+        before.size !== entry.stat.size ||
+        before.mtimeMs !== entry.stat.mtimeMs
+      )
         throw new Error(`artifact changed before archive: ${entry.path}`);
       const stream = tar.entry({
         name: entry.path,
@@ -233,7 +288,11 @@ async function createArchive(root: string, destination: string): Promise<{ bytes
         const handle = await open(entry.absolute, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
         try {
           const opened = await handle.stat();
-          if (opened.dev !== entry.stat.dev || opened.ino !== entry.stat.ino || opened.size !== entry.size)
+          if (
+            opened.dev !== entry.stat.dev ||
+            opened.ino !== entry.stat.ino ||
+            opened.size !== entry.size
+          )
             throw new Error(`artifact changed before read: ${entry.path}`);
           const fileStream = handle.createReadStream({ autoClose: false });
           let readBytes = 0;
@@ -243,16 +302,28 @@ async function createArchive(root: string, destination: string): Promise<{ bytes
               fileStream.destroy(new Error(`artifact grew while archiving: ${entry.path}`));
           });
           await pipeline(fileStream, stream);
-          if (readBytes !== entry.size) throw new Error(`artifact changed while archiving: ${entry.path}`);
+          if (readBytes !== entry.size)
+            throw new Error(`artifact changed while archiving: ${entry.path}`);
         } finally {
           await handle.close();
         }
         const after = await lstat(entry.absolute);
-        if (after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size || after.mtimeMs !== before.mtimeMs)
+        if (
+          after.dev !== before.dev ||
+          after.ino !== before.ino ||
+          after.size !== before.size ||
+          after.mtimeMs !== before.mtimeMs
+        )
           throw new Error(`artifact changed while archiving: ${entry.path}`);
       } else {
         const after = await lstat(entry.absolute);
-        if (!after.isDirectory() || after.isSymbolicLink() || after.dev !== before.dev || after.ino !== before.ino || after.mtimeMs !== before.mtimeMs)
+        if (
+          !after.isDirectory() ||
+          after.isSymbolicLink() ||
+          after.dev !== before.dev ||
+          after.ino !== before.ino ||
+          after.mtimeMs !== before.mtimeMs
+        )
           throw new Error(`artifact directory changed while archiving: ${entry.path}`);
         stream.end(Buffer.alloc(0));
         await finished(stream);
@@ -283,7 +354,12 @@ function apiHeaders(identity: Identity): Record<string, string> {
   };
 }
 
-async function fetchWithTimeout(fetchFn: typeof fetch, url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+async function fetchWithTimeout(
+  fetchFn: typeof fetch,
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -301,12 +377,19 @@ function errorCode(body: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
-function uploadBody(fields: Record<string, string>, archivePath: string): { body: NodeJS.ReadableStream; contentType: string } {
+function uploadBody(
+  fields: Record<string, string>,
+  archivePath: string,
+): { body: NodeJS.ReadableStream; contentType: string } {
   const boundary = `harness-${createHash("sha256").update(`${Date.now()}-${Math.random()}`).digest("hex")}`;
   async function* parts() {
     for (const [name, value] of Object.entries(fields))
-      yield Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`);
-    yield Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="artifacts.tar.gz"\r\nContent-Type: application/gzip\r\n\r\n`);
+      yield Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
+      );
+    yield Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="artifacts.tar.gz"\r\nContent-Type: application/gzip\r\n\r\n`,
+    );
     for await (const chunk of createReadStream(archivePath)) yield Buffer.from(chunk);
     yield Buffer.from(`\r\n--${boundary}--\r\n`);
   }
@@ -327,20 +410,33 @@ async function uploadArtifact(input: {
   if (Date.parse(upload.expiresAt) <= Date.now()) throw new Error("artifact upload URL expired");
   let response: Response;
   if (upload.method === "PUT") {
-    response = await fetchWithTimeout(input.fetchFn, upload.url, {
-      method: "PUT",
-      headers: { ...upload.headers, ...(input.identity.apiKey ? { authorization: `Bearer ${input.identity.apiKey}` } : {}) },
-      body: createReadStream(input.archivePath) as never,
-      duplex: "half",
-    } as RequestInit, SESSION_ARTIFACT_UPLOAD_TIMEOUT_MS);
+    response = await fetchWithTimeout(
+      input.fetchFn,
+      upload.url,
+      {
+        method: "PUT",
+        headers: {
+          ...upload.headers,
+          ...(input.identity.apiKey ? { authorization: `Bearer ${input.identity.apiKey}` } : {}),
+        },
+        body: createReadStream(input.archivePath) as never,
+        duplex: "half",
+      } as RequestInit,
+      SESSION_ARTIFACT_UPLOAD_TIMEOUT_MS,
+    );
   } else {
     const multipart = uploadBody(upload.fields, input.archivePath);
-    response = await fetchWithTimeout(input.fetchFn, upload.url, {
-      method: "POST",
-      headers: { "content-type": multipart.contentType },
-      body: multipart.body as never,
-      duplex: "half",
-    } as RequestInit, SESSION_ARTIFACT_UPLOAD_TIMEOUT_MS);
+    response = await fetchWithTimeout(
+      input.fetchFn,
+      upload.url,
+      {
+        method: "POST",
+        headers: { "content-type": multipart.contentType },
+        body: multipart.body as never,
+        duplex: "half",
+      } as RequestInit,
+      SESSION_ARTIFACT_UPLOAD_TIMEOUT_MS,
+    );
   }
   if (!response.ok) throw new Error(`artifact upload failed with HTTP ${response.status}`);
 }
@@ -361,7 +457,13 @@ export class SessionOutputSpool {
   private admissionTail: Promise<void> = Promise.resolve();
   private archiveReservedBytes = 0;
 
-  constructor(input: { root?: string; identity?: Identity; fetchFn?: typeof fetch; onLog?: (message: string) => void; now?: () => number }) {
+  constructor(input: {
+    root?: string;
+    identity?: Identity;
+    fetchFn?: typeof fetch;
+    onLog?: (message: string) => void;
+    now?: () => number;
+  }) {
     this.root = input.root ?? defaultSessionOutputsDir();
     this.identity = input.identity;
     this.fetchFn = input.fetchFn ?? FETCH;
@@ -385,8 +487,15 @@ export class SessionOutputSpool {
         attemptId?: unknown;
       };
       if (existing.sessionId !== sessionId || existing.attemptId !== attemptId)
-        throw new Error("session output attempt directory has a mismatched intent", { cause: error });
-      if (await lstat(join(directory, "job.json")).then(() => true, () => false))
+        throw new Error("session output attempt directory has a mismatched intent", {
+          cause: error,
+        });
+      if (
+        await lstat(join(directory, "job.json")).then(
+          () => true,
+          () => false,
+        )
+      )
         throw new Error("session output attempt was already captured", { cause: error });
       await rm(join(directory, "output.json"), { force: true });
       await rm(join(directory, "artifacts"), { recursive: true, force: true });
@@ -394,11 +503,17 @@ export class SessionOutputSpool {
     await mkdir(join(directory, "artifacts"), { recursive: false, mode: 0o700 });
     await chmodDirectory(directory);
     const begunAt = new Date(this.now()).toISOString();
-    await writeAtomic(join(directory, "intent.json"), JSON.stringify({ sessionId, attemptId, begunAt }));
+    await writeAtomic(
+      join(directory, "intent.json"),
+      JSON.stringify({ sessionId, attemptId, begunAt }),
+    );
     return this.createAttemptHandle(directory, key, sessionId, attemptId);
   }
 
-  async findDeferredAttempt(sessionId: string, attemptId: string): Promise<SessionOutputAttempt | undefined> {
+  async findDeferredAttempt(
+    sessionId: string,
+    attemptId: string,
+  ): Promise<SessionOutputAttempt | undefined> {
     const key = keyFor(sessionId, attemptId);
     if (!/^[a-f0-9]{64}$/.test(key)) return undefined;
     const directory = join(this.attemptsDir, key);
@@ -453,7 +568,8 @@ export class SessionOutputSpool {
         };
         if (output.state === "ready") {
           const size = Buffer.byteLength(output.jsonText, "utf8");
-          if (size > MAX_SESSION_OUTPUT_BYTES) output = outputError("output_too_large", "Output exceeds limit");
+          if (size > MAX_SESSION_OUTPUT_BYTES)
+            output = outputError("output_too_large", "Output exceeds limit");
           job.output = output;
         }
         await this.withAdmission(async () => {
@@ -462,7 +578,11 @@ export class SessionOutputSpool {
           const jobCount = jobEntries.filter((name) => name.endsWith(".ready")).length;
           const stagingBytes = await directoryBytes(this.root, STAGING_LIMIT);
           if (overflow || jobCount >= JOB_LIMIT || stagingBytes > STAGING_LIMIT) {
-            await this.writePersistentError(job, "spool_capacity", "Local output spool capacity is exhausted");
+            await this.writePersistentError(
+              job,
+              "spool_capacity",
+              "Local output spool capacity is exhausted",
+            );
             await rm(directory, { recursive: true, force: true });
             return;
           }
@@ -496,7 +616,8 @@ export class SessionOutputSpool {
           attemptId?: unknown;
           begunAt?: unknown;
         };
-        const begunAt = typeof intent.begunAt === "string" ? Date.parse(intent.begunAt) : Number.NaN;
+        const begunAt =
+          typeof intent.begunAt === "string" ? Date.parse(intent.begunAt) : Number.NaN;
         if (
           typeof intent.sessionId === "string" &&
           typeof intent.attemptId === "string" &&
@@ -510,12 +631,19 @@ export class SessionOutputSpool {
             capturedAt: new Date(now).toISOString(),
             completedAt: new Date(now).toISOString(),
             expiresAt: new Date(now).toISOString(),
-            output: outputError("daemon_interrupted", "Daemon restarted before outputs were captured"),
+            output: outputError(
+              "daemon_interrupted",
+              "Daemon restarted before outputs were captured",
+            ),
             artifactSource: join(directory, "artifacts"),
             retryAt: now,
             failures: 0,
           };
-          await this.writePersistentError(job, "daemon_interrupted", "Daemon restarted before outputs were captured");
+          await this.writePersistentError(
+            job,
+            "daemon_interrupted",
+            "Daemon restarted before outputs were captured",
+          );
           await rm(directory, { recursive: true, force: true });
         }
       } catch (error) {
@@ -540,12 +668,18 @@ export class SessionOutputSpool {
 
   async runPass(): Promise<void> {
     if (this.passPromise) return await this.passPromise;
-    this.passPromise = this.processPass().catch((error: unknown) => {
-      this.onLog(`session output spool pass failed: ${String(error)}`);
-    }).finally(() => {
-      this.passPromise = undefined;
-      if (this.running) this.wakeTimer = setTimeout(() => { this.wakeTimer = undefined; this.wake(); }, 1_000);
-    });
+    this.passPromise = this.processPass()
+      .catch((error: unknown) => {
+        this.onLog(`session output spool pass failed: ${String(error)}`);
+      })
+      .finally(() => {
+        this.passPromise = undefined;
+        if (this.running)
+          this.wakeTimer = setTimeout(() => {
+            this.wakeTimer = undefined;
+            this.wake();
+          }, 1_000);
+      });
     return await this.passPromise;
   }
 
@@ -554,15 +688,23 @@ export class SessionOutputSpool {
     await mkdir(this.jobsDir, { recursive: true, mode: 0o700 });
     const { names: bounded, overflow } = await boundedNames(this.jobsDir, JOB_LIMIT + 1);
     if (overflow) this.onLog(`session output spool contains more than ${JOB_LIMIT} job entries`);
-    const names = bounded.filter((name) => name.endsWith(".ready")).toSorted().slice(0, JOB_LIMIT);
+    const names = bounded
+      .filter((name) => name.endsWith(".ready"))
+      .toSorted()
+      .slice(0, JOB_LIMIT);
     if (!names.length) return;
     const afterCursor = names.filter((name) => name > this.cursor);
-    const selected = [...afterCursor, ...names.filter((name) => name <= this.cursor)].slice(0, PASS_LIMIT);
+    const selected = [...afterCursor, ...names.filter((name) => name <= this.cursor)].slice(
+      0,
+      PASS_LIMIT,
+    );
     for (let index = 0; index < selected.length; index += CONCURRENCY) {
-      await Promise.all(selected.slice(index, index + CONCURRENCY).map(async (name) => {
-        this.cursor = name;
-        await this.processJob(join(this.jobsDir, name));
-      }));
+      await Promise.all(
+        selected.slice(index, index + CONCURRENCY).map(async (name) => {
+          this.cursor = name;
+          await this.processJob(join(this.jobsDir, name));
+        }),
+      );
     }
   }
 
@@ -577,7 +719,11 @@ export class SessionOutputSpool {
     }
     const now = this.now();
     if (Date.parse(job.expiresAt) <= now) {
-      await this.writePersistentError(job, "retry_window_expired", "Output could not be published before the 24-hour deadline");
+      await this.writePersistentError(
+        job,
+        "retry_window_expired",
+        "Output could not be published before the 24-hour deadline",
+      );
       await rm(directory, { recursive: true, force: true });
       this.onLog(`session outputs retry window expired for ${job.sessionId}`);
       return;
@@ -597,13 +743,16 @@ export class SessionOutputSpool {
             this.archiveReservedBytes -= MAX_SESSION_ARTIFACT_BYTES;
           });
         }
-        artifact = archive.fileCount === 0 ? undefined : {
-          state: "pending",
-          compressedBytes: archive.bytes,
-          sourceBytes: archive.sourceBytes,
-          fileCount: archive.fileCount,
-          sha256: archive.sha256,
-        };
+        artifact =
+          archive.fileCount === 0
+            ? undefined
+            : {
+                state: "pending",
+                compressedBytes: archive.bytes,
+                sourceBytes: archive.sourceBytes,
+                fileCount: archive.fileCount,
+                sha256: archive.sha256,
+              };
       } catch (error) {
         artifactError = { code: "artifact_capture_failed", message: String(error).slice(0, 256) };
         await rm(archivePath, { force: true });
@@ -627,16 +776,31 @@ export class SessionOutputSpool {
     };
     const endpoint = `${httpBaseFromApiUrl(this.identity!.apiUrl)}/api/v1/sessions/${encodeURIComponent(job.sessionId)}/outputs/prepare`;
     try {
-      const response = await fetchWithTimeout(this.fetchFn, endpoint, {
-        method: "POST",
-        headers: apiHeaders(this.identity!),
-        body: JSON.stringify(request),
-      }, API_TIMEOUT_MS);
+      const response = await fetchWithTimeout(
+        this.fetchFn,
+        endpoint,
+        {
+          method: "POST",
+          headers: apiHeaders(this.identity!),
+          body: JSON.stringify(request),
+        },
+        API_TIMEOUT_MS,
+      );
       let body: unknown;
-      try { body = await response.json(); } catch { body = undefined; }
+      try {
+        body = await response.json();
+      } catch {
+        body = undefined;
+      }
       if (!response.ok) {
         const code = errorCode(body);
-        if (response.status === 404 || response.status === 410 || code === "STALE_ATTEMPT" || code === "RETENTION_STARTED" || code === "OUTPUT_CONFLICT") {
+        if (
+          response.status === 404 ||
+          response.status === 410 ||
+          code === "STALE_ATTEMPT" ||
+          code === "RETENTION_STARTED" ||
+          code === "OUTPUT_CONFLICT"
+        ) {
           await rm(directory, { recursive: true, force: true });
           this.onLog(`session outputs discarded for ${job.sessionId}: ${code ?? response.status}`);
           return;
@@ -646,19 +810,39 @@ export class SessionOutputSpool {
       const prepared = body as PrepareSessionOutputsResponse;
       if (prepared?.artifactUpload) {
         if (!artifact) throw new Error("server requested artifact upload without a local archive");
-        await uploadArtifact({ fetchFn: this.fetchFn, upload: prepared.artifactUpload, identity: this.identity!, archivePath });
+        await uploadArtifact({
+          fetchFn: this.fetchFn,
+          upload: prepared.artifactUpload,
+          identity: this.identity!,
+          archivePath,
+        });
       }
       const completeUrl = `${httpBaseFromApiUrl(this.identity!.apiUrl)}/api/v1/sessions/${encodeURIComponent(job.sessionId)}/outputs/complete`;
-      const complete = await fetchWithTimeout(this.fetchFn, completeUrl, {
-        method: "POST",
-        headers: apiHeaders(this.identity!),
-        body: JSON.stringify({ attemptId: job.attemptId }),
-      }, API_TIMEOUT_MS);
+      const complete = await fetchWithTimeout(
+        this.fetchFn,
+        completeUrl,
+        {
+          method: "POST",
+          headers: apiHeaders(this.identity!),
+          body: JSON.stringify({ attemptId: job.attemptId }),
+        },
+        API_TIMEOUT_MS,
+      );
       if (!complete.ok) {
         let completeBody: unknown;
-        try { completeBody = await complete.json(); } catch { completeBody = undefined; }
+        try {
+          completeBody = await complete.json();
+        } catch {
+          completeBody = undefined;
+        }
         const code = errorCode(completeBody);
-        if (complete.status === 404 || complete.status === 410 || code === "STALE_ATTEMPT" || code === "RETENTION_STARTED" || code === "OUTPUT_CONFLICT") {
+        if (
+          complete.status === 404 ||
+          complete.status === 410 ||
+          code === "STALE_ATTEMPT" ||
+          code === "RETENTION_STARTED" ||
+          code === "OUTPUT_CONFLICT"
+        ) {
           await rm(directory, { recursive: true, force: true });
           return;
         }
@@ -668,9 +852,11 @@ export class SessionOutputSpool {
     } catch (error) {
       job.failures += 1;
       const base = Math.min(RETRY_MAX_MS, 1_000 * 2 ** Math.min(job.failures, 8));
-      job.retryAt = now + base * (0.75 + Math.random() * 0.5);
+      job.retryAt = now + Math.min(RETRY_MAX_MS, base * (0.75 + Math.random() * 0.5));
       await writeAtomic(path, JSON.stringify(job)).catch(() => undefined);
-      this.onLog(`session outputs publish failed for ${job.sessionId}; retry queued: ${String(error)}`);
+      this.onLog(
+        `session outputs publish failed for ${job.sessionId}; retry queued: ${String(error)}`,
+      );
     }
   }
 
@@ -688,8 +874,7 @@ export class SessionOutputSpool {
       } catch {
         storedAt = Number.NEGATIVE_INFINITY;
       }
-      if (storedAt + ERROR_RECORD_RETENTION_MS <= this.now())
-        await rm(errorPath, { force: true });
+      if (storedAt + ERROR_RECORD_RETENTION_MS <= this.now()) await rm(errorPath, { force: true });
     }
     const retained = (await boundedNames(this.errorsDir, ERROR_RECORD_LIMIT + 1)).names.filter(
       (name) => name.endsWith(".json") && name !== "overflow.json" && name !== `${id}.json`,
@@ -702,13 +887,24 @@ export class SessionOutputSpool {
       } catch {
         count = 0;
       }
-      await writeAtomic(overflowPath, JSON.stringify({ count: count + 1, at: new Date(this.now()).toISOString() }));
-      this.onLog(`session outputs persistent error record cap reached (${code}) for ${job.sessionId}`);
+      await writeAtomic(
+        overflowPath,
+        JSON.stringify({ count: count + 1, at: new Date(this.now()).toISOString() }),
+      );
+      this.onLog(
+        `session outputs persistent error record cap reached (${code}) for ${job.sessionId}`,
+      );
       return;
     }
     await writeAtomic(
       join(this.errorsDir, `${id}.json`),
-      JSON.stringify({ sessionId: job.sessionId, attemptId: job.attemptId, at: new Date(this.now()).toISOString(), code, message }),
+      JSON.stringify({
+        sessionId: job.sessionId,
+        attemptId: job.attemptId,
+        at: new Date(this.now()).toISOString(),
+        code,
+        message,
+      }),
     );
     this.onLog(`session outputs persistent error for ${job.sessionId}: ${code}`);
   }
@@ -716,7 +912,9 @@ export class SessionOutputSpool {
   private async withAdmission<T>(operation: () => Promise<T>): Promise<T> {
     const previous = this.admissionTail;
     let release!: () => void;
-    this.admissionTail = new Promise<void>((resolve) => { release = resolve; });
+    this.admissionTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     await previous;
     try {
       return await operation();
@@ -769,7 +967,10 @@ async function directoryBytes(path: string, cap: number): Promise<number> {
   return total;
 }
 
-async function boundedNames(path: string, cap: number): Promise<{ names: string[]; overflow: boolean }> {
+async function boundedNames(
+  path: string,
+  cap: number,
+): Promise<{ names: string[]; overflow: boolean }> {
   const directory = await opendir(path).catch(() => undefined);
   if (!directory) return { names: [], overflow: false };
   const names: string[] = [];
