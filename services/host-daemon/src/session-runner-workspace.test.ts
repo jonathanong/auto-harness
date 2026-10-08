@@ -19,7 +19,11 @@ afterEach(async () => {
   );
 });
 
-async function workspaceRunner(sessionOutputSpool?: SessionOutputSpool, events?: string[]) {
+async function workspaceRunner(
+  sessionOutputSpool?: SessionOutputSpool,
+  events?: string[],
+  authorizeCommandStart?: () => Promise<boolean>,
+) {
   const root = await mkdtemp(join(tmpdir(), "ah-workspace-run-"));
   roots.push(root);
   const slot = join(root, "slot");
@@ -87,6 +91,7 @@ async function workspaceRunner(sessionOutputSpool?: SessionOutputSpool, events?:
       workspaces,
       processRunner,
       commandRunner,
+      ...(authorizeCommandStart ? { authorizeCommandStart } : {}),
       ...(sessionOutputSpool ? { sessionOutputSpool } : {}),
     }),
   };
@@ -139,6 +144,41 @@ describe("SessionRunner workspace sessions", () => {
       await readFile(join(spoolRoot, "jobs", jobs[0]!, "job.json"), "utf8"),
     ) as { output: { state: string } };
     expect(saved.output).toEqual({ state: "none" });
+  });
+
+  it("captures a workspace attempt when command authorization throws", async () => {
+    const spoolRoot = await mkdtemp(join(tmpdir(), "ah-workspace-output-auth-"));
+    roots.push(spoolRoot);
+    const test = await workspaceRunner(
+      new SessionOutputSpool({ root: spoolRoot }),
+      undefined,
+      async () => {
+        throw new Error("authorization service unavailable");
+      },
+    );
+
+    const result = await test.runner.run({ ...test.assign, outputs: true });
+
+    expect(result.status).toBe("failed");
+    expect(result.errorMessage).toContain("authorization service unavailable");
+    expect(result.outputsJobId).toBeTruthy();
+    const jobs = await readdir(join(spoolRoot, "jobs"));
+    const saved = JSON.parse(
+      await readFile(join(spoolRoot, "jobs", jobs[0]!, "job.json"), "utf8"),
+    ) as { output: { state: string } };
+    expect(saved.output).toEqual({ state: "none" });
+  });
+
+  it("does not report a workspace output job when the first durable capture fails", async () => {
+    const spoolRoot = await mkdtemp(join(tmpdir(), "ah-workspace-output-capture-error-"));
+    roots.push(spoolRoot);
+    await writeFile(join(spoolRoot, "jobs"), "blocks the spool jobs directory", "utf8");
+    const test = await workspaceRunner(new SessionOutputSpool({ root: spoolRoot }));
+
+    const result = await test.runner.run({ ...test.assign, outputs: true });
+
+    expect(result.status).toBe("completed");
+    expect(result.outputsJobId).toBeUndefined();
   });
 
   it("uses the process runner as the workspace command runner when none is supplied", async () => {

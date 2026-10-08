@@ -11,6 +11,7 @@ describe("DaemonLoop session output recovery", () => {
     const { config, cleanup, root } = await makeRepo();
     const outputRoot = join(root, "outputs");
     const lines: string[] = [];
+    let nowMs = Date.now();
     await mkdir(join(outputRoot, "attempts"), { recursive: true });
     await Promise.all(
       Array.from({ length: 101 }, (_, index) =>
@@ -26,10 +27,15 @@ describe("DaemonLoop session output recovery", () => {
       transport: createLoopbackTransport({ sendToServer: () => undefined }),
       sessionOutputsDir: outputRoot,
       onLog: (line) => lines.push(line),
+      now: () => new Date(nowMs).toISOString(),
     });
     try {
       await loop.start();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      loop.stop();
+      nowMs += 60_001;
+      await (
+        loop as unknown as { sessionOutputSpool: { runPass(): Promise<void> } }
+      ).sessionOutputSpool.runPass();
 
       expect(lines).toContain("session output attempt directory exceeds 100 entries");
     } finally {
