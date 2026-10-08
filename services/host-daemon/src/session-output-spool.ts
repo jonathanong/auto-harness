@@ -635,12 +635,6 @@ export class SessionOutputSpool {
             }
             await writeAtomic(jobPath, JSON.stringify(job));
             await rename(directory, readyDir);
-            if (job.artifactError)
-              await rm(job.artifactSource, { force: true, recursive: true }).catch(
-                (error: unknown) => {
-                  this.onLog(`session output cleanup failed for ${sessionId}: ${String(error)}`);
-                },
-              );
           });
           captured = true;
           releaseActiveAttempt();

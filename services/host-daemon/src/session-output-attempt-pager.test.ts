@@ -86,8 +86,22 @@ describe("SessionOutputAttemptPager", () => {
     temporary.push(root);
     const file = join(root, "not-a-directory");
     await writeFile(file, "file", "utf8");
+    const directory = join(root, "attempts");
+    await mkdir(directory);
+    for (let index = 0; index < 3; index += 1)
+      await writeFile(join(directory, `attempt-${index}`), "intent", "utf8");
     const pager = new SessionOutputAttemptPager();
     await expect(pager.readPage(file, 10)).rejects.toThrow();
+    const expected = await readdir(directory);
+    const recovered: string[] = [];
+    let page = await pager.readPage(directory, 2);
+    recovered.push(...page.names);
+    while (page.more) {
+      page = await pager.readPage(directory, 2);
+      recovered.push(...page.names);
+    }
+    expect(recovered.toSorted()).toEqual(expected.toSorted());
+    await pager.close();
   });
 
   it("does not retain a directory opened after stop starts", async () => {
