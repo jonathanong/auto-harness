@@ -31,11 +31,13 @@ import {
   MAX_SESSION_ARTIFACT_FILES,
   MAX_SESSION_ARTIFACT_SOURCE_BYTES,
   MAX_SESSION_OUTPUT_BYTES,
+  MAX_SESSION_TIMEOUT_SECONDS,
   SESSION_ARTIFACT_UPLOAD_TIMEOUT_MS,
   SESSION_OUTPUT_RETRY_WINDOW_MS,
 } from "@auto-harness/shared";
 
 import { httpBaseFromApiUrl } from "./bootstrap.ts";
+import { SessionOutputAttemptPager } from "./session-output-attempt-pager.ts";
 import {
   artifactReadExceedsLimit,
   artifactEntryKind,
@@ -60,6 +62,11 @@ const PASS_LIMIT = 25;
 const CONCURRENCY = 2;
 const API_TIMEOUT_MS = 30_000;
 const RETRY_MAX_MS = 5 * 60_000;
+const ATTEMPT_SWEEP_INTERVAL_MS = 60 * 60_000;
+const ATTEMPT_STARTUP_GRACE_MS = 60_000;
+// Keep a lost attempt through the longest supported run plus its terminal publish window.
+const ABANDONED_ATTEMPT_AGE_MS =
+  MAX_SESSION_TIMEOUT_SECONDS * 1_000 + SESSION_OUTPUT_RETRY_WINDOW_MS;
 const FETCH = globalThis.fetch;
 
 type Identity = { apiUrl: string; apiKey?: string };
@@ -472,6 +479,10 @@ export class SessionOutputSpool {
   private cursor = "";
   private admissionTail: Promise<void> = Promise.resolve();
   private archiveReservedBytes = 0;
+  private readonly activeAttempts = new Map<string, number>();
+  private readonly attemptPager = new SessionOutputAttemptPager();
+  private nextAttemptSweepAt: number;
+  private attemptSweepPromise: Promise<void> | undefined;
 
   constructor(input: {
     root?: string;
@@ -485,6 +496,7 @@ export class SessionOutputSpool {
     this.fetchFn = input.fetchFn ?? FETCH;
     this.onLog = input.onLog ?? (() => undefined);
     this.now = input.now ?? Date.now;
+    this.nextAttemptSweepAt = this.now() + ATTEMPT_STARTUP_GRACE_MS;
     this.jobsDir = join(this.root, "jobs");
     this.attemptsDir = join(this.root, "attempts");
     this.errorsDir = join(this.root, "errors");
@@ -555,53 +567,90 @@ export class SessionOutputSpool {
   ): SessionOutputAttempt {
     const outputFile = join(directory, "output.json");
     let captured = false;
+    let capturePromise: Promise<void> | undefined;
+    let active = false;
+    const retainActiveAttempt = () => {
+      if (active) return;
+      active = true;
+      this.activeAttempts.set(key, (this.activeAttempts.get(key) ?? 0) + 1);
+    };
+    const releaseActiveAttempt = () => {
+      if (!active) return;
+      active = false;
+      const remaining = (this.activeAttempts.get(key) ?? 1) - 1;
+      if (remaining <= 0) this.activeAttempts.delete(key);
+      else this.activeAttempts.set(key, remaining);
+    };
+    retainActiveAttempt();
     return {
       jobId: key,
       env: { HARNESS_OUTPUT_FILE: outputFile, HARNESS_ARTIFACTS_DIR: join(directory, "artifacts") },
       discard: async () => {
         if (captured) return;
-        captured = true;
+        if (capturePromise) await capturePromise.catch(() => undefined);
+        if (captured) return;
         await rm(directory, { recursive: true, force: true });
+        captured = true;
+        releaseActiveAttempt();
       },
       capture: async () => {
         if (captured) return;
-        captured = true;
-        let output = await readOutput(outputFile);
-        const readyDir = join(this.jobsDir, `${key}.ready`);
-        const jobPath = join(directory, "job.json");
-        const now = this.now();
-        const capturedAt = new Date(now).toISOString();
-        const job: Job = {
-          sessionId,
-          attemptId,
-          capturedAt,
-          completedAt: new Date(now).toISOString(),
-          expiresAt: new Date(now + SESSION_OUTPUT_RETRY_WINDOW_MS).toISOString(),
-          output,
-          artifactSource: join(readyDir, "artifacts"),
-          retryAt: now,
-          failures: 0,
-        };
-        job.output = output;
-        await this.withAdmission(async () => {
-          await mkdir(this.jobsDir, { recursive: true, mode: 0o700 });
-          const { names: jobEntries, overflow } = await boundedNames(this.jobsDir, JOB_LIMIT + 1);
-          const jobCount = jobEntries.filter((name) => name.endsWith(".ready")).length;
-          const stagingBytes = await directoryBytes(this.root, STAGING_LIMIT);
-          if (overflow || jobCount >= JOB_LIMIT || stagingBytes > STAGING_LIMIT) {
-            await this.writePersistentError(
-              job,
-              "spool_capacity",
-              "Local output spool capacity is exhausted",
-            );
-            await rm(directory, { recursive: true, force: true });
-            return;
-          }
-          await writeAtomic(jobPath, JSON.stringify(job));
-          await rename(directory, readyDir);
-          if (job.artifactError) await rm(job.artifactSource, { force: true, recursive: true });
-        });
-        this.wake();
+        if (capturePromise) return await capturePromise;
+        retainActiveAttempt();
+        const operation = (async () => {
+          const output = await readOutput(outputFile);
+          const readyDir = join(this.jobsDir, `${key}.ready`);
+          const jobPath = join(directory, "job.json");
+          const now = this.now();
+          const capturedAt = new Date(now).toISOString();
+          const job: Job = {
+            sessionId,
+            attemptId,
+            capturedAt,
+            completedAt: new Date(now).toISOString(),
+            expiresAt: new Date(now + SESSION_OUTPUT_RETRY_WINDOW_MS).toISOString(),
+            output,
+            artifactSource: join(readyDir, "artifacts"),
+            retryAt: now,
+            failures: 0,
+          };
+          job.output = output;
+          await this.withAdmission(async () => {
+            await mkdir(this.jobsDir, { recursive: true, mode: 0o700 });
+            const { names: jobEntries, overflow } = await boundedNames(this.jobsDir, JOB_LIMIT + 1);
+            const jobCount = jobEntries.filter((name) => name.endsWith(".ready")).length;
+            const stagingBytes = await directoryBytes(this.root, STAGING_LIMIT);
+            if (overflow || jobCount >= JOB_LIMIT || stagingBytes > STAGING_LIMIT) {
+              await this.writePersistentError(
+                job,
+                "spool_capacity",
+                "Local output spool capacity is exhausted",
+              );
+              await rm(directory, { recursive: true, force: true });
+              return;
+            }
+            await writeAtomic(jobPath, JSON.stringify(job));
+            await rename(directory, readyDir);
+            if (job.artifactError)
+              await rm(job.artifactSource, { force: true, recursive: true }).catch(
+                (error: unknown) => {
+                  this.onLog(`session output cleanup failed for ${sessionId}: ${String(error)}`);
+                },
+              );
+          });
+          captured = true;
+          releaseActiveAttempt();
+          this.wake();
+        })();
+        capturePromise = operation;
+        try {
+          await operation;
+        } catch (error) {
+          releaseActiveAttempt();
+          throw error;
+        } finally {
+          if (capturePromise === operation) capturePromise = undefined;
+        }
       },
     };
   }
@@ -609,56 +658,78 @@ export class SessionOutputSpool {
   start(): void {
     if (this.running) return;
     this.running = true;
-    void this.recoverAbandonedAttempts().catch((error: unknown) => {
-      this.onLog(`session output recovery scan failed: ${String(error)}`);
-    });
     this.wake();
   }
 
   private async recoverAbandonedAttempts(): Promise<void> {
-    const { names, overflow } = await boundedNames(this.attemptsDir, JOB_LIMIT);
-    if (overflow) this.onLog(`session output attempt directory exceeds ${JOB_LIMIT} entries`);
+    if (this.now() < this.nextAttemptSweepAt) return;
+    if (this.attemptSweepPromise) return await this.attemptSweepPromise;
+    this.nextAttemptSweepAt = this.now() + ATTEMPT_SWEEP_INTERVAL_MS;
+    const sweep = this.sweepAbandonedAttempts();
+    this.attemptSweepPromise = sweep;
+    try {
+      await sweep;
+    } finally {
+      if (this.attemptSweepPromise === sweep) this.attemptSweepPromise = undefined;
+    }
+  }
+
+  private async sweepAbandonedAttempts(): Promise<void> {
+    const { names, more } = await this.attemptPager.readPage(this.attemptsDir, JOB_LIMIT);
+    if (more) this.onLog(`session output attempt directory exceeds ${JOB_LIMIT} entries`);
     for (const name of names) {
       if (!/^[a-f0-9]{64}$/.test(name)) continue;
       const directory = join(this.attemptsDir, name);
+      let intent: { sessionId?: unknown; attemptId?: unknown; begunAt?: unknown };
       try {
-        const intent = JSON.parse(await readFile(join(directory, "intent.json"), "utf8")) as {
+        intent = JSON.parse(await readFile(join(directory, "intent.json"), "utf8")) as {
           sessionId?: unknown;
           attemptId?: unknown;
           begunAt?: unknown;
         };
-        const begunAt =
-          typeof intent.begunAt === "string" ? Date.parse(intent.begunAt) : Number.NaN;
+      } catch (error) {
+        const info = await lstat(directory).catch(() => undefined);
         if (
-          typeof intent.sessionId === "string" &&
-          typeof intent.attemptId === "string" &&
-          Number.isFinite(begunAt) &&
-          begunAt + SESSION_OUTPUT_RETRY_WINDOW_MS <= this.now()
+          !this.activeAttempts.has(name) &&
+          info?.isDirectory() &&
+          info.mtimeMs + ABANDONED_ATTEMPT_AGE_MS <= this.now()
         ) {
-          const now = this.now();
-          const job: Job = {
-            sessionId: intent.sessionId,
-            attemptId: intent.attemptId,
-            capturedAt: new Date(now).toISOString(),
-            completedAt: new Date(now).toISOString(),
-            expiresAt: new Date(now).toISOString(),
-            output: outputError(
-              "daemon_interrupted",
-              "Daemon restarted before outputs were captured",
-            ),
-            artifactSource: join(directory, "artifacts"),
-            retryAt: now,
-            failures: 0,
-          };
-          await this.writePersistentError(
-            job,
+          await rm(directory, { recursive: true, force: true });
+          this.onLog(`removed abandoned session output attempt without valid intent: ${name}`);
+          continue;
+        }
+        this.onLog(`session output intent recovery failed for ${name}: ${String(error)}`);
+        continue;
+      }
+      const begunAt = typeof intent.begunAt === "string" ? Date.parse(intent.begunAt) : Number.NaN;
+      if (
+        typeof intent.sessionId === "string" &&
+        typeof intent.attemptId === "string" &&
+        Number.isFinite(begunAt) &&
+        begunAt + ABANDONED_ATTEMPT_AGE_MS <= this.now() &&
+        !this.activeAttempts.has(name)
+      ) {
+        const now = this.now();
+        const job: Job = {
+          sessionId: intent.sessionId,
+          attemptId: intent.attemptId,
+          capturedAt: new Date(now).toISOString(),
+          completedAt: new Date(now).toISOString(),
+          expiresAt: new Date(now).toISOString(),
+          output: outputError(
             "daemon_interrupted",
             "Daemon restarted before outputs were captured",
-          );
-          await rm(directory, { recursive: true, force: true });
-        }
-      } catch (error) {
-        this.onLog(`session output intent recovery failed for ${name}: ${String(error)}`);
+          ),
+          artifactSource: join(directory, "artifacts"),
+          retryAt: now,
+          failures: 0,
+        };
+        await this.writePersistentError(
+          job,
+          "daemon_interrupted",
+          "Daemon restarted before outputs were captured",
+        );
+        await rm(directory, { recursive: true, force: true });
       }
     }
   }
@@ -667,6 +738,9 @@ export class SessionOutputSpool {
     this.running = false;
     if (this.wakeTimer) clearTimeout(this.wakeTimer);
     this.wakeTimer = undefined;
+    void this.attemptPager.close().catch((error: unknown) => {
+      this.onLog(`session output recovery cursor close failed: ${String(error)}`);
+    });
   }
 
   wake(): void {
@@ -695,6 +769,9 @@ export class SessionOutputSpool {
   }
 
   private async processPass(): Promise<void> {
+    await this.recoverAbandonedAttempts().catch((error: unknown) => {
+      this.onLog(`session output recovery scan failed: ${String(error)}`);
+    });
     if (!this.identity?.apiUrl) return;
     await mkdir(this.jobsDir, { recursive: true, mode: 0o700 });
     const { names: bounded, overflow } = await boundedNames(this.jobsDir, JOB_LIMIT + 1);
@@ -745,6 +822,7 @@ export class SessionOutputSpool {
     const archivePath = join(directory, "artifacts.tar.gz");
     if (!artifact && !artifactError) {
       try {
+        await rm(archivePath, { force: true });
         await this.reserveArchiveSpace();
         let archive: Awaited<ReturnType<typeof createArchive>>;
         try {

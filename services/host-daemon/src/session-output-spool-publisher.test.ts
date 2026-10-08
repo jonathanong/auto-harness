@@ -42,6 +42,8 @@ describe("SessionOutputSpool publisher", () => {
     await attempt.capture();
     await first.runPass();
     expect(attempts).toBe(1);
+    await first.runPass();
+    expect(attempts).toBe(1);
     first.stop();
 
     now += 60_000;

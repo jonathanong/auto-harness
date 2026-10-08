@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -51,6 +51,21 @@ describe("SessionOutputSpool lifecycle", () => {
     );
   });
 
+  it("retries capture after a staging failure and shares concurrent capture work", async () => {
+    const root = await mkdtemp(join(tmpdir(), "harness-session-output-capture-retry-"));
+    temporary.push(root);
+    const spool = new SessionOutputSpool({ root });
+    const attempt = await spool.begin("session-retry-capture", "attempt-retry-capture");
+    await writeFile(attempt.env.HARNESS_OUTPUT_FILE, "null", "utf8");
+    await writeFile(join(root, "jobs"), "not a directory", "utf8");
+    await expect(attempt.capture()).rejects.toThrow();
+    await rm(join(root, "jobs"));
+    await mkdir(join(root, "jobs"));
+    await Promise.all([attempt.capture(), attempt.capture()]);
+    await attempt.capture();
+    expect(await readdir(join(root, "jobs"))).toHaveLength(1);
+  });
+
   it("returns cleanly for an empty or unavailable publisher spool", async () => {
     const root = await mkdtemp(join(tmpdir(), "harness-session-output-empty-"));
     temporary.push(root);
@@ -69,7 +84,7 @@ describe("SessionOutputSpool lifecycle", () => {
   it("recovers a stale intent once, logs malformed intents, and stops idempotently", async () => {
     const root = await mkdtemp(join(tmpdir(), "harness-session-output-lifecycle-"));
     temporary.push(root);
-    const oldTime = Date.now() - 25 * 60 * 60 * 1000;
+    const oldTime = Date.now() - 9 * 24 * 60 * 60 * 1_000;
     const initial = new SessionOutputSpool({ root, now: () => oldTime });
     const stale = await initial.begin("session-stale", "attempt-stale");
     const intent = join(dirname(stale.env.HARNESS_OUTPUT_FILE), "intent.json");
@@ -85,13 +100,19 @@ describe("SessionOutputSpool lifecycle", () => {
     await writeFile(join(dirname(malformed.env.HARNESS_OUTPUT_FILE), "intent.json"), "not-json");
 
     const messages: string[] = [];
-    const spool = new SessionOutputSpool({ root, onLog: (message) => messages.push(message) });
+    let now = Date.now();
+    const spool = new SessionOutputSpool({
+      root,
+      now: () => now,
+      onLog: (message) => messages.push(message),
+    });
     spool.wake();
     spool.start();
     spool.start();
     await new Promise((resolve) => setTimeout(resolve, 20));
     spool.stop();
     spool.stop();
+    now += 60_001;
     await spool.runPass();
 
     const records = await readdir(join(root, "errors"));
