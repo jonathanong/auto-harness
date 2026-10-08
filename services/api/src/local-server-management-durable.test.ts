@@ -17,7 +17,8 @@ function rejectedStorage() {
   return new Proxy(
     {},
     {
-      get() {
+      get(_target, property) {
+        if (property === "getSessionOutputsStore") return undefined;
         return async () => {
           throw new Error("storage unavailable");
         };
