@@ -7,8 +7,10 @@ import type { PrepareSessionOutputsRequest } from "@auto-harness/shared";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
+import { DynamoPlaneStorage } from "./plane-storage.ts";
 import { DynamoSessionOutputsStore } from "./plane-storage-session-outputs.ts";
 import { claimSessionRetention } from "./plane-storage-session-retention-claim.ts";
+import { deleteSessionRetentionRelatedPage } from "./plane-storage-session-retention-related.ts";
 
 const NOW = "2026-10-08T12:00:00.000Z";
 const jsonText = "null";
@@ -278,5 +280,44 @@ describe("session output durable intent and fences", () => {
     expect(
       await winner.complete("sess-race-complete-winner", "attempt-1", "host-1", NOW),
     ).toMatchObject({ completedAt: NOW });
+  });
+
+  it("shares the public Dynamo facade store and clears its persisted output rows", async () => {
+    const storage = new DynamoPlaneStorage(doc, tables);
+    const outputs = storage.getSessionOutputsStore();
+    await seed("sess-facade");
+    await outputs.prepare(
+      "sess-facade",
+      { ...intent, artifacts: { state: "none" } },
+      "host-1",
+      NOW,
+    );
+    expect(await storage.getSessionOutputsStore().getPayload("sess-facade")).toMatchObject({
+      jsonText: "null",
+    });
+    await storage.clearAll();
+    expect(await outputs.getManifest("sess-facade")).toBeNull();
+    expect(await outputs.getPayload("sess-facade")).toBeNull();
+  });
+
+  it("deletes output manifest and payload rows through the bounded retention path", async () => {
+    await seed("sess-retention-output-rows");
+    await store.prepare(
+      "sess-retention-output-rows",
+      { ...intent, artifacts: { state: "none" } },
+      "host-1",
+      NOW,
+    );
+    expect(await store.getManifest("sess-retention-output-rows")).not.toBeNull();
+    expect(await store.getPayload("sess-retention-output-rows")).not.toBeNull();
+    const ctx = { doc, tables };
+    expect(
+      await deleteSessionRetentionRelatedPage(ctx, "sess-retention-output-rows", "outputs"),
+    ).toBe(false);
+    expect(await store.getManifest("sess-retention-output-rows")).toBeNull();
+    expect(await store.getPayload("sess-retention-output-rows")).toBeNull();
+    expect(
+      await deleteSessionRetentionRelatedPage(ctx, "sess-retention-output-rows", "outputs"),
+    ).toBe(true);
   });
 });
