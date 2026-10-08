@@ -32,7 +32,7 @@ export function isSafeArtifactComponent(name: string): boolean {
   );
 }
 
-export function isRealArtifactDirectory(stat: ArtifactStat): boolean {
+function isRealArtifactDirectory(stat: ArtifactStat): boolean {
   return stat.isDirectory() && !stat.isSymbolicLink();
 }
 
