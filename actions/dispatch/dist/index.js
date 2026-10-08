@@ -201,6 +201,12 @@ var AutoHarnessClient = class _AutoHarnessClient {
   getSession(id) {
     return this.request(`/sessions/${encodeURIComponent(id)}`);
   }
+  getSessionOutput(id) {
+    return this.request(`/sessions/${encodeURIComponent(id)}/output`);
+  }
+  getSessionArtifacts(id) {
+    return this.request(`/sessions/${encodeURIComponent(id)}/artifacts`);
+  }
   createChildSession(parentId, input2) {
     return this.request(`/sessions/${encodeURIComponent(parentId)}/children`, {
       method: "POST",
