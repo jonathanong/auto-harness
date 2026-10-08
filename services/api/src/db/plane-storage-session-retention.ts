@@ -72,7 +72,7 @@ export class DynamoSessionRetentionStore {
     return leaseSessionRetentionJob(this.ctx, job, now, owner);
   }
 
-  deleteRelatedPage(sessionId: string, kind: "usage" | "logs"): Promise<boolean> {
+  deleteRelatedPage(sessionId: string, kind: "usage" | "logs" | "outputs"): Promise<boolean> {
     return deleteSessionRetentionRelatedPage(this.ctx, sessionId, kind);
   }
 

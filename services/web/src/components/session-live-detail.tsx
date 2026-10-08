@@ -11,6 +11,7 @@ import {
 import { type ReactNode, useEffect, useState } from "react";
 
 import { apiFetch } from "../lib/client-api.ts";
+import { SessionOutputs } from "./session-outputs.tsx";
 
 type Host = { hostId: string; online: boolean };
 
@@ -125,6 +126,7 @@ export function SessionLiveDetail({
       hostHrefBase="/hosts"
       worktreeHrefBase="/worktrees"
       detailsExtra={detailsExtra}
+      outputs={<SessionOutputs key={session.id} sessionId={session.id} />}
       defaultTab={defaultTab}
       notices={
         <>

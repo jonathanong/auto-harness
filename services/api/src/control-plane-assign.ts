@@ -36,6 +36,7 @@ import {
   type AssignmentWriteResult,
 } from "./db/plane-storage-types.ts";
 import { createSessionApiKey } from "./control-plane-session-api-key.ts";
+import { assignmentOutputArgv } from "./control-plane-session-output-prompt.ts";
 
 /**
  * Assign queued sessions with exclusive worktree claim (Invariant 1).
@@ -76,6 +77,15 @@ export function assignQueued(
       const won = tryClaimWorktree(state, candidate.id, session.id, nowIso);
       if (!won) continue;
       const attemptId = state.attemptIdFactory();
+      const outputs = hostAdvertisesSessionOutputs(state, candidate.hostId);
+      const resolvedArgv = assignmentOutputArgv(
+        state,
+        session,
+        route.commandId,
+        route.resolvedArgv,
+        outputs,
+        route.resumeSpec,
+      );
       const apiKey = hostAdvertisesSessionSpawn(state, candidate.hostId)
         ? createSessionApiKey()
         : undefined;
@@ -94,7 +104,8 @@ export function assignQueued(
       session.worktreeId = candidate.id;
       session.hostId = candidate.hostId;
       session.startedAt = nowIso;
-      session.resolvedArgv = route.resolvedArgv;
+      session.resolvedArgv = resolvedArgv;
+      session.sessionOutputsSupported = outputs;
       if (session.resumeSpec === undefined && route.resumeSpec !== undefined) {
         session.resumeSpec = route.resumeSpec;
       }
@@ -132,7 +143,8 @@ export function assignQueued(
         repositoryId: session.repositoryId,
         prompt: session.prompt,
         ...(apiKey ? { sessionApiKey: apiKey.key } : {}),
-        resolvedArgv: route.resolvedArgv,
+        ...(outputs ? { outputs: true } : {}),
+        resolvedArgv,
         timeout: session.timeout,
         worktreeId: candidate.id,
         infrastructureRetryCount: session.infrastructureRetryCount ?? 0,
@@ -234,6 +246,18 @@ export async function assignQueuedDurable(
         continue;
       }
       const attemptId = state.attemptIdFactory();
+      const outputs = hasHostCapability(
+        state.connections.get(connectionId)?.capabilities,
+        "session-outputs",
+      );
+      const resolvedArgv = assignmentOutputArgv(
+        state,
+        session,
+        route.commandId,
+        route.resolvedArgv,
+        outputs,
+        route.resumeSpec,
+      );
       const apiKey = hasHostCapability(
         state.connections.get(connectionId)?.capabilities,
         "session-spawn",
@@ -268,7 +292,8 @@ export async function assignQueuedDurable(
             : null,
           connectionId,
           now: nowIso,
-          resolvedArgv: route.resolvedArgv,
+          resolvedArgv,
+          sessionOutputsSupported: outputs,
           resumeSpec: route.resumeSpec,
           resolvedRoute: {
             targetIndex: route.targetIndex,
@@ -307,7 +332,8 @@ export async function assignQueuedDurable(
         worktreeId: candidate.id,
         hostId: candidate.hostId,
         startedAt: nowIso,
-        resolvedArgv: route.resolvedArgv,
+        resolvedArgv,
+        sessionOutputsSupported: outputs,
         resumeSpec,
         resolvedRoute: {
           targetIndex: route.targetIndex,
@@ -349,7 +375,8 @@ export async function assignQueuedDurable(
         repositoryId: session.repositoryId,
         prompt: session.prompt,
         ...(apiKey ? { sessionApiKey: apiKey.key } : {}),
-        resolvedArgv: route.resolvedArgv,
+        ...(outputs ? { outputs: true } : {}),
+        resolvedArgv,
         timeout: session.timeout,
         worktreeId: candidate.id,
         infrastructureRetryCount: nextSession.infrastructureRetryCount ?? 0,
@@ -425,6 +452,11 @@ function hostAdvertisesSessionSpawn(state: ControlPlaneState, hostId: string): b
   // live connection.
   const connection = state.connections.get(state.hostConnection.get(hostId)!);
   return hasHostCapability(connection?.capabilities, "session-spawn");
+}
+
+function hostAdvertisesSessionOutputs(state: ControlPlaneState, hostId: string): boolean {
+  const connection = state.connections.get(state.hostConnection.get(hostId)!);
+  return hasHostCapability(connection?.capabilities, "session-outputs");
 }
 
 function resumeWireFields(

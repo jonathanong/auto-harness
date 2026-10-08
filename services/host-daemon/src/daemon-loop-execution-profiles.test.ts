@@ -123,7 +123,12 @@ describe("DaemonLoop execution profiles", () => {
       const register = serverMsgs.find((message) => message.type === "host:register");
       expect(register).toMatchObject({
         capabilities: {
-          features: ["scheduled-main-checkout", "session-spawn", "workspace-sessions"],
+          features: [
+            "scheduled-main-checkout",
+            "session-spawn",
+            "workspace-sessions",
+            "session-outputs",
+          ],
           maxConcurrentAssignments: 2,
         },
         providerAccountReadiness: [

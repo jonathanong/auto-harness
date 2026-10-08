@@ -1,5 +1,6 @@
 import { DeleteObjectsCommand, ListObjectVersionsCommand } from "@aws-sdk/client-s3";
 import { isSessionLogObjectKey } from "@auto-harness/shared";
+import { isSessionArtifactKey } from "./session-artifact-key.ts";
 
 export type SessionObjectDeletionPage = { deleted: number; done: boolean };
 
@@ -31,7 +32,11 @@ export async function deleteSessionObjectVersionsPage(
     IsTruncated?: boolean;
   };
   const objects = [...(result.Versions ?? []), ...(result.DeleteMarkers ?? [])].map((entry) => {
-    if (!entry.Key?.startsWith(prefix) || !isSessionLogObjectKey(entry.Key) || !entry.VersionId) {
+    if (
+      !entry.Key?.startsWith(prefix) ||
+      !(isSessionLogObjectKey(entry.Key) || isSessionArtifactKey(entry.Key, sessionId)) ||
+      !entry.VersionId
+    ) {
       throw new Error("refusing an invalid session object version");
     }
     return { Key: entry.Key, VersionId: entry.VersionId };

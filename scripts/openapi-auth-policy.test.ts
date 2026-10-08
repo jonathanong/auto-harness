@@ -79,6 +79,10 @@ const REGEX_BRANCH_SAMPLES: Array<{ label: string; example: string }> = [
   },
   { label: "/sessions/{id}/log-parts", example: "/api/v1/sessions/sess-1/log-parts" },
   { label: "/sessions/{id}/log-archive", example: "/api/v1/sessions/sess-1/log-archive" },
+  {
+    label: "/sessions/{id}/outputs/(prepare|complete|upload/{attemptId})",
+    example: "/api/v1/sessions/sess-1/outputs/prepare",
+  },
   { label: "/sessions/{id}/archive", example: "/api/v1/sessions/sess-1/archive" },
   { label: "/sessions/{id}/children", example: "/api/v1/sessions/sess-1/children" },
 ];

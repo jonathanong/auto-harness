@@ -33,6 +33,9 @@ What Auto Harness is, what it does and does not, and why: root [README](../READM
 
 ## Protocols
 
+[Session output and artifacts](session-outputs.md) documents optional agent-written JSON,
+artifact bundles, retrieval, publishing states, and retention.
+
 | Doc                          | Contents                      |
 | ---------------------------- | ----------------------------- |
 | [api.md](api.md)             | REST `/api/v1`                |

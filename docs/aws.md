@@ -523,8 +523,9 @@ Session retention defaults to **30 days after completion**. Operators can set `s
 from 1 to 3650 in the structured session-log settings form or through
 `auto-harness settings session-logs set`. The policy applies to existing terminal sessions too.
 Running, queued, leased, reconnecting, or unsettled terminal-hook sessions remain protected.
-Deletion revokes the session key, fences archive retries, and waits two minutes for already-running
-writers before purging every object version and delete marker under that session's log prefix.
+Deletion revokes the session key, fences archive retries, and waits at least two minutes for
+already-running writers, extending that barrier beyond any outstanding artifact upload window,
+before purging every object version and delete marker under that session's prefix.
 The session row remains until cleanup succeeds; old session links then return not found. Session
 metadata is never archived to S3. A compact deletion fence uses DynamoDB TTL with the same
 configured retention duration to reject delayed writers; the Sessions table itself has no TTL.

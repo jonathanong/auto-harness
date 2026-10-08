@@ -41,6 +41,7 @@ import type { AuditLogRecord } from "./audit-types.ts";
 import type { UsageRecord } from "./usage.ts";
 import type { ArchiveWriter } from "./archive-writer.ts";
 import type { ArchiveReader } from "./archive-reader.ts";
+import type { SessionArtifactStore } from "./session-artifact-store.ts";
 import { enqueueSlackSessionLifecycle } from "./slack-session-runtime.ts";
 import { attachPendingTerminalHookHandoffIndex } from "./control-plane-terminal-hook-handoff-index.ts";
 
@@ -117,6 +118,7 @@ export type ControlPlaneState = {
   archives: Map<string, ArchiveMetadata>;
   archiveWriter: ArchiveWriter | undefined;
   archiveReader: ArchiveReader | undefined;
+  sessionArtifactStore?: SessionArtifactStore;
   pendingAcks: Map<string, PendingAck>;
   /** In-memory counterpart of HostLocks.mainCheckoutLeases. Key is a pair
    * encoded with NUL, which repository IDs cannot contain on supported APIs. */
@@ -384,6 +386,7 @@ export function toPublic(
     terminalHookLifecycleEnqueuedAt: _terminalHookLifecycleEnqueuedAt,
     retentionToken: _retentionToken,
     retentionClaimedAt: _retentionClaimedAt,
+    outputsUploadExpiresAt: _outputsUploadExpiresAt,
     infrastructureRetryAttemptId: _infrastructureRetryAttemptId,
     ...publicSession
   } = session;

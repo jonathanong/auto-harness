@@ -17,6 +17,7 @@ export function sessionLogsTtlEpochSeconds(nowMs = Date.now()): number {
 export type DynamoTableNames = {
   users: string;
   sessions: string;
+  sessionOutputs: string;
   sessionDrains: string;
   worktrees: string;
   workspacePools: string;
@@ -75,6 +76,7 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
   return {
     users: `${p}-Users`,
     sessions: `${p}-Sessions`,
+    sessionOutputs: `${p}-SessionOutputs`,
     sessionDrains: `${p}-SessionDrains`,
     worktrees: `${p}-Worktrees`,
     workspacePools: `${p}-WorkspacePools`,

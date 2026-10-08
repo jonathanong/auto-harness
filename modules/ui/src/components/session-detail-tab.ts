@@ -1,12 +1,13 @@
-const SESSION_DETAIL_TABS = ["logs", "details", "prompts"] as const;
+const BASE_SESSION_DETAIL_TABS = ["logs", "details", "prompts"] as const;
 
-export type SessionDetailTab = (typeof SESSION_DETAIL_TABS)[number];
+export type SessionDetailTab = (typeof BASE_SESSION_DETAIL_TABS)[number] | "outputs";
 
-const TAB_SET = new Set<string>(SESSION_DETAIL_TABS);
+const TAB_SET = new Set<string>(BASE_SESSION_DETAIL_TABS);
 
 /** Coerce a URL `?tab=` value (including Next's string[] form) to a known session tab. */
-export function resolveSessionDetailTab(tab: unknown): SessionDetailTab {
+export function resolveSessionDetailTab(tab: unknown, outputsEnabled = false): SessionDetailTab {
   const value = Array.isArray(tab) ? tab[0] : tab;
+  if (outputsEnabled && value === "outputs") return "outputs";
   return typeof value === "string" && TAB_SET.has(value) ? (value as SessionDetailTab) : "logs";
 }
 

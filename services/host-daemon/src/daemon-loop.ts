@@ -62,6 +62,7 @@ import {
 } from "./github-app.ts";
 import { SecretRedactingProcessRunner } from "./secret-redacting-runner.ts";
 import { HostInventoryPolicyError } from "./bootstrap.ts";
+import { SessionOutputSpool, defaultSessionOutputsDir } from "./session-output-spool.ts";
 export type { DaemonTransport } from "./daemon-transport-types.ts";
 export type DaemonLoopOptions = {
   config: DaemonConfig;
@@ -77,6 +78,8 @@ export type DaemonLoopOptions = {
   githubApp?: GitHubAppConfig;
   /** Host-owned directory for last-successful setup fingerprints. */
   setupCacheDir?: string;
+  /** Host-private durable output spool; overridable by integration tests. */
+  sessionOutputsDir?: string;
   /** Override the per-tick unlink-attempt cap for setup-cache expiry. */
   setupCacheSweepMaxUnlinks?: number;
   /** Override the per-tick opendir entry cap for setup-cache expiry. */
@@ -289,6 +292,7 @@ export class DaemonLoop {
   private readonly worktrees: WorktreeManager;
   private readonly workspaces: WorkspaceManager;
   private readonly setupCacheDir: string | undefined;
+  private readonly sessionOutputSpool: SessionOutputSpool;
   private readonly setupCacheSweepMaxUnlinks: number;
   private readonly setupCacheSweepMaxEntries: number;
   private readonly setupCacheSweepDelayMs: number;
@@ -428,6 +432,19 @@ export class DaemonLoop {
     this.worktrees = new WorktreeManager(options.config, git);
     this.workspaces = new WorkspaceManager(options.config);
     this.setupCacheDir = options.setupCacheDir;
+    this.sessionOutputSpool = new SessionOutputSpool({
+      root: options.sessionOutputsDir ?? defaultSessionOutputsDir(),
+      ...(options.config.apiUrl
+        ? {
+            identity: {
+              apiUrl: options.config.apiUrl,
+              ...(options.config.apiKey ? { apiKey: options.config.apiKey } : {}),
+            },
+          }
+        : {}),
+      onLog: (line) => this.onLog?.(line),
+      now: () => Date.parse(this.now()),
+    });
     this.setupCacheSweepMaxUnlinks =
       options.setupCacheSweepMaxUnlinks ?? MAX_SETUP_CACHE_SWEEP_UNLINKS;
     this.setupCacheSweepMaxEntries =
@@ -453,6 +470,7 @@ export class DaemonLoop {
       now: this.now,
       authorizeCommandStart: (assign, signal) => this.authorizeCommandStart(assign, signal),
       setupCacheDir: options.setupCacheDir ?? defaultSetupCacheDir(),
+      sessionOutputSpool: this.sessionOutputSpool,
       onSetupCacheClaimReleased: () => this.scheduleSetupCacheSweep(),
     });
   }
@@ -485,6 +503,7 @@ export class DaemonLoop {
     if (this.setupCacheSweepQueued) this.scheduleSetupCacheSweep();
   }
   async start(): Promise<void> {
+    this.sessionOutputSpool.start();
     this.runtime ??= await probeGitReadiness(this.processRunner);
     if (this.runtime.gitReady) await this.worktrees.ensureAll();
     await this.workspaces.ensureAll();
@@ -951,6 +970,7 @@ export class DaemonLoop {
   }
 
   stop(): void {
+    this.sessionOutputSpool.stop();
     this.materializationController.abort();
     this.prepareForShutdown();
     this.setupCacheSweepStopped = true;
@@ -1728,11 +1748,16 @@ export class DaemonLoop {
     const current = await claim.currentHookTarget();
     const scriptPath = current?.repository.terminalHookScript;
     if (!current) return undefined;
+    const outputAttempt =
+      msg.outputs === true && typeof msg.outputAttemptId === "string"
+        ? await this.sessionOutputSpool.findDeferredAttempt(msg.sessionId, msg.outputAttemptId)
+        : undefined;
     const mappedGitHubApp = this.githubApp?.repositories.has(msg.repositoryId) ?? false;
     let isolatedGitHubConfigDir: string | undefined;
     let terminalEnvironment = mappedGitHubApp
       ? withoutAmbientGitHubTokens(this.childEnvSource)
       : this.childEnvSource;
+    if (outputAttempt) terminalEnvironment = { ...terminalEnvironment, ...outputAttempt.env };
     let terminalRunner = this.processRunner;
     let effectiveExpiresAtMs = expiresAtMs;
     const credentialController = new AbortController();
@@ -1786,13 +1811,24 @@ export class DaemonLoop {
           ...(msg.metadata !== undefined ? { metadata: msg.metadata } : {}),
         });
       }
-      return await collectSessionResult({
+      const result = await collectSessionResult({
         runner: terminalRunner,
         cwd: current.cwd,
         status: msg.status,
         environment: terminalEnvironment,
         deadlineAtMs: effectiveExpiresAtMs,
       });
+      if (outputAttempt) {
+        try {
+          await outputAttempt.capture();
+          this.sessionOutputSpool.wake();
+        } catch (error) {
+          this.onLog?.(
+            `deferred session output capture failed for ${msg.sessionId}: ${String(error)}`,
+          );
+        }
+      }
+      return result;
     } catch (error) {
       if (mappedGitHubApp) {
         this.onLog?.(`GitHub App credential provisioning failed for ${msg.sessionId}`);
@@ -2528,6 +2564,7 @@ export class DaemonLoop {
       }
       await deferredDisposition;
     }
+    if (result.outputsJobId) this.sessionOutputSpool.wake();
   }
 
   subscribeLogs(sessionId: string, emit: (chunk: SessionLogChunk) => void): () => void {

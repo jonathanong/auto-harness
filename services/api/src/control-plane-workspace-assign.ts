@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- workspace placement keeps lease acquisition and dispatch together. */
-import type { HostWireMessage } from "@auto-harness/shared";
+import { hasHostCapability, type HostWireMessage } from "@auto-harness/shared";
 
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -22,6 +22,7 @@ import {
 } from "./control-plane-durable-read-runtime.ts";
 import type { AssignmentWriteResult } from "./db/plane-storage-types.ts";
 import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
+import { assignmentOutputArgv } from "./control-plane-session-output-prompt.ts";
 
 export type WorkspaceAssignment = {
   session: PublicSession;
@@ -49,6 +50,7 @@ function assignMessage(
   assignedAt: string,
   setupScript: string | undefined,
   logSettings: import("@auto-harness/shared").SessionLogSettings,
+  outputs: boolean,
 ): HostWireMessage {
   return {
     type: "session:assign",
@@ -67,6 +69,7 @@ function assignMessage(
     // of this field avoids serializing an untrusted prompt twice; a command
     // that opts out of appendPrompt does not consume it at all.
     prompt: "",
+    ...(outputs ? { outputs: true } : {}),
     resolvedArgv: route.resolvedArgv,
     timeout: session.timeout,
     assignedAt,
@@ -211,14 +214,28 @@ export async function assignWorkspaceQueuedDurable(
       )
         continue;
       const attemptId = state.attemptIdFactory();
+      const outputs = hasHostCapability(
+        state.connections.get(connectionId)?.capabilities,
+        "session-outputs",
+      );
+      const resolvedArgv = assignmentOutputArgv(
+        state,
+        session,
+        route.commandId,
+        route.resolvedArgv,
+        outputs,
+        route.resumeSpec,
+      );
+      const outputRoute = { ...route, resolvedArgv };
       const message = assignMessage(
         session,
         slot,
-        route,
+        outputRoute,
         attemptId,
         now,
         session.workspaceSetupScript ?? setupScriptFor(state, session),
         assignLogSettings(state),
+        outputs,
       );
       // Never commit a lease whose control frame the daemon cannot receive.
       // The session remains queued for an operator to reduce its opted-in
@@ -247,7 +264,8 @@ export async function assignWorkspaceQueuedDurable(
             connectionId,
             now,
             attemptId,
-            resolvedArgv: route.resolvedArgv,
+            resolvedArgv,
+            sessionOutputsSupported: outputs,
             resolvedRoute: {
               targetIndex: route.targetIndex,
               ...(route.providerId ? { providerId: route.providerId } : {}),
@@ -279,7 +297,8 @@ export async function assignWorkspaceQueuedDurable(
         occupied.add(lease.slot);
       }
       if (won !== true) continue;
-      const updatedSession = nextSession(session, slot, route, attemptId, now, lease);
+      const updatedSession = nextSession(session, slot, outputRoute, attemptId, now, lease);
+      updatedSession.sessionOutputsSupported = outputs;
       const updatedSlot: WorkspaceSlotRecord = {
         ...slot,
         status: "busy",

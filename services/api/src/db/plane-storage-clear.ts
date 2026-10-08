@@ -32,6 +32,7 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
   await clearSessionDrains(ctx);
   await clearByKey(ctx, "workspaceSlots", "id");
   await clearByKey(ctx, "workspacePools", "id");
+  await clearByKeys(ctx, "sessionOutputs", ["sessionId", "recordKey"]);
   await clearByKey(ctx, "notificationDeliveries", "id");
   await clearByKey(ctx, "sessionCancelRedeliveries", "sessionId");
   await clearByKey(ctx, "slackOAuthStates", "stateHash");

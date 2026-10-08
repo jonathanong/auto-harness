@@ -6,9 +6,14 @@ import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 export async function deleteSessionRetentionRelatedPage(
   ctx: PlaneStorageCtx,
   sessionId: string,
-  kind: "usage" | "logs",
+  kind: "usage" | "logs" | "outputs",
 ): Promise<boolean> {
-  const table = kind === "usage" ? ctx.tables.sessionUsage : ctx.tables.sessionLogs;
+  const table =
+    kind === "usage"
+      ? ctx.tables.sessionUsage
+      : kind === "outputs"
+        ? ctx.tables.sessionOutputs
+        : ctx.tables.sessionLogs;
   if (!table) return true;
   const result = await ctx.doc.send(
     new QueryCommand({
@@ -25,8 +30,8 @@ export async function deleteSessionRetentionRelatedPage(
     DeleteRequest: {
       Key: {
         sessionId,
-        [kind === "usage" ? "usageKey" : "timestampSeq"]:
-          record[kind === "usage" ? "usageKey" : "timestampSeq"],
+        [kind === "usage" ? "usageKey" : kind === "outputs" ? "recordKey" : "timestampSeq"]:
+          record[kind === "usage" ? "usageKey" : kind === "outputs" ? "recordKey" : "timestampSeq"],
       },
     },
   }));

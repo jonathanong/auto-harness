@@ -69,7 +69,7 @@ describe("AutoHarnessFoundationStack", () => {
   it("synthesizes every current durable table, archive bucket, outputs, and only foundation resources", () => {
     const template = foundationTemplate();
 
-    template.resourceCountIs("AWS::DynamoDB::Table", 27);
+    template.resourceCountIs("AWS::DynamoDB::Table", 28);
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       TableName: "AutoHarness-SessionDrains",
       KeySchema: [
@@ -176,6 +176,13 @@ describe("AutoHarnessFoundationStack", () => {
       TableName: "AutoHarness-ViewerTickets",
       TimeToLiveSpecification: { AttributeName: "expiresAt", Enabled: true },
       KeySchema: [{ AttributeName: "ticketHash", KeyType: "HASH" }],
+    });
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      TableName: "AutoHarness-SessionOutputs",
+      KeySchema: [
+        { AttributeName: "sessionId", KeyType: "HASH" },
+        { AttributeName: "recordKey", KeyType: "RANGE" },
+      ],
     });
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       TableName: "AutoHarness-SessionUsage",
@@ -377,7 +384,7 @@ describe("AutoHarnessFoundationStack", () => {
     });
     expect(
       Object.values(json.Resources).filter((resource) => resource.DeletionPolicy === "Delete"),
-    ).toHaveLength(30);
+    ).toHaveLength(31);
     expect(
       Object.values(json.Resources).filter(
         (resource) => resource.Type === "AWS::CloudFormation::CustomResource",

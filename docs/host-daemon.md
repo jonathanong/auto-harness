@@ -285,6 +285,12 @@ Orchestrates a single session after `session:assign`:
 
 Concurrent sessions: one runner instance per claimed worktree (and at most one main-lock session per repo).
 
+Daemons advertising `session-outputs` also provide `HARNESS_OUTPUT_FILE` and
+`HARNESS_ARTIFACTS_DIR` to the assigned command and terminal hook. Collection happens after
+the final hook and before workspace cleanup; a durable background spool publishes JSON and
+artifacts independently without delaying terminal reporting for network transfers. See
+[session output and artifacts](session-outputs.md) for limits, retry behavior, and retrieval.
+
 Git checkout/setup failures retain a stable operation category (for example, switch, fetch,
 resolve, or verification) and may include a short diagnostic excerpt. Git diagnostics are
 single-line and UTF-8 bounded before they are placed in exceptions, logs, or `session:status`;

@@ -51,6 +51,7 @@ export async function tryAssignSession(
     primaryCommandStartState?: "pending" | "authorized";
     queueShard: number;
     sessionApiKeyHash?: string;
+    sessionOutputsSupported?: boolean;
   },
 ): Promise<AssignmentWriteResult> {
   const sessionSets = [
@@ -67,6 +68,7 @@ export async function tryAssignSession(
     "resolvedRoute = :route",
     "assignmentConnectionId = :connectionId",
     "primaryCommandStartState = :primaryCommandStartState",
+    "sessionOutputsSupported = :outputsSupported",
   ];
   const sessionValues: Record<string, unknown> = {
     ":running": "running",
@@ -81,6 +83,7 @@ export async function tryAssignSession(
     ":argv": opts.resolvedArgv,
     ":connectionId": opts.connectionId,
     ":primaryCommandStartState": opts.primaryCommandStartState ?? "pending",
+    ":outputsSupported": opts.sessionOutputsSupported ?? false,
     ":route": opts.resolvedRoute,
   };
   const hostAssignmentLease = opts.hostAssignmentLease ?? { hostId: opts.hostId };

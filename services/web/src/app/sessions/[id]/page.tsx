@@ -27,7 +27,7 @@ export default async function SessionDetailPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
-  const tab = resolveSessionDetailTab((await searchParams)?.tab);
+  const tab = resolveSessionDetailTab((await searchParams)?.tab, true);
 
   let session: SessionSummary | undefined;
   try {

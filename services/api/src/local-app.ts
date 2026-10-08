@@ -7,7 +7,12 @@ import { auditActor } from "./audit.ts";
 import { authorize, isUnroutedWrite } from "./auth-policy.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { applyLocalCors } from "./local-cors.ts";
-import { resolvePublicBaseUrl, type LocalServerOptions, send } from "./local-http.ts";
+import {
+  resolveArtifactApiBaseUrl,
+  resolvePublicBaseUrl,
+  type LocalServerOptions,
+  send,
+} from "./local-http.ts";
 import { handleAuditLogRoutes } from "./local-routes-audit-logs.ts";
 import { handleAuthRoutes } from "./local-routes-auth.ts";
 import { handleCommandRoutes } from "./local-routes-commands.ts";
@@ -39,6 +44,13 @@ import { handleSessionLogSettingsRoutes } from "./local-routes-session-log-setti
 import { MemorySessionStore } from "./memory-store.ts";
 import { enforceRateLimit } from "./local-rate-limit.ts";
 import { captureSentryException } from "./sentry.ts";
+import { LocalSessionArtifactStore, S3SessionArtifactStore } from "./session-artifact-store.ts";
+import { S3Client } from "@aws-sdk/client-s3";
+import { MemorySessionOutputsStore } from "./session-outputs-memory-store.ts";
+import {
+  handleLocalArtifactDownload,
+  handleSessionOutputRoutes,
+} from "./local-routes-session-outputs.ts";
 import {
   classifyRateLimitBucket,
   MemoryRateLimiter,
@@ -58,6 +70,15 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     options.store?.plane ??
     new ControlPlane({ publicBaseUrl: resolvePublicBaseUrl(options.publicBaseUrl) });
   const store = options.store ?? new MemorySessionStore({ plane });
+  const outputStore =
+    plane.state.storage?.getSessionOutputsStore?.() ?? new MemorySessionOutputsStore(plane.state);
+  const artifactStore =
+    options.sessionArtifactStore ??
+    (process.env.ARCHIVE_BUCKET
+      ? new S3SessionArtifactStore(new S3Client({}), process.env.ARCHIVE_BUCKET)
+      : new LocalSessionArtifactStore(options.sessionArtifactsDir));
+  plane.state.sessionArtifactStore = artifactStore;
+  const localArtifactBaseUrl = resolveArtifactApiBaseUrl(options);
   const envRateLimitConfig = rateLimitConfigFromEnv();
   const config: RateLimitConfig = mergeRateLimitConfig({
     ...envRateLimitConfig,
@@ -89,6 +110,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     const url = new URL(req.url ?? "/", "http://localhost");
     const method = req.method ?? "GET";
     const ctx: import("./local-http.ts").RouteCtx = { plane, req, res, url, method };
+    if (await handleLocalArtifactDownload(ctx, outputStore, artifactStore)) return;
     const childRoute = /^\/api\/v1\/sessions\/([^/]+)\/children$/.exec(url.pathname);
     if (method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true });
     if (
@@ -253,6 +275,8 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     }
     if (authRoute && (await handleAuthRoutes({ auth, ...ctx }))) return;
     if (await handleAuditLogRoutes(ctx)) return;
+    if (await handleSessionOutputRoutes(ctx, outputStore, artifactStore, localArtifactBaseUrl))
+      return;
     if (await handleSessionRoutes(ctx)) return;
     if (await handleSessionDrainRoutes(ctx)) return;
     if (await handleUsageRoutes(ctx)) return;

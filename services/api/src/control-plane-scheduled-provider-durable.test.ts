@@ -211,6 +211,9 @@ describe("durable scheduled terminal and provider fallback", () => {
       },
       run.connectionId,
     );
+    // The host-event sweep has a wall-clock budget; cron can finish a requeue
+    // that remains after a loaded event path. Exercise that durable repair pass.
+    await run.plane.assignScheduledQueuedDurable();
     const rerouted = await ctx.storage.getSession(assigned.id);
     expect(rerouted).toMatchObject({
       status: "running",

@@ -30,6 +30,7 @@ import {
   type AssignmentWriteResult,
 } from "./db/plane-storage-types.ts";
 import { createSessionApiKey } from "./control-plane-session-api-key.ts";
+import { assignmentOutputArgv } from "./control-plane-session-output-prompt.ts";
 
 export {
   holdsScheduledLeaseLocal,
@@ -91,6 +92,7 @@ function wire(
     repositoryId: session.repositoryId,
     prompt: session.prompt,
     ...(sessionApiKey ? { sessionApiKey } : {}),
+    ...(session.sessionOutputsSupported ? { outputs: true } : {}),
     resolvedArgv: session.resolvedArgv!,
     timeout: session.timeout,
     worktreeId: null,
@@ -158,6 +160,15 @@ export async function assignScheduledQueuedDurable(
       )
         continue;
       const attemptId = state.attemptIdFactory();
+      const outputs = hasHostCapability(connection.capabilities, "session-outputs");
+      const resolvedArgv = assignmentOutputArgv(
+        state,
+        session,
+        target.commandId,
+        target.resolvedArgv,
+        outputs,
+        target.resumeSpec,
+      );
       const apiKey = hasHostCapability(connection.capabilities, "session-spawn")
         ? createSessionApiKey()
         : undefined;
@@ -187,7 +198,8 @@ export async function assignScheduledQueuedDurable(
               repositoryId: session.repositoryId,
               connectionId,
               now,
-              resolvedArgv: target.resolvedArgv,
+              resolvedArgv,
+              sessionOutputsSupported: outputs,
               resumeSpec: target.resumeSpec,
               resolvedRoute: {
                 targetIndex: target.targetIndex,
@@ -241,7 +253,18 @@ export async function assignScheduledQueuedDurable(
       hostId,
       startedAt: now,
       assignmentSentAt: now,
-      resolvedArgv: target.resolvedArgv,
+      resolvedArgv: assignmentOutputArgv(
+        state,
+        session,
+        target.commandId,
+        target.resolvedArgv,
+        hasHostCapability(state.connections.get(connectionId)?.capabilities, "session-outputs"),
+        target.resumeSpec,
+      ),
+      sessionOutputsSupported: hasHostCapability(
+        state.connections.get(connectionId)?.capabilities,
+        "session-outputs",
+      ),
       ...(session.resumeSpec === undefined && target.resumeSpec !== undefined
         ? { resumeSpec: target.resumeSpec }
         : {}),

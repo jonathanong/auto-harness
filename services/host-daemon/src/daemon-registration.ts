@@ -58,7 +58,12 @@ export async function registerDaemon(
         }
       : {}),
     capabilities: {
-      features: ["scheduled-main-checkout", "session-spawn", "workspace-sessions"],
+      features: [
+        "scheduled-main-checkout",
+        "session-spawn",
+        "workspace-sessions",
+        "session-outputs",
+      ],
       maxConcurrentAssignments: executionProfiles.maxConcurrentAssignments,
     },
     providerAccountReadiness: providerAccountReadiness(executionProfiles),

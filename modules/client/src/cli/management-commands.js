@@ -40,6 +40,8 @@ const builtinCoverage = [
   covered("session.create", "POST", "/sessions", "session-create.js"),
   covered("session.get", "GET", "/sessions/:sessionId", "session-get.js"),
   covered("session.logs", "GET", "/sessions/:sessionId/logs", "session-logs.js"),
+  covered("session.output", "GET", "/sessions/:sessionId/output", "session-output.js"),
+  covered("session.artifacts", "GET", "/sessions/:sessionId/artifacts", "session-artifacts.js"),
   covered("session.cancel", "POST", "/sessions/:sessionId/cancel", "session-cancel.js"),
 ];
 

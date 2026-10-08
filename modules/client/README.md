@@ -22,6 +22,23 @@ const session = await harness.createSession({
 console.log(session.url);
 ```
 
+## Session output and artifacts
+
+The session detail endpoints expose structured JSON output and an artifact archive when the host
+supports them. These records use the same retention policy as session logs. Artifact download URLs
+are short-lived; request them immediately before downloading and do not store or log them.
+
+```js
+const output = await harness.getSessionOutput("session-1");
+if (output.state === "ready") console.log(JSON.stringify(output.output, null, 2));
+
+const artifacts = await harness.getSessionArtifacts("session-1");
+if (artifacts.state === "ready") console.log(artifacts.downloadUrl);
+```
+
+The equivalent CLI commands are `auto-harness session output <sessionId>` and
+`auto-harness session artifacts <sessionId>`; add `--json` for the complete response envelope.
+
 `baseUrl` must be `https` whenever `apiKey` is set — the constructor throws otherwise. Pass
 `allowInsecureHttp: true` to opt out, but only for a genuine loopback `baseUrl` (`127.0.0.0/8`,
 `::1`, or `localhost`) — the constructor verifies this itself and throws for any other `http:`

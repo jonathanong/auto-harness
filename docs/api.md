@@ -1259,6 +1259,28 @@ each download and must not persist or log it.
 
 ---
 
+### Session output and artifacts
+
+`GET /sessions/:id/output` returns the agent-written JSON value, separately from the
+session's harness-generated `result`. `GET /sessions/:id/artifacts` returns availability and,
+when ready, a fresh five-minute download URL for `artifacts.tar.gz`. Both use existing session
+visibility, return `404 NOT_FOUND` for missing or inaccessible sessions, and set
+`Cache-Control: no-store` on successful responses.
+
+Both responses have `state: unsupported | pending | none | ready | error`. Ready JSON includes
+`output` (any JSON value, including `null`) and `capturedAt`. Ready artifacts include
+`downloadUrl`, `expiresAt`, `capturedAt`, `contentType`, `filename`, `compressedBytes`, and
+`sha256`. Error responses include `error: { code, message }`; publishing errors do not change
+the session's terminal command outcome.
+
+Daemons use `POST /sessions/:id/outputs/prepare` and
+`POST /sessions/:id/outputs/complete` with `agent:protocol` credentials, the owning host,
+and current attempt identity. Preparation stores JSON and artifact intent before issuing an
+upload authorization; completion verifies the uploaded artifact before publishing its pointer.
+These are host protocol routes, not management operations. See
+[session output and artifacts](session-outputs.md) for file locations, limits, retry behavior,
+storage, and retention.
+
 ### Worktrees
 
 #### `GET /worktrees`

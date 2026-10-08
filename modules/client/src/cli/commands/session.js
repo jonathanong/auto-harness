@@ -4,6 +4,7 @@ import { runSessionCancel } from "./session-cancel.js";
 import { runSessionCreate } from "./session-create.js";
 import { runSessionGet } from "./session-get.js";
 import { runSessionLogs } from "./session-logs.js";
+import { runSessionOutput } from "./session-output.js";
 import { runManifestCommand } from "./manifest.js";
 
 const USAGE = `usage: auto-harness session <subcommand> ...
@@ -11,6 +12,8 @@ const USAGE = `usage: auto-harness session <subcommand> ...
     [--timeout <seconds>] [--ref <ref>] [--concurrency-id <id>] [--wait [--wait-timeout <seconds>]] [--json]
   auto-harness session get <sessionId> [--json]
   auto-harness session logs <sessionId> [--limit N] [--cursor C] [--json]
+  auto-harness session output <sessionId> [--json]
+  auto-harness session artifacts <sessionId> [--json]
   auto-harness session cancel <sessionId> [--json]`;
 
 /** Dispatches `session <subcommand>` to its own module — mirrors `host.js`'s own dispatch. */
@@ -19,6 +22,8 @@ export async function runSession(argv, io) {
   if (subcommand === "create") return runSessionCreate(rest, io);
   if (subcommand === "get") return runSessionGet(rest, io);
   if (subcommand === "logs") return runSessionLogs(rest, io);
+  if (subcommand === "output") return runSessionOutput(rest, io, "output");
+  if (subcommand === "artifacts") return runSessionOutput(rest, io, "artifacts");
   if (subcommand === "cancel") return runSessionCancel(rest, io);
   const manifestResult = await runManifestCommand(["session", ...argv], io);
   if (manifestResult !== undefined) return manifestResult;

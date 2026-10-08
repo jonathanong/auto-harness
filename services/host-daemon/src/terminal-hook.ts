@@ -35,6 +35,10 @@ export async function runTerminalHook(
     HARNESS_STATUS: input.status,
     HARNESS_WORKTREE_PATH: input.worktreePath,
   };
+  for (const key of ["HARNESS_OUTPUT_FILE", "HARNESS_ARTIFACTS_DIR"] as const) {
+    const value = input.childEnvSource?.[key];
+    if (value !== undefined) env[key] = value;
+  }
   if (input.errorCode) {
     env.HARNESS_ERROR_CODE = input.errorCode;
   }

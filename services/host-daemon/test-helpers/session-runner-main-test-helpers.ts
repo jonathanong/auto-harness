@@ -1,8 +1,10 @@
-import type { ProcessRunner } from "../src/executor.ts";
+import type { ProcessResult, ProcessRunner, RunProcessOptions } from "../src/executor.ts";
+import type { SessionLogChunk } from "@auto-harness/shared";
 import { SessionRunner } from "../src/session-runner.ts";
 import type { DaemonConfig } from "../src/config.ts";
 import type { GitClient } from "../src/git.ts";
 import { WorktreeManager } from "../src/worktree-manager.ts";
+import type { SessionOutputSpool } from "../src/session-output-spool.ts";
 
 export function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -12,7 +14,18 @@ export function deferred<T = void>() {
   return { promise, resolve };
 }
 
-export function makeRunner() {
+export function makeRunner(
+  deps: {
+    sessionOutputSpool?: SessionOutputSpool;
+    childEnvSource?: NodeJS.ProcessEnv;
+    onCommand?: (options: RunProcessOptions) => void | Promise<void>;
+    onHook?: (options: RunProcessOptions) => void | Promise<void>;
+    onCheckout?: (options: Parameters<GitClient["checkoutRef"]>[0]) => void | Promise<void>;
+    commandResult?: ProcessResult;
+    onLog?: (chunk: SessionLogChunk) => void;
+    now?: () => string;
+  } = {},
+) {
   const config: DaemonConfig = {
     hostId: "h",
     repositories: [
@@ -30,6 +43,8 @@ export function makeRunner() {
   const checkouts: string[] = [];
   const hooks: string[] = [];
   const starts: string[] = [];
+  const commandEnvs: NodeJS.ProcessEnv[] = [];
+  const hookEnvs: NodeJS.ProcessEnv[] = [];
   const throwPrimary = { value: false };
   const throwCheckout = { value: false };
   const throwSetup = { value: false };
@@ -37,7 +52,10 @@ export function makeRunner() {
   const git: GitClient = {
     ensureRepo: async () => undefined,
     ensureWorktree: async () => undefined,
-    checkoutRef: async () => undefined,
+    checkoutRef: async (options) => {
+      await deps.onCheckout?.(options);
+      return undefined;
+    },
     prepareMainCheckout: async ({ cwd, ref }) => {
       if (throwCheckout.value) {
         throwCheckout.value = false;
@@ -64,16 +82,20 @@ export function makeRunner() {
       }
       if (options.argv[0] === "/bin/sh" && options.argv[1] === "/hook") {
         hooks.push(options.cwd);
+        hookEnvs.push(options.env ?? {});
+        await deps.onHook?.(options);
         return { exitCode: 0, timedOut: false, signal: null };
       }
       starts.push(options.cwd);
+      commandEnvs.push(options.env ?? {});
+      await deps.onCommand?.(options);
       if (throwPrimary.value) {
         throwPrimary.value = false;
         throw new Error("primary failed");
       }
       const wait = waits.get(options.cwd);
       if (wait) await wait.promise;
-      return { exitCode: 0, timedOut: false, signal: null };
+      return deps.commandResult ?? { exitCode: 0, timedOut: false, signal: null };
     },
   };
   const worktrees = new WorktreeManager(config, git);
@@ -82,11 +104,20 @@ export function makeRunner() {
     checkouts,
     hooks,
     starts,
+    commandEnvs,
+    hookEnvs,
     waits,
     throwPrimary,
     throwCheckout,
     throwSetup,
-    runner: new SessionRunner({ worktrees, processRunner }),
+    runner: new SessionRunner({
+      worktrees,
+      processRunner,
+      ...(deps.sessionOutputSpool ? { sessionOutputSpool: deps.sessionOutputSpool } : {}),
+      ...(deps.onLog ? { onLog: deps.onLog } : {}),
+      ...(deps.now ? { now: deps.now } : {}),
+      ...(deps.childEnvSource ? { childEnvSource: deps.childEnvSource } : {}),
+    }),
   };
 }
 

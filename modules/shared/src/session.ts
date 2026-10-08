@@ -32,6 +32,8 @@ export type SessionResumeSpec = CommandResumeSpec & {
 /** Payload used when assigning work to an agent (control plane → agent). */
 export type SessionAssign = {
   sessionId: string;
+  /** Outputs are collected only when the host advertised session-outputs. */
+  outputs?: true;
   sessionType?: SessionType;
   /** Immutable execution-attempt fence supplied by the scheduler. */
   attemptId: string;
@@ -141,6 +143,8 @@ export type HostWireMessage =
       repositoryId: string | null;
       prompt: string;
       sessionApiKey?: string;
+      /** Additive opt-in; only advertised by hosts that support output collection. */
+      outputs?: true;
       resolvedArgv: string[];
       timeout: number;
       worktreeId: string | null;

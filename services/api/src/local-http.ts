@@ -14,6 +14,7 @@ import type { SlackTransport } from "./slack-delivery-types.ts";
 import type { SlackLifecycleWorkerOptions } from "./slack-worker.ts";
 import type { WebhookDestinationSelector, WebhookTransport } from "./webhook-delivery-types.ts";
 import type { WebhookWorkerOptions } from "./webhook-worker.ts";
+import type { SessionArtifactStore } from "./session-artifact-store.ts";
 import type {
   SlackAppCredentials,
   SlackIdentityClient,
@@ -87,7 +88,35 @@ export type LocalServerOptions = {
   /** Optional outbound boundary. Production supplies no implementation. */
   webhookTransport?: WebhookTransport;
   webhookWorker?: WebhookWorkerOptions;
+  /** Local artifact directory and injectable S3 boundary for focused tests. */
+  sessionArtifactsDir?: string;
+  sessionArtifactStore?: SessionArtifactStore;
+  /** Reachable API origin for local artifact URLs; distinct from the browser UI origin. */
+  apiPublicBaseUrl?: string;
 };
+
+export function resolveArtifactApiBaseUrl(
+  options: Pick<LocalServerOptions, "apiPublicBaseUrl" | "host" | "port">,
+): string {
+  const configured = options.apiPublicBaseUrl ?? process.env.HARNESS_API_PUBLIC_BASE_URL;
+  if (configured) {
+    const url = new URL(configured);
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash
+    ) {
+      throw new Error("HARNESS_API_PUBLIC_BASE_URL must be an HTTP(S) origin");
+    }
+    return url.origin;
+  }
+  const bound = options.host ?? "127.0.0.1";
+  const host = bound === "0.0.0.0" || bound === "::" ? "127.0.0.1" : bound;
+  return `http://${host.includes(":") ? `[${host}]` : host}:${options.port ?? 7420}`;
+}
 
 export type RouteCtx = {
   plane: ControlPlane;
