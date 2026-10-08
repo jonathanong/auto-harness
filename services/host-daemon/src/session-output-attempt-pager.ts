@@ -17,7 +17,7 @@ export class SessionOutputAttemptPager {
     try {
       return await operation;
     } finally {
-      if (this.readPromise === operation) this.readPromise = undefined;
+      this.readPromise = undefined;
     }
   }
 
@@ -71,7 +71,7 @@ export class SessionOutputAttemptPager {
     try {
       await operation;
     } finally {
-      if (this.closePromise === operation) this.closePromise = undefined;
+      this.closePromise = undefined;
     }
   }
 

@@ -104,6 +104,36 @@ describe("SessionOutputAttemptPager", () => {
     await pager.close();
   });
 
+  it("lets a queued reader recover after the preceding open fails", async () => {
+    const root = await mkdtemp(join(tmpdir(), "harness-attempt-pager-queued-error-"));
+    temporary.push(root);
+    const file = join(root, "not-a-directory");
+    await writeFile(file, "file", "utf8");
+    const directory = join(root, "attempts");
+    await mkdir(directory);
+    await writeFile(join(directory, "attempt"), "intent", "utf8");
+    const pager = new SessionOutputAttemptPager();
+    const failed = expect(pager.readPage(file, 1)).rejects.toThrow();
+    const queued = pager.readPage(directory, 1);
+    await failed;
+    expect(await queued).toEqual({ names: ["attempt"], more: false });
+    await pager.close();
+  });
+
+  it("finishes close when an in-flight directory open fails", async () => {
+    const root = await mkdtemp(join(tmpdir(), "harness-attempt-pager-close-error-"));
+    temporary.push(root);
+    const file = join(root, "not-a-directory");
+    await writeFile(file, "file", "utf8");
+    const pager = new SessionOutputAttemptPager();
+    const failed = expect(pager.readPage(file, 1)).rejects.toThrow();
+    const closing = pager.close();
+    await failed;
+    await closing;
+    expect(await pager.readPage(root, 10)).toEqual({ names: ["not-a-directory"], more: false });
+    await pager.close();
+  });
+
   it("does not retain a directory opened after stop starts", async () => {
     const root = await mkdtemp(join(tmpdir(), "harness-attempt-pager-stop-"));
     temporary.push(root);
