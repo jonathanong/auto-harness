@@ -157,14 +157,30 @@ type TreeEntry = {
   ancestors: Array<{ path: string; dev: number; ino: number; mtimeMs: number }>;
 };
 
+async function stableArtifactRoot(
+  root: string,
+): Promise<{ path: string; dev: number; ino: number }> {
+  const before = await lstat(root);
+  if (!before.isDirectory() || before.isSymbolicLink())
+    throw new Error("artifact root must be a real directory");
+  const path = await realpath(root);
+  const after = await lstat(root);
+  if (
+    !after.isDirectory() ||
+    after.isSymbolicLink() ||
+    after.dev !== before.dev ||
+    after.ino !== before.ino
+  )
+    throw new Error("artifact root changed during scan");
+  return { path, dev: after.dev, ino: after.ino };
+}
+
 async function listArtifacts(
   root: string,
 ): Promise<{ entries: TreeEntry[]; sourceBytes: number; fileCount: number }> {
   const entries: TreeEntry[] = [];
-  const suppliedRoot = await lstat(root);
-  if (!suppliedRoot.isDirectory() || suppliedRoot.isSymbolicLink())
-    throw new Error("artifact root must be a real directory");
-  const rootPath = await realpath(root);
+  const rootSnapshot = await stableArtifactRoot(root);
+  const rootPath = rootSnapshot.path;
   const directoryQueue: Array<{
     absolute: string;
     relativePath: string;
@@ -221,7 +237,13 @@ async function listArtifacts(
       }
     }
   }
-  if ((await realpath(root)) !== rootPath) throw new Error("artifact root changed during scan");
+  const finalRoot = await stableArtifactRoot(root);
+  if (
+    finalRoot.path !== rootPath ||
+    finalRoot.dev !== rootSnapshot.dev ||
+    finalRoot.ino !== rootSnapshot.ino
+  )
+    throw new Error("artifact root changed during scan");
   return { entries, sourceBytes, fileCount };
 }
 
@@ -231,10 +253,11 @@ async function createArchive(
 ): Promise<{ bytes: number; sourceBytes: number; fileCount: number; sha256: string }> {
   const { entries, sourceBytes, fileCount } = await listArtifacts(root);
   if (fileCount === 0) return { bytes: 0, sourceBytes: 0, fileCount: 0, sha256: "" };
+  const initialRoot = await stableArtifactRoot(root);
+  const frozenRoot = initialRoot.path;
   const output = createWriteStream(destination, { flags: "wx", mode: 0o600 });
   const tar = createTar();
   const gzip = createGzip();
-  const frozenRoot = await realpath(root);
   let compressedBytes = 0;
   let compressionLimitError: Error | undefined;
   const compressedLimit = new Transform({
@@ -252,7 +275,12 @@ async function createArchive(
   void archiveDone.catch(() => undefined);
   try {
     for (const entry of entries) {
-      if ((await realpath(root)) !== frozenRoot)
+      const currentRoot = await stableArtifactRoot(root);
+      if (
+        currentRoot.path !== frozenRoot ||
+        currentRoot.dev !== initialRoot.dev ||
+        currentRoot.ino !== initialRoot.ino
+      )
         throw new Error("artifact root changed while archiving");
       for (const ancestor of entry.ancestors) {
         const info = await lstat(ancestor.path);
