@@ -317,6 +317,12 @@ can still be made without another deploy. Alarm state actions alone do not make
 EMF publication conditional: deployed Lambdas continue emitting metrics either
 way.
 
+The seven alarms use eight standard alarm metrics: six single-metric alarms plus
+the two inputs to the WebSocket API math expression. At $0.10 per standard alarm
+metric, this is about **$0.80/month** before applicable CloudWatch allowances;
+actual pricing depends on region and account. See
+[CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/).
+
 ## Deploy a new environment
 
 ```bash
