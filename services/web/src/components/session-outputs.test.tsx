@@ -144,4 +144,46 @@ describe("SessionOutputs", () => {
     expect(view.container.querySelector("pre")?.textContent).toBe('"new"');
     view.unmount();
   });
+  it.each(["revoked", "offline"])(
+    "handles a %s artifact download without using an old URL",
+    async (outcome) => {
+      const ready = {
+        state: "ready",
+        downloadUrl: "https://bucket.test/old",
+        expiresAt: "soon",
+        capturedAt: "now",
+        contentType: "application/gzip",
+        filename: "artifacts.tar.gz",
+        compressedBytes: 50,
+        sha256: "sha",
+      };
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(json({ state: "none" }))
+        .mockResolvedValueOnce(json(ready));
+      if (outcome === "revoked") fetchMock.mockResolvedValueOnce(json({ state: "none" }));
+      else fetchMock.mockRejectedValueOnce(new Error("download offline"));
+      vi.stubGlobal("fetch", fetchMock);
+      const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      const view = mount();
+      await settle();
+      await act(async () => {
+        (
+          view.container.querySelector(
+            '[data-pw="session-artifacts-download"]',
+          ) as HTMLButtonElement
+        ).click();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(click).not.toHaveBeenCalled();
+      if (outcome === "revoked")
+        expect(view.container.textContent).toContain("No artifacts were captured");
+      else
+        expect(
+          view.container.querySelector('[data-pw="session-artifacts-download-error"]')?.textContent,
+        ).toBe("download offline");
+      view.unmount();
+    },
+  );
 });

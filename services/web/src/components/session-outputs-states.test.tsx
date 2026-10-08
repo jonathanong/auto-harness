@@ -115,4 +115,20 @@ describe("SessionOutputs states", () => {
     ).toBe("Captured output is too deeply nested to display.");
     view.unmount();
   });
+  it("displays capture errors separately from unsupported artifacts", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          json({ state: "error", error: { code: "INVALID_JSON", message: "Invalid JSON" } }),
+        )
+        .mockResolvedValueOnce(json({ state: "unsupported" })),
+    );
+    const view = mount();
+    await settle();
+    expect(view.container.textContent).toContain("Invalid JSON (INVALID_JSON)");
+    expect(view.container.textContent).toContain("Artifacts are not supported by this host.");
+    view.unmount();
+  });
 });
