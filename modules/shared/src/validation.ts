@@ -94,6 +94,9 @@ const MAX_METADATA_KEYS = 32;
 const MAX_METADATA_KEY_LENGTH = 64;
 const MAX_METADATA_STRING_LENGTH = 1_024;
 export const MAX_FALLBACKS = 90;
+// Schedule fires claim their cursor, reference markers, and operational rows in
+// one DynamoDB transaction. Two fewer fallbacks keep the worst case at 100 actions.
+export const MAX_SCHEDULE_FALLBACKS = 88;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
@@ -391,18 +394,17 @@ export function validateCreateSessionInput(
 }
 
 /** Strict routing policy validation shared by sessions and schedules. */
-export function validateTargetRouting(input: {
-  target?: unknown;
-  fallbacks?: unknown;
-  queueTtlSeconds?: unknown;
-}): ValidationResult<{ target: TargetRef; fallbacks: TargetRef[]; queueTtlSeconds: number }> {
+export function validateTargetRouting(
+  input: { target?: unknown; fallbacks?: unknown; queueTtlSeconds?: unknown },
+  maxFallbacks = MAX_FALLBACKS,
+): ValidationResult<{ target: TargetRef; fallbacks: TargetRef[]; queueTtlSeconds: number }> {
   const target = parseTarget(input.target, "target");
   if (!target.ok) return target;
   const fallbacks: TargetRef[] = [];
   if (input.fallbacks !== undefined) {
     if (!Array.isArray(input.fallbacks)) return { ok: false, error: "fallbacks must be an array" };
-    if (input.fallbacks.length > MAX_FALLBACKS) {
-      return { ok: false, error: `fallbacks must have at most ${MAX_FALLBACKS} entries` };
+    if (input.fallbacks.length > maxFallbacks) {
+      return { ok: false, error: `fallbacks must have at most ${maxFallbacks} entries` };
     }
     const seen = new Set([targetKey(target.value)]);
     for (let i = 0; i < input.fallbacks.length; i++) {

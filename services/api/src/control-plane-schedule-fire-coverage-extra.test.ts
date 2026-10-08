@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- schedule-fire coverage cases share one fixture. */
-import { MAX_FALLBACKS } from "@auto-harness/shared";
+import { MAX_SCHEDULE_FALLBACKS } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { setInMemoryScheduleStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
@@ -406,7 +406,10 @@ describe("schedule fire residual coverage", () => {
         resourceType: "schedule",
         resourceId: "nightly",
         outcome: "failed",
-        metadata: expect.objectContaining({ fallbackCount: 91, maxFallbacks: MAX_FALLBACKS }),
+        metadata: expect.objectContaining({
+          fallbackCount: 91,
+          maxFallbacks: MAX_SCHEDULE_FALLBACKS,
+        }),
       }),
     );
   });
@@ -428,7 +431,7 @@ describe("schedule fire residual coverage", () => {
 
     await expect(triggerScheduleDurable(current, "nightly", NOW)).resolves.toEqual({
       ok: false,
-      error: `schedule disabled: it has 91 persisted fallbacks; update it to at most ${MAX_FALLBACKS}`,
+      error: `schedule disabled: it has 91 persisted fallbacks; update it to at most ${MAX_SCHEDULE_FALLBACKS}`,
     });
     expect(current.schedules.get("nightly")).toMatchObject({ enabled: false });
   });

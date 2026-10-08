@@ -40,7 +40,7 @@ import {
   type OwnedDeletionMarker,
 } from "./plane-storage-deletion-markers.ts";
 import type { SessionRecord } from "./types.ts";
-import { MAX_FALLBACKS, type RepositoryAdmissionState } from "@auto-harness/shared";
+import { MAX_SCHEDULE_FALLBACKS, type RepositoryAdmissionState } from "@auto-harness/shared";
 import { sessionToItem } from "./plane-storage-types.ts";
 import {
   getConcurrencyLock,
@@ -881,7 +881,7 @@ export async function disableLegacyFallbackScheduleAndAudit(
                 ":false": false,
                 ":true": true,
                 ":expectedNextRunAt": opts.expectedNextRunAt,
-                ":maxFallbacks": MAX_FALLBACKS,
+                ":maxFallbacks": MAX_SCHEDULE_FALLBACKS,
               },
             },
           },
@@ -915,11 +915,11 @@ export async function tryClaimScheduleAndCreateSession(
     session: SessionRecord;
   },
 ): Promise<ScheduleCreateResult> {
-  // Schedules persisted before MAX_FALLBACKS was lowered can still contain 91 or
-  // 92 routes. Do not construct an over-limit transaction and let cron retry the
+  // Older schedules can exceed the transaction-safe fallback budget. Do not
+  // construct an over-limit transaction and let cron retry the
   // unchanged cursor forever; the caller performs an explicit audited disable.
   const fallbackCount = opts.session.fallbacks?.length ?? 0;
-  if (fallbackCount > MAX_FALLBACKS) {
+  if (fallbackCount > MAX_SCHEDULE_FALLBACKS) {
     return { kind: "legacy_fallbacks", fallbackCount };
   }
   const principalId =

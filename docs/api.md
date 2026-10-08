@@ -1333,7 +1333,7 @@ Create a scheduled task. **Operator or admin.**
 | `repositoryId`          | string   | ✓        | Target repository                                                                                                                                  |
 | `name`                  | string   | ✓        | Human-readable name for the schedule                                                                                                               |
 | `target`                | object   | ✓        | Primary `{ providerId }` or `{ commandId }` target                                                                                                 |
-| `fallbacks`             | object[] | ✗        | Ordered fallback targets; same semantics as sessions                                                                                               |
+| `fallbacks`             | object[] | ✗        | Ordered fallback targets; same semantics as sessions, with at most 88 entries so each durable fire fits DynamoDB's transaction limit               |
 | `queueTtlSeconds`       | number   | ✗        | Absolute queue lifetime for each fire; default 8 days                                                                                              |
 | `cron`                  | string   | ✓        | Strict five-field UTC cron. Numeric wildcards, lists, ranges, and steps are supported (for example `0,30 6-18/2 * * 1-5`).                         |
 | `timeout`               | number   | ✗        | Max duration in seconds. Default: `3600` (1 hour)                                                                                                  |

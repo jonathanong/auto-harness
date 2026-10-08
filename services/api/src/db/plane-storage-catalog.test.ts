@@ -8,6 +8,7 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it, vi } from "vitest";
+import { MAX_SCHEDULE_FALLBACKS } from "@auto-harness/shared";
 
 import { SESSION_LOGS_TTL_SECONDS } from "./dynamo.ts";
 import {
@@ -604,7 +605,7 @@ describe("durable schedule creation", () => {
           principalId: "principal-1",
           prompt: "scheduled",
           target: { commandId: "command-1" },
-          fallbacks: Array.from({ length: 91 }, (_, index) => ({
+          fallbacks: Array.from({ length: MAX_SCHEDULE_FALLBACKS + 1 }, (_, index) => ({
             commandId: `legacy-${index}`,
           })),
           targetDisplayNames: [],
@@ -618,8 +619,48 @@ describe("durable schedule creation", () => {
           createdAt: "now",
         },
       }),
-    ).resolves.toEqual({ kind: "legacy_fallbacks", fallbackCount: 91 });
+    ).resolves.toEqual({
+      kind: "legacy_fallbacks",
+      fallbackCount: MAX_SCHEDULE_FALLBACKS + 1,
+    });
     expect(calls).toBe(0);
+  });
+
+  it("fits the maximal schedule with distinct references in one Dynamo transaction", async () => {
+    let input: TransactWriteCommandInput | undefined;
+    const storage = scheduleCtx(async (command) => {
+      input = (command as TransactWriteCommand).input;
+      return {};
+    });
+    await expect(
+      tryClaimScheduleAndCreateSession(storage, {
+        scheduleId: "schedule-1",
+        expectedNextRunAt: "one",
+        newNextRunAt: "two",
+        lastRunAt: "one",
+        session: {
+          id: "max-fallback-session",
+          repositoryId: "repo-1",
+          principalId: "principal-1",
+          prompt: "scheduled",
+          target: { commandId: "primary" },
+          fallbacks: Array.from({ length: MAX_SCHEDULE_FALLBACKS }, (_, index) => ({
+            commandId: `fallback-${index}`,
+          })),
+          targetDisplayNames: [],
+          queueTtlSeconds: 60,
+          queueExpiresAt: "later",
+          timeout: 30,
+          priority: 0,
+          requiredLabels: [],
+          status: "queued",
+          queueShard: 0,
+          createdAt: "one",
+          concurrencyId: "schedule-1",
+        },
+      }),
+    ).resolves.toEqual({ kind: "created" });
+    expect(input?.TransactItems).toHaveLength(100);
   });
 
   it("fences a workspace schedule claim with its workspace pool marker", async () => {
@@ -704,7 +745,9 @@ describe("durable schedule creation", () => {
           UpdateExpression: "SET enabled = :false",
           ConditionExpression:
             "nextRunAt = :expectedNextRunAt AND enabled = :true AND size(fallbacks) > :maxFallbacks",
-          ExpressionAttributeValues: expect.objectContaining({ ":maxFallbacks": 90 }),
+          ExpressionAttributeValues: expect.objectContaining({
+            ":maxFallbacks": MAX_SCHEDULE_FALLBACKS,
+          }),
         }),
       }),
       expect.objectContaining({
