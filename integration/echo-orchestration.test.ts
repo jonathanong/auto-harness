@@ -71,6 +71,7 @@ describe.skipIf(process.platform === "win32")(
         useDynamo: false,
         enableWs: true,
         publicBaseUrl: "http://ui",
+        sessionArtifactsDir: join(root, "api-artifacts"),
       });
       closeServer = server.close;
       await server.plane.putSessionLogSettings({

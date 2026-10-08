@@ -17,7 +17,11 @@ const EXCLUDED = [
   { method: "POST", path: "/api/v1/sessions/{}/outputs/prepare", audience: "host-protocol" },
   { method: "POST", path: "/api/v1/sessions/{}/outputs/complete", audience: "host-protocol" },
   { method: "PUT", path: "/api/v1/sessions/{}/outputs/upload/{}", audience: "host-protocol" },
-  { method: "GET", path: "/api/v1/sessions/{}/artifacts/download", audience: "browser-download" },
+  {
+    method: "GET",
+    path: "/api/v1/sessions/{}/artifacts/download/{}",
+    audience: "browser-download",
+  },
   { method: "POST", path: "/api/v1/scheduler/assign", audience: "scheduler" },
   { method: "POST", path: "/api/v1/scheduler/ack-deadlines", audience: "scheduler" },
   { method: "POST", path: "/api/v1/scheduler/reclaim-stale", audience: "scheduler" },

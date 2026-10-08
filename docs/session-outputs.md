@@ -80,8 +80,8 @@ from `none`.
 ## Storage and retention
 
 JSON text and compact collection metadata live in the dedicated DynamoDB `SessionOutputs`
-table, separately from frequently updated session and lease records. Artifacts live at
-`sessions/{sessionId}/artifacts/{attemptId}/artifacts.tar.gz` in the existing archive bucket.
+table, separately from frequently updated session and lease records. Artifacts use a fixed,
+attempt-specific key under `sessions/{sessionId}/artifacts/` in the existing archive bucket.
 Readers use a verified immutable object version. Transcript readers only inspect recognized
 log keys, so artifact archives are not parsed as JSONL.
 

@@ -498,6 +498,10 @@ paths:
         in: path
         required: true
         schema: { type: string }
+      - name: expires
+        in: query
+        required: true
+        schema: { type: integer, description: Token expiry in Unix milliseconds }
       - name: token
         in: query
         required: true
@@ -514,10 +518,22 @@ paths:
       responses:
         "200": { description: Artifact bytes stored for completion verification }
         default: { $ref: "#/components/responses/Error" }
-  /sessions/{sessionId}/artifacts/download:
+  /sessions/{sessionId}/artifacts/download/{attemptId}:
     parameters:
       - $ref: "#/components/parameters/SessionId"
+      - name: attemptId
+        in: path
+        required: true
+        schema: { type: string }
+      - name: expires
+        in: query
+        required: true
+        schema: { type: integer, description: Token expiry in Unix milliseconds }
       - name: token
+        in: query
+        required: true
+        schema: { type: string }
+      - name: version
         in: query
         required: true
         schema: { type: string }
