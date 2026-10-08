@@ -412,7 +412,7 @@ Troubleshooting table for local symptoms:
   and then `GET /session-targets` marks the provider `available:false`
   with no error.
 - Documented grok argv (`-p` + `--` separator + `--output-format
-plain`) fails on grok 1.0.5. Use
+  plain`) fails on grok 1.0.5. Use
   `["grok","--always-approve","--max-turns","3","-p"]` with
   append-prompt on and the `--` separator **off**.
 - Whitespace-only prompts are accepted; `echo` prints them.

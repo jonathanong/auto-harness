@@ -50,6 +50,14 @@ describe("resolveServerApiBase", () => {
     expect(resolveServerApiBase()).toBe("http://example.test:9002");
   });
 
+  it.each([
+    [" ws://example.test:9002/ws ", "http://example.test:9002"],
+    ["wss://example.test:9003/ws/", "https://example.test:9003"],
+  ])("normalizes the websocket API URL %s for server requests", (url, expected) => {
+    process.env.HARNESS_API_URL = url;
+    expect(resolveServerApiBase()).toBe(expected);
+  });
+
   it("uses an HTTPS HARNESS_API_URL origin", () => {
     process.env.HARNESS_API_URL = "https://example.test:9003/";
     expect(resolveServerApiBase()).toBe("https://example.test:9003");

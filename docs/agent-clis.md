@@ -351,8 +351,8 @@ session, same as an unrecognized executable.
 - **Codex** — the sentence codex-cli's own error path writes verbatim, never model-authored, onto
   a top-level `{"type":"error"}.message` or `turn.failed.error.message`. Captured verbatim from a
   real out-of-usage account (2026-09-19, codex-cli 0.154.0): `"You've hit your usage limit. Visit
-https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 19th, 2026
-1:15 AM."` codex-cli has emitted roughly seven variants of this sentence with different trailing
+  https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 19th, 2026
+  1:15 AM."` codex-cli has emitted roughly seven variants of this sentence with different trailing
   clauses — the adapter matches only the fixed lead-in (`you've hit your usage limit`), not a
   suffix.
 - **Grok** — a top-level `{"type":"error","message":"…"}` envelope with no structured code. HTTP
@@ -360,7 +360,7 @@ https://chatgpt.com/codex/settings/usage to purchase more credits or try again a
   HTTP 402 path — the account's Grok Build credit balance, not a rate limit — writes a different
   sentence instead. Captured verbatim from a real out-of-usage account (2026-09-19, grok 1.0.30):
   `"Internal error: {\n  \"message\": \"API error (status 402 Payment Required): Grok Build usage
-balance exhausted\", \"http_status\": 402\n}"`. Grok's CLI also re-prints that same failure a
+  balance exhausted\", \"http_status\": 402\n}"`. Grok's CLI also re-prints that same failure a
   second time as plain text, whose embedded object happens to parse as JSON but has neither `type`
   nor `status` — the adapter only ever trusts a candidate carrying `type`/`status`/`response`/
   `text`, so that re-print can neither manufacture nor mask a usage-limit signal.
@@ -372,12 +372,12 @@ balance exhausted\", \"http_status\": 402\n}"`. Grok's CLI also re-prints that s
   leaves cache writes unmapped because the provider-neutral usage contract has no cache-write
   field. Confirmed against a real successful `cursor-agent --print --force --output-format json`
   capture (2026-09-10 build): `{"type":"result","subtype":"success","is_error":false,
-"result":"hello world","usage":{"inputTokens":14615,"outputTokens":26,
-"cacheReadTokens":4352,"cacheWriteTokens":0}}`. An out-of-usage account does **not**
+  "result":"hello world","usage":{"inputTokens":14615,"outputTokens":26,
+  "cacheReadTokens":4352,"cacheWriteTokens":0}}`. An out-of-usage account does **not**
   produce a JSON envelope: captured 2026-10-05 (sessions `sess-6b672ec6`, `sess-f47c833b`), about
   20 seconds after spawn cursor-agent wrote one plain-text stdout line, `ActionRequiredError:
-Increase limits for faster responses You're out of usage. Switch to Auto, or ask your admin to
-increase your limit to continue.`, then a `\x1b[?25h` escape, and exited 1. The adapter
+  Increase limits for faster responses You're out of usage. Switch to Auto, or ask your admin to
+  increase your limit to continue.`, then a `\x1b[?25h` escape, and exited 1. The adapter
   classifies a usage limit only when the run failed, **no** `{"type":"result"}` envelope was
   emitted (agent-generated text can only appear inside that envelope, so an earlier plain-text
   line is CLI-owned), and an ANSI-stripped stdout line starts with `ActionRequiredError:` and
@@ -398,14 +398,14 @@ and falls through the same way.
 
 - The Provider Account's health shows a cooldown badge (`modules/ui`'s
   `provider-account-health.tsx`) while `usageLimitedUntil` is in the future; `GET
-/provider-accounts/:id` also reports `lastUsageLimitedAt` (when it was last hit — this never
+  /provider-accounts/:id` also reports `lastUsageLimitedAt` (when it was last hit — this never
   clears itself) alongside it. `DELETE /provider-accounts/:id/usage-limit` clears an active
   cooldown early and re-triggers scheduling.
 - A session that is still `queued` while requeuing shows `errorCode: "usage_limit"` — but this is
   transient, not a durable audit trail: the very next assignment (to another account, or a
   fallback) explicitly clears `errorCode` as part of picking up the new attempt
   (`control-plane-assign.ts`'s `delete session.errorCode`, and the durable path's `REMOVE …
-errorCode`). A session that eventually **completes** via fallback will _not_ show
+  errorCode`). A session that eventually **completes** via fallback will _not_ show
   `errorCode: "usage_limit"` afterwards, even though it hit one along the way — the durable proof
   at that point is the Provider Account's cooldown fields, plus the session's `resolvedRoute`
   having advanced past the original provider target to the fallback's `commandId`/`targetIndex`.

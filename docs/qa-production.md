@@ -291,7 +291,7 @@ Do not read `web.md`. Follow nav labels.
    Worktrees**): absolute path from Prerequisites. Then add at least one
    worktree. This is a control-plane action; the daemon creates the actual
    `git worktree` on disk the first time it starts (`git worktree add
---detach`). **Do not pre-create the worktree directory** — a directory
+   --detach`). **Do not pre-create the worktree directory** — a directory
    sitting at that path can collide with `git worktree add`. Only the
    repository path must already exist as a valid git repo. Prefer a worktree
    path **outside** the repository (a sibling directory, e.g.
@@ -308,7 +308,7 @@ Do not read `web.md`. Follow nav labels.
      (`-p` / `--single` takes the prompt as its option value).
      Append-prompt **on**, append-prompt separator **off** — a `--`
      before the prompt makes grok 1.0.5 exit 2 with `a value is required
-for '--single <PROMPT>'`. Use `--output-format json`; `-p` still supplies the
+     for '--single <PROMPT>'`. Use `--output-format json`; `-p` still supplies the
      headless prompt.
    - name `codex`; default command name e.g. `codex-exec`; argv one token
      per line: `codex`, `exec`, `--json`. Append-prompt **on**, separator **on**
@@ -940,7 +940,7 @@ unique stack ID, not just its name, so there is no fetching it afterward.
   ```
 
   Every other table in the stack then reports `UPDATE_FAILED ... "Resource
-update cancelled"`, and the whole Foundation stack rolls back to
+  update cancelled"`, and the whole Foundation stack rolls back to
   `UPDATE_ROLLBACK_COMPLETE` — the tables and their data survive, but the
   update accomplishes nothing. This is what took `production` down (see
   [Account state (2026-09-15)](#account-state-2026-09-15)).
@@ -948,7 +948,7 @@ update cancelled"`, and the whole Foundation stack rolls back to
   Why: `services/cdk/src/tables.ts` currently defines 8 GSIs on Sessions,
   and an existing, populated environment only has the ones it was deployed
   or updated with at the time. The plain `pnpm --filter @auto-harness/cdk
-run update` (Phase 1) has no guard for this — `update()` in
+  run update` (Phase 1) has no guard for this — `update()` in
   `services/cdk/src/deployment.ts` only checks that the Foundation stack
   exists, and `applyDeployment` always synthesizes the full current
   template (`cdkContext`'s stage defaults in
@@ -1071,7 +1071,7 @@ class on the 12 authenticated pages is not covered by any automated check.**
 - **`services/cdk/cdk.out/` collides with the vitest glob.** After `synth`
   or a lifecycle command, `rm -rf services/cdk/cdk.out` before a local
   `vitest` run or it picks up bundled copies and fails with `Cannot find
-package '@auto-harness/shared'`. CI starts clean, so this is local-only.
+  package '@auto-harness/shared'`. CI starts clean, so this is local-only.
 - **Slack / GitHub integration flows are out of scope.**
 - **Host pane against a remote `WebUrl`** is a known auth seam (Phase 3);
   the expected outcome is recorded during the run, not assumed here.
