@@ -1748,11 +1748,10 @@ export class DaemonLoop {
     const current = await claim.currentHookTarget();
     const scriptPath = current?.repository.terminalHookScript;
     if (!current) return undefined;
-    const handoffOutputFields = msg as typeof msg & { outputAttemptId?: unknown; outputs?: unknown };
-    const handedOffAttemptId = handoffOutputFields.outputAttemptId;
-    const outputAttempt = handoffOutputFields.outputs === true && typeof handedOffAttemptId === "string"
-      ? await this.sessionOutputSpool.findDeferredAttempt(msg.sessionId, handedOffAttemptId)
-      : undefined;
+    const outputAttempt =
+      msg.outputs === true && typeof msg.outputAttemptId === "string"
+        ? await this.sessionOutputSpool.findDeferredAttempt(msg.sessionId, msg.outputAttemptId)
+        : undefined;
     const mappedGitHubApp = this.githubApp?.repositories.has(msg.repositoryId) ?? false;
     let isolatedGitHubConfigDir: string | undefined;
     let terminalEnvironment = mappedGitHubApp
@@ -1824,7 +1823,9 @@ export class DaemonLoop {
           await outputAttempt.capture();
           this.sessionOutputSpool.wake();
         } catch (error) {
-          this.onLog?.(`deferred session output capture failed for ${msg.sessionId}: ${String(error)}`);
+          this.onLog?.(
+            `deferred session output capture failed for ${msg.sessionId}: ${String(error)}`,
+          );
         }
       }
       return result;

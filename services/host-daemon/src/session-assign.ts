@@ -57,6 +57,6 @@ export function sessionAssignFromWire(message: AssignMessage): SessionAssign {
       ? { providerAccountId: route.providerAccountId }
       : {}),
     ...(message.logSettings !== undefined ? { logSettings: message.logSettings } : {}),
-    ...((message as AssignMessage & { outputs?: unknown }).outputs === true ? { outputs: true } : {}),
+    ...(message.outputs === true ? { outputs: true } : {}),
   };
 }
