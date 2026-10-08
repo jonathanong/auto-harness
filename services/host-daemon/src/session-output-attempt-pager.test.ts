@@ -71,4 +71,27 @@ describe("SessionOutputAttemptPager", () => {
     const pager = new SessionOutputAttemptPager();
     await expect(pager.readPage(file, 10)).rejects.toThrow();
   });
+
+  it("closes the cursor when stop races an in-progress bounded read", async () => {
+    const root = await mkdtemp(join(tmpdir(), "harness-attempt-pager-stop-"));
+    temporary.push(root);
+    const directory = join(root, "attempts");
+    await mkdir(directory);
+    await Promise.all(
+      Array.from({ length: 4_000 }, (_, index) =>
+        writeFile(join(directory, `attempt-${index}`), "intent", "utf8"),
+      ),
+    );
+    const pager = new SessionOutputAttemptPager();
+    const pending = pager.readPage(directory, 10_000);
+    const observed = pending.then(
+      () => ({ rejected: false, error: undefined }),
+      (error: unknown) => ({ rejected: true, error }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await pager.close();
+    const result = await observed;
+    expect(result.rejected).toBe(true);
+    expect(result.error).toMatchObject({ code: "ERR_DIR_CLOSED" });
+  });
 });

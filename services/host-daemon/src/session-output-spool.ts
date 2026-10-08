@@ -64,9 +64,9 @@ const API_TIMEOUT_MS = 30_000;
 const RETRY_MAX_MS = 5 * 60_000;
 const ATTEMPT_SWEEP_INTERVAL_MS = 60 * 60_000;
 const ATTEMPT_STARTUP_GRACE_MS = 60_000;
-// Keep a lost attempt through the longest supported run plus its terminal publish window.
+// Keep a lost attempt through the longest run, handoff window, and output publish window.
 const ABANDONED_ATTEMPT_AGE_MS =
-  MAX_SESSION_TIMEOUT_SECONDS * 1_000 + SESSION_OUTPUT_RETRY_WINDOW_MS;
+  MAX_SESSION_TIMEOUT_SECONDS * 1_000 + SESSION_OUTPUT_RETRY_WINDOW_MS * 2;
 const FETCH = globalThis.fetch;
 
 type Identity = { apiUrl: string; apiKey?: string };
@@ -589,9 +589,13 @@ export class SessionOutputSpool {
         if (captured) return;
         if (capturePromise) await capturePromise.catch(() => undefined);
         if (captured) return;
-        await rm(directory, { recursive: true, force: true });
-        captured = true;
-        releaseActiveAttempt();
+        retainActiveAttempt();
+        try {
+          await rm(directory, { recursive: true, force: true });
+          captured = true;
+        } finally {
+          releaseActiveAttempt();
+        }
       },
       capture: async () => {
         if (captured) return;

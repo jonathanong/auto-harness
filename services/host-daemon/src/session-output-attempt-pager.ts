@@ -46,6 +46,6 @@ export class SessionOutputAttemptPager {
     const directory = this.directory;
     this.directory = undefined;
     this.pendingName = undefined;
-    await directory?.close().catch(() => undefined);
+    if (directory) await directory.close();
   }
 }

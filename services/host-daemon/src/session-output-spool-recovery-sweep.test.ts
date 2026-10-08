@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -90,6 +90,29 @@ describe("SessionOutputSpool abandoned attempt recovery", () => {
     await spool.runPass();
     expect(
       await stat(directory).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
+  });
+
+  it("releases a failed discard handle so the aged attempt can be swept", async () => {
+    const root = await tempDirectory();
+    let now = Date.now();
+    const spool = new SessionOutputSpool({ root, now: () => now });
+    const attempt = await spool.begin("session-discard-failure", "attempt-discard-failure");
+    const attemptsDirectory = join(root, "attempts");
+    const attemptDirectory = join(attemptsDirectory, attempt.jobId);
+    await chmod(attemptsDirectory, 0);
+    await expect(attempt.discard()).rejects.toThrow();
+    await chmod(attemptsDirectory, 0o700);
+
+    now += 10 * 24 * 60 * 60 * 1_000;
+    await spool.runPass();
+    now += 60_001;
+    await spool.runPass();
+    expect(
+      await stat(attemptDirectory).then(
         () => true,
         () => false,
       ),
