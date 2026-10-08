@@ -77,7 +77,7 @@
     "coverage-check": "^0.17.0",
     "dependency-cruiser": "^18.5.0",
     "esbuild": "^0.28.2",
-    "happy-dom": "20.14.5",
+    "happy-dom": "^20.14.5",
     "husky": "^9.1.7",
     "knip": "^6.39.0",
     "no-mistakes": "^0.68.0",
