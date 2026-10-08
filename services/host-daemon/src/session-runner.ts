@@ -82,7 +82,10 @@ export class SessionRunner {
     let outputAttempt: SessionOutputAttempt | undefined;
     if (outputEnabled && this.deps.sessionOutputSpool) {
       try {
-        outputAttempt = await this.deps.sessionOutputSpool.begin(assign.sessionId, assign.attemptId);
+        outputAttempt = await this.deps.sessionOutputSpool.begin(
+          assign.sessionId,
+          assign.attemptId,
+        );
       } catch (error) {
         this.deps.onLog?.({
           sessionId: assign.sessionId,
@@ -108,7 +111,10 @@ export class SessionRunner {
             if (!runHook && !captured) {
               captured = true;
               await outputAttempt.discard().catch((error: unknown) => {
-                this.logOutputFailure(assign, `session output discard failed: ${thrownMessage(error)}`);
+                this.logOutputFailure(
+                  assign,
+                  `session output discard failed: ${thrownMessage(error)}`,
+                );
               });
             } else if (runHook && !captured) {
               captured = true;
@@ -153,7 +159,10 @@ export class SessionRunner {
     });
   }
 
-  private async runClaimed(assign: SessionAssign, options: SessionRunOptions): Promise<SessionRunResult> {
+  private async runClaimed(
+    assign: SessionAssign,
+    options: SessionRunOptions,
+  ): Promise<SessionRunResult> {
     if (isWorkspaceAssign(assign)) return await this.runWorkspace(assign, options);
     const childEnvSource = this.deps.childEnvSource ?? process.env;
     const mappedGitHubApp = assign.repositoryId
@@ -189,7 +198,8 @@ export class SessionRunner {
       } catch (error) {
         return await failSession(streamer, logs, "setup_failed", thrownMessage(error), null);
       }
-      if (options.outputAttempt) sessionChildEnv = { ...sessionChildEnv, ...options.outputAttempt.env };
+      if (options.outputAttempt)
+        sessionChildEnv = { ...sessionChildEnv, ...options.outputAttempt.env };
 
       let expired = false;
       const timeout = new AbortController();

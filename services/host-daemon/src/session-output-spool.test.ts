@@ -25,7 +25,10 @@ async function jobIn(root: string): Promise<Record<string, unknown>> {
   const jobs = await readdir(join(root, "jobs"));
   const ready = jobs.find((name) => name.endsWith(".ready"));
   if (!ready) throw new Error("expected a ready output job");
-  return JSON.parse(await readFile(join(root, "jobs", ready, "job.json"), "utf8")) as Record<string, unknown>;
+  return JSON.parse(await readFile(join(root, "jobs", ready, "job.json"), "utf8")) as Record<
+    string,
+    unknown
+  >;
 }
 
 async function unpack(gzipBytes: Buffer): Promise<Array<{ name: string; body: string }>> {
@@ -35,7 +38,8 @@ async function unpack(gzipBytes: Buffer): Promise<Array<{ name: string; body: st
     const chunks: Buffer[] = [];
     stream.on("data", (chunk: Buffer) => chunks.push(chunk));
     stream.on("end", () => {
-      if (header.type === "file") found.push({ name: header.name, body: Buffer.concat(chunks).toString("utf8") });
+      if (header.type === "file")
+        found.push({ name: header.name, body: Buffer.concat(chunks).toString("utf8") });
       next();
     });
     stream.resume();
@@ -46,7 +50,9 @@ async function unpack(gzipBytes: Buffer): Promise<Array<{ name: string; body: st
 
 describe("SessionOutputSpool", () => {
   it("uses the private default directory and classifies invalid output files", async () => {
-    expect(defaultSessionOutputsDir("/home/tester")).toBe(join("/home/tester", ".auto-harness", "session-outputs"));
+    expect(defaultSessionOutputsDir("/home/tester")).toBe(
+      join("/home/tester", ".auto-harness", "session-outputs"),
+    );
     const root = await tempDirectory();
     const spool = new SessionOutputSpool({ root });
     const directory = await spool.begin("session-dir", "attempt-dir");
@@ -61,17 +67,31 @@ describe("SessionOutputSpool", () => {
         const jobs = await readdir(join(root, "jobs"));
         let ready: string | undefined;
         for (const name of jobs.filter((entry) => entry.endsWith(".ready"))) {
-          const record = JSON.parse(await readFile(join(root, "jobs", name, "job.json"), "utf8")) as { attemptId: string };
+          const record = JSON.parse(
+            await readFile(join(root, "jobs", name, "job.json"), "utf8"),
+          ) as { attemptId: string };
           if (record.attemptId === attemptId) ready = name;
         }
         if (!ready) throw new Error(`missing job for ${attemptId}`);
-        return JSON.parse(await readFile(join(root, "jobs", ready, "job.json"), "utf8")) as { attemptId: string; output: unknown };
+        return JSON.parse(await readFile(join(root, "jobs", ready, "job.json"), "utf8")) as {
+          attemptId: string;
+          output: unknown;
+        };
       }),
     );
     expect(records.map(({ output }) => output)).toEqual([
-      { state: "error", error: { code: "invalid_output_file", message: "Output path is not a regular file" } },
-      { state: "error", error: { code: "output_too_large", message: "Output exceeds 262144 bytes" } },
-      { state: "error", error: { code: "invalid_output_encoding", message: "Output must be valid UTF-8" } },
+      {
+        state: "error",
+        error: { code: "invalid_output_file", message: "Output path is not a regular file" },
+      },
+      {
+        state: "error",
+        error: { code: "output_too_large", message: "Output exceeds 262144 bytes" },
+      },
+      {
+        state: "error",
+        error: { code: "invalid_output_encoding", message: "Output must be valid UTF-8" },
+      },
     ]);
   });
 
@@ -86,7 +106,8 @@ describe("SessionOutputSpool", () => {
         const chunks: Buffer[] = [];
         const body = init?.body;
         if (!body) throw new Error("missing upload body");
-        for await (const chunk of body as AsyncIterable<Uint8Array>) chunks.push(Buffer.from(chunk));
+        for await (const chunk of body as AsyncIterable<Uint8Array>)
+          chunks.push(Buffer.from(chunk));
         uploaded = Buffer.concat(chunks);
         return new Response(null, { status: 204 });
       }
@@ -125,8 +146,12 @@ describe("SessionOutputSpool", () => {
       "https://upload.test/object",
       "http://api.test/api/v1/sessions/session-1/outputs/complete",
     ]);
-    expect(((requests[0]?.init?.headers ?? {}) as Record<string, string>).authorization).toBe("Bearer host-secret");
-    expect(((requests[1]?.init?.headers ?? {}) as Record<string, string>).authorization).toBe("Bearer host-secret");
+    expect(((requests[0]?.init?.headers ?? {}) as Record<string, string>).authorization).toBe(
+      "Bearer host-secret",
+    );
+    expect(((requests[1]?.init?.headers ?? {}) as Record<string, string>).authorization).toBe(
+      "Bearer host-secret",
+    );
     expect(uploaded.subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
     await expect(unpack(uploaded)).resolves.toEqual([
       { name: `deep/tree/${"long-".repeat(22)}artifact.txt`, body: "artifact contents" },
@@ -144,7 +169,11 @@ describe("SessionOutputSpool", () => {
       }
       return Response.json({ ok: true });
     };
-    const spool = new SessionOutputSpool({ root, identity: { apiUrl: "http://api.test" }, fetchFn });
+    const spool = new SessionOutputSpool({
+      root,
+      identity: { apiUrl: "http://api.test" },
+      fetchFn,
+    });
     const missing = await spool.begin("session-none", "attempt-none");
     await missing.capture();
     const empty = await spool.begin("session-empty", "attempt-empty");
@@ -161,9 +190,18 @@ describe("SessionOutputSpool", () => {
         return [submission.attemptId, submission] as const;
       }),
     );
-    expect(byAttempt.get("attempt-none")).toMatchObject({ output: { state: "none" }, artifacts: { state: "none" } });
-    expect(byAttempt.get("attempt-empty")?.output).toMatchObject({ state: "error", error: { code: "invalid_json" } });
-    expect(byAttempt.get("attempt-invalid")?.output).toMatchObject({ state: "error", error: { code: "invalid_json" } });
+    expect(byAttempt.get("attempt-none")).toMatchObject({
+      output: { state: "none" },
+      artifacts: { state: "none" },
+    });
+    expect(byAttempt.get("attempt-empty")?.output).toMatchObject({
+      state: "error",
+      error: { code: "invalid_json" },
+    });
+    expect(byAttempt.get("attempt-invalid")?.output).toMatchObject({
+      state: "error",
+      error: { code: "invalid_json" },
+    });
   });
 
   it("records unsafe artifact trees as an artifact error without losing valid output JSON", async () => {
@@ -176,15 +214,25 @@ describe("SessionOutputSpool", () => {
       }
       return Response.json({ ok: true });
     };
-    const spool = new SessionOutputSpool({ root, identity: { apiUrl: "http://api.test" }, fetchFn });
+    const spool = new SessionOutputSpool({
+      root,
+      identity: { apiUrl: "http://api.test" },
+      fetchFn,
+    });
     const attempt = await spool.begin("session-link", "attempt-link");
-    await writeFile(attempt.env.HARNESS_OUTPUT_FILE, "{\"ok\":true}", "utf8");
+    await writeFile(attempt.env.HARNESS_OUTPUT_FILE, '{"ok":true}', "utf8");
     await symlink("/etc/passwd", join(attempt.env.HARNESS_ARTIFACTS_DIR, "escape"));
     await attempt.capture();
     await spool.runPass();
-    const request = submissions[0] as { output: unknown; artifacts: { state: string; error?: { code: string } } };
+    const request = submissions[0] as {
+      output: unknown;
+      artifacts: { state: string; error?: { code: string } };
+    };
     expect(request.output).toMatchObject({ state: "ready" });
-    expect(request.artifacts).toMatchObject({ state: "error", error: { code: "artifact_capture_failed" } });
+    expect(request.artifacts).toMatchObject({
+      state: "error",
+      error: { code: "artifact_capture_failed" },
+    });
   });
 
   it("recovers a durable job after restart and retries a transient API failure", async () => {
@@ -200,16 +248,26 @@ describe("SessionOutputSpool", () => {
       }
       return Response.json({ ok: true });
     };
-    const first = new SessionOutputSpool({ root, identity: { apiUrl: "http://api.test" }, fetchFn, now: () => now });
+    const first = new SessionOutputSpool({
+      root,
+      identity: { apiUrl: "http://api.test" },
+      fetchFn,
+      now: () => now,
+    });
     const attempt = await first.begin("session-restart", "attempt-restart");
-    await writeFile(attempt.env.HARNESS_OUTPUT_FILE, "{\"persisted\":true}", "utf8");
+    await writeFile(attempt.env.HARNESS_OUTPUT_FILE, '{"persisted":true}', "utf8");
     await attempt.capture();
     await first.runPass();
     expect(attempts).toBe(1);
     first.stop();
 
     now += 60_000;
-    const restarted = new SessionOutputSpool({ root, identity: { apiUrl: "http://api.test" }, fetchFn, now: () => now });
+    const restarted = new SessionOutputSpool({
+      root,
+      identity: { apiUrl: "http://api.test" },
+      fetchFn,
+      now: () => now,
+    });
     await restarted.runPass();
     expect(attempts).toBe(2);
     expect(requests.filter((url) => url.endsWith("/outputs/prepare"))).toHaveLength(2);
@@ -220,7 +278,9 @@ describe("SessionOutputSpool", () => {
     const root = await tempDirectory();
     const spool = new SessionOutputSpool({ root });
     const attempts = await Promise.all(
-      Array.from({ length: 101 }, (_, index) => spool.begin(`session-${index}`, `attempt-${index}`)),
+      Array.from({ length: 101 }, (_, index) =>
+        spool.begin(`session-${index}`, `attempt-${index}`),
+      ),
     );
     await Promise.all(attempts.map((attempt) => attempt.capture()));
     const jobs = await readdir(join(root, "jobs"));

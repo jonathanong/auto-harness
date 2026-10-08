@@ -13,10 +13,12 @@ export function deferred<T = void>() {
   return { promise, resolve };
 }
 
-export function makeRunner(deps: {
-  sessionOutputSpool?: SessionOutputSpool;
-  childEnvSource?: NodeJS.ProcessEnv;
-} = {}) {
+export function makeRunner(
+  deps: {
+    sessionOutputSpool?: SessionOutputSpool;
+    childEnvSource?: NodeJS.ProcessEnv;
+  } = {},
+) {
   const config: DaemonConfig = {
     hostId: "h",
     repositories: [

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one real API, daemon, git and output-download lifecycle shares a fixture. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, join } from "node:path";

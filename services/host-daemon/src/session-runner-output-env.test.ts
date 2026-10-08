@@ -40,7 +40,9 @@ describe("SessionRunner output environment", () => {
       expect(test.hookEnvs[0]?.HARNESS_ARTIFACTS_DIR).toBe(artifactsDir);
       const jobs = await readdir(join(root, "jobs"));
       expect(jobs).toHaveLength(1);
-      const stored = JSON.parse(await readFile(join(root, "jobs", jobs[0]!, "job.json"), "utf8")) as {
+      const stored = JSON.parse(
+        await readFile(join(root, "jobs", jobs[0]!, "job.json"), "utf8"),
+      ) as {
         output: { state: string };
       };
       expect(stored.output).toEqual({ state: "none" });

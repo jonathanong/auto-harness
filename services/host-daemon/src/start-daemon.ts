@@ -336,7 +336,9 @@ async function connectDaemon(
     ...(githubApp ? { githubApp } : {}),
     ...(options.runtime ? { runtime: options.runtime } : {}),
     ...(options.setupCacheDir !== undefined ? { setupCacheDir: options.setupCacheDir } : {}),
-    ...(options.sessionOutputsDir !== undefined ? { sessionOutputsDir: options.sessionOutputsDir } : {}),
+    ...(options.sessionOutputsDir !== undefined
+      ? { sessionOutputsDir: options.sessionOutputsDir }
+      : {}),
   });
   await loop.start();
   try {
