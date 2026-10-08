@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { act } from "react";
+import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -8,7 +9,7 @@ import { SessionDetail } from "./session-detail.tsx";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function mount(defaultTab?: string) {
+function mount(defaultTab?: string, outputs?: ReactNode) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -27,6 +28,7 @@ function mount(defaultTab?: string) {
         }}
         breadcrumbs={[]}
         defaultTab={defaultTab}
+        outputs={outputs}
       >
         <p data-pw="logs-body">logs</p>
       </SessionDetail>,
@@ -91,5 +93,23 @@ describe("SessionDetail tabs", () => {
     );
     expect(view.container.querySelector('[data-pw="logs-body"]')).not.toBeNull();
     view.unmount();
+  });
+
+  it("exposes Outputs only when the control-plane panel is provided", () => {
+    const hostPane = mount("outputs");
+    expect(hostPane.container.querySelector('[data-pw="tab-outputs"]')).toBeNull();
+    expect(
+      hostPane.container.querySelector('[data-pw="tab-logs"]')?.getAttribute("data-state"),
+    ).toBe("active");
+    hostPane.unmount();
+
+    const controlPlane = mount("outputs", <p data-pw="outputs-body">captured</p>);
+    expect(
+      controlPlane.container.querySelector('[data-pw="tab-outputs"]')?.getAttribute("data-state"),
+    ).toBe("active");
+    expect(controlPlane.container.querySelector('[data-pw="outputs-body"]')?.textContent).toBe(
+      "captured",
+    );
+    controlPlane.unmount();
   });
 });

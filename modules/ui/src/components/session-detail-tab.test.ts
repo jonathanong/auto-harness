@@ -7,6 +7,8 @@ describe("resolveSessionDetailTab", () => {
     expect(resolveSessionDetailTab("logs")).toBe("logs");
     expect(resolveSessionDetailTab("details")).toBe("details");
     expect(resolveSessionDetailTab("prompts")).toBe("prompts");
+    expect(resolveSessionDetailTab("outputs")).toBe("logs");
+    expect(resolveSessionDetailTab("outputs", true)).toBe("outputs");
     expect(resolveSessionDetailTab(["prompts"])).toBe("prompts");
     expect(resolveSessionDetailTab(["nope"])).toBe("logs");
     expect(resolveSessionDetailTab("nope")).toBe("logs");

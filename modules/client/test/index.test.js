@@ -166,12 +166,16 @@ test("encodes repository and session identifiers", async () => {
     },
   });
   await client.getSession("session/one");
+  await client.getSessionOutput("session/output");
+  await client.getSessionArtifacts("session/artifacts");
   await client.cancelSession("session/two");
   await client.pauseRepository("repo/one");
   await client.drainRepository("repo/two");
   await client.activateRepository("repo/three");
   assert.deepEqual(requests, [
     ["https://harness.test/api/v1/sessions/session%2Fone", undefined],
+    ["https://harness.test/api/v1/sessions/session%2Foutput/output", undefined],
+    ["https://harness.test/api/v1/sessions/session%2Fartifacts/artifacts", undefined],
     ["https://harness.test/api/v1/sessions/session%2Ftwo/cancel", "POST"],
     ["https://harness.test/api/v1/repositories/repo%2Fone/pause", "POST"],
     ["https://harness.test/api/v1/repositories/repo%2Ftwo/drain", "POST"],

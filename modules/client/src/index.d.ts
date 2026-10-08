@@ -114,6 +114,25 @@ export type Session = {
   rootSessionId?: string;
 };
 
+export type SessionOutputResponse =
+  | { state: "unsupported" | "pending" | "none" }
+  | { state: "error"; error: { code: string; message: string } }
+  | { state: "ready"; output: unknown; capturedAt: string };
+
+export type SessionArtifactsResponse =
+  | { state: "unsupported" | "pending" | "none" }
+  | { state: "error"; error: { code: string; message: string } }
+  | {
+      state: "ready";
+      downloadUrl: string;
+      expiresAt: string;
+      capturedAt: string;
+      contentType: "application/gzip";
+      filename: "artifacts.tar.gz";
+      compressedBytes: number;
+      sha256: string;
+    };
+
 export type CreateChildSessionInput = {
   prompt: string;
   spawnKey: string;
@@ -287,6 +306,8 @@ export class AutoHarnessClient {
   constructor(options: AutoHarnessClientOptions);
   createSession(input: CreateSessionInput): Promise<Session & { created: boolean }>;
   getSession(id: string): Promise<Session>;
+  getSessionOutput(id: string): Promise<SessionOutputResponse>;
+  getSessionArtifacts(id: string): Promise<SessionArtifactsResponse>;
   createChildSession(
     parentId: string,
     input: CreateChildSessionInput,

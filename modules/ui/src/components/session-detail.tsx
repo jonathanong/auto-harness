@@ -24,6 +24,8 @@ export type SessionDetailProps = {
   children?: ReactNode;
   /** Extra details-tab content (e.g. session usage). */
   detailsExtra?: ReactNode;
+  /** Control-plane output/artifact panel. When absent, no Outputs tab is rendered. */
+  outputs?: ReactNode;
   /** Always-visible notices above the tabs (offline host, refresh paused). */
   notices?: ReactNode;
   /** Initial tab from `?tab=`; unknown values fall back to logs. */
@@ -43,13 +45,15 @@ export function SessionDetail({
   actions,
   children,
   detailsExtra,
+  outputs,
   notices,
   defaultTab,
   repoHrefBase,
   hostHrefBase,
   worktreeHrefBase,
 }: SessionDetailProps) {
-  const [tab, setTab] = useState(() => resolveSessionDetailTab(defaultTab));
+  const outputsEnabled = outputs !== undefined;
+  const [tab, setTab] = useState(() => resolveSessionDetailTab(defaultTab, outputsEnabled));
   return (
     <div className="space-y-6" data-pw="session-detail">
       <DetailHeader
@@ -80,7 +84,7 @@ export function SessionDetail({
       <TabPanels
         value={tab}
         onValueChange={(value) => {
-          const next = resolveSessionDetailTab(value);
+          const next = resolveSessionDetailTab(value, outputsEnabled);
           setTab(next);
           persistSessionDetailTab(next);
         }}
@@ -90,6 +94,7 @@ export function SessionDetail({
           <TabTrigger value="logs">Logs</TabTrigger>
           <TabTrigger value="details">Details</TabTrigger>
           <TabTrigger value="prompts">Prompts</TabTrigger>
+          {outputsEnabled ? <TabTrigger value="outputs">Outputs</TabTrigger> : null}
         </TabList>
         <TabContent value="logs" forceMount data-pw="session-tab-logs">
           {children}
@@ -106,6 +111,11 @@ export function SessionDetail({
         <TabContent value="prompts" data-pw="session-tab-prompts">
           <SessionPromptPanel prompt={s.prompt} resolvedArgv={s.resolvedArgv} />
         </TabContent>
+        {outputsEnabled ? (
+          <TabContent value="outputs" data-pw="session-tab-outputs">
+            {outputs}
+          </TabContent>
+        ) : null}
       </TabPanels>
     </div>
   );
