@@ -16,6 +16,43 @@ export function isOutputTooLarge(size: number, limit: number): boolean {
   return size > limit;
 }
 
+export async function collectBoundedOutput(
+  stream: AsyncIterable<Uint8Array>,
+  limit: number,
+): Promise<{ chunks: Buffer[]; observedBytes: number }> {
+  const chunks: Buffer[] = [];
+  let observedBytes = 0;
+  for await (const chunk of stream) {
+    const bytes = Buffer.from(chunk);
+    observedBytes += bytes.byteLength;
+    if (isOutputTooLarge(observedBytes, limit)) break;
+    chunks.push(bytes);
+  }
+  return { chunks, observedBytes };
+}
+
+export function validateOutputReadSnapshot(input: {
+  before: ArtifactStat;
+  after: ArtifactStat;
+  chunks: Buffer[];
+  observedBytes: number;
+}): { ok: true; jsonText: string; bytes: Buffer } | { ok: false; code: string; message: string } {
+  if (outputFileChanged(input.before, input.after))
+    return { ok: false, code: "output_changed", message: "Output changed while being read" };
+  if (input.observedBytes === 0)
+    return { ok: false, code: "invalid_json", message: "Output file is empty" };
+  const bytes = Buffer.concat(input.chunks, input.observedBytes);
+  const jsonText = bytes.toString("utf8");
+  if (!Buffer.from(jsonText, "utf8").equals(bytes))
+    return { ok: false, code: "invalid_output_encoding", message: "Output must be valid UTF-8" };
+  try {
+    JSON.parse(jsonText);
+  } catch {
+    return { ok: false, code: "invalid_json", message: "Output file must contain valid JSON" };
+  }
+  return { ok: true, jsonText, bytes };
+}
+
 export function outputFileChanged(before: ArtifactStat, after: ArtifactStat): boolean {
   return (
     !after.isFile() ||
@@ -112,4 +149,19 @@ export function assertOpenedArtifactUnchanged(
 
 export function artifactReadExceedsLimit(readBytes: number, size: number, limit: number): boolean {
   return readBytes > size || readBytes > limit;
+}
+
+export function abortArtifactReadIfTooLarge(
+  stream: { destroy(error?: Error): unknown },
+  readBytes: number,
+  size: number,
+  limit: number,
+  path: string,
+): void {
+  if (artifactReadExceedsLimit(readBytes, size, limit))
+    stream.destroy(new Error(`artifact grew while archiving: ${path}`));
+}
+
+export function preferArtifactLimitError(error: unknown, limitError: Error | undefined): unknown {
+  return limitError ?? error;
 }

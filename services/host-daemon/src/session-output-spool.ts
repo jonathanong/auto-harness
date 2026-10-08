@@ -39,18 +39,20 @@ import {
 import { httpBaseFromApiUrl } from "./bootstrap.ts";
 import { SessionOutputAttemptPager } from "./session-output-attempt-pager.ts";
 import {
-  artifactReadExceedsLimit,
   artifactEntryKind,
   assertArtifactComponent,
   assertArtifactEntryUnchanged,
   assertOpenedArtifactUnchanged,
   assertArtifactParentUnchanged,
+  abortArtifactReadIfTooLarge,
   assertArtifactReadMatches,
   assertArtifactRootUnchanged,
   assertRealArtifactDirectory,
-  isOutputTooLarge,
+  collectBoundedOutput,
   isRegularArtifactFile,
-  outputFileChanged,
+  isOutputTooLarge,
+  preferArtifactLimitError,
+  validateOutputReadSnapshot,
   type ArtifactStatSnapshot,
 } from "./session-output-spool-guards.ts";
 
@@ -119,39 +121,32 @@ async function readOutput(path: string): Promise<SessionOutputSubmission> {
       await handle.close();
       return outputError("invalid_output_file", "Output path is not a regular file");
     }
-    const chunks: Buffer[] = [];
-    let byteLength = 0;
+    let captured: Awaited<ReturnType<typeof collectBoundedOutput>>;
     try {
       const stream = handle.createReadStream({
         autoClose: false,
         start: 0,
         end: MAX_SESSION_OUTPUT_BYTES,
       });
-      for await (const chunk of stream) {
-        const bytes = Buffer.from(chunk);
-        byteLength += bytes.byteLength;
-        if (isOutputTooLarge(byteLength, MAX_SESSION_OUTPUT_BYTES)) break;
-        chunks.push(bytes);
-      }
+      captured = await collectBoundedOutput(stream, MAX_SESSION_OUTPUT_BYTES);
     } finally {
       await handle.close();
     }
-    if (isOutputTooLarge(byteLength, MAX_SESSION_OUTPUT_BYTES))
+    if (isOutputTooLarge(captured.observedBytes, MAX_SESSION_OUTPUT_BYTES))
       return outputError("output_too_large", `Output exceeds ${MAX_SESSION_OUTPUT_BYTES} bytes`);
     const after = await lstat(path);
-    if (outputFileChanged(before, after))
-      return outputError("output_changed", "Output changed while being read");
-    if (byteLength === 0) return outputError("invalid_json", "Output file is empty");
-    const bytes = Buffer.concat(chunks, byteLength);
-    const jsonText = bytes.toString("utf8");
-    if (!Buffer.from(jsonText, "utf8").equals(bytes))
-      return outputError("invalid_output_encoding", "Output must be valid UTF-8");
-    try {
-      JSON.parse(jsonText);
-    } catch {
-      return outputError("invalid_json", "Output file must contain valid JSON");
-    }
-    return { state: "ready", jsonText, sha256: createHash("sha256").update(bytes).digest("hex") };
+    const validated = validateOutputReadSnapshot({
+      before,
+      after,
+      chunks: captured.chunks,
+      observedBytes: captured.observedBytes,
+    });
+    if (!validated.ok) return outputError(validated.code, validated.message);
+    return {
+      state: "ready",
+      jsonText: validated.jsonText,
+      sha256: createHash("sha256").update(validated.bytes).digest("hex"),
+    };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { state: "none" };
     return outputError(
@@ -321,8 +316,13 @@ async function createArchive(
           let readBytes = 0;
           fileStream.on("data", (chunk: Buffer) => {
             readBytes += chunk.byteLength;
-            if (artifactReadExceedsLimit(readBytes, entry.size, MAX_SESSION_ARTIFACT_SOURCE_BYTES))
-              fileStream.destroy(new Error(`artifact grew while archiving: ${entry.path}`));
+            abortArtifactReadIfTooLarge(
+              fileStream,
+              readBytes,
+              entry.size,
+              MAX_SESSION_ARTIFACT_SOURCE_BYTES,
+              entry.path,
+            );
           });
           await pipeline(fileStream, stream);
           assertArtifactReadMatches(
@@ -361,7 +361,7 @@ async function createArchive(
     output.destroy();
     await archiveDone.catch(() => undefined);
     await rm(destination, { force: true });
-    throw compressionLimitError ?? error;
+    throw preferArtifactLimitError(error, compressionLimitError);
   }
   const info = await stat(destination);
   const digest = createHash("sha256");
@@ -576,7 +576,7 @@ export class SessionOutputSpool {
     const releaseActiveAttempt = () => {
       if (!active) return;
       active = false;
-      const remaining = (this.activeAttempts.get(key) ?? 1) - 1;
+      const remaining = this.activeAttempts.get(key)! - 1;
       if (remaining <= 0) this.activeAttempts.delete(key);
       else this.activeAttempts.set(key, remaining);
     };
@@ -646,7 +646,7 @@ export class SessionOutputSpool {
           releaseActiveAttempt();
           throw error;
         } finally {
-          if (capturePromise === operation) capturePromise = undefined;
+          capturePromise = undefined;
         }
       },
     };
@@ -667,7 +667,7 @@ export class SessionOutputSpool {
     try {
       await sweep;
     } finally {
-      if (this.attemptSweepPromise === sweep) this.attemptSweepPromise = undefined;
+      this.attemptSweepPromise = undefined;
     }
   }
 
