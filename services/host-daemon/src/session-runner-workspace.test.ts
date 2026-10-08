@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { SessionAssign } from "@auto-harness/shared";
 
 import { parseDaemonConfig } from "./config.ts";
+import type { ExecutionProfiles } from "./execution-profiles.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { SessionOutputSpool } from "./session-output-spool.ts";
@@ -23,6 +24,7 @@ async function workspaceRunner(
   sessionOutputSpool?: SessionOutputSpool,
   events?: string[],
   authorizeCommandStart?: () => Promise<boolean>,
+  executionProfiles?: ExecutionProfiles,
 ) {
   const root = await mkdtemp(join(tmpdir(), "ah-workspace-run-"));
   roots.push(root);
@@ -93,6 +95,7 @@ async function workspaceRunner(
       commandRunner,
       ...(authorizeCommandStart ? { authorizeCommandStart } : {}),
       ...(sessionOutputSpool ? { sessionOutputSpool } : {}),
+      ...(executionProfiles ? { executionProfiles } : {}),
     }),
   };
 }
@@ -161,6 +164,32 @@ describe("SessionRunner workspace sessions", () => {
 
     expect(result.status).toBe("failed");
     expect(result.errorMessage).toContain("authorization service unavailable");
+    expect(result.outputsJobId).toBeTruthy();
+    const jobs = await readdir(join(spoolRoot, "jobs"));
+    const saved = JSON.parse(
+      await readFile(join(spoolRoot, "jobs", jobs[0]!, "job.json"), "utf8"),
+    ) as { output: { state: string } };
+    expect(saved.output).toEqual({ state: "none" });
+  });
+
+  it("captures workspace output when the execution profile registry fails", async () => {
+    const spoolRoot = await mkdtemp(join(tmpdir(), "ah-workspace-output-profile-error-"));
+    roots.push(spoolRoot);
+    const invalidProfiles = { profiles: undefined } as unknown as ExecutionProfiles;
+    const test = await workspaceRunner(
+      new SessionOutputSpool({ root: spoolRoot }),
+      undefined,
+      undefined,
+      invalidProfiles,
+    );
+
+    const result = await test.runner.run({
+      ...test.assign,
+      outputs: true,
+      providerAccountId: "account-1",
+    });
+
+    expect(result.status).toBe("failed");
     expect(result.outputsJobId).toBeTruthy();
     const jobs = await readdir(join(spoolRoot, "jobs"));
     const saved = JSON.parse(

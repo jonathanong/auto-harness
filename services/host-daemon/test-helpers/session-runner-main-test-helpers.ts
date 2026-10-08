@@ -20,6 +20,7 @@ export function makeRunner(
     childEnvSource?: NodeJS.ProcessEnv;
     onCommand?: (options: RunProcessOptions) => void | Promise<void>;
     onHook?: (options: RunProcessOptions) => void | Promise<void>;
+    onCheckout?: (options: Parameters<GitClient["checkoutRef"]>[0]) => void | Promise<void>;
     commandResult?: ProcessResult;
     onLog?: (chunk: SessionLogChunk) => void;
     now?: () => string;
@@ -51,7 +52,10 @@ export function makeRunner(
   const git: GitClient = {
     ensureRepo: async () => undefined,
     ensureWorktree: async () => undefined,
-    checkoutRef: async () => undefined,
+    checkoutRef: async (options) => {
+      await deps.onCheckout?.(options);
+      return undefined;
+    },
     prepareMainCheckout: async ({ cwd, ref }) => {
       if (throwCheckout.value) {
         throwCheckout.value = false;
