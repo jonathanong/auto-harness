@@ -144,7 +144,7 @@ describe("SessionOutputs", () => {
     expect(view.container.querySelector("pre")?.textContent).toBe('"new"');
     view.unmount();
   });
-  it.each(["revoked", "offline"])(
+  it.each(["revoked", "offline", "transport rejection"])(
     "handles a %s artifact download without using an old URL",
     async (outcome) => {
       const ready = {
@@ -162,7 +162,9 @@ describe("SessionOutputs", () => {
         .mockResolvedValueOnce(json({ state: "none" }))
         .mockResolvedValueOnce(json(ready));
       if (outcome === "revoked") fetchMock.mockResolvedValueOnce(json({ state: "none" }));
-      else fetchMock.mockRejectedValueOnce(new Error("download offline"));
+      else if (outcome === "offline")
+        fetchMock.mockRejectedValueOnce(new Error("download offline"));
+      else fetchMock.mockRejectedValueOnce("download failed");
       vi.stubGlobal("fetch", fetchMock);
       const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
       const view = mount();
@@ -182,7 +184,7 @@ describe("SessionOutputs", () => {
       else
         expect(
           view.container.querySelector('[data-pw="session-artifacts-download-error"]')?.textContent,
-        ).toBe("download offline");
+        ).toBe(outcome === "offline" ? "download offline" : "Artifact download request failed");
       view.unmount();
     },
   );
