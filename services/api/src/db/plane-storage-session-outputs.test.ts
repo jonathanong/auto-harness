@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- real Dynamo output races share one isolated table fixture. */
 import { createHash } from "node:crypto";
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
@@ -29,6 +30,33 @@ let client: DynamoDBClient;
 let tables: DynamoTableNames;
 let store: DynamoSessionOutputsStore;
 let doc: ReturnType<typeof createDynamoClients>["doc"];
+
+function changeCreatedAt(id: string): Promise<void> {
+  return doc
+    .send(
+      new UpdateCommand({
+        TableName: tables.sessions,
+        Key: { id },
+        UpdateExpression: "SET createdAt = :created",
+        ExpressionAttributeValues: { ":created": "2026-10-08T10:01:00.000Z" },
+      }),
+    )
+    .then(() => undefined);
+}
+
+function storeWithChangeAfterManifestRead(change: () => Promise<void>) {
+  let changed = false;
+  return new (class extends DynamoSessionOutputsStore {
+    override async getManifest(sessionId: string) {
+      const manifest = await super.getManifest(sessionId);
+      if (!changed) {
+        changed = true;
+        await change();
+      }
+      return manifest;
+    }
+  })({ doc, tables });
+}
 
 async function seed(id: string, fields: Record<string, unknown> = {}) {
   await doc.send(
@@ -194,5 +222,61 @@ describe("session output durable intent and fences", () => {
     expect(
       await claimSessionRetention(ctx, session, new Date(Date.parse(NOW) + 371_000).toISOString()),
     ).toBe(true);
+  });
+
+  it("rechecks session and manifest generations in Dynamo transactions", async () => {
+    await seed("sess-race-new");
+    await expect(
+      storeWithChangeAfterManifestRead(() => changeCreatedAt("sess-race-new")).prepare(
+        "sess-race-new",
+        intent,
+        "host-1",
+        NOW,
+      ),
+    ).rejects.toMatchObject({ code: "STALE_ATTEMPT" });
+
+    await seed("sess-race-renew");
+    await store.prepare("sess-race-renew", intent, "host-1", NOW);
+    await expect(
+      storeWithChangeAfterManifestRead(() => changeCreatedAt("sess-race-renew")).prepare(
+        "sess-race-renew",
+        intent,
+        "host-1",
+        NOW,
+      ),
+    ).rejects.toMatchObject({ code: "STALE_ATTEMPT" });
+
+    await seed("sess-race-complete");
+    await store.prepare("sess-race-complete", intent, "host-1", NOW);
+    await expect(
+      storeWithChangeAfterManifestRead(() => changeCreatedAt("sess-race-complete")).complete(
+        "sess-race-complete",
+        "attempt-1",
+        "host-1",
+        NOW,
+        { key: "fixed", versionId: "v1" },
+      ),
+    ).rejects.toMatchObject({ code: "STALE_ATTEMPT" });
+
+    await seed("sess-race-complete-winner");
+    await store.prepare(
+      "sess-race-complete-winner",
+      { ...intent, artifacts: { state: "none" } },
+      "host-1",
+      NOW,
+    );
+    const winner = storeWithChangeAfterManifestRead(async () => {
+      await doc.send(
+        new UpdateCommand({
+          TableName: tables.sessionOutputs,
+          Key: { sessionId: "sess-race-complete-winner", recordKey: "manifest" },
+          UpdateExpression: "SET completedAt = :now",
+          ExpressionAttributeValues: { ":now": NOW },
+        }),
+      );
+    });
+    expect(
+      await winner.complete("sess-race-complete-winner", "attempt-1", "host-1", NOW),
+    ).toMatchObject({ completedAt: NOW });
   });
 });

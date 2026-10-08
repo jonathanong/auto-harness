@@ -10,6 +10,7 @@ import { ControlPlane } from "./control-plane.ts";
 import type { SessionRecord } from "./db/types.ts";
 import { startLocalServer } from "./local-server.ts";
 import { LocalSessionArtifactStore } from "./session-artifact-store.ts";
+import { MemorySessionOutputsStore } from "./session-outputs-memory-store.ts";
 
 async function freePort(): Promise<number> {
   const server = createTcpServer();
@@ -121,6 +122,7 @@ describe("local session output publication and reads", () => {
       artifactUpload: { method: string; url: string; headers: Record<string, string> };
     };
     expect(artifactUpload.method).toBe("PUT");
+    expect((await postPrepare(base, "sess", request)).status).toBe(200);
     expect(await (await fetch(`${base}/api/v1/sessions/sess/output`)).text()).toContain(
       '"output":null',
     );
@@ -139,6 +141,15 @@ describe("local session output publication and reads", () => {
       body: JSON.stringify({ attemptId: "attempt" }),
     });
     expect(complete.status).toBe(200);
+    expect(
+      (
+        await fetch(`${base}/api/v1/sessions/sess/outputs/complete`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ attemptId: "attempt" }),
+        })
+      ).status,
+    ).toBe(200);
     const artifacts = (await (await fetch(`${base}/api/v1/sessions/sess/artifacts`)).json()) as {
       state: string;
       downloadUrl: string;
@@ -256,6 +267,33 @@ describe("local session output publication and reads", () => {
     expect((await postPrepare(base, "missing", request)).status).toBe(404);
     expect(
       (
+        await fetch(`${base}/api/v1/sessions/missing/outputs/complete`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ attemptId: "attempt" }),
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await fetch(`${base}/api/v1/sessions/missing/outputs/upload/attempt`, {
+          method: "PUT",
+          body: "payload",
+        })
+      ).status,
+    ).toBe(404);
+    plane.state.sessions.set("unprepared", session("unprepared"));
+    expect(
+      await (
+        await fetch(`${base}/api/v1/sessions/unprepared/outputs/complete`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ attemptId: "attempt" }),
+        })
+      ).json(),
+    ).toMatchObject({ error: { code: "OUTPUTS_NOT_PREPARED" } });
+    expect(
+      (
         await fetch(`${base}/api/v1/sessions/errors/outputs/complete`, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -351,5 +389,40 @@ describe("local session output publication and reads", () => {
     );
     await writeFile(file, "changed on disk");
     expect((await fetch(ready.downloadUrl)).status).toBe(404);
+  });
+
+  it("keeps the first manifest and artifact pointer under concurrent local requests", async () => {
+    const id = "parallel-memory";
+    plane.state.sessions.set(id, session(id));
+    const store = new MemorySessionOutputsStore(plane.state);
+    const request = {
+      attemptId: "attempt",
+      capturedAt: new Date().toISOString(),
+      output: { state: "none" as const },
+      artifacts: {
+        state: "pending" as const,
+        compressedBytes: 3,
+        sourceBytes: 3,
+        fileCount: 1,
+        sha256: "a".repeat(64),
+      },
+    };
+    const now = new Date().toISOString();
+    const results = await Promise.allSettled([
+      store.prepare(id, request, "host", now),
+      store.prepare(
+        id,
+        { ...request, capturedAt: new Date(Date.now() + 1000).toISOString() },
+        "host",
+        now,
+      ),
+    ]);
+    expect(results.map((result) => result.status).toSorted()).toEqual(["fulfilled", "rejected"]);
+    const [first, second] = await Promise.all([
+      store.complete(id, "attempt", "host", now, { key: "key", versionId: "v1" }),
+      store.complete(id, "attempt", "host", now, { key: "key", versionId: "v2" }),
+    ]);
+    expect(first.objectVersionId).toBe("v1");
+    expect(second.objectVersionId).toBe("v1");
   });
 });

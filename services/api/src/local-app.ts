@@ -71,7 +71,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     new ControlPlane({ publicBaseUrl: resolvePublicBaseUrl(options.publicBaseUrl) });
   const store = options.store ?? new MemorySessionStore({ plane });
   const outputStore =
-    plane.state.storage?.getSessionOutputsStore() ?? new MemorySessionOutputsStore(plane.state);
+    plane.state.storage?.getSessionOutputsStore?.() ?? new MemorySessionOutputsStore(plane.state);
   const artifactStore =
     options.sessionArtifactStore ??
     (process.env.ARCHIVE_BUCKET
