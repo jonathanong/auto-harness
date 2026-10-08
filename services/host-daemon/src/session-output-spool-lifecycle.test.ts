@@ -12,6 +12,60 @@ afterEach(async () => {
 });
 
 describe("SessionOutputSpool lifecycle", () => {
+  it("reuses an uncaptured attempt directory and makes capture/discard idempotent", async () => {
+    const root = await mkdtemp(join(tmpdir(), "harness-session-output-reuse-"));
+    temporary.push(root);
+    const spool = new SessionOutputSpool({ root });
+    const first = await spool.begin("session-reuse", "attempt-reuse");
+    await writeFile(first.env.HARNESS_OUTPUT_FILE, "ignored", "utf8");
+    const resumed = await spool.begin("session-reuse", "attempt-reuse");
+    await writeFile(resumed.env.HARNESS_OUTPUT_FILE, "null", "utf8");
+    await resumed.capture();
+    await resumed.capture();
+    await first.discard();
+    await resumed.discard();
+    expect(await readdir(join(root, "jobs"))).toHaveLength(1);
+  });
+
+  it("rejects mismatched intents and already-captured attempt directories", async () => {
+    const root = await mkdtemp(join(tmpdir(), "harness-session-output-intent-"));
+    temporary.push(root);
+    const spool = new SessionOutputSpool({ root });
+    const mismatch = await spool.begin("session-intent", "attempt-intent");
+    const mismatchDirectory = dirname(mismatch.env.HARNESS_OUTPUT_FILE);
+    await writeFile(
+      join(mismatchDirectory, "intent.json"),
+      JSON.stringify({ sessionId: "other-session", attemptId: "attempt-intent" }),
+    );
+    await expect(spool.begin("session-intent", "attempt-intent")).rejects.toThrow(
+      "session output attempt directory has a mismatched intent",
+    );
+    await expect(
+      spool.findDeferredAttempt("session-intent", "attempt-intent"),
+    ).resolves.toBeUndefined();
+
+    const captured = await spool.begin("session-captured", "attempt-captured");
+    await writeFile(join(dirname(captured.env.HARNESS_OUTPUT_FILE), "job.json"), "{}");
+    await expect(spool.begin("session-captured", "attempt-captured")).rejects.toThrow(
+      "session output attempt was already captured",
+    );
+  });
+
+  it("returns cleanly for an empty or unavailable publisher spool", async () => {
+    const root = await mkdtemp(join(tmpdir(), "harness-session-output-empty-"));
+    temporary.push(root);
+    const disconnected = new SessionOutputSpool({ root });
+    await disconnected.runPass();
+    const messages: string[] = [];
+    const connected = new SessionOutputSpool({
+      root,
+      identity: { apiUrl: "http://api.test" },
+      onLog: (message) => messages.push(message),
+    });
+    await connected.runPass();
+    expect(messages).toEqual([]);
+  });
+
   it("recovers a stale intent once, logs malformed intents, and stops idempotently", async () => {
     const root = await mkdtemp(join(tmpdir(), "harness-session-output-lifecycle-"));
     temporary.push(root);

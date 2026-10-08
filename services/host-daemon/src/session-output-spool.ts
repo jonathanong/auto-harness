@@ -36,6 +36,21 @@ import {
 } from "@auto-harness/shared";
 
 import { httpBaseFromApiUrl } from "./bootstrap.ts";
+import {
+  artifactReadExceedsLimit,
+  artifactEntryKind,
+  assertArtifactComponent,
+  assertArtifactEntryUnchanged,
+  assertOpenedArtifactUnchanged,
+  assertArtifactParentUnchanged,
+  assertArtifactReadMatches,
+  assertArtifactRootUnchanged,
+  assertRealArtifactDirectory,
+  isOutputTooLarge,
+  isRegularArtifactFile,
+  outputFileChanged,
+  type ArtifactStatSnapshot,
+} from "./session-output-spool-guards.ts";
 
 const JOB_LIMIT = 100;
 const ERROR_RECORD_LIMIT = 100;
@@ -89,11 +104,11 @@ async function readOutput(path: string): Promise<SessionOutputSubmission> {
     const info = await lstat(path);
     if (!info.isFile())
       return outputError("invalid_output_file", "Output path is not a regular file");
-    if (info.size > MAX_SESSION_OUTPUT_BYTES)
+    if (isOutputTooLarge(info.size, MAX_SESSION_OUTPUT_BYTES))
       return outputError("output_too_large", `Output exceeds ${MAX_SESSION_OUTPUT_BYTES} bytes`);
     const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
     const before = await handle.stat();
-    if (!before.isFile()) {
+    if (!isRegularArtifactFile(before)) {
       await handle.close();
       return outputError("invalid_output_file", "Output path is not a regular file");
     }
@@ -108,27 +123,19 @@ async function readOutput(path: string): Promise<SessionOutputSubmission> {
       for await (const chunk of stream) {
         const bytes = Buffer.from(chunk);
         byteLength += bytes.byteLength;
-        if (byteLength > MAX_SESSION_OUTPUT_BYTES) break;
+        if (isOutputTooLarge(byteLength, MAX_SESSION_OUTPUT_BYTES)) break;
         chunks.push(bytes);
       }
     } finally {
       await handle.close();
     }
-    if (byteLength > MAX_SESSION_OUTPUT_BYTES)
+    if (isOutputTooLarge(byteLength, MAX_SESSION_OUTPUT_BYTES))
       return outputError("output_too_large", `Output exceeds ${MAX_SESSION_OUTPUT_BYTES} bytes`);
     const after = await lstat(path);
-    if (
-      !after.isFile() ||
-      after.dev !== before.dev ||
-      after.ino !== before.ino ||
-      after.size !== before.size ||
-      after.mtimeMs !== before.mtimeMs
-    )
+    if (outputFileChanged(before, after))
       return outputError("output_changed", "Output changed while being read");
     if (byteLength === 0) return outputError("invalid_json", "Output file is empty");
     const bytes = Buffer.concat(chunks, byteLength);
-    if (bytes.byteLength > MAX_SESSION_OUTPUT_BYTES)
-      return outputError("output_too_large", `Output exceeds ${MAX_SESSION_OUTPUT_BYTES} bytes`);
     const jsonText = bytes.toString("utf8");
     if (!Buffer.from(jsonText, "utf8").equals(bytes))
       return outputError("invalid_output_encoding", "Output must be valid UTF-8");
@@ -147,7 +154,7 @@ async function readOutput(path: string): Promise<SessionOutputSubmission> {
   }
 }
 
-type TreeStat = { dev: number; ino: number; size: number; mtimeMs: number; mode: number };
+type TreeStat = ArtifactStatSnapshot;
 type TreeEntry = {
   path: string;
   absolute: string;
@@ -161,17 +168,15 @@ async function stableArtifactRoot(
   root: string,
 ): Promise<{ path: string; dev: number; ino: number }> {
   const before = await lstat(root);
-  if (!before.isDirectory() || before.isSymbolicLink())
-    throw new Error("artifact root must be a real directory");
+  assertRealArtifactDirectory(before, "artifact root must be a real directory");
   const path = await realpath(root);
   const after = await lstat(root);
-  if (
-    !after.isDirectory() ||
-    after.isSymbolicLink() ||
-    after.dev !== before.dev ||
-    after.ino !== before.ino
-  )
-    throw new Error("artifact root changed during scan");
+  assertRealArtifactDirectory(after, "artifact root changed during scan");
+  assertArtifactRootUnchanged(
+    { path, dev: before.dev, ino: before.ino },
+    { path, dev: after.dev, ino: after.ino },
+    "artifact root changed during scan",
+  );
   return { path, dev: after.dev, ino: after.ino };
 }
 
@@ -201,19 +206,18 @@ async function listArtifacts(
     }
     const sortedChildren = children.toSorted((a, b) => a.localeCompare(b));
     const dirStat = await lstat(directory.absolute);
-    if (!dirStat.isDirectory() || dirStat.isSymbolicLink())
-      throw new Error("artifact directory changed during scan");
+    assertRealArtifactDirectory(dirStat, "artifact directory changed during scan");
     const ancestors = [
       ...directory.ancestors,
       { path: directory.absolute, dev: dirStat.dev, ino: dirStat.ino, mtimeMs: dirStat.mtimeMs },
     ];
     for (const name of sortedChildren) {
-      if (!name || name === "." || name === ".." || name.includes("/") || name.includes("\\"))
-        throw new Error("artifact path contains an unsafe component");
+      assertArtifactComponent(name, "artifact path contains an unsafe component");
       const absolute = join(directory.absolute, name);
       const info = await lstat(absolute);
       const path = directory.relativePath ? `${directory.relativePath}/${name}` : name;
       if (info.isSymbolicLink()) throw new Error(`symbolic links are not allowed: ${path}`);
+      const kind = artifactEntryKind(info, `special files are not allowed: ${path}`);
       const snapshot = {
         dev: info.dev,
         ino: info.ino,
@@ -221,10 +225,10 @@ async function listArtifacts(
         mtimeMs: info.mtimeMs,
         mode: info.mode,
       };
-      if (info.isDirectory()) {
+      if (kind === "directory") {
         entries.push({ path, absolute, kind: "directory", size: 0, stat: snapshot, ancestors });
         directoryQueue.push({ absolute, relativePath: path, ancestors });
-      } else if (info.isFile()) {
+      } else {
         fileCount += 1;
         sourceBytes += info.size;
         if (fileCount > MAX_SESSION_ARTIFACT_FILES)
@@ -232,18 +236,11 @@ async function listArtifacts(
         if (sourceBytes > MAX_SESSION_ARTIFACT_SOURCE_BYTES)
           throw new Error("artifact source bytes exceed limit");
         entries.push({ path, absolute, kind: "file", size: info.size, stat: snapshot, ancestors });
-      } else {
-        throw new Error(`special files are not allowed: ${path}`);
       }
     }
   }
   const finalRoot = await stableArtifactRoot(root);
-  if (
-    finalRoot.path !== rootPath ||
-    finalRoot.dev !== rootSnapshot.dev ||
-    finalRoot.ino !== rootSnapshot.ino
-  )
-    throw new Error("artifact root changed during scan");
+  assertArtifactRootUnchanged(rootSnapshot, finalRoot, "artifact root changed during scan");
   return { entries, sourceBytes, fileCount };
 }
 
@@ -254,7 +251,6 @@ async function createArchive(
   const { entries, sourceBytes, fileCount } = await listArtifacts(root);
   if (fileCount === 0) return { bytes: 0, sourceBytes: 0, fileCount: 0, sha256: "" };
   const initialRoot = await stableArtifactRoot(root);
-  const frozenRoot = initialRoot.path;
   const output = createWriteStream(destination, { flags: "wx", mode: 0o600 });
   const tar = createTar();
   const gzip = createGzip();
@@ -276,33 +272,26 @@ async function createArchive(
   try {
     for (const entry of entries) {
       const currentRoot = await stableArtifactRoot(root);
-      if (
-        currentRoot.path !== frozenRoot ||
-        currentRoot.dev !== initialRoot.dev ||
-        currentRoot.ino !== initialRoot.ino
-      )
-        throw new Error("artifact root changed while archiving");
+      assertArtifactRootUnchanged(
+        initialRoot,
+        currentRoot,
+        "artifact root changed while archiving",
+      );
       for (const ancestor of entry.ancestors) {
         const info = await lstat(ancestor.path);
-        if (
-          !info.isDirectory() ||
-          info.isSymbolicLink() ||
-          info.dev !== ancestor.dev ||
-          info.ino !== ancestor.ino ||
-          info.mtimeMs !== ancestor.mtimeMs
-        )
-          throw new Error(`artifact parent changed while archiving: ${entry.path}`);
+        assertArtifactParentUnchanged(
+          ancestor,
+          info,
+          `artifact parent changed while archiving: ${entry.path}`,
+        );
       }
       const before = await lstat(entry.absolute);
-      if (
-        before.isSymbolicLink() ||
-        (entry.kind === "file" ? !before.isFile() : !before.isDirectory()) ||
-        before.dev !== entry.stat.dev ||
-        before.ino !== entry.stat.ino ||
-        before.size !== entry.stat.size ||
-        before.mtimeMs !== entry.stat.mtimeMs
-      )
-        throw new Error(`artifact changed before archive: ${entry.path}`);
+      assertArtifactEntryUnchanged(
+        entry.stat,
+        before,
+        entry.kind,
+        `artifact changed before archive: ${entry.path}`,
+      );
       const stream = tar.entry({
         name: entry.path,
         type: entry.kind,
@@ -316,43 +305,42 @@ async function createArchive(
         const handle = await open(entry.absolute, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
         try {
           const opened = await handle.stat();
-          if (
-            opened.dev !== entry.stat.dev ||
-            opened.ino !== entry.stat.ino ||
-            opened.size !== entry.size
-          )
-            throw new Error(`artifact changed before read: ${entry.path}`);
+          assertOpenedArtifactUnchanged(
+            entry.stat,
+            opened,
+            `artifact changed before read: ${entry.path}`,
+          );
           const fileStream = handle.createReadStream({ autoClose: false });
           let readBytes = 0;
           fileStream.on("data", (chunk: Buffer) => {
             readBytes += chunk.byteLength;
-            if (readBytes > entry.size || readBytes > MAX_SESSION_ARTIFACT_SOURCE_BYTES)
+            if (artifactReadExceedsLimit(readBytes, entry.size, MAX_SESSION_ARTIFACT_SOURCE_BYTES))
               fileStream.destroy(new Error(`artifact grew while archiving: ${entry.path}`));
           });
           await pipeline(fileStream, stream);
-          if (readBytes !== entry.size)
-            throw new Error(`artifact changed while archiving: ${entry.path}`);
+          assertArtifactReadMatches(
+            entry.size,
+            readBytes,
+            `artifact changed while archiving: ${entry.path}`,
+          );
         } finally {
           await handle.close();
         }
         const after = await lstat(entry.absolute);
-        if (
-          after.dev !== before.dev ||
-          after.ino !== before.ino ||
-          after.size !== before.size ||
-          after.mtimeMs !== before.mtimeMs
-        )
-          throw new Error(`artifact changed while archiving: ${entry.path}`);
+        assertArtifactEntryUnchanged(
+          entry.stat,
+          after,
+          "file",
+          `artifact changed while archiving: ${entry.path}`,
+        );
       } else {
         const after = await lstat(entry.absolute);
-        if (
-          !after.isDirectory() ||
-          after.isSymbolicLink() ||
-          after.dev !== before.dev ||
-          after.ino !== before.ino ||
-          after.mtimeMs !== before.mtimeMs
-        )
-          throw new Error(`artifact directory changed while archiving: ${entry.path}`);
+        assertArtifactEntryUnchanged(
+          entry.stat,
+          after,
+          "directory",
+          `artifact directory changed while archiving: ${entry.path}`,
+        );
         stream.end(Buffer.alloc(0));
         await finished(stream);
       }
@@ -594,12 +582,7 @@ export class SessionOutputSpool {
           retryAt: now,
           failures: 0,
         };
-        if (output.state === "ready") {
-          const size = Buffer.byteLength(output.jsonText, "utf8");
-          if (size > MAX_SESSION_OUTPUT_BYTES)
-            output = outputError("output_too_large", "Output exceeds limit");
-          job.output = output;
-        }
+        job.output = output;
         await this.withAdmission(async () => {
           await mkdir(this.jobsDir, { recursive: true, mode: 0o700 });
           const { names: jobEntries, overflow } = await boundedNames(this.jobsDir, JOB_LIMIT + 1);

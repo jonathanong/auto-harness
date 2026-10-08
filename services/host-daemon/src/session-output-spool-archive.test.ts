@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdtemp, open, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, open, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -64,6 +64,33 @@ describe("SessionOutputSpool archive bounds", () => {
     const attempt = await spool.begin("session-tree-limit", "attempt-tree-limit");
     for (let index = 0; index <= MAX_SESSION_ARTIFACT_FILES * 2; index += 1) {
       await mkdir(join(attempt.env.HARNESS_ARTIFACTS_DIR, `directory-${index}`));
+    }
+    await attempt.capture();
+    await spool.runPass();
+    expect(artifactState).toMatchObject({
+      state: "error",
+      error: { code: "artifact_capture_failed" },
+    });
+  });
+
+  it("rejects artifact trees above the file-count limit", async () => {
+    const root = await mkdtemp(join(tmpdir(), "harness-session-output-file-cap-"));
+    temporary.push(root);
+    let artifactState: unknown;
+    const fetchFn: typeof fetch = async (input, init) => {
+      if (String(input).endsWith("/outputs/prepare")) {
+        artifactState = (JSON.parse(String(init?.body)) as { artifacts: unknown }).artifacts;
+      }
+      return Response.json({ ok: true });
+    };
+    const spool = new SessionOutputSpool({
+      root,
+      identity: { apiUrl: "http://api.test" },
+      fetchFn,
+    });
+    const attempt = await spool.begin("session-file-limit", "attempt-file-limit");
+    for (let index = 0; index <= MAX_SESSION_ARTIFACT_FILES; index += 1) {
+      await writeFile(join(attempt.env.HARNESS_ARTIFACTS_DIR, `file-${index}.txt`), "");
     }
     await attempt.capture();
     await spool.runPass();
