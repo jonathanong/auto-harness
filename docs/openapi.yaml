@@ -420,6 +420,119 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}/output:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      operationId: getSessionOutput
+      summary: Read the agent-written JSON output and its publishing state
+      description: Uses the same session visibility as getSession. Responses are not cached. Any JSON value, including null, may be ready output.
+      responses:
+        "200":
+          description: Current JSON output availability
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionOutputResponse" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}/artifacts:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      operationId: getSessionArtifacts
+      summary: Get artifact availability and a fresh download URL
+      description: Uses the same session visibility as getSession. Ready responses name a verified immutable artifact version with a five-minute download URL. Responses are not cached.
+      responses:
+        "200":
+          description: Current artifact availability
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionArtifactsResponse" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}/outputs/prepare:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      operationId: prepareSessionOutputs
+      summary: Daemon-only durable preparation of attempt output publishing
+      description: Requires agent:protocol and the owning host/current attempt. Stores JSON independently and records artifact intent before issuing a constrained upload authorization. Duplicate matching submissions are idempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PrepareSessionOutputsRequest" }
+      responses:
+        "200":
+          description: Optional artifact upload authorization
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrepareSessionOutputsResponse" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}/outputs/complete:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      operationId: completeSessionOutputs
+      summary: Daemon-only verification and publication of the artifact object
+      description: Requires agent:protocol and the owning host/current attempt. Verifies the uploaded object before exposing its immutable version for download.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [attemptId]
+              additionalProperties: false
+              properties:
+                attemptId: { type: string }
+      responses:
+        "200": { description: Artifact publication acknowledged }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}/outputs/upload/{attemptId}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - name: attemptId
+        in: path
+        required: true
+        schema: { type: string }
+      - name: token
+        in: query
+        required: true
+        schema: { type: string }
+    put:
+      operationId: uploadLocalSessionArtifacts
+      summary: Local-mode artifact upload using a short-lived preparation token
+      description: Daemon transport endpoint requiring the owning host credential. The opaque token binds the session, attempt, expected object and upload window; the server verifies size and digest before acceptance.
+      requestBody:
+        required: true
+        content:
+          application/gzip:
+            schema: { type: string, format: binary }
+      responses:
+        "200": { description: Artifact bytes stored for completion verification }
+        default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}/artifacts/download:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - name: token
+        in: query
+        required: true
+        schema: { type: string }
+    get:
+      operationId: downloadLocalSessionArtifacts
+      summary: Local-mode artifact download using a short-lived download token
+      description: Browser download transport endpoint. The opaque token grants access to one verified artifact version while the session remains readable; clients obtain it through getSessionArtifacts.
+      security: []
+      responses:
+        "200":
+          description: Verified artifact archive
+          content:
+            application/gzip:
+              schema: { type: string, format: binary }
+        default: { $ref: "#/components/responses/Error" }
   /workspace-pools:
     get:
       operationId: listWorkspacePools
@@ -2096,6 +2209,136 @@ components:
         key: { type: string, description: Durable object key for the written archive. }
         contentType: { type: string }
         bodyBytes: { type: integer, minimum: 0 }
+    SessionOutputError:
+      type: object
+      required: [code, message]
+      additionalProperties: false
+      properties:
+        code: { type: string }
+        message: { type: string }
+    SessionOutputUnavailable:
+      oneOf:
+        - type: object
+          required: [state]
+          additionalProperties: false
+          properties:
+            state: { type: string, enum: [unsupported, pending, none] }
+        - type: object
+          required: [state, error]
+          additionalProperties: false
+          properties:
+            state: { type: string, const: error }
+            error: { $ref: "#/components/schemas/SessionOutputError" }
+    SessionOutputResponse:
+      oneOf:
+        - $ref: "#/components/schemas/SessionOutputUnavailable"
+        - type: object
+          required: [state, output, capturedAt]
+          additionalProperties: false
+          properties:
+            state: { type: string, const: ready }
+            output: {}
+            capturedAt: { type: string, format: date-time }
+    SessionArtifactsResponse:
+      oneOf:
+        - $ref: "#/components/schemas/SessionOutputUnavailable"
+        - type: object
+          required:
+            [
+              state,
+              downloadUrl,
+              expiresAt,
+              capturedAt,
+              contentType,
+              filename,
+              compressedBytes,
+              sha256,
+            ]
+          additionalProperties: false
+          properties:
+            state: { type: string, const: ready }
+            downloadUrl: { type: string, format: uri }
+            expiresAt: { type: string, format: date-time }
+            capturedAt: { type: string, format: date-time }
+            contentType: { type: string, const: application/gzip }
+            filename: { type: string, const: artifacts.tar.gz }
+            compressedBytes: { type: integer, minimum: 1, maximum: 104857600 }
+            sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+    SessionOutputSubmission:
+      oneOf:
+        - type: object
+          required: [state]
+          additionalProperties: false
+          properties:
+            state: { type: string, const: none }
+        - type: object
+          required: [state, error]
+          additionalProperties: false
+          properties:
+            state: { type: string, const: error }
+            error: { $ref: "#/components/schemas/SessionOutputError" }
+        - type: object
+          required: [state, jsonText, sha256]
+          additionalProperties: false
+          properties:
+            state: { type: string, const: ready }
+            jsonText:
+              type: string
+              description: One valid JSON document, at most 262144 UTF-8 bytes; no truncation.
+            sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+    SessionArtifactsSubmission:
+      oneOf:
+        - type: object
+          required: [state]
+          additionalProperties: false
+          properties:
+            state: { type: string, const: none }
+        - type: object
+          required: [state, error]
+          additionalProperties: false
+          properties:
+            state: { type: string, const: error }
+            error: { $ref: "#/components/schemas/SessionOutputError" }
+        - type: object
+          required: [state, compressedBytes, sourceBytes, fileCount, sha256]
+          additionalProperties: false
+          properties:
+            state: { type: string, const: pending }
+            compressedBytes: { type: integer, minimum: 1, maximum: 104857600 }
+            sourceBytes: { type: integer, minimum: 0, maximum: 1073741824 }
+            fileCount: { type: integer, minimum: 1, maximum: 10000 }
+            sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+    PrepareSessionOutputsRequest:
+      type: object
+      required: [attemptId, capturedAt, output, artifacts]
+      additionalProperties: false
+      properties:
+        attemptId: { type: string }
+        capturedAt: { type: string, format: date-time }
+        output: { $ref: "#/components/schemas/SessionOutputSubmission" }
+        artifacts: { $ref: "#/components/schemas/SessionArtifactsSubmission" }
+    PrepareSessionOutputsResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        artifactUpload:
+          oneOf:
+            - type: object
+              required: [method, url, fields, expiresAt]
+              additionalProperties: false
+              properties:
+                method: { type: string, const: POST }
+                url: { type: string, format: uri }
+                fields: { type: object, additionalProperties: { type: string } }
+                expiresAt: { type: string, format: date-time }
+            - type: object
+              required: [method, url, headers, expiresAt]
+              additionalProperties: false
+              properties:
+                method: { type: string, const: PUT }
+                url: { type: string, format: uri }
+                headers: { type: object, additionalProperties: { type: string } }
+                expiresAt: { type: string, format: date-time }
     SessionArchiveReadResponse:
       description: Discriminated by state. dynamodb means logs are still only in the durable log store; archived is the terminal, downloadable case.
       oneOf:

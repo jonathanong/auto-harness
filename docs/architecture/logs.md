@@ -1,5 +1,10 @@
 # Logs and archives
 
+Agent-written JSON and downloadable file bundles are separate from transcripts; see
+[session output and artifacts](../session-outputs.md). Both artifact and transcript objects
+share the session retention policy. Transcript readers must select recognized log keys,
+not every object under a session prefix.
+
 Log **bodies** live in S3, not DynamoDB. The control plane shows a **polled** S3 view. A live
 PTY-quality stream exists only on the **host pane** (loopback to the daemon). Autonomous default:
 **do not upload** session logs at all.

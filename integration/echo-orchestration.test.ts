@@ -1,6 +1,8 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, join } from "node:path";
+import { gunzipSync } from "node:zlib";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -46,7 +48,7 @@ afterEach(async () => {
 describe.skipIf(process.platform === "win32")(
   "real orchestration: create -> assign -> run -> completed",
   () => {
-    it("runs an argv-only command in a real agent daemon and captures real stdout", async () => {
+    it("runs an argv-only command and retrieves its logs, JSON output, and artifact bytes", async () => {
       root = mkdtempSync(join(tmpdir(), "ah-echo-orchestration-"));
       const repo = join(root, "repo");
       const wt = join(root, "wt-1");
@@ -128,7 +130,15 @@ describe.skipIf(process.platform === "win32")(
 
       const commandResult = server.plane.createCommand({
         name: "echo-prompt",
-        argv: [basename(process.execPath), "-e", "console.log('hello world')"],
+        argv: [
+          basename(process.execPath),
+          "-e",
+          "const fs=require('node:fs'); const path=require('node:path'); " +
+            "console.log('hello world'); " +
+            "fs.writeFileSync(process.env.HARNESS_OUTPUT_FILE, JSON.stringify({passed:true, values:[null,false,0]})); " +
+            "fs.mkdirSync(path.join(process.env.HARNESS_ARTIFACTS_DIR,'reports')); " +
+            "fs.writeFileSync(path.join(process.env.HARNESS_ARTIFACTS_DIR,'reports','report.txt'),'12 checks passed\\n');",
+        ],
         appendPrompt: false,
         providerId: null,
       });
@@ -159,6 +169,59 @@ describe.skipIf(process.platform === "win32")(
         await sleep(100);
       }
       expect(session?.status, JSON.stringify(session)).toBe("completed");
+
+      const base = `http://127.0.0.1:${port}`;
+      await expect
+        .poll(
+          async () => {
+            const response = await fetch(`${base}/api/v1/sessions/${id}/output`);
+            expect(response.status).toBe(200);
+            expect(response.headers.get("cache-control")).toBe("no-store");
+            return response.json();
+          },
+          { timeout: 15_000, interval: 100 },
+        )
+        .toMatchObject({ state: "ready", output: { passed: true, values: [null, false, 0] } });
+      const cliOutput = await runCommandOk(
+        process.execPath,
+        [
+          fileURLToPath(new URL("../modules/client/src/cli/index.js", import.meta.url)),
+          "session",
+          "output",
+          id,
+          "--api-url",
+          base,
+          "--json",
+        ],
+        { env: { PATH: process.env.PATH, HOME: root } },
+      );
+      expect(JSON.parse(cliOutput)).toMatchObject({
+        state: "ready",
+        output: { passed: true, values: [null, false, 0] },
+      });
+      await expect
+        .poll(async () => (await fetch(`${base}/api/v1/sessions/${id}/artifacts`)).json(), {
+          timeout: 15_000,
+          interval: 100,
+        })
+        .toMatchObject({ state: "ready", filename: "artifacts.tar.gz" });
+      const artifacts = await (await fetch(`${base}/api/v1/sessions/${id}/artifacts`)).json();
+      const download = await fetch(new URL(artifacts.downloadUrl, base));
+      expect(download.status).toBe(200);
+      expect(download.headers.get("content-type")).toBe("application/gzip");
+      const tar = gunzipSync(Buffer.from(await download.arrayBuffer()));
+      let report: string | undefined;
+      for (let offset = 0; offset + 512 <= tar.length;) {
+        const header = tar.subarray(offset, offset + 512);
+        const name = header.subarray(0, 100).toString().replace(/\0.*$/s, "");
+        if (!name) break;
+        const size = parseInt(header.subarray(124, 136).toString().replace(/\0.*$/s, "").trim(), 8);
+        if (name === "reports/report.txt") {
+          report = tar.subarray(offset + 512, offset + 512 + size).toString();
+        }
+        offset += 512 + Math.ceil(size / 512) * 512;
+      }
+      expect(report).toBe("12 checks passed\n");
 
       // Real HTTP round trip, not just the in-process plane accessor.
       const logsRes = await fetch(`http://127.0.0.1:${port}/api/v1/sessions/${id}/logs`);

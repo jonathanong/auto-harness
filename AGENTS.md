@@ -104,7 +104,8 @@ control-plane instance. Every management HTTP operation — each method and path
 named command that performs it. `auto-harness api` is a raw request escape hatch; a management
 operation still needs its named command.
 
-Host-daemon protocol (`POST /host/messages`, session log-part and log-archive uploads), scheduler
+Host-daemon protocol (`POST /host/messages`, session log-part and log-archive uploads,
+session output prepare/complete and artifact uploads), signed artifact download transport, scheduler
 worker routes, unauthenticated ingress (GitHub webhooks, Slack events, custom webhooks, and the
 Slack OAuth callback), and browser-only session mechanics (`POST /auth/logout`,
 `POST /auth/viewer-ticket`) stay with those callers. Login, `GET /auth/me`, and `GET /health` are
