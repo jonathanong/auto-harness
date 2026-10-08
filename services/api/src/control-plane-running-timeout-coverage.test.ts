@@ -58,7 +58,7 @@ describe("running timeout residual coverage", () => {
     plane.state.sessions.set(session.id, session);
     let finished: Record<string, unknown> | undefined;
     plane.state.storage = {
-      listAllSessions: async () => [session],
+      listOperationalRecoveryPage: async () => [session],
       listLogs: async () => [],
       putArchive: async () => undefined,
       finishSession: async (opts: Record<string, unknown>) => {
@@ -150,7 +150,7 @@ describe("running timeout residual coverage", () => {
     const finishSession = vi.fn(async () => true);
     state.sessions.set(session.id, session);
     state.storage = {
-      listAllSessions: async () => [session],
+      listOperationalRecoveryPage: async () => [session],
       getWorkspaceSlot: async () => slot,
       finishSession,
       listLogs: async () => [],
@@ -327,7 +327,7 @@ describe("running timeout residual coverage", () => {
     const plane = new ControlPlane({ now: () => NOW });
     const row = scheduledRunning({ id: "hydrated", mainCheckoutLease: undefined, hostId: null });
     plane.state.storage = {
-      listAllSessions: async () => [row],
+      listOperationalRecoveryPage: async () => [row],
       listLogs: async () => [],
       putArchive: async () => undefined,
     } as never;
@@ -344,7 +344,7 @@ describe("running timeout residual coverage", () => {
     const session = { ...plane.state.sessions.get(sessionId)!, concurrencyId: "lock" };
     let finished: unknown;
     plane.state.storage = {
-      listAllSessions: async () => [session],
+      listOperationalRecoveryPage: async () => [session],
       listLogs: async () => [],
       putArchive: async () => undefined,
       finishSession: async (opts: unknown) => {
@@ -404,8 +404,7 @@ describe("running timeout residual coverage", () => {
     const stale = scheduledRunning({ id: "stale" });
     local.state.sessions.set("stale", { ...stale, status: "completed" });
     local.state.storage = {
-      listSessionsByStatus: async (status: string, shard: number) =>
-        shard === 0 && status === "running" ? [onlyStorage, stale] : [],
+      listOperationalRecoveryPage: async () => [onlyStorage, stale],
       listLogs: async () => [],
       putArchive: async () => undefined,
       finishSession: async () => true,
@@ -458,7 +457,7 @@ describe("running timeout residual coverage", () => {
       currentSessionId: leased.id,
     });
     plane.state.storage = {
-      listAllSessions: async () => [leased, ordinary, fenced, future],
+      listOperationalRecoveryPage: async () => [leased, ordinary, fenced, future],
       releaseMainCheckoutSession: async () => true,
       finishSession: async () => true,
       listLogs: async () => [],

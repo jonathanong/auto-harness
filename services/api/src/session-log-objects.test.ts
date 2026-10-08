@@ -69,6 +69,40 @@ describe("session log objects", () => {
     ]);
   });
 
+  it("fences part and archive uploads for missing or retention-claimed sessions", async () => {
+    const writes: string[] = [];
+    for (const session of [null, { retentionToken: "claim-1" }]) {
+      const state = createControlPlaneState({
+        archiveWriter: {
+          putArchive: async () => undefined,
+          putGzipObject: async (key) => {
+            writes.push(key);
+          },
+        },
+        storage: {
+          getSessionRetentionStore: () => ({ getSession: async () => session }),
+        } as never,
+      });
+      const gzipped = gzipLogRecords([
+        {
+          sessionId: "sess",
+          timestamp: "2026-01-01T00:00:00.000Z",
+          stream: "stdout",
+          content: "late",
+          seq: 1,
+          timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+        },
+      ]);
+      await expect(putSessionLogPart(state, "sess", 1, 1, gzipped)).rejects.toThrow(
+        "missing or retained session",
+      );
+      await expect(putSessionLogArchive(state, "sess", gzipped)).rejects.toThrow(
+        "missing or retained session",
+      );
+    }
+    expect(writes).toEqual([]);
+  });
+
   it("rejects empty parts and seqs outside the declared range", async () => {
     const state = createControlPlaneState();
     await expect(putSessionLogPart(state, "sess", 1, 1, gzipJsonlLines([]))).rejects.toThrow(

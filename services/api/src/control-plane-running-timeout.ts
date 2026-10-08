@@ -213,16 +213,10 @@ async function listRunningSessions(state: ControlPlaneState): Promise<SessionRec
   const storage = state.storage;
   if (!storage)
     return [...state.sessions.values()].filter((session) => session.status === "running");
-  if (typeof storage.listSessionsByStatus === "function") {
-    const pages = await Promise.all(
-      [...Array(state.shardCount).keys()].map((shard) =>
-        storage.listSessionsByStatus("running", shard),
-      ),
+  if (typeof storage.listOperationalRecoveryPage === "function") {
+    return (await storage.listOperationalRecoveryPage("timeout", state.shardCount)).filter(
+      (session) => session.status === "running",
     );
-    return pages.flat();
-  }
-  if (typeof storage.listAllSessions === "function") {
-    return (await storage.listAllSessions()).filter((session) => session.status === "running");
   }
   return [...state.sessions.values()].filter((session) => session.status === "running");
 }

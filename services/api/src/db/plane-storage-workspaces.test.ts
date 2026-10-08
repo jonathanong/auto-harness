@@ -372,7 +372,7 @@ describe("workspace storage", () => {
   it("atomically assigns a slot and distinguishes provider lease collisions", async () => {
     const send = vi.fn().mockResolvedValue({});
     await expect(tryAssignWorkspaceSession(ctx(send), assignment)).resolves.toBe(true);
-    expect(send.mock.calls[0]?.[0].input.TransactItems).toHaveLength(4);
+    expect(send.mock.calls[0]?.[0].input.TransactItems).toHaveLength(5);
     expect(send.mock.calls[0]?.[0].input.TransactItems[2].Update).toMatchObject({
       Key: { id: "session" },
       ExpressionAttributeValues: expect.objectContaining({
@@ -401,25 +401,25 @@ describe("workspace storage", () => {
     };
     await expect(tryAssignWorkspaceSession(ctx(send), withLease)).resolves.toBe(true);
     const items = send.mock.calls[1]?.[0].input.TransactItems;
-    expect(items).toHaveLength(6);
-    expect(items[5].Put.Item).toMatchObject({ providerAccountId: "account", slot: 0 });
+    expect(items).toHaveLength(7);
+    expect(items[6].Put.Item).toMatchObject({ providerAccountId: "account", slot: 0 });
 
     await expect(
       tryAssignWorkspaceSession(ctx(send), { ...assignment, providerAccountId: "account" }),
     ).resolves.toBe(true);
-    expect(send.mock.calls[2]?.[0].input.TransactItems).toHaveLength(5);
+    expect(send.mock.calls[2]?.[0].input.TransactItems).toHaveLength(6);
     expect(
-      send.mock.calls[2]?.[0].input.TransactItems[4].Update.ExpressionAttributeValues,
+      send.mock.calls[2]?.[0].input.TransactItems[5].Update.ExpressionAttributeValues,
     ).not.toHaveProperty(":providerId");
 
     await expect(
       tryAssignWorkspaceSession(ctx(vi.fn().mockRejectedValue(conditional())), assignment),
     ).resolves.toBe(false);
     await expect(
-      tryAssignWorkspaceSession(ctx(vi.fn().mockRejectedValue(cancelled(6, 5))), withLease),
+      tryAssignWorkspaceSession(ctx(vi.fn().mockRejectedValue(cancelled(7, 6))), withLease),
     ).resolves.toBe("lease_collision");
     await expect(
-      tryAssignWorkspaceSession(ctx(vi.fn().mockRejectedValue(cancelled(6, 5, 2))), withLease),
+      tryAssignWorkspaceSession(ctx(vi.fn().mockRejectedValue(cancelled(7, 6, 2))), withLease),
     ).resolves.toBe(false);
     await expect(
       tryAssignWorkspaceSession(

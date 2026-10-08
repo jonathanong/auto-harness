@@ -1,4 +1,4 @@
-import { MAX_FALLBACKS } from "@auto-harness/shared";
+import { MAX_SCHEDULE_FALLBACKS } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { setInMemoryScheduleStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
@@ -33,7 +33,7 @@ describe("legacy schedule fallback disable CAS", () => {
       principalId: "principal",
       name: "nightly",
       target: { commandId: "cmd" },
-      fallbacks: Array.from({ length: MAX_FALLBACKS + 1 }, () => ({ commandId: "cmd" })),
+      fallbacks: Array.from({ length: MAX_SCHEDULE_FALLBACKS + 1 }, () => ({ commandId: "cmd" })),
       targetDisplayNames: ["cmd"],
       cron: "* * * * *",
       enabled: true,
@@ -46,7 +46,7 @@ describe("legacy schedule fallback disable CAS", () => {
     setInMemoryScheduleStorage(state, {
       tryClaimScheduleAndCreateSession: async () => ({
         kind: "legacy_fallbacks",
-        fallbackCount: MAX_FALLBACKS + 1,
+        fallbackCount: MAX_SCHEDULE_FALLBACKS + 1,
       }),
       disableLegacyFallbackScheduleAndAudit: async () => false,
     });

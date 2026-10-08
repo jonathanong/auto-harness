@@ -530,9 +530,9 @@ export async function enforceAckDeadlinesDurable(
     return enforceAckDeadlines(state, nowMs);
   }
   const durableSessions =
-    typeof state.storage.listAllSessions === "function"
-      ? await state.storage.listAllSessions()
-      : [];
+    typeof state.storage.listOperationalRecoveryPage === "function"
+      ? await state.storage.listOperationalRecoveryPage("ack", state.shardCount)
+      : [...state.sessions.values()];
   for (const session of durableSessions) {
     if (
       session.status === "running" &&

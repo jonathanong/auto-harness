@@ -10,6 +10,7 @@ import { DYNAMO_TABLES, type TableDef } from "./tables.ts";
 
 export type SessionPriorityIndexStage = "status" | "both";
 export type SessionCreatedOrderIndexStage = "none" | "status";
+export type SessionRetentionIndexStage = "none" | "status";
 
 type FoundationStackProps = StackProps & {
   /** Physical table name prefix. Must match `HARNESS_DDB_PREFIX` at runtime. */
@@ -22,6 +23,8 @@ type FoundationStackProps = StackProps & {
   sessionPriorityIndexStage?: SessionPriorityIndexStage;
   /** Existing tables add the created-order GSI after the priority-index rollout. */
   sessionCreatedOrderIndexStage?: SessionCreatedOrderIndexStage;
+  /** Existing tables add the terminal-retention GSI in its own update. */
+  sessionRetentionIndexStage?: SessionRetentionIndexStage;
   /**
    * Purge-only: pins a named table's synthesized GSIs to exactly this live set, so a
    * deletion retarget makes no index changes regardless of how far that table has drifted
@@ -64,6 +67,7 @@ function tableName(prefix: string, definition: TableDef): string {
 function stagedTables(
   priorityStage: SessionPriorityIndexStage,
   createdOrderStage: SessionCreatedOrderIndexStage,
+  retentionStage: SessionRetentionIndexStage,
   existingGsiNamesByTable?: Readonly<Record<string, readonly string[]>>,
 ): readonly TableDef[] {
   return DYNAMO_TABLES.map((definition) => {
@@ -76,7 +80,8 @@ function stagedTables(
       gsis = gsis.filter(
         (index) =>
           (priorityStage !== "status" || index.name !== "statusShard-repositoryPriorityOrder") &&
-          (createdOrderStage !== "none" || index.name !== "statusShard-createdOrder"),
+          (createdOrderStage !== "none" || index.name !== "statusShard-createdOrder") &&
+          (retentionStage !== "none" || index.name !== "statusShard-completedAt"),
       );
     }
     // Purge's deletion retarget passes this so every restricted table's synthesized GSIs
@@ -131,6 +136,7 @@ export class AutoHarnessFoundationStack extends Stack {
     const definitions = stagedTables(
       props.sessionPriorityIndexStage ?? "both",
       props.sessionCreatedOrderIndexStage ?? "status",
+      props.sessionRetentionIndexStage ?? "status",
       props.existingGsiNamesByTable,
     );
     const tables: Record<string, dynamodb.Table> = {};

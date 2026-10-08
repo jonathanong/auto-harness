@@ -40,7 +40,7 @@ import {
   type OwnedDeletionMarker,
 } from "./plane-storage-deletion-markers.ts";
 import type { SessionRecord } from "./types.ts";
-import { MAX_FALLBACKS, type RepositoryAdmissionState } from "@auto-harness/shared";
+import { MAX_SCHEDULE_FALLBACKS, type RepositoryAdmissionState } from "@auto-harness/shared";
 import { sessionToItem } from "./plane-storage-types.ts";
 import {
   getConcurrencyLock,
@@ -54,6 +54,11 @@ import {
   sessionDrainAdmissionCheck,
   sessionDrainScopeKey,
 } from "./plane-storage-session-drains.ts";
+import {
+  activityPut as operationalActivityPut,
+  repositoryActivityForSession,
+} from "./plane-storage-operational-activity.ts";
+import { sessionRetentionAdmissionCheck } from "./plane-storage-session-retention.ts";
 import { auditLogItem } from "./plane-storage-audit.ts";
 import type { AuditLogRecord } from "../audit-types.ts";
 
@@ -876,7 +881,7 @@ export async function disableLegacyFallbackScheduleAndAudit(
                 ":false": false,
                 ":true": true,
                 ":expectedNextRunAt": opts.expectedNextRunAt,
-                ":maxFallbacks": MAX_FALLBACKS,
+                ":maxFallbacks": MAX_SCHEDULE_FALLBACKS,
               },
             },
           },
@@ -910,11 +915,11 @@ export async function tryClaimScheduleAndCreateSession(
     session: SessionRecord;
   },
 ): Promise<ScheduleCreateResult> {
-  // Schedules persisted before MAX_FALLBACKS was lowered can still contain 91 or
-  // 92 routes. Do not construct an over-limit transaction and let cron retry the
+  // Older schedules can exceed the transaction-safe fallback budget. Do not
+  // construct an over-limit transaction and let cron retry the
   // unchanged cursor forever; the caller performs an explicit audited disable.
   const fallbackCount = opts.session.fallbacks?.length ?? 0;
-  if (fallbackCount > MAX_FALLBACKS) {
+  if (fallbackCount > MAX_SCHEDULE_FALLBACKS) {
     return { kind: "legacy_fallbacks", fallbackCount };
   }
   const principalId =
@@ -927,6 +932,7 @@ export async function tryClaimScheduleAndCreateSession(
     : null;
   const principalCheck = principalExistsCheck(ctx, principalId);
   const activityPut = opts.session.repositoryId ? sessionDrainActivityPut(ctx, opts.session) : null;
+  const repositoryActivity = repositoryActivityForSession(opts.session);
   const repositoryCheck = opts.session.repositoryId
     ? {
         ConditionCheck: {
@@ -1000,6 +1006,7 @@ export async function tryClaimScheduleAndCreateSession(
             },
           },
           ...(activityPut ? [activityPut] : []),
+          ...(repositoryActivity ? [operationalActivityPut(ctx, repositoryActivity)] : []),
           ...(opts.session.concurrencyId
             ? [
                 {
@@ -1011,6 +1018,7 @@ export async function tryClaimScheduleAndCreateSession(
                 },
               ]
             : []),
+          sessionRetentionAdmissionCheck(ctx, opts.session.id),
         ],
       }),
     );
@@ -1039,7 +1047,7 @@ export async function tryClaimScheduleAndCreateSession(
       // The schedule cursor is followed by the optional principal drain
       // fence, repository fence, deletion markers, session insert, optional
       // activity member, and optional lock.
-      const lockIndex = sessionIndex + 1 + Number(!!activityPut);
+      const lockIndex = sessionIndex + 1 + Number(!!activityPut) + Number(!!repositoryActivity);
       if (opts.session.concurrencyId && isConditionalTransactionFailureAt(err, lockIndex)) {
         const lock = await getConcurrencyLock(ctx, opts.session.concurrencyId);
         if (lock) {
@@ -1367,12 +1375,27 @@ export async function skipScheduleBeforeActivationCutoff(
 }
 
 export async function putArchive(ctx: PlaneStorageCtx, obj: ArchiveMetadata): Promise<void> {
-  await ctx.doc.send(
-    new PutCommand({
-      TableName: ctx.tables.archives,
-      Item: { ...obj },
-    }),
-  );
+  const sessionId = /^sessions\/([^/]+)\/logs\.jsonl\.gz$/.exec(obj.key)?.[1];
+  const put = {
+    TableName: ctx.tables.archives,
+    Item: { ...obj },
+    ...(obj.status === "expired"
+      ? {}
+      : {
+          ConditionExpression: "attribute_not_exists(#status) OR #status <> :expired",
+          ExpressionAttributeNames: { "#status": "status" },
+          ExpressionAttributeValues: { ":expired": "expired" },
+        }),
+  };
+  if (sessionId) {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [sessionRetentionAdmissionCheck(ctx, sessionId), { Put: put }],
+      }),
+    );
+  } else {
+    await ctx.doc.send(new PutCommand(put));
+  }
 }
 
 export async function getArchive(

@@ -96,7 +96,7 @@ it("persists the retry disposition for a pending durable workspace attempt", asy
   const session = reconnectingWorkspace();
   const finishSession = vi.fn(async () => true);
   state.storage = {
-    listAllSessions: async () => [session],
+    listOperationalRecoveryPage: async () => [session],
     getWorkspaceSlot: async () => busySlot(session.id),
     finishSession,
   } as never;
@@ -116,7 +116,7 @@ it("persists the terminal disposition for an authorized durable workspace attemp
   const session = reconnectingWorkspace({ primaryCommandStartState: "authorized" });
   const finishSession = vi.fn(async () => true);
   state.storage = {
-    listAllSessions: async () => [session],
+    listOperationalRecoveryPage: async () => [session],
     getWorkspaceSlot: async () => busySlot(session.id),
     finishSession,
   } as never;
@@ -136,7 +136,7 @@ it("persists the ordinary reconnect disposition for an unacknowledged durable wo
   const session = reconnectingWorkspace({ ackReceivedAt: undefined });
   const finishSession = vi.fn(async () => true);
   state.storage = {
-    listAllSessions: async () => [session],
+    listOperationalRecoveryPage: async () => [session],
     getWorkspaceSlot: async () => busySlot(session.id),
     finishSession,
   } as never;
@@ -164,7 +164,7 @@ it("persists a terminal-hook handoff for an authorized durable main checkout", a
   });
   const finishSession = vi.fn(async () => true);
   state.storage = {
-    listAllSessions: async () => [session],
+    listOperationalRecoveryPage: async () => [session],
     getWorktree: async () => ({
       id: "worktree",
       name: "worktree",

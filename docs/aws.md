@@ -364,12 +364,13 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
      version is committed; a failed replacement leaves the prior complete row downloadable.
      Replacement requires `versionId` on the current complete archive. Durable empty
      replacements also re-check the processing claim with the capture fence before the object PUT.
-   - Leave DynamoDB rows intact after upload; this archive path never deletes them
+   - Leave DynamoDB rows intact after upload; session retention deletes them separately.
      REST and Cron write the object from those workers; there is no separate archival Lambda.
      WebSocket terminal transitions persist pending archive metadata without S3 access; Cron
      retries the same idempotent key, listing/reading current gzip parts when the host did not
      concatenate. Cron's archive policy does not grant `s3:GetObjectVersion`,
-     `s3:DeleteObject`, `s3:GetBucketLocation`, or bucket deletion.
+     `s3:DeleteObject`, `s3:GetBucketLocation`, or bucket deletion. Its retention worker receives
+     `s3:ListBucketVersions` and `s3:DeleteObjectVersion` restricted to session log objects.
 3. REST `GET /sessions/:id/logs` serves gzip JSONL parts and the concatenated archive under
    `sessions/{id}/` with bounded query parameters.
    REST `GET /sessions/:id/archive` retrieves an authorized archived transcript through its
@@ -507,9 +508,27 @@ Triggered every **60 seconds** by EventBridge.
 6. Archive retry sweep: claim at most 25 durable `objectStored=false` archive rows and retry
    their idempotent `sessions/{sessionId}/logs.jsonl` uploads; failures remain queued for a later
    tick.
+7. Session retention: process a bounded page of durable deletion jobs and rotate through
+   terminal status/shard index pages. Delete session-owned log versions, usage, and legacy log
+   rows before removing the session and archive metadata. Failures retain the job for retry.
 ```
 
-The running-timeout sweep is a bound, not a grace window: host timeout is best-effort, and a lost or rejected `session:status` must still converge on the next cron tick after `ackReceivedAt + timeout`.
+Host timeout is best-effort. Lost or rejected `session:status` messages converge through the
+control-plane timeout sweep after `ackReceivedAt + timeout`. ACK, timeout, and reconnect repair
+each process at most 25 active members per call with separate durable cursors; they rotate
+through shards and wrap after the final page. Recovery can take multiple ticks, depending on
+the active backlog. Settled historical sessions do not extend that backlog.
+
+Session retention defaults to **30 days after completion**. Operators can set `sessionRetentionDays`
+from 1 to 3650 in the structured session-log settings form or through
+`auto-harness settings session-logs set`. The policy applies to existing terminal sessions too.
+Running, queued, leased, reconnecting, or unsettled terminal-hook sessions remain protected.
+Deletion revokes the session key, fences archive retries, and waits two minutes for already-running
+writers before purging every object version and delete marker under that session's log prefix.
+The session row remains until cleanup succeeds; old session links then return not found. Session
+metadata is never archived to S3. A compact deletion fence uses DynamoDB TTL with the same
+configured retention duration to reject delayed writers; the Sessions table itself has no TTL.
+Local DynamoDB-backed instances run the same retention worker on the local scheduler cadence.
 
 The lock table is keyed by the exact `concurrencyId` and stores the active session id plus expiry
 metadata. Conditional put is the write-side invariant; conditional delete on terminal transition
@@ -626,7 +645,7 @@ See [integrations.md](integrations.md).
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | REST Lambda | DynamoDB item/query/transact on app tables; Scan only on list/hydrate tables; archive `s3:PutObject`/`s3:GetObject`/`s3:GetObjectVersion` on `sessions/*`; `s3:ListBucket` on the archive bucket with `s3:prefix` `sessions/*`; integration KMS encrypt/decrypt; `ManageConnections` |
 | WS Lambda   | Same DynamoDB item/query/Scan split; `execute-api:ManageConnections`. No archive policy, no integration KMS                                                                                                                                                                          |
-| Cron Lambda | Same DynamoDB split; archive `s3:PutObject`/`s3:GetObject` on `sessions/*`; `s3:ListBucket` on the archive bucket with `s3:prefix` `sessions/*` (not `GetObjectVersion`); integration KMS decrypt; `ManageConnections`                                                               |
+| Cron Lambda | Same DynamoDB split; archive `s3:PutObject`/`s3:GetObject`/`s3:DeleteObjectVersion` on `sessions/*`; `s3:ListBucket`/`s3:ListBucketVersions` with `s3:prefix` `sessions/*` (not `GetObjectVersion`); integration KMS decrypt; `ManageConnections`                                    |
 | EventBridge | `lambda:InvokeFunction` on Cron only                                                                                                                                                                                                                                                 |
 
 Shared DynamoDB grants include `TransactWriteItems` / `TransactGetItems`. Scan is omitted from

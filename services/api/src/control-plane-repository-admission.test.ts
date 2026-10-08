@@ -217,13 +217,67 @@ describe("repository admission", () => {
       repositories,
       storage: {
         listRepositories: async () => [draining],
-        listAllSessions: async () => [],
+        loadRepositoryActivityCursor: async () => undefined,
+        listRepositoryOperationalPage: async () => ({ sessions: [], observedMembers: 0 }),
+        saveRepositoryActivityCursor: async () => undefined,
         listWorktreesForRepo: async () => [],
         completeRepositoryDrain: async () => completed,
       },
     } as never;
     await expect(reconcileRepositoryDrainsDurable(state)).resolves.toEqual([completed]);
     expect(repositories.get("repo-1")).toEqual(completed);
+  });
+
+  it("pages a durable repository drain, rechecks from the start, and waits for worktree claims", async () => {
+    const draining = {
+      id: "repo-paged",
+      admissionState: "draining" as const,
+      drainRequestedAt: "requested",
+    };
+    const completed = { ...draining, admissionState: "paused" as const };
+    const saved: Array<Record<string, unknown> | undefined> = [];
+    let cursor: Record<string, unknown> | undefined;
+    let phase = 0;
+    let worktreeHeld = true;
+    let completions = 0;
+    const state = {
+      now: () => "completed",
+      repositories: new Map(),
+      repositoryRevision: 0,
+      storage: {
+        listRepositories: async () => [draining],
+        loadRepositoryActivityCursor: async () => cursor,
+        listRepositoryOperationalPage: async () => {
+          if (phase++ === 0) {
+            return { sessions: [], observedMembers: 1, nextKey: { recordKey: "ACT#later" } };
+          }
+          return { sessions: [], observedMembers: 0 };
+        },
+        saveRepositoryActivityCursor: async (
+          _repositoryId: string,
+          _drainRequestedAt: string,
+          nextKey?: Record<string, unknown>,
+        ) => {
+          cursor = nextKey;
+          saved.push(nextKey);
+        },
+        listWorktreesForRepo: async () => [{ currentSessionId: worktreeHeld ? "running" : null }],
+        completeRepositoryDrain: async () => {
+          completions += 1;
+          return completed;
+        },
+      },
+    } as never;
+
+    await expect(reconcileRepositoryDrainsDurable(state)).resolves.toEqual([draining]);
+    expect(saved).toEqual([{ recordKey: "ACT#later" }]);
+    await expect(reconcileRepositoryDrainsDurable(state)).resolves.toEqual([draining]);
+    expect(saved).toEqual([{ recordKey: "ACT#later" }, undefined]);
+    await expect(reconcileRepositoryDrainsDurable(state)).resolves.toEqual([draining]);
+    expect(completions).toBe(0);
+    worktreeHeld = false;
+    await expect(reconcileRepositoryDrainsDurable(state)).resolves.toEqual([completed]);
+    expect(completions).toBe(1);
   });
 
   it("skips malformed durable admission rows without aborting healthy drains", async () => {
@@ -245,7 +299,9 @@ describe("repository admission", () => {
       repositories,
       storage: {
         listRepositories: async () => [malformed, draining],
-        listAllSessions: async () => [],
+        loadRepositoryActivityCursor: async () => undefined,
+        listRepositoryOperationalPage: async () => ({ sessions: [], observedMembers: 0 }),
+        saveRepositoryActivityCursor: async () => undefined,
         listWorktreesForRepo: async () => [],
         completeRepositoryDrain: async (id: string) => {
           completedIds.push(id);
@@ -352,7 +408,9 @@ describe("repository admission", () => {
     ];
     const storage = {
       listRepositories: async () => [draining],
-      listAllSessions: async () => sessions,
+      loadRepositoryActivityCursor: async () => undefined,
+      listRepositoryOperationalPage: async () => ({ sessions, observedMembers: sessions.length }),
+      saveRepositoryActivityCursor: async () => undefined,
       listWorktreesForRepo: async () => [],
       completeRepositoryDrain: async () => null,
     };
@@ -440,7 +498,9 @@ describe("repository admission", () => {
       },
       setRepositoryAdmissionState: async (_id: string, state: string) =>
         state === "draining" ? draining : active,
-      listAllSessions: async () => [],
+      loadRepositoryActivityCursor: async () => undefined,
+      listRepositoryOperationalPage: async () => ({ sessions: [], observedMembers: 0 }),
+      saveRepositoryActivityCursor: async () => undefined,
       listWorktreesForRepo: async () => [],
       completeRepositoryDrain: async () => paused,
     };

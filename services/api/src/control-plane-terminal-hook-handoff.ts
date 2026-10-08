@@ -173,7 +173,7 @@ export async function settleTerminalHookHandoff(
   return true;
 }
 
-/** Scheduler recovery visits every session row already; use that bounded sweep to release a lost host's hook. */
+/** Scheduler recovery visits bounded operational rows to release lost hooks and retry Slack intent. */
 export async function expireTerminalHookHandoffIfNeeded(
   state: ControlPlaneState,
   session: SessionRecord,
@@ -182,7 +182,11 @@ export async function expireTerminalHookHandoffIfNeeded(
 ): Promise<boolean> {
   const handoff = session.terminalHookHandoff;
   if (!handoff || Date.parse(handoff.expiresAt) > nowMs) {
-    if (!handoff && session.terminalHookHandoffExpiredAt) {
+    if (
+      !handoff &&
+      !session.terminalHookLifecycleEnqueuedAt &&
+      (session.terminalHookHandoffSettled || session.terminalHookHandoffExpiredAt)
+    ) {
       const pending = noteDeferredCheckoutFailureLifecycle(state, session);
       if (pending) await pending;
     }
@@ -247,5 +251,12 @@ function noteDeferredCheckoutFailureLifecycle(
   const errorCode = session.terminalHookHandoff?.errorCode ?? session.errorCode;
   if (errorCode !== "checkout_fetch_failed") return;
   if (!state.storage || typeof state.storage.enqueue !== "function") return;
-  return enqueueSlackSessionLifecycle(state, session);
+  return enqueueSlackSessionLifecycle(state, session).then(async () => {
+    if (
+      (session.terminalHookHandoffSettled || session.terminalHookHandoffExpiredAt) &&
+      typeof state.storage?.markTerminalHookLifecycleEnqueued === "function"
+    ) {
+      await state.storage.markTerminalHookLifecycleEnqueued(session, state.now());
+    }
+  });
 }

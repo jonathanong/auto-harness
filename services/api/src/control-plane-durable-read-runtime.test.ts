@@ -558,7 +558,10 @@ describe("durable runtime read-through", () => {
         listProviders: async () => [],
         listProviderAccounts: async () => [],
         getSession: async (id: string) => (id === "running" ? { ...running } : null),
-        listSessionsByStatus: async (status: string) => (status === "running" ? [running] : []),
+        listOperationalSessions: async () => [running],
+        listSessionsByStatus: async () => {
+          throw new Error("terminal status history was queried");
+        },
       } as never,
     });
     state.sessions.set(session.id, { ...session, status: "running", hostId: "stale" });
@@ -633,8 +636,10 @@ describe("durable runtime read-through", () => {
         listCommands: async () => [],
         listProviders: async () => [],
         listProviderAccounts: async () => [account],
-        listSessionsByStatus: async (status: string) =>
-          status === "running" ? [active, cachedStale] : [],
+        listOperationalSessions: async () => [active, timedOut],
+        listSessionsByStatus: async () => {
+          throw new Error("terminal status history was queried");
+        },
         getSession: async (id: string) =>
           id === active.id
             ? { ...active }
@@ -1055,8 +1060,10 @@ describe("durable runtime read-through", () => {
         listProviders: async () => [],
         listProviderAccounts: async () => [],
         getSession: async (id: string) => (id === occupying.id ? { ...occupying } : null),
-        listSessionsByStatus: async (status: string) =>
-          status === "cancelled" ? [occupying, released] : [],
+        listOperationalSessions: async () => [occupying, released],
+        listSessionsByStatus: async () => {
+          throw new Error("terminal status history was queried");
+        },
       } as never,
     });
     state.sessions.set("stale-cancelled", {

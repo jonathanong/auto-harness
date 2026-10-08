@@ -1,4 +1,4 @@
-import { PutCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
 import {
   markerConditions,
@@ -17,6 +17,11 @@ import {
   sessionDrainActivityPut,
   sessionDrainAdmissionCheck,
 } from "./plane-storage-session-drains.ts";
+import {
+  activityPut as operationalActivityPut,
+  repositoryActivityForSession,
+} from "./plane-storage-operational-activity.ts";
+import { sessionRetentionAdmissionCheck } from "./plane-storage-session-retention.ts";
 import { sessionPrincipalId } from "../control-plane-session-owner.ts";
 import type { SessionRecord } from "./types.ts";
 import { createSessionWithConcurrency } from "./plane-storage-sessions-concurrency.ts";
@@ -58,9 +63,19 @@ function integrationSessionFenceCheck(
 
 export async function putSession(ctx: PlaneStorageCtx, session: SessionRecord): Promise<void> {
   await ctx.doc.send(
-    new PutCommand({
-      TableName: ctx.tables.sessions,
-      Item: sessionToItem(session),
+    new TransactWriteCommand({
+      TransactItems: [
+        {
+          Put: {
+            TableName: ctx.tables.sessions,
+            Item: sessionToItem(session),
+            ConditionExpression:
+              "attribute_not_exists(retentionToken) AND (attribute_not_exists(id) OR createdAt = :createdAt)",
+            ExpressionAttributeValues: { ":createdAt": session.createdAt },
+          },
+        },
+        sessionRetentionAdmissionCheck(ctx, session.id),
+      ],
     }),
   );
 }
@@ -120,12 +135,16 @@ export async function createSession(
     ? sessionDrainAdmissionCheck(ctx, session.repositoryId, sessionPrincipalId(session))
     : null;
   const activityPut = session.repositoryId ? sessionDrainActivityPut(ctx, session) : null;
+  const repositoryActivity = repositoryActivityForSession(session);
   const principalCheck = principalExistsCheck(ctx, sessionPrincipalId(session));
   const integrationCheck = integrationSessionFenceCheck(ctx, integrationFence);
   if (session.concurrencyId) {
     return createSessionWithConcurrency(ctx, session, markers, {
       drainCheck,
       activityPut,
+      repositoryActivity: repositoryActivity
+        ? operationalActivityPut(ctx, repositoryActivity)
+        : null,
       principalCheck,
       ...(parentFence ? { parentFence } : {}),
       integrationCheck,
@@ -164,6 +183,8 @@ export async function createSession(
             },
           },
           ...(activityPut ? [activityPut] : []),
+          ...(repositoryActivity ? [operationalActivityPut(ctx, repositoryActivity)] : []),
+          sessionRetentionAdmissionCheck(ctx, session.id),
         ],
       }),
     );

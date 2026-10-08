@@ -82,6 +82,11 @@ function coldState(stored: SessionRecord, outbox: Outbox, expire = false) {
     },
     enqueue: outbox.enqueue.bind(outbox),
     get: outbox.get.bind(outbox),
+    markTerminalHookLifecycleEnqueued: async (_session: SessionRecord, at: string) => {
+      expect(outbox.items.has("slack:session:session_failed:reply")).toBe(true);
+      stored.terminalHookLifecycleEnqueuedAt = at;
+      return true;
+    },
     getSlackIntegration: async () => ({
       id: "slack",
       type: "slack",
@@ -110,6 +115,7 @@ describe("deferred checkout-failure Slack lifecycle", () => {
     await expect(settleTerminalHookHandoff(state, settleInput)).resolves.toBe(true);
     await settleStorage(state);
     expect([...outbox.items.keys()]).toContain("slack:session:session_failed:reply");
+    expect(stored.terminalHookLifecycleEnqueuedAt).toBe(NOW);
     const ids = [...outbox.items.keys()];
     await expect(settleTerminalHookHandoff(state, settleInput)).resolves.toBe(true);
     await settleStorage(state);
@@ -125,12 +131,33 @@ describe("deferred checkout-failure Slack lifecycle", () => {
     ).resolves.toBe(true);
     await settleStorage(state);
     expect([...outbox.items.keys()]).toContain("slack:session:session_failed:reply");
+    expect(stored.terminalHookLifecycleEnqueuedAt).toBe(EXPIRED);
     const ids = [...outbox.items.keys()];
     await expect(
       expireTerminalHookHandoffIfNeeded(state, structuredClone(stored), Date.parse(EXPIRED)),
     ).resolves.toBe(false);
     await settleStorage(state);
     expect([...outbox.items.keys()]).toEqual(ids);
+  });
+
+  it("recovers a previously settled checkout failure without a lifecycle marker", async () => {
+    const stored = failedHandoff("checkout_fetch_failed");
+    delete stored.terminalHookHandoff;
+    delete stored.activeHostId;
+    stored.worktreeId = null;
+    stored.terminalHookHandoffSettled = { handoffId: "handoff", hostId: "host" };
+    const outbox = new Outbox();
+    const state = coldState(stored, outbox);
+    await expect(
+      expireTerminalHookHandoffIfNeeded(state, structuredClone(stored), Date.parse(NOW)),
+    ).resolves.toBe(false);
+    expect([...outbox.items.keys()]).toContain("slack:session:session_failed:reply");
+    expect(stored.terminalHookLifecycleEnqueuedAt).toBe(NOW);
+    const calls = outbox.calls;
+    await expect(
+      expireTerminalHookHandoffIfNeeded(state, structuredClone(stored), Date.parse(NOW)),
+    ).resolves.toBe(false);
+    expect(outbox.calls).toBe(calls);
   });
 
   it("leaves host-loss settlement off the Slack outbox", async () => {
@@ -140,5 +167,6 @@ describe("deferred checkout-failure Slack lifecycle", () => {
     await expect(settleTerminalHookHandoff(state, settleInput)).resolves.toBe(true);
     await settleStorage(state);
     expect(outbox.calls).toBe(0);
+    expect(stored.terminalHookLifecycleEnqueuedAt).toBeUndefined();
   });
 });

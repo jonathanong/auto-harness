@@ -81,6 +81,14 @@ describe("AutoHarnessFoundationStack", () => {
       TableName: "AutoHarness-Sessions",
       GlobalSecondaryIndexes: Match.arrayWith([
         {
+          IndexName: "statusShard-completedAt",
+          KeySchema: [
+            { AttributeName: "statusShard", KeyType: "HASH" },
+            { AttributeName: "completedAt", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "KEYS_ONLY" },
+        },
+        {
           IndexName: "statusShard-createdAt",
           KeySchema: [
             { AttributeName: "statusShard", KeyType: "HASH" },

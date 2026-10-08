@@ -14,6 +14,7 @@ import {
 import { providerAccountLastAssignedTransactItem } from "./plane-storage-provider-account-assignment.ts";
 import type { HostAssignmentLease } from "./plane-storage-host-assignment.ts";
 import { sessionDrainAdmissionCheck } from "./plane-storage-session-drains.ts";
+import { activeActivityForAssignment, activityPut } from "./plane-storage-operational-activity.ts";
 export {
   confirmMainCheckoutReconnect,
   markMainCheckoutReconnectPending,
@@ -74,6 +75,7 @@ export async function tryAssignMainCheckoutSession(
   const lease = { sessionId: opts.sessionId, connectionId: opts.connectionId };
   const hostAssignmentLease = opts.hostAssignmentLease ?? { hostId: opts.hostId };
   const drainCheck = sessionDrainAdmissionCheck(ctx, opts.repositoryId, opts.principalId);
+  const activityWrite = activityPut(ctx, activeActivityForAssignment(opts));
   const transactItems = [
     {
       ConditionCheck: {
@@ -181,6 +183,7 @@ export async function tryAssignMainCheckoutSession(
         },
       },
     },
+    activityWrite,
     ...(opts.providerAccountId
       ? [
           providerAccountLastAssignedTransactItem(ctx, {

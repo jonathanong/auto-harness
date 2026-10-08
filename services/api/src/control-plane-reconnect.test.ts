@@ -192,7 +192,7 @@ describe("reconnect reconciliation", () => {
     const finishSession = vi.fn(async () => true);
     plane.state.workspaceSlots.set(slot.id, slot);
     plane.state.storage = {
-      listAllSessions: async () => [session],
+      listOperationalRecoveryPage: async () => [session],
       getWorkspaceSlot: async () => slot,
       getHostLock: async () => null,
       finishSession,
@@ -312,7 +312,7 @@ describe("reconnect reconciliation", () => {
     const calls: string[] = [];
     plane.state.storage = {
       listActiveSessionsByHost: async () => [session],
-      listAllSessions: async () => [session],
+      listOperationalRecoveryPage: async () => [session],
       getSession: async () => session,
       getWorktree: async () => worktree,
       getHostLock: async () => null,
@@ -365,7 +365,7 @@ describe("reconnect reconciliation", () => {
     const calls: Array<Record<string, unknown>> = [];
     plane.state.storage = {
       listActiveSessionsByHost: async () => [reported, omitted, failed],
-      listAllSessions: async () => [
+      listOperationalRecoveryPage: async () => [
         reported,
         omitted,
         failed,
@@ -398,7 +398,7 @@ describe("reconnect reconciliation", () => {
     const worktree = durableWorktree("wt", terminal.id);
     let finishOptions: Record<string, unknown> | undefined;
     plane.state.storage = {
-      listAllSessions: async () => [terminal],
+      listOperationalRecoveryPage: async () => [terminal],
       getWorktree: async () => worktree,
       getHostLock: async () => "replacement-connection",
       finishSession: async (options: Record<string, unknown>) => {
@@ -1548,7 +1548,7 @@ describe("reconnect reconciliation", () => {
 
     const missing = new ControlPlane();
     missing.state.storage = {
-      listAllSessions: async () => [
+      listOperationalRecoveryPage: async () => [
         durableRunning("orphan", "missing"),
         { ...durableRunning("no-host", "w"), hostId: null },
       ],
@@ -1572,7 +1572,7 @@ describe("reconnect reconciliation", () => {
     };
     delete scheduled.assignmentConnectionId;
     plane.state.storage = {
-      listAllSessions: async () => [scheduled],
+      listOperationalRecoveryPage: async () => [scheduled],
       getWorktree: async (id: string) => {
         expect(id).toBe("");
         return null;
@@ -1591,7 +1591,7 @@ describe("reconnect reconciliation", () => {
     const worktree = durableWorktree("wt", terminal.id);
     let finishOptions: Record<string, unknown> | undefined;
     plane.state.storage = {
-      listAllSessions: async () => [terminal],
+      listOperationalRecoveryPage: async () => [terminal],
       getWorktree: async () => worktree,
       getHostLock: async () => null,
       finishSession: async (options: Record<string, unknown>) => {
@@ -1613,7 +1613,7 @@ describe("reconnect reconciliation", () => {
       primaryCommandStartState: "authorized" as const,
     };
     plane.state.storage = {
-      listAllSessions: async () => [terminal],
+      listOperationalRecoveryPage: async () => [terminal],
       getWorktree: async () => durableWorktree("wt", terminal.id),
       getHostLock: async () => null,
     } as never;

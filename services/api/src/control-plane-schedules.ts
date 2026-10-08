@@ -5,6 +5,7 @@ import {
   isReservedConcurrencyId,
   isValidScheduledBranchRef,
   isValidUtcTimestamp,
+  MAX_SCHEDULE_FALLBACKS,
   nextCronOccurrence,
   validateTargetRouting,
 } from "@auto-harness/shared";
@@ -72,7 +73,7 @@ function preparePutSchedule(
   if (!nextRunAt) {
     return { ok: false, error: "cron must be a valid five-field UTC expression" };
   }
-  const routing = validateTargetRouting(input);
+  const routing = validateTargetRouting(input, MAX_SCHEDULE_FALLBACKS);
   if (!routing.ok) return routing;
   const displayNames = resolveTargetDisplayNames(
     state,
@@ -244,11 +245,14 @@ export function prepareUpdateSchedule(
   }
   const concurrencyIdBytes = concurrencyIdByteLengthError(concurrencyId);
   if (concurrencyIdBytes) return { ok: false, error: concurrencyIdBytes };
-  const routing = validateTargetRouting({
-    target: patch.target ?? existing.target,
-    fallbacks: patch.fallbacks ?? existing.fallbacks,
-    queueTtlSeconds: patch.queueTtlSeconds ?? existing.queueTtlSeconds,
-  });
+  const routing = validateTargetRouting(
+    {
+      target: patch.target ?? existing.target,
+      fallbacks: patch.fallbacks ?? existing.fallbacks,
+      queueTtlSeconds: patch.queueTtlSeconds ?? existing.queueTtlSeconds,
+    },
+    MAX_SCHEDULE_FALLBACKS,
+  );
   if (!routing.ok) return routing;
   const displayNames = resolveTargetDisplayNames(
     state,

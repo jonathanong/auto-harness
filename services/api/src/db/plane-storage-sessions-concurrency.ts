@@ -23,6 +23,8 @@ import {
   sessionDrainActivityPut,
   sessionDrainAdmissionCheck,
 } from "./plane-storage-session-drains.ts";
+import type { activityPut } from "./plane-storage-operational-activity.ts";
+import { sessionRetentionAdmissionCheck } from "./plane-storage-session-retention.ts";
 import type { SessionRecord } from "./types.ts";
 import { getSession } from "./plane-storage-sessions-query.ts";
 import {
@@ -42,6 +44,7 @@ const MAX_CREATE_SESSION_ATTEMPTS = 3;
 type CreateSessionAdmissionParts = {
   drainCheck: ReturnType<typeof sessionDrainAdmissionCheck>;
   activityPut: ReturnType<typeof sessionDrainActivityPut>;
+  repositoryActivity: ReturnType<typeof activityPut> | null;
   principalCheck: ReturnType<typeof principalExistsCheck>;
   parentFence?: { id: string; rootSessionId?: string; sessionApiKeyHash?: string };
   integrationCheck?: NonNullable<TransactWriteCommandInput["TransactItems"]>[number] | undefined;
@@ -124,7 +127,7 @@ async function throwIfCreateAdmissionConflict(
   const rootBudgetIndex =
     parts.parentFence?.rootSessionId === undefined
       ? undefined
-      : lockIndex + 2 + Number(!!parts.activityPut);
+      : lockIndex + 2 + Number(!!parts.activityPut) + Number(!!parts.repositoryActivity);
   const markerFailed =
     markers.length > 0 &&
     Array.from({ length: markers.length }, (_, index) => index).some((index) =>
@@ -333,11 +336,13 @@ export async function createSessionWithConcurrency(
     Number(!!integrationCheck) +
     2 +
     Number(!!activityPut) +
-    Number(!!rootBudgetUpdate);
+    Number(!!parts.repositoryActivity) +
+    Number(!!rootBudgetUpdate) +
+    1;
   if (fixedActionCount > 100) {
     throw new Error("child session admission exceeds DynamoDB's 100 transaction action limit");
   }
-  const rootBudgetIndex = fixedActionCount - Number(!!rootBudgetUpdate);
+  const rootBudgetIndex = fixedActionCount - Number(!!rootBudgetUpdate) - 1;
   const lockIndex =
     markerChecks.length +
     Number(!!principalCheck) +
@@ -387,7 +392,9 @@ export async function createSessionWithConcurrency(
               },
             },
             ...(activityPut ? [activityPut] : []),
+            ...(parts.repositoryActivity ? [parts.repositoryActivity] : []),
             ...(rootBudgetUpdate ? [rootBudgetUpdate] : []),
+            sessionRetentionAdmissionCheck(ctx, session.id),
           ],
         }),
       );

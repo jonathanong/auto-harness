@@ -8,6 +8,7 @@ import {
   AutoHarnessFoundationStack,
   type SessionCreatedOrderIndexStage,
   type SessionPriorityIndexStage,
+  type SessionRetentionIndexStage,
 } from "./foundation-stack.ts";
 import { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
 import { resolveSentryRelease, sentryEnabled } from "./sentry-release.ts";
@@ -38,6 +39,12 @@ function sessionCreatedOrderIndexStage(value: string | undefined): SessionCreate
   if (value === undefined || value === "status") return "status";
   if (value === "none") return value;
   throw new Error("sessionCreatedOrderIndexStage context must be none or status");
+}
+
+function sessionRetentionIndexStage(value: string | undefined): SessionRetentionIndexStage {
+  if (value === undefined || value === "status") return "status";
+  if (value === "none") return value;
+  throw new Error("sessionRetentionIndexStage context must be none or status");
 }
 
 /** Purge-only. See FoundationStackProps.existingGsiNamesByTable in foundation-stack.ts. */
@@ -75,6 +82,9 @@ const stack = new AutoHarnessFoundationStack(
     ),
     sessionCreatedOrderIndexStage: sessionCreatedOrderIndexStage(
       contextString(app, "sessionCreatedOrderIndexStage"),
+    ),
+    sessionRetentionIndexStage: sessionRetentionIndexStage(
+      contextString(app, "sessionRetentionIndexStage"),
     ),
     tablePrefix,
   },

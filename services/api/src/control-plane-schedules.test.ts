@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
+import { MAX_SCHEDULE_FALLBACKS } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
 import { putScheduleOrThrow, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
@@ -85,6 +86,30 @@ describe("schedule routing policy", () => {
     ).toBe(false);
     const saved = putScheduleOrThrow(plane, { ...base, target: { commandId: "cmd-base" } });
     expect(plane.updateSchedule(saved.id, { fallbacks: "not-an-array" }).ok).toBe(false);
+  });
+
+  it("rejects a schedule whose fallbacks would exceed Dynamo's transaction budget", () => {
+    const plane = new ControlPlane();
+    seedBaseCommand(plane);
+    const input = {
+      repositoryId: "repo-1",
+      name: "bounded",
+      target: { commandId: "cmd-base" },
+      cron: "* * * * *",
+      timeout: 30,
+    };
+    const tooMany = Array.from({ length: MAX_SCHEDULE_FALLBACKS + 1 }, (_, index) => ({
+      commandId: `fallback-${index}`,
+    }));
+    expect(plane.putSchedule({ ...input, fallbacks: tooMany })).toEqual({
+      ok: false,
+      error: `fallbacks must have at most ${MAX_SCHEDULE_FALLBACKS} entries`,
+    });
+    const saved = putScheduleOrThrow(plane, input);
+    expect(plane.updateSchedule(saved.id, { fallbacks: tooMany })).toEqual({
+      ok: false,
+      error: `fallbacks must have at most ${MAX_SCHEDULE_FALLBACKS} entries`,
+    });
   });
 
   it("copies ordered target policy and a fresh TTL to every fire", () => {

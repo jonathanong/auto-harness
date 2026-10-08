@@ -64,6 +64,12 @@ export const DYNAMO_TABLES: TableDef[] = [
     partitionKey: { name: "id", type: "S" },
     gsis: [
       {
+        name: "statusShard-completedAt",
+        partitionKey: { name: "statusShard", type: "S" },
+        sortKey: { name: "completedAt", type: "S" },
+        projectionType: "KEYS_ONLY",
+      },
+      {
         // Sharded queue: status#shard → createdAt (legacy FIFO; keep until queueOrder is populated)
         name: "statusShard-createdAt",
         partitionKey: { name: "statusShard", type: "S" },
@@ -115,6 +121,7 @@ export const DYNAMO_TABLES: TableDef[] = [
   },
   {
     name: "SessionDrains",
+    ttlAttribute: "ttl",
     partitionKey: { name: "scopeKey", type: "S" },
     sortKey: { name: "recordKey", type: "S" },
   },

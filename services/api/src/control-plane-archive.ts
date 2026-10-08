@@ -5,6 +5,7 @@ import type { SessionArchiveReadResponse } from "@auto-harness/shared";
 import type { ArchiveWriteResult } from "./archive-writer.ts";
 import { persistExpiredArchive, archiveRetentionElapsed } from "./control-plane-archive-expire.ts";
 import { readSessionLogObjects, serializeLogRecordLine } from "./session-log-objects.ts";
+import { assertSessionLogWritesAllowed } from "./session-log-write-fence.ts";
 import {
   archiveGeneration,
   isCompleteStoredArchive,
@@ -37,7 +38,9 @@ async function rewriteWinningArchive(
   if (!isCompleteStoredArchive(current) || current.versionId) return;
   const expected = archiveGeneration(current);
   const body = await archiveBody(state, sessionId);
-  const result = await state.archiveWriter?.putArchive({
+  const putArchive = state.archiveWriter?.putArchive;
+  if (putArchive) await assertSessionLogWritesAllowed(state, sessionId);
+  const result = await putArchive?.call(state.archiveWriter, {
     key,
     body,
     contentType: current.contentType,
@@ -191,6 +194,7 @@ export async function archiveSessionLogs(
       if (!recorded) return object;
     }
   }
+  await assertSessionLogWritesAllowed(state, sessionId);
   const writeResult = await state.archiveWriter.putArchive(object);
   const versionId = archiveVersionId(writeResult);
   if (replacement && !ownedRetry) {

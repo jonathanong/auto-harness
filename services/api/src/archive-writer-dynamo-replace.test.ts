@@ -6,9 +6,31 @@ import { createDynamoTestCtx } from "../test-helpers/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("ArcRp");
 
+async function seedCompletedSession(id: string): Promise<void> {
+  if (!ctx.storage) return;
+  await ctx.storage.putSession({
+    id,
+    repositoryId: "repo",
+    prompt: "prompt",
+    target: { commandId: "command" },
+    fallbacks: [],
+    targetDisplayNames: ["command"],
+    queueTtlSeconds: 60,
+    queueExpiresAt: "2026-01-01T00:00:00.000Z",
+    timeout: 60,
+    priority: 0,
+    requiredLabels: [],
+    status: "completed",
+    queueShard: 0,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    completedAt: "2026-01-01T00:00:00.000Z",
+  });
+}
+
 describe("complete archive replacement with real DynamoDB Local", () => {
   it("leaves the last complete archive when replacement upload fails", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
+    await seedCompletedSession("session-replace-fail");
     const key = "sessions/session-replace-fail/logs.jsonl.gz";
     await ctx.storage.putArchive({
       key,
@@ -39,6 +61,7 @@ describe("complete archive replacement with real DynamoDB Local", () => {
 
   it("publishes replacement metadata only after the new version is stored", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
+    await seedCompletedSession("session-replace-ok");
     const key = "sessions/session-replace-ok/logs.jsonl.gz";
     await ctx.storage.putArchive({
       key,

@@ -387,7 +387,7 @@ describe("assignment residual coverage", () => {
       assignmentSentAt: NOW,
     });
     setDurableReadStorage(state, {
-      listAllSessions: async () => [row],
+      listOperationalRecoveryPage: async () => [row],
       tryRequeueSession: async () => true,
     });
 
@@ -403,7 +403,7 @@ describe("assignment residual coverage", () => {
       assignmentSentAt: NOW,
     });
     setDurableReadStorage(hostlessPrompt, {
-      listAllSessions: async () => [hostlessRow],
+      listOperationalRecoveryPage: async () => [hostlessRow],
       tryRequeueSession: async () => true,
     });
     await expect(enforceAckDeadlinesDurable(hostlessPrompt, Date.parse(NOW) + 2)).resolves.toEqual(

@@ -108,6 +108,24 @@ read_ledger_key() {
   return 1
 }
 
+read_operational_ledger_key() {
+  local output status
+  set +e
+  output="$(aws dynamodb get-item \
+    --region "$AWS_REGION" \
+    --table-name "$ledger_table" \
+    --consistent-read \
+    --key '{"scopeKey":{"S":"__operational-activity#v2#ready"},"recordKey":{"S":"READY"}}' \
+    --query 'Item.recordType.S' \
+    --output text 2>&1)"
+  status=$?
+  set -e
+  if [[ "$status" -eq 0 ]]; then printf '%s' "$output"; return 0; fi
+  if [[ "$output" == *"ResourceNotFoundException"* ]]; then return 0; fi
+  echo "Could not inspect the operational activity ledger: $output" >&2
+  return 1
+}
+
 read_priority_order_key() {
   local output status
   set +e
@@ -323,6 +341,7 @@ verify_no_active_sessions() {
 }
 
 ledger_record_key="$(read_ledger_key)"
+operational_ledger_record_type="$(read_operational_ledger_key)"
 priority_order_record_key="$(read_priority_order_key)"
 sessions_table_state="$(read_sessions_table_state)"
 if [[ "$sessions_table_state" != "MISSING" ]]; then
@@ -333,13 +352,23 @@ if [[ "$sessions_table_state" != "MISSING" ]]; then
   fi
 fi
 needs_ledger=0
+needs_operational_ledger=0
 needs_priority_order=0
 needs_created_order_index=0
+needs_retention_index=0
 if [[ "$ledger_record_key" != "ACTIVITY-V1" ]]; then needs_ledger=1; fi
+if [[ "$operational_ledger_record_type" != "operational-activity-ready-v2" ]]; then needs_operational_ledger=1; fi
 if [[ "$priority_order_record_key" != "READY-V2" ]]; then needs_priority_order=1; fi
 created_order_index_state="$(session_priority_index_state "statusShard-createdOrder")"
 if [[ "$created_order_index_state" != "ACTIVE" ]]; then needs_created_order_index=1; fi
-if [[ "$needs_ledger" -eq 0 && "$needs_priority_order" -eq 0 && "$needs_created_order_index" -eq 0 ]]; then
+retention_index_state="$(session_priority_index_state "statusShard-completedAt")"
+if [[ "$retention_index_state" != "ACTIVE" ]]; then needs_retention_index=1; fi
+if [[ "$retention_index_state" == "ACTIVE" ]]; then
+  export HARNESS_DEPLOY_RETENTION_INDEX_STAGE=status
+else
+  export HARNESS_DEPLOY_RETENTION_INDEX_STAGE=none
+fi
+if [[ "$needs_ledger" -eq 0 && "$needs_operational_ledger" -eq 0 && "$needs_priority_order" -eq 0 && "$needs_created_order_index" -eq 0 && "$needs_retention_index" -eq 0 ]]; then
   pnpm --filter @auto-harness/cdk run update
   exit 0
 fi
@@ -370,6 +399,9 @@ write_readiness_marker() {
 }
 
 run_session_migrations() {
+  if [[ "$needs_retention_index" -eq 1 ]]; then
+    wait_for_session_priority_index "statusShard-completedAt"
+  fi
   if [[ "$needs_ledger" -eq 1 ]]; then
     write_readiness_marker "__session-drain-ledger__" "ACTIVITY-V1" "activity-ledger-v1"
   fi
@@ -377,6 +409,16 @@ run_session_migrations() {
   record_key="$(read_ledger_key)"
   if [[ "$record_key" != "ACTIVITY-V1" ]]; then
     echo "AWS update completed, but the activity-ledger readiness marker was not published; keep external admission disabled and investigate." >&2
+    return 1
+  fi
+  if [[ "$needs_operational_ledger" -eq 1 ]]; then
+    HARNESS_MIGRATION_SESSIONS_TABLE="$sessions_table" \
+      HARNESS_MIGRATION_DRAINS_TABLE="$ledger_table" \
+      node services/api/scripts/migrate-operational-ledger.mts
+  fi
+  operational_ledger_record_type="$(read_operational_ledger_key)"
+  if [[ "$operational_ledger_record_type" != "operational-activity-ready-v2" ]]; then
+    echo "Operational activity backfill has not published readiness; keep external admission and cron disabled." >&2
     return 1
   fi
   if [[ "$needs_priority_order" -eq 1 ]]; then
@@ -478,6 +520,14 @@ if [[ "$needs_created_order_index" -eq 1 ]]; then
   wait_for_session_priority_index "statusShard-createdOrder"
 fi
 
+if [[ "$needs_retention_index" -eq 1 ]]; then
+  # CloudFormation owns the retention index in a separate Foundation update.
+  if [[ "$retention_index_state" == "None" || -z "$retention_index_state" ]]; then
+    pnpm --filter @auto-harness/cdk run retention-index
+  fi
+  wait_for_session_priority_index "statusShard-completedAt"
+fi
+
 if ! pnpm --filter @auto-harness/cdk run update; then
   set +e
   recovery_rule="$(resolve_cron_rule_optional)"
@@ -496,10 +546,7 @@ if ! pnpm --filter @auto-harness/cdk run update; then
 fi
 
 cron_rule="$(resolve_cron_rule)"
-if [[ "$scheduler_fenced" -eq 1 ]]; then
-  scheduler_function="$(resolve_scheduler_function)"
-  restore_scheduler_concurrency
-fi
+if [[ "$scheduler_fenced" -eq 1 ]]; then scheduler_function="$(resolve_scheduler_function)"; fi
 rule_restore_pending=0
 # Invoked indirectly by the EXIT trap below.
 # shellcheck disable=SC2329
@@ -528,5 +575,6 @@ if [[ -n "$original_rule_state" ]]; then
   trap restore_original_rule_on_exit EXIT
 fi
 run_session_migrations
+if [[ "$scheduler_fenced" -eq 1 ]]; then restore_scheduler_concurrency; fi
 finish_rule_restoration
 echo "AWS update complete; session-drain ledger and priority-order index are ready."

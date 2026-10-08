@@ -8,6 +8,7 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it, vi } from "vitest";
+import { MAX_SCHEDULE_FALLBACKS } from "@auto-harness/shared";
 
 import { SESSION_LOGS_TTL_SECONDS } from "./dynamo.ts";
 import {
@@ -31,6 +32,7 @@ import {
   completeArchiveRetry,
   expireArchive,
   listPendingArchives,
+  putArchive,
   recordArchiveRetryCapture,
   releaseArchiveRetry,
   replaceCompleteArchive,
@@ -51,7 +53,10 @@ const archive = {
 };
 
 function archiveCtx(send: (command: unknown) => Promise<unknown>): PlaneStorageCtx {
-  return { doc: { send } as never, tables: { archives: "Archives" } as never };
+  return {
+    doc: { send } as never,
+    tables: { archives: "Archives", sessionDrains: "SessionDrains" } as never,
+  };
 }
 
 function logCtx(send: (command: unknown) => Promise<unknown>): PlaneStorageCtx {
@@ -100,6 +105,28 @@ function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorage
 }
 
 describe("archive retry storage", () => {
+  it("writes expired session archive metadata behind the deletion fence", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const expired = { ...archive, status: "expired" as const, objectStored: false };
+    await putArchive(archiveCtx(send), expired);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: {
+          TransactItems: [
+            {
+              ConditionCheck: {
+                TableName: "SessionDrains",
+                Key: { scopeKey: "__retention#v1#deleted", recordKey: "session" },
+                ConditionExpression: "attribute_not_exists(scopeKey)",
+              },
+            },
+            { Put: { TableName: "Archives", Item: expired } },
+          ],
+        },
+      }),
+    );
+  });
+
   it("lists the oldest pending and stale-processing rows through the retry index", async () => {
     const send = vi
       .fn()
@@ -578,7 +605,7 @@ describe("durable schedule creation", () => {
           principalId: "principal-1",
           prompt: "scheduled",
           target: { commandId: "command-1" },
-          fallbacks: Array.from({ length: 91 }, (_, index) => ({
+          fallbacks: Array.from({ length: MAX_SCHEDULE_FALLBACKS + 1 }, (_, index) => ({
             commandId: `legacy-${index}`,
           })),
           targetDisplayNames: [],
@@ -592,8 +619,48 @@ describe("durable schedule creation", () => {
           createdAt: "now",
         },
       }),
-    ).resolves.toEqual({ kind: "legacy_fallbacks", fallbackCount: 91 });
+    ).resolves.toEqual({
+      kind: "legacy_fallbacks",
+      fallbackCount: MAX_SCHEDULE_FALLBACKS + 1,
+    });
     expect(calls).toBe(0);
+  });
+
+  it("fits the maximal schedule with distinct references in one Dynamo transaction", async () => {
+    let input: TransactWriteCommandInput | undefined;
+    const storage = scheduleCtx(async (command) => {
+      input = (command as TransactWriteCommand).input;
+      return {};
+    });
+    await expect(
+      tryClaimScheduleAndCreateSession(storage, {
+        scheduleId: "schedule-1",
+        expectedNextRunAt: "one",
+        newNextRunAt: "two",
+        lastRunAt: "one",
+        session: {
+          id: "max-fallback-session",
+          repositoryId: "repo-1",
+          principalId: "principal-1",
+          prompt: "scheduled",
+          target: { commandId: "primary" },
+          fallbacks: Array.from({ length: MAX_SCHEDULE_FALLBACKS }, (_, index) => ({
+            commandId: `fallback-${index}`,
+          })),
+          targetDisplayNames: [],
+          queueTtlSeconds: 60,
+          queueExpiresAt: "later",
+          timeout: 30,
+          priority: 0,
+          requiredLabels: [],
+          status: "queued",
+          queueShard: 0,
+          createdAt: "one",
+          concurrencyId: "schedule-1",
+        },
+      }),
+    ).resolves.toEqual({ kind: "created" });
+    expect(input?.TransactItems).toHaveLength(100);
   });
 
   it("fences a workspace schedule claim with its workspace pool marker", async () => {
@@ -678,7 +745,9 @@ describe("durable schedule creation", () => {
           UpdateExpression: "SET enabled = :false",
           ConditionExpression:
             "nextRunAt = :expectedNextRunAt AND enabled = :true AND size(fallbacks) > :maxFallbacks",
-          ExpressionAttributeValues: expect.objectContaining({ ":maxFallbacks": 90 }),
+          ExpressionAttributeValues: expect.objectContaining({
+            ":maxFallbacks": MAX_SCHEDULE_FALLBACKS,
+          }),
         }),
       }),
       expect.objectContaining({
@@ -987,17 +1056,6 @@ describe("durable schedule creation", () => {
   });
 
   it("returns a live concurrency holder and releases a stale lock", async () => {
-    const lockFailure = {
-      name: "TransactionCanceledException",
-      CancellationReasons: [
-        { Code: "None" },
-        { Code: "None" },
-        { Code: "None" },
-        { Code: "None" },
-        { Code: "None" },
-        { Code: "ConditionalCheckFailed" },
-      ],
-    };
     const queued = {
       id: "holder",
       repositoryId: "repo-1",
@@ -1025,7 +1083,17 @@ describe("durable schedule creation", () => {
               }
               return { Item: { ...queued, status } };
             }
-            if (command instanceof TransactWriteCommand) throw lockFailure;
+            if (command instanceof TransactWriteCommand) {
+              const items = command.input.TransactItems ?? [];
+              const lockIndex = items.findIndex((item) => item.Put?.TableName === "Locks");
+              expect(lockIndex).toBeGreaterThanOrEqual(0);
+              throw {
+                name: "TransactionCanceledException",
+                CancellationReasons: items.map((_, index) => ({
+                  Code: index === lockIndex ? "ConditionalCheckFailed" : "None",
+                })),
+              };
+            }
             return {};
           },
         } as never,

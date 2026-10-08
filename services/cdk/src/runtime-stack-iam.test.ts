@@ -45,7 +45,7 @@ function policyActions(template: Template, handler: string): string[] {
 }
 
 describe("runtime Lambda IAM split", () => {
-  it("gives archive writes to REST and Cron, version-pinned reads to REST, part reads to Cron, and KMS encrypt to REST", () => {
+  it("gives Cron version-deletion access only under sessions and keeps archive reads split", () => {
     const template = runtimeTemplate();
     const restRole = roleLogicalId(template, "index.rest");
     const cronRole = roleLogicalId(template, "index.cron");
@@ -67,7 +67,12 @@ describe("runtime Lambda IAM split", () => {
     expect(cron).not.toContain("kms:Encrypt");
     expect(cron).toContain("s3:GetObject");
     expect(cron).toContain("s3:ListBucket");
+    expect(cron).toContain("s3:DeleteObjectVersion");
+    expect(cron).toContain("s3:ListBucketVersions");
     expect(cron).not.toContain("s3:GetObjectVersion");
+    expect(cron).not.toContain("s3:DeleteObject");
+    expect(rest).not.toContain("s3:DeleteObjectVersion");
+    expect(rest).not.toContain("s3:ListBucketVersions");
     expect(websocket).not.toContain("kms:Encrypt");
     expect(websocket).not.toContain("s3:GetObject");
     expect(websocket).not.toContain("s3:GetObjectVersion");
@@ -77,6 +82,21 @@ describe("runtime Lambda IAM split", () => {
       return Array.isArray(action) && action.includes("s3:GetObjectVersion");
     }) as { Resource?: unknown } | undefined;
     expect(JSON.stringify(archiveRead?.Resource)).toContain("sessions/*");
+
+    const cronVersionDelete = policyDocuments(template, "index.cron").filter((statement) => {
+      const action = (statement as { Action?: string | string[] }).Action;
+      return action === "s3:DeleteObjectVersion";
+    }) as Array<{ Resource?: unknown }>;
+    expect(cronVersionDelete).toHaveLength(1);
+    expect(JSON.stringify(cronVersionDelete[0]?.Resource)).toContain("sessions/*");
+    expect(JSON.stringify(cronVersionDelete[0]?.Resource)).not.toBe('"*"');
+
+    const cronVersionList = policyDocuments(template, "index.cron").filter((statement) => {
+      const action = (statement as { Action?: string | string[] }).Action;
+      return action === "s3:ListBucketVersions";
+    }) as Array<{ Resource?: unknown; Condition?: unknown }>;
+    expect(cronVersionList).toHaveLength(1);
+    expect(JSON.stringify(cronVersionList[0]?.Condition)).toContain('"s3:prefix":["sessions/*"]');
 
     const websocketFn = functionByHandler(template, "index.websocket");
     expect(websocketFn?.Properties?.Environment?.Variables?.KMS_KEY_ID).toBeUndefined();

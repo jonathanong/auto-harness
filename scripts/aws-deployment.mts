@@ -9,6 +9,7 @@ import { runDeployment } from "../services/cdk/src/deployment.ts";
 import {
   applySessionCreatedOrderIndexStage,
   applySessionPriorityIndexStage,
+  applySessionRetentionIndexStage,
 } from "../services/cdk/src/deployment-support.ts";
 import type {
   DeploymentDependencies,
@@ -17,14 +18,20 @@ import type {
 
 function operation(
   value: string | undefined,
-): DeploymentOperation | "priority-index-status" | "priority-index-both" | "created-order-index" {
+):
+  | DeploymentOperation
+  | "priority-index-status"
+  | "priority-index-both"
+  | "created-order-index"
+  | "retention-index" {
   if (value === "deploy" || value === "update" || value === "teardown" || value === "purge") {
     return value;
   }
   if (value === "priority-index-status" || value === "priority-index-both") return value;
   if (value === "created-order-index") return value;
+  if (value === "retention-index") return value;
   throw new Error(
-    "usage: aws-deployment.mts <deploy|update|teardown|purge|priority-index-status|priority-index-both|created-order-index>",
+    "usage: aws-deployment.mts <deploy|update|teardown|purge|priority-index-status|priority-index-both|created-order-index|retention-index>",
   );
 }
 
@@ -63,9 +70,16 @@ try {
       config,
       dependencies,
       selected === "priority-index-status" ? "status" : "both",
+      process.env.HARNESS_DEPLOY_RETENTION_INDEX_STAGE === "status" ? "status" : "none",
     );
   } else if (selected === "created-order-index") {
-    await applySessionCreatedOrderIndexStage(deploymentConfig("update"), dependencies);
+    await applySessionCreatedOrderIndexStage(
+      deploymentConfig("update"),
+      dependencies,
+      process.env.HARNESS_DEPLOY_RETENTION_INDEX_STAGE === "status" ? "status" : "none",
+    );
+  } else if (selected === "retention-index") {
+    await applySessionRetentionIndexStage(deploymentConfig("update"), dependencies);
   } else {
     await runDeployment(selected, deploymentConfig(selected), dependencies);
   }

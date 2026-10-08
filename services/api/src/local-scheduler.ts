@@ -19,6 +19,7 @@ type SchedulerPlane = Pick<
 >;
 
 export type LocalSchedulerOptions = {
+  retentionSweep?: () => Promise<unknown>;
   /** Defaults to the production cron cadence (one minute). */
   intervalMs?: number;
   /** Observes a failed operation; the next operation and later ticks still run. */
@@ -39,11 +40,13 @@ export class LocalScheduler {
   private timer: ReturnType<typeof setInterval> | undefined;
   private inFlight: Promise<void> | undefined;
   private started = false;
+  private readonly retentionSweep: (() => Promise<unknown>) | undefined;
 
   constructor(plane: SchedulerPlane, options: LocalSchedulerOptions = {}) {
     this.plane = plane;
     this.intervalMs = options.intervalMs ?? DEFAULT_LOCAL_SCHEDULER_INTERVAL_MS;
     this.onError = options.onError ?? reportSchedulerError;
+    this.retentionSweep = options.retentionSweep;
     if (!Number.isFinite(this.intervalMs) || this.intervalMs <= 0) {
       throw new RangeError("local scheduler intervalMs must be a positive finite number");
     }
@@ -88,6 +91,7 @@ export class LocalScheduler {
       () => this.plane.reconcileRepositoryDrainsDurable(),
       () => this.plane.reconcileSessionDrainsDurable(),
       () => this.plane.requestAssignment({ fullScan: true }),
+      ...(this.retentionSweep ? [this.retentionSweep] : []),
     ];
     for (const step of steps) {
       if (!this.started) return;

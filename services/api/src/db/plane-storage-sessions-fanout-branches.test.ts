@@ -97,7 +97,14 @@ describe("durable child admission branches", () => {
       await expect(
         createSession(
           context(async (command) => {
-            if (command instanceof TransactWriteCommand) throw cancelled(3);
+            if (command instanceof TransactWriteCommand) {
+              const budgetIndex =
+                command.input.TransactItems?.findIndex((item) =>
+                  item.Update?.UpdateExpression?.includes("descendantCount"),
+                ) ?? -1;
+              expect(budgetIndex).toBeGreaterThanOrEqual(0);
+              throw cancelled(budgetIndex);
+            }
             if (command instanceof GetCommand && command.input.TableName === "Sessions") {
               return parent ? { Item: parent } : {};
             }

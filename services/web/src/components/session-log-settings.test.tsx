@@ -23,7 +23,7 @@ describe("SessionLogSettingsForm", () => {
     vi.unstubAllGlobals();
   });
 
-  it("loads defaults and saves an upload-mode change", async () => {
+  it("loads defaults and saves upload and retention changes", async () => {
     const request = createRequestFake(
       json({
         uploadMode: "off",
@@ -31,6 +31,7 @@ describe("SessionLogSettingsForm", () => {
         batchMaxLines: 500,
         batchMaxWaitMs: 60_000,
         controlPlanePollMs: 60_000,
+        sessionRetentionDays: 30,
         version: 0,
       }),
       json({
@@ -39,6 +40,7 @@ describe("SessionLogSettingsForm", () => {
         batchMaxLines: 500,
         batchMaxWaitMs: 60_000,
         controlPlanePollMs: 60_000,
+        sessionRetentionDays: 30,
         version: 1,
       }),
     );
@@ -47,15 +49,24 @@ describe("SessionLogSettingsForm", () => {
     await settle();
     const mode = field<HTMLSelectElement>(view.container, "session-log-upload-mode");
     expect(mode.value).toBe("off");
+    expect(field<HTMLInputElement>(view.container, "session-retention-days").value).toBe("30");
+    expect(view.container.textContent).toContain("sessions cannot be resumed or cloned");
     await act(async () => {
       mode.value = "always";
       mode.dispatchEvent(new Event("change", { bubbles: true }));
+      const retention = field<HTMLInputElement>(view.container, "session-retention-days");
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setValue?.call(retention, "45");
+      retention.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act(async () => {
       field<HTMLButtonElement>(view.container, "session-log-settings-save").click();
     });
     await settle();
     expect(request.requests.at(-1)?.[1]?.method).toBe("PUT");
+    expect(JSON.parse(String(request.requests.at(-1)?.[1]?.body))).toMatchObject({
+      sessionRetentionDays: 45,
+    });
     view.unmount();
   });
 
@@ -101,6 +112,7 @@ describe("SessionLogSettingsForm", () => {
         batchMaxLines: 500,
         batchMaxWaitMs: 60_000,
         controlPlanePollMs: 60_000,
+        sessionRetentionDays: 30,
         version: 0,
       }),
       new Response(null, { status: 500 }),
@@ -139,6 +151,7 @@ describe("SessionLogSettingsForm", () => {
         batchMaxLines: 500,
         batchMaxWaitMs: 60_000,
         controlPlanePollMs: 60_000,
+        sessionRetentionDays: 30,
         version: 0,
       }),
       async () => {

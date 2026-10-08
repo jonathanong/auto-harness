@@ -9,7 +9,7 @@ import type {
   ProviderAccount,
   ProviderAccountReadiness,
   RepositoryAdmissionState,
-  SessionLogSettings,
+  ControlPlaneSessionLogSettings,
   TargetRef,
   UserRole,
 } from "@auto-harness/shared";
@@ -74,7 +74,7 @@ type GitHubIngressBindingRecord = {
   allowedLogins: string[];
 };
 
-export type SessionLogSettingsRecord = SessionLogSettings & {
+export type SessionLogSettingsRecord = ControlPlaneSessionLogSettings & {
   id: "session-log-settings";
   type: "session-log-settings";
   version: number;

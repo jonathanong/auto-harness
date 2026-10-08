@@ -112,6 +112,14 @@ export const PRODUCTION_SCAN_MANIFEST: readonly ScanManifestEntry[] = [
     why: "one-time session-drain-ledger backfill migration; Sessions Scan is already granted for the production list paths, so this is covered whichever driver (local bootstrap or deploy) runs it.",
   },
   {
+    file: "services/api/src/db/ensure-operational-activity-ledger.ts",
+    tableExpr: "tables.sessions",
+    count: 1,
+    tables: ["Sessions"],
+    runsUnderLambdaRole: true,
+    why: "one-time maintenance-fenced operational activity backfill; this page scan is never part of cron reconciliation.",
+  },
+  {
     file: "services/api/src/db/plane-storage-sessions-worktrees.ts",
     tableExpr: "ctx.tables.worktrees",
     count: 2,
@@ -130,10 +138,10 @@ export const PRODUCTION_SCAN_MANIFEST: readonly ScanManifestEntry[] = [
   {
     file: "services/api/src/db/plane-storage-sessions-query.ts",
     tableExpr: "ctx.tables.sessions",
-    count: 2,
+    count: 1,
     tables: ["Sessions"],
     runsUnderLambdaRole: true,
-    why: "session catalog hydrate-on-boot snapshot and the by-repository session filter (no repository index).",
+    why: "explicit all-session catalog hydrate-on-boot snapshot; cron uses the sparse activity ledger and repository reads use an index.",
   },
   {
     file: "services/api/src/db/ensure-archive-retry-index.ts",

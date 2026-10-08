@@ -66,6 +66,15 @@ objects so it can concatenate leftover parts; it does not get `GetObjectVersion`
 
 ## Control plane vs host pane
 
+Terminal sessions and their logs are deleted after the configurable `sessionRetentionDays`
+window (30 days by default, 1–3650 days). This is measured from completion, and applies to
+existing history. Sessions with outstanding ownership, reconnect recovery, or terminal-hook
+work remain protected. Cron and the local DynamoDB scheduler use bounded, resumable cleanup:
+revoke the session key and fence archive retries, wait for in-flight writers, remove all S3
+versions and delete markers under the session prefix, then remove usage and session metadata.
+Cleanup failures keep the session row and retry job. Once deletion completes, old session links
+return not found. There is no S3 archive of deleted session metadata.
+
 The control plane **must** still show the transcript (invariant 10) via S3 poll. Copy on that view:
 
 > Near-real-time via S3. For a live PTY stream, open the host pane on that machine.

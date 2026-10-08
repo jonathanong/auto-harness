@@ -80,6 +80,9 @@ function awsDeploymentFakes(fixture: ReturnType<typeof fakeEnvironment>): void {
     "node",
     `
 printf "node %s\\n" "$*" >> "$FAKE_LOG"
+if [[ "$*" == *"migrate-operational-ledger.mts"* ]]; then
+  touch "$FAKE_DIRECTORY/operational-ready"
+fi
 `,
   );
   executable(
@@ -87,6 +90,9 @@ printf "node %s\\n" "$*" >> "$FAKE_LOG"
     "pnpm",
     `
 printf "pnpm %s\\n" "$*" >> "$FAKE_LOG"
+if [[ "$*" == *"priority-index-"* || "$*" == *"created-order-index"* ]]; then
+  printf "retention-stage %s\\n" "\${HARNESS_DEPLOY_RETENTION_INDEX_STAGE:-unset}" >> "$FAKE_LOG"
+fi
 if [[ "$*" == *"@auto-harness/cdk run update"* ]]; then
   touch "$FAKE_DIRECTORY/update-complete"
 fi
@@ -98,6 +104,9 @@ if [[ "$*" == *"@auto-harness/cdk run priority-index-both"* ]]; then
 fi
 if [[ "$*" == *"@auto-harness/cdk run created-order-index"* ]]; then
   touch "$FAKE_DIRECTORY/created-order-active"
+fi
+if [[ "$*" == *"@auto-harness/cdk run retention-index"* ]]; then
+  touch "$FAKE_DIRECTORY/retention-active"
 fi`,
   );
   executable(
@@ -113,6 +122,10 @@ case "$1 $2" in
     fi
     exit 0 ;;
   "dynamodb get-item")
+    if [[ "$*" == *"__operational-activity#v2#ready"* ]]; then
+      [[ -f "$FAKE_DIRECTORY/operational-ready" ]] && echo operational-activity-ready-v2 || echo None
+      exit 0
+    fi
     if [[ "$*" == *"__session-priority-order__"* ]]; then
       if [[ "\${FAKE_PRIORITY_MISSING:-0}" == 1 && ! -f "$FAKE_DIRECTORY/update-complete" ]]; then
         echo None
@@ -137,6 +150,12 @@ case "$1 $2" in
       echo ACTIVE
     elif [[ "$*" == *"activeHostId-activeHostOrder"* ]]; then
       [[ "\${FAKE_ACTIVE_HOST_INDEX_MISSING:-0}" == 1 ]] && echo None || echo ACTIVE
+    elif [[ "$*" == *"statusShard-completedAt"* ]]; then
+      if [[ "\${FAKE_RETENTION_ACTIVE:-0}" == 1 || -f "$FAKE_DIRECTORY/retention-active" || ( "\${FAKE_SESSIONS_TABLE_MISSING:-0}" == 1 && -f "$FAKE_DIRECTORY/update-complete" ) ]]; then
+        echo ACTIVE
+      else
+        echo None
+      fi
     elif [[ "\${FAKE_PRIORITY_MISSING:-0}" == 1 ]]; then
       if [[ "$*" == *"createdOrder"* ]]; then
         [[ -f "$FAKE_DIRECTORY/created-order-active" ]] && echo ACTIVE || echo None
@@ -278,6 +297,9 @@ describe("deployment wrapper contracts", () => {
       position(calls, "@auto-harness/cdk run created-order-index"),
     );
     expect(position(calls, "@auto-harness/cdk run created-order-index")).toBeLessThan(
+      position(calls, "@auto-harness/cdk run retention-index"),
+    );
+    expect(position(calls, "@auto-harness/cdk run retention-index")).toBeLessThan(
       position(calls, "@auto-harness/cdk run update"),
     );
     expect(calls).toContain("statusShard-priorityOrder");
@@ -285,6 +307,20 @@ describe("deployment wrapper contracts", () => {
     expect(calls).toContain("statusShard-createdOrder");
     expect(calls).toContain("aws dynamodb put-item");
     expect(calls).not.toContain("node scripts/migrate-session-priority-order.mts");
+  });
+
+  it("preserves a live retention index while staging missing earlier indexes", () => {
+    const fixture = fakeEnvironment();
+    awsDeploymentFakes(fixture);
+    const result = run(awsScript, ["--yes-priority-order"], fixture, {
+      FAKE_PRIORITY_MISSING: "1",
+      FAKE_RETENTION_ACTIVE: "1",
+    });
+    const calls = readFileSync(fixture.log, "utf8");
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls).toContain("@auto-harness/cdk run priority-index-status");
+    expect(calls).toContain("retention-stage status");
+    expect(calls).not.toContain("@auto-harness/cdk run retention-index");
   });
 
   it("blocks an in-place active-host index rollout but allows a missing fresh table", () => {

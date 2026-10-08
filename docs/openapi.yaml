@@ -1959,7 +1959,16 @@ components:
       additionalProperties: false
     SessionLogSettings:
       type: object
-      required: [uploadMode, batchMaxKb, batchMaxLines, batchMaxWaitMs, controlPlanePollMs, version]
+      required:
+        [
+          uploadMode,
+          batchMaxKb,
+          batchMaxLines,
+          batchMaxWaitMs,
+          controlPlanePollMs,
+          sessionRetentionDays,
+          version,
+        ]
       additionalProperties: false
       properties:
         uploadMode:
@@ -1969,6 +1978,12 @@ components:
         batchMaxLines: { type: integer, minimum: 1, maximum: 50000 }
         batchMaxWaitMs: { type: integer, minimum: 1000, maximum: 300000 }
         controlPlanePollMs: { type: integer, minimum: 5000, maximum: 300000 }
+        sessionRetentionDays:
+          type: integer
+          minimum: 1
+          maximum: 3650
+          default: 30
+          description: Days after completion before undeleted terminal sessions and their logs expire.
         version: { type: integer, minimum: 0 }
     SessionLogSettingsUpdate:
       type: object
@@ -1982,6 +1997,7 @@ components:
         batchMaxLines: { type: integer, minimum: 1, maximum: 50000 }
         batchMaxWaitMs: { type: integer, minimum: 1000, maximum: 300000 }
         controlPlanePollMs: { type: integer, minimum: 5000, maximum: 300000 }
+        sessionRetentionDays: { type: integer, minimum: 1, maximum: 3650 }
         version: { type: integer, minimum: 0 }
     Session:
       type: object
@@ -3170,7 +3186,7 @@ components:
         destroyWorkspaceAfter: { type: boolean, description: Workspace schedules only. }
         name: { type: string }
         target: { $ref: "#/components/schemas/Target" }
-        fallbacks: { type: array, items: { $ref: "#/components/schemas/Target" } }
+        fallbacks: { type: array, maxItems: 88, items: { $ref: "#/components/schemas/Target" } }
         targetDisplayNames:
           type: array
           items: { type: string }
@@ -3219,7 +3235,7 @@ components:
           description: null creates a workspace-pool schedule (workspacePoolId then required); a non-empty string creates a repository schedule.
         name: { type: string }
         target: { $ref: "#/components/schemas/Target" }
-        fallbacks: { type: array, items: { $ref: "#/components/schemas/Target" } }
+        fallbacks: { type: array, maxItems: 88, items: { $ref: "#/components/schemas/Target" } }
         cron: { type: string, description: See Schedule.cron. }
         timeout:
           { type: number, description: See Schedule.timeout; not bounds-checked at write time. }
@@ -3269,7 +3285,7 @@ components:
           description: Switches the schedule between repository and workspace mode using the same field rules as create.
         name: { type: string }
         target: { $ref: "#/components/schemas/Target" }
-        fallbacks: { type: array, items: { $ref: "#/components/schemas/Target" } }
+        fallbacks: { type: array, maxItems: 88, items: { $ref: "#/components/schemas/Target" } }
         cron: { type: string, description: See Schedule.cron. }
         timeout:
           { type: number, description: See Schedule.timeout; not bounds-checked at write time. }

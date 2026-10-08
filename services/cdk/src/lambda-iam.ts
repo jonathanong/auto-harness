@@ -63,6 +63,19 @@ export function grantRuntimeLambdaAccess(input: {
       resources: [input.foundation.archiveBucket.arnForObjects("sessions/*")],
     }),
   );
+  input.cron.addToRolePolicy(
+    new iam.PolicyStatement({
+      actions: ["s3:DeleteObjectVersion"],
+      resources: [input.foundation.archiveBucket.arnForObjects("sessions/*")],
+    }),
+  );
+  input.cron.addToRolePolicy(
+    new iam.PolicyStatement({
+      actions: ["s3:ListBucketVersions"],
+      resources: [input.foundation.archiveBucket.bucketArn],
+      conditions: { StringLike: { "s3:prefix": ["sessions/*"] } },
+    }),
+  );
   for (const fn of [input.rest, input.cron]) {
     fn.addToRolePolicy(
       new iam.PolicyStatement({
