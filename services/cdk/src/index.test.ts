@@ -12,6 +12,7 @@ describe("CDK table catalog", () => {
       "WorkspaceSlots",
       "Sessions",
       "SessionDrains",
+      "SessionOutputs",
       "HostLocks",
       "ConcurrencyLocks",
       "Schedules",

@@ -1,6 +1,12 @@
 /* eslint-disable max-lines -- focused worker scenarios share one typed in-memory store fixture. */
+import { createHash } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { LocalSessionArtifactStore } from "./session-artifact-store-local.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { runSessionRetention } from "./control-plane-session-retention.ts";
 import type { RetentionJob } from "./db/plane-storage-session-retention.ts";
@@ -55,7 +61,7 @@ type Store = {
   saveCursor: (name: string, cursor?: Record<string, unknown>) => Promise<void>;
   lease: (job: RetentionJob, now: string, owner: string) => Promise<boolean>;
   getSession: (id: string) => Promise<SessionRecord | null>;
-  deleteRelatedPage: (id: string, kind: "usage" | "logs") => Promise<boolean>;
+  deleteRelatedPage: (id: string, kind: "usage" | "logs" | "outputs") => Promise<boolean>;
   finish: (job: RetentionJob, owner: string, now: string) => Promise<boolean>;
   nextPartition: (count: number) => Promise<number>;
   listCandidates: (
@@ -362,7 +368,7 @@ describe("runSessionRetention", () => {
 
   it("leaves the job retryable when a related-row page or final transaction is incomplete", async () => {
     const currentJob = job("related-pages-incomplete");
-    for (const phase of ["usage", "logs", "finish"] as const) {
+    for (const phase of ["usage", "logs", "outputs", "finish"] as const) {
       let finishAttempts = 0;
       const harness = makeRun({
         store: {
@@ -422,7 +428,7 @@ describe("runSessionRetention", () => {
       },
     });
     await expect(harness.run()).resolves.toBe(1);
-    expect(harness.calls.filter((call) => call.method === "deleteRelatedPage")).toHaveLength(2);
+    expect(harness.calls.filter((call) => call.method === "deleteRelatedPage")).toHaveLength(3);
     expect(harness.calls.some((call) => call.method === "finish")).toBe(true);
   });
 
@@ -486,5 +492,43 @@ describe("runSessionRetention", () => {
     await expect(harness.run()).resolves.toBe(0);
     expect(errors).toHaveBeenCalledWith("session retention sweep unavailable", failure);
     expect(sweeps).toBe(2);
+  });
+  it("deletes the attempt's local artifact bytes before finishing session retention", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "ah-retention-artifact-"));
+    try {
+      const currentJob = job("local-artifacts");
+      const artifactStore = new LocalSessionArtifactStore(directory);
+      const bytes = Buffer.from("archive bytes");
+      await artifactStore.put(
+        Readable.from([bytes]) as never,
+        currentJob.sessionId,
+        currentJob.activityGeneration,
+        {
+          size: bytes.length,
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+        },
+      );
+      const harness = makeRun({
+        store: {
+          listJobs: async () => ({ records: [currentJob] }),
+          getSession: async (id) => ({ ...SESSION, id, retentionToken: currentJob.token }),
+        },
+      });
+      harness.state.sessionArtifactStore = artifactStore;
+      expect(
+        await artifactStore.inspect(currentJob.sessionId, currentJob.activityGeneration),
+      ).not.toBeNull();
+      await expect(harness.run()).resolves.toBe(1);
+      expect(
+        await artifactStore.inspect(currentJob.sessionId, currentJob.activityGeneration),
+      ).toBeNull();
+      expect(
+        harness.calls
+          .filter((call) => call.method === "deleteRelatedPage")
+          .map((call) => call.args[1]),
+      ).toEqual(["usage", "logs", "outputs"]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
