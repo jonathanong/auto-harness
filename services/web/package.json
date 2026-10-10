@@ -15,7 +15,7 @@
   "dependencies": {
     "@auto-harness/shared": "workspace:*",
     "@auto-harness/ui": "workspace:*",
-    "@sentry/nextjs": "^11.4.0",
+    "@sentry/nextjs": "^11.5.0",
     "next": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"
