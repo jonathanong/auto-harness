@@ -73,8 +73,10 @@ export async function setWorktreeOnlineFenced(
                 TableName: ctx.tables.worktrees,
                 Key: { id: worktreeId },
                 UpdateExpression: "SET #o = :online",
+                // Inventory teardown may delete the row after disconnect read it.
+                // An Update without this existence fence would recreate a partial row.
                 ConditionExpression:
-                  "attribute_not_exists(connectionId) OR connectionId = :connectionId",
+                  "attribute_exists(id) AND (attribute_not_exists(connectionId) OR connectionId = :connectionId)",
                 ExpressionAttributeNames: { "#o": "online" },
                 ExpressionAttributeValues: { ":online": online, ":connectionId": connectionId },
               },
@@ -88,7 +90,8 @@ export async function setWorktreeOnlineFenced(
           TableName: ctx.tables.worktrees,
           Key: { id: worktreeId },
           UpdateExpression: "SET #o = :online",
-          ConditionExpression: "attribute_not_exists(connectionId) OR connectionId = :connectionId",
+          ConditionExpression:
+            "attribute_exists(id) AND (attribute_not_exists(connectionId) OR connectionId = :connectionId)",
           ExpressionAttributeNames: { "#o": "online" },
           ExpressionAttributeValues: { ":online": online, ":connectionId": connectionId },
         }),

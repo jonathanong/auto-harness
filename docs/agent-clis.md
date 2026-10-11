@@ -147,7 +147,7 @@ session token is active.
 
 **Confirm non-interactively:** there is no dedicated status/whoami subcommand — confirmed against
 `grok --help` (1.0.30) and xAI's own
-[authentication guide](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/02-authentication.md),
+[authentication guide](https://raw.githubusercontent.com/xai-org/grok-build/main/crates/codegen/xai-grok-pager/docs/user-guide/02-authentication.md),
 neither of which documents one. Confirm login by running a one-off prompt and checking for a
 normal reply instead of an auth error:
 

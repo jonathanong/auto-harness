@@ -7,6 +7,7 @@ import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import { tryAcquireHostLock } from "./plane-storage-locks.ts";
 import {
   getWorktree,
+  deleteWorktree,
   putSession,
   putWorktree,
   releaseWorktree,
@@ -53,6 +54,36 @@ afterAll(async () => {
 });
 
 describe("DynamoDB Local optional session transitions", () => {
+  it("does not recreate deleted worktrees during fenced disconnect cleanup", async () => {
+    const hostId = "deleted-worktree-host";
+    const connectionId = "deleted-worktree-connection";
+    await tryAcquireHostLock(ctx, {
+      hostId,
+      connectionId,
+      hostInventoryVersion: null,
+      replaceExisting: false,
+    });
+    for (const fence of [undefined, { hostId, connectionId }]) {
+      const id = fence ? "deleted-fenced" : "deleted-unfenced";
+      await putWorktree(ctx, {
+        id,
+        name: id,
+        hostId,
+        repositoryId: "repo",
+        path: "/repo",
+        labels: [],
+        status: "idle",
+        online: true,
+      });
+      // Inventory deletion wins after disconnect read the worktree, while the
+      // socket's host lock is still live. Cleanup must lose without upserting.
+      expect(await setWorktreeOnlineFenced(ctx, id, connectionId, false, fence)).toBe(true);
+      await deleteWorktree(ctx, id);
+      expect(await setWorktreeOnlineFenced(ctx, id, connectionId, false, fence)).toBe(false);
+      expect(await getWorktree(ctx, id)).toBeNull();
+    }
+  });
+
   it("records the account assignment and enforces a fenced worktree connection", async () => {
     await ctx.doc.send(
       new PutCommand({
