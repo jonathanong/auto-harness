@@ -46,7 +46,7 @@ describe("dispatch action request timeouts", () => {
   it.each([
     ["header", { delayMs: 300 }],
     ["body", { bodyDelayMs: 300 }],
-  ])("retries a stalled dispatch response %s once, then times out", async (_name, response) => {
+  ])("times out a stalled dispatch response %s", async (_name, response) => {
     const server = await serve(() => ({
       body: { created: true, id: "session-1", url: "https://example.test/sessions/session-1" },
       ...response,
@@ -62,13 +62,13 @@ describe("dispatch action request timeouts", () => {
 
     expect(result.code).toBe(1);
     expect(result.stderr).toMatch(/Timed out waiting for Auto Harness request/);
-    expect(server.requests).toHaveLength(2);
+    expect(server.requests).toHaveLength(1);
   });
 
   it.each([
     ["header", { delayMs: 300 }],
     ["body", { bodyDelayMs: 300 }],
-  ])("retries a stalled resume response %s once, then times out", async (_name, response) => {
+  ])("times out a stalled resume response %s", async (_name, response) => {
     const server = await serve(() => ({
       body: { created: false, id: "session-1", url: "https://example.test/sessions/session-1" },
       ...response,
@@ -84,7 +84,7 @@ describe("dispatch action request timeouts", () => {
 
     expect(result.code).toBe(1);
     expect(result.stderr).toMatch(/Timed out waiting for Auto Harness request/);
-    expect(server.requests).toHaveLength(2);
+    expect(server.requests).toHaveLength(1);
   });
 
   it.each([

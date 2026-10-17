@@ -740,13 +740,12 @@ async function drain(operation, options, repositoryId) {
 // actions/dispatch/src/retry.ts
 var DEFAULT_RETRY_DELAY_MS = 500;
 var MAX_RETRY_DELAY_MS = 6e4;
-function isRetryable(error) {
-  if (error instanceof AutoHarnessRequestTimeoutError) return true;
+function isRetryable(error, deduplicated) {
   if (error instanceof AutoHarnessError) {
     const status = error.status ?? 0;
-    return status === 408 || status === 429 || status >= 500;
+    return status === 408 || status === 429 || deduplicated && status >= 500;
   }
-  return error instanceof TypeError;
+  return deduplicated && (error instanceof AutoHarnessRequestTimeoutError || error instanceof TypeError);
 }
 function retryDelayMs(retryAfter, now = Date.now()) {
   if (!retryAfter) return DEFAULT_RETRY_DELAY_MS;
@@ -755,11 +754,11 @@ function retryDelayMs(retryAfter, now = Date.now()) {
   if (!Number.isFinite(delayMs)) return DEFAULT_RETRY_DELAY_MS;
   return Math.min(Math.max(delayMs, 0), MAX_RETRY_DELAY_MS);
 }
-async function withRetry(request) {
+async function withRetry(request, deduplicated) {
   try {
     return await request();
   } catch (error) {
-    if (!isRetryable(error)) throw error;
+    if (!isRetryable(error, deduplicated)) throw error;
     const retryAfter = error instanceof AutoHarnessError ? error.retryAfter : void 0;
     await new Promise((resolve) => setTimeout(resolve, retryDelayMs(retryAfter)));
     return request();
@@ -947,17 +946,16 @@ async function dispatch(options, repositoryId) {
     ...metadata ? { metadata: parseMetadata(metadata, "metadata") } : {},
     ...source ? { source } : {}
   };
-  const response = await withRetry(() => client(options).createSession(request));
+  const response = await withRetry(
+    () => client(options).createSession(request),
+    concurrencyId !== void 0
+  );
   const session = validateSession(response);
   setSessionReferenceOutputs(options.baseUrl, session);
   setOutput("created", String(session.created));
   process.stdout.write(`Dispatched Auto Harness session ${session.id}
 `);
-  writeSessionSummary("Dispatched", {
-    ...session,
-    target: response.target,
-    concurrencyId: response.concurrencyId
-  });
+  writeSessionSummary("Dispatched", { ...response, ...session });
 }
 async function resume(options) {
   const sessionId = input("session-id", true);
@@ -984,17 +982,17 @@ async function resume(options) {
     ...targetInput ? { target: parseHarnessTarget(targetInput, "target") } : {},
     ...fallbacksInput ? { fallbacks: parseHarnessFallbacks(fallbacksInput, "fallbacks") } : {}
   };
-  const response = await withRetry(() => client(options).resumeSession(sessionId, request));
+  const response = await withRetry(
+    () => client(options).resumeSession(sessionId, request),
+    // A resume's concurrency-id must match the source's inherited identity, which dedupes it.
+    concurrencyId !== void 0
+  );
   const session = validateSession(response);
   setSessionReferenceOutputs(options.baseUrl, session);
   setOutput("created", String(session.created));
   process.stdout.write(`Resumed Auto Harness session ${session.id}
 `);
-  writeSessionSummary("Resumed", {
-    ...session,
-    target: response.target,
-    concurrencyId: response.concurrencyId
-  });
+  writeSessionSummary("Resumed", { ...response, ...session });
 }
 async function getResult(options) {
   const sessionId = input("session-id", true);

@@ -4,14 +4,17 @@ const DEFAULT_RETRY_DELAY_MS = 500;
 // Bounds an honored Retry-After so one throttled response cannot hold a runner indefinitely.
 const MAX_RETRY_DELAY_MS = 60_000;
 
-function isRetryable(error: unknown): boolean {
-  if (error instanceof AutoHarnessRequestTimeoutError) return true;
+// 408 and 429 are rejections before the request was acted on. A 5xx, a request timeout, or a
+// dropped connection (fetch reports DNS/reset/refused as a bare TypeError) may follow a committed
+// create or resume, so a blind retry could enqueue a second session.
+function isRetryable(error: unknown, deduplicated: boolean): boolean {
   if (error instanceof AutoHarnessError) {
     const status = error.status ?? 0;
-    return status === 408 || status === 429 || status >= 500;
+    return status === 408 || status === 429 || (deduplicated && status >= 500);
   }
-  // fetch reports connection failures (DNS, reset, refused) as a bare TypeError.
-  return error instanceof TypeError;
+  return (
+    deduplicated && (error instanceof AutoHarnessRequestTimeoutError || error instanceof TypeError)
+  );
 }
 
 export function retryDelayMs(retryAfter: string | undefined, now = Date.now()): number {
@@ -23,14 +26,15 @@ export function retryDelayMs(retryAfter: string | undefined, now = Date.now()): 
 }
 
 /**
- * Retries `request` once after a transient failure (408, 429, 5xx, request timeout, or network
- * error). Each attempt is a fresh client call, so it gets its own request-timeout budget.
+ * Retries `request` once after a transient failure. Pass `deduplicated` only when the request
+ * carries a concurrency identity the control plane deduplicates on; only then are ambiguous
+ * failures retried. Each attempt is a fresh client call with its own request-timeout budget.
  */
-export async function withRetry<T>(request: () => Promise<T>): Promise<T> {
+export async function withRetry<T>(request: () => Promise<T>, deduplicated: boolean): Promise<T> {
   try {
     return await request();
   } catch (error) {
-    if (!isRetryable(error)) throw error;
+    if (!isRetryable(error, deduplicated)) throw error;
     const retryAfter = error instanceof AutoHarnessError ? error.retryAfter : undefined;
     await new Promise((resolve) => setTimeout(resolve, retryDelayMs(retryAfter)));
     return request();

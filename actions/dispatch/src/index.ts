@@ -119,16 +119,15 @@ async function dispatch(options: ClientOptions, repositoryId: string): Promise<v
     ...(metadata ? { metadata: parseMetadata(metadata, "metadata") } : {}),
     ...(source ? { source } : {}),
   };
-  const response = await withRetry(() => client(options).createSession(request));
+  const response = await withRetry(
+    () => client(options).createSession(request),
+    concurrencyId !== undefined,
+  );
   const session = validateSession(response);
   setSessionReferenceOutputs(options.baseUrl, session);
   setOutput("created", String(session.created));
   process.stdout.write(`Dispatched Auto Harness session ${session.id}\n`);
-  writeSessionSummary("Dispatched", {
-    ...session,
-    target: response.target,
-    concurrencyId: response.concurrencyId,
-  });
+  writeSessionSummary("Dispatched", { ...response, ...session });
 }
 
 // No queue-ttl-seconds input here: a resumed session reuses its pinned host/route rather than
@@ -159,16 +158,16 @@ async function resume(options: ClientOptions): Promise<void> {
     ...(targetInput ? { target: parseHarnessTarget(targetInput, "target") } : {}),
     ...(fallbacksInput ? { fallbacks: parseHarnessFallbacks(fallbacksInput, "fallbacks") } : {}),
   };
-  const response = await withRetry(() => client(options).resumeSession(sessionId, request));
+  const response = await withRetry(
+    () => client(options).resumeSession(sessionId, request),
+    // A resume's concurrency-id must match the source's inherited identity, which dedupes it.
+    concurrencyId !== undefined,
+  );
   const session = validateSession(response);
   setSessionReferenceOutputs(options.baseUrl, session);
   setOutput("created", String(session.created));
   process.stdout.write(`Resumed Auto Harness session ${session.id}\n`);
-  writeSessionSummary("Resumed", {
-    ...session,
-    target: response.target,
-    concurrencyId: response.concurrencyId,
-  });
+  writeSessionSummary("Resumed", { ...response, ...session });
 }
 
 /** Makes exactly one bounded detail request; callers can branch on `session-terminal` themselves. */
