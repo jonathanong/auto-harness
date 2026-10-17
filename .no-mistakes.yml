@@ -180,10 +180,11 @@ rules:
 
   - rule: nextjs-no-api-routes
     projects: [control-web]
+  # no-mistakes 0.90 aborts the rule when a non-JS file (Dockerfile, package.json) lacks caching
+  # facts, so scope it to source files.
   - rule: nextjs-no-caching
-    projects: [control-web]
-  - rule: nextjs-no-caching
-    projects: [host-pane]
+    projects: [control-web, host-pane]
+    include: ["**/*.{ts,tsx,js,jsx,mjs,cjs,mts,cts}"]
   - rule: banned-paths
     scope: repository
     options:
