@@ -60,7 +60,7 @@ describe("dispatch action step summary", () => {
 
   it("neutralizes backticks and newlines and omits absent fields", async () => {
     const server = await serve(() => ({
-      body: { created: false, id: "a`b", url: "https://example.test/s" },
+      body: { created: false, id: "a`b", url: "https://example.test/s/(x)" },
     }));
     const directory = await mkdtemp(join(tmpdir(), "auto-harness-dispatch-summary-"));
     const summary = join(directory, "summary.md");
@@ -77,7 +77,7 @@ describe("dispatch action step summary", () => {
 
     expect(result.code).toBe(0);
     expect(text).toContain("### Resumed Auto Harness session");
-    expect(text).toContain("- Session: [`a'b`](https://example.test/s)");
+    expect(text).toContain("- Session: [`a'b`](https://example.test/s/%28x%29)");
     expect(text).toContain("- Created: no (existing session)");
     expect(text).not.toContain("Provider route");
     expect(text).not.toContain("Concurrency ID");

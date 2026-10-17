@@ -25,7 +25,7 @@ export function writeSessionSummary(verb: "Dispatched" | "Resumed", session: Sum
   const lines = [
     `### ${verb} Auto Harness session`,
     "",
-    `- Session: [${code(session.id)}](${encodeURI(session.url)})`,
+    `- Session: [${code(session.id)}](${encodeURI(session.url).replaceAll("(", "%28").replaceAll(")", "%29")})`,
     `- Created: ${session.created ? "yes" : "no (existing session)"}`,
   ];
   if (session.target && typeof session.target === "object") {
