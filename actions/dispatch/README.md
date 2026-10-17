@@ -42,6 +42,17 @@ receiving the response body. It defaults to `30` seconds and must be a finite po
 greater than `300`. The wait operation uses the shorter of this request timeout and the remaining
 `poll-timeout-seconds` deadline for each status request; it does not retry a timed-out request.
 
+Dispatch and resume retry once after a transient failure: HTTP 408, 429, or 5xx, a request
+timeout, or a network error. The retry waits for the response's `Retry-After` (seconds or an
+HTTP date, capped at 60 seconds), or 500 ms when there is none, and gets a fresh
+`request-timeout-seconds` budget. Any other 4xx fails at once, and drain operations are never
+retried. A retried dispatch may reach the server twice; set `concurrency-id` so the control plane
+deduplicates it. A failed HTTP response reports the status and the server's error message.
+
+After a dispatch or resume, the action writes a notice annotation and a job step summary
+(`$GITHUB_STEP_SUMMARY`) with the session link, whether it was newly created, its provider route,
+and its concurrency ID.
+
 ## Resume
 
 Continues a prior **terminal** session that actually ran — pass the source `session-id` from an

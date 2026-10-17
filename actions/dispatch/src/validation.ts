@@ -134,7 +134,10 @@ export function actionErrorMessage(error: unknown, baseUrl: string): string {
     }
   }
   if (error instanceof AutoHarnessError && error.code === "HTTP_ERROR") {
-    return `Auto Harness returned ${error.status}`;
+    const detail = (error.details as { message?: unknown } | undefined)?.message;
+    return typeof detail === "string" && detail
+      ? `Auto Harness returned ${error.status}: ${detail}`
+      : `Auto Harness returned ${error.status}`;
   }
   return error instanceof Error ? error.message : String(error);
 }

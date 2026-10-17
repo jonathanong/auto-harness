@@ -24,6 +24,8 @@ import {
   requestTimeoutMs,
   setOutput,
 } from "./io.ts";
+import { withRetry } from "./retry.ts";
+import { writeSessionSummary } from "./summary.ts";
 import { actionErrorMessage, validateSession } from "./validation.ts";
 import {
   isTerminalSessionStatus,
@@ -117,10 +119,16 @@ async function dispatch(options: ClientOptions, repositoryId: string): Promise<v
     ...(metadata ? { metadata: parseMetadata(metadata, "metadata") } : {}),
     ...(source ? { source } : {}),
   };
-  const session = validateSession(await client(options).createSession(request));
+  const response = await withRetry(() => client(options).createSession(request));
+  const session = validateSession(response);
   setSessionReferenceOutputs(options.baseUrl, session);
   setOutput("created", String(session.created));
   process.stdout.write(`Dispatched Auto Harness session ${session.id}\n`);
+  writeSessionSummary("Dispatched", {
+    ...session,
+    target: response.target,
+    concurrencyId: response.concurrencyId,
+  });
 }
 
 // No queue-ttl-seconds input here: a resumed session reuses its pinned host/route rather than
@@ -151,10 +159,16 @@ async function resume(options: ClientOptions): Promise<void> {
     ...(targetInput ? { target: parseHarnessTarget(targetInput, "target") } : {}),
     ...(fallbacksInput ? { fallbacks: parseHarnessFallbacks(fallbacksInput, "fallbacks") } : {}),
   };
-  const session = validateSession(await client(options).resumeSession(sessionId, request));
+  const response = await withRetry(() => client(options).resumeSession(sessionId, request));
+  const session = validateSession(response);
   setSessionReferenceOutputs(options.baseUrl, session);
   setOutput("created", String(session.created));
   process.stdout.write(`Resumed Auto Harness session ${session.id}\n`);
+  writeSessionSummary("Resumed", {
+    ...session,
+    target: response.target,
+    concurrencyId: response.concurrencyId,
+  });
 }
 
 /** Makes exactly one bounded detail request; callers can branch on `session-terminal` themselves. */

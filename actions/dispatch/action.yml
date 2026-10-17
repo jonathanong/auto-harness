@@ -114,5 +114,5 @@ outputs:
   failure-code:
     description: Terminal drain failure code, when status is failed
 runs:
-  using: node20
+  using: node24
   main: dist/index.js

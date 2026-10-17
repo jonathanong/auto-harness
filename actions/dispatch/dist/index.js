@@ -377,9 +377,9 @@ var AutoHarnessClient = class _AutoHarnessClient {
 
 // modules/client/src/actions/errors.js
 var HarnessDispatchError = class extends Error {
-  constructor(code, message) {
+  constructor(code2, message) {
     super(message);
-    this.code = code;
+    this.code = code2;
   }
 };
 
@@ -680,7 +680,8 @@ function actionErrorMessage(error, baseUrl) {
     }
   }
   if (error instanceof AutoHarnessError && error.code === "HTTP_ERROR") {
-    return `Auto Harness returned ${error.status}`;
+    const detail = error.details?.message;
+    return typeof detail === "string" && detail ? `Auto Harness returned ${error.status}: ${detail}` : `Auto Harness returned ${error.status}`;
   }
   return error instanceof Error ? error.message : String(error);
 }
@@ -734,6 +735,63 @@ async function drain(operation, options, repositoryId) {
   setDrainOutputs(result);
   process.stdout.write(`Auto Harness session drain ${result.operationId}: ${result.status}
 `);
+}
+
+// actions/dispatch/src/retry.ts
+var DEFAULT_RETRY_DELAY_MS = 500;
+var MAX_RETRY_DELAY_MS = 6e4;
+function isRetryable(error) {
+  if (error instanceof AutoHarnessRequestTimeoutError) return true;
+  if (error instanceof AutoHarnessError) {
+    const status = error.status ?? 0;
+    return status === 408 || status === 429 || status >= 500;
+  }
+  return error instanceof TypeError;
+}
+function retryDelayMs(retryAfter, now = Date.now()) {
+  if (!retryAfter) return DEFAULT_RETRY_DELAY_MS;
+  const trimmed = retryAfter.trim();
+  const delayMs = /^\d+$/.test(trimmed) ? Number(trimmed) * 1e3 : Date.parse(trimmed) - now;
+  if (!Number.isFinite(delayMs)) return DEFAULT_RETRY_DELAY_MS;
+  return Math.min(Math.max(delayMs, 0), MAX_RETRY_DELAY_MS);
+}
+async function withRetry(request) {
+  try {
+    return await request();
+  } catch (error) {
+    if (!isRetryable(error)) throw error;
+    const retryAfter = error instanceof AutoHarnessError ? error.retryAfter : void 0;
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs(retryAfter)));
+    return request();
+  }
+}
+
+// actions/dispatch/src/summary.ts
+import { appendFileSync as appendFileSync2 } from "node:fs";
+function code(value) {
+  return `\`${value.replaceAll("`", "'").replaceAll(/[\r\n]+/g, " ")}\``;
+}
+function writeSessionSummary(verb, session) {
+  process.stdout.write(
+    `::notice title=Auto Harness::${escapeWorkflowCommand(`${verb} session ${session.id}: ${session.url}`)}
+`
+  );
+  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+  if (!summaryPath) return;
+  const lines = [
+    `### ${verb} Auto Harness session`,
+    "",
+    `- Session: [${code(session.id)}](${encodeURI(session.url)})`,
+    `- Created: ${session.created ? "yes" : "no (existing session)"}`
+  ];
+  if (session.target && typeof session.target === "object") {
+    lines.push(`- Provider route: ${code(JSON.stringify(session.target))}`);
+  }
+  if (typeof session.concurrencyId === "string" && session.concurrencyId) {
+    lines.push(`- Concurrency ID: ${code(session.concurrencyId)}`);
+  }
+  appendFileSync2(summaryPath, `${lines.join("\n")}
+`, "utf8");
 }
 
 // actions/dispatch/src/session-result.ts
@@ -889,11 +947,17 @@ async function dispatch(options, repositoryId) {
     ...metadata ? { metadata: parseMetadata(metadata, "metadata") } : {},
     ...source ? { source } : {}
   };
-  const session = validateSession(await client(options).createSession(request));
+  const response = await withRetry(() => client(options).createSession(request));
+  const session = validateSession(response);
   setSessionReferenceOutputs(options.baseUrl, session);
   setOutput("created", String(session.created));
   process.stdout.write(`Dispatched Auto Harness session ${session.id}
 `);
+  writeSessionSummary("Dispatched", {
+    ...session,
+    target: response.target,
+    concurrencyId: response.concurrencyId
+  });
 }
 async function resume(options) {
   const sessionId = input("session-id", true);
@@ -920,11 +984,17 @@ async function resume(options) {
     ...targetInput ? { target: parseHarnessTarget(targetInput, "target") } : {},
     ...fallbacksInput ? { fallbacks: parseHarnessFallbacks(fallbacksInput, "fallbacks") } : {}
   };
-  const session = validateSession(await client(options).resumeSession(sessionId, request));
+  const response = await withRetry(() => client(options).resumeSession(sessionId, request));
+  const session = validateSession(response);
   setSessionReferenceOutputs(options.baseUrl, session);
   setOutput("created", String(session.created));
   process.stdout.write(`Resumed Auto Harness session ${session.id}
 `);
+  writeSessionSummary("Resumed", {
+    ...session,
+    target: response.target,
+    concurrencyId: response.concurrencyId
+  });
 }
 async function getResult(options) {
   const sessionId = input("session-id", true);

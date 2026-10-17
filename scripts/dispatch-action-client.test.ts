@@ -105,7 +105,8 @@ describe("dispatch action bundled client", () => {
 
     expect(result.code).toBe(1);
     expect(result.stderr).toMatch(/Timed out waiting for Auto Harness request/);
-    expect(server.requests).toHaveLength(1);
+    // The whole create (catalog resolution included) is retried once with a fresh budget.
+    expect(server.requests).toHaveLength(2);
   });
 
   it.each([
