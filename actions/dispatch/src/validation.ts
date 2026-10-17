@@ -133,10 +133,11 @@ export function actionErrorMessage(error: unknown, baseUrl: string): string {
       return error.message;
     }
   }
-  if (error instanceof AutoHarnessError && error.code === "HTTP_ERROR") {
-    const detail = (error.details as { message?: unknown } | undefined)?.message;
-    return typeof detail === "string" && detail
-      ? `Auto Harness returned ${error.status}: ${detail}`
+  if (error instanceof AutoHarnessError && typeof error.status === "number") {
+    // The client falls back to this message when the response body carried no error message.
+    const fallback = `Auto Harness request failed (${error.status})`;
+    return error.message && error.message !== fallback
+      ? `Auto Harness returned ${error.status}: ${error.message}`
       : `Auto Harness returned ${error.status}`;
   }
   return error instanceof Error ? error.message : String(error);

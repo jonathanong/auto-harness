@@ -129,6 +129,18 @@ describe("dispatch action transient-failure retry", () => {
     expect(server.requests).toHaveLength(1);
   });
 
+  it("reports the status with a structured API error code", async () => {
+    const server = await serve(() => ({
+      body: { error: { code: "CONFLICT", message: "repository is paused" } },
+      status: 409,
+    }));
+
+    const result = await runAction(dispatchInputs(server.origin));
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("::error::Auto Harness returned 409: repository is paused");
+  });
+
   it.each([400, 401, 404, 409])("does not retry an HTTP %s", async (status) => {
     const server = await serve(() => ({ body: { error: { message: "nope" } }, status }));
 

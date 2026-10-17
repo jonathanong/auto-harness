@@ -34,5 +34,13 @@ export function writeSessionSummary(verb: "Dispatched" | "Resumed", session: Sum
   if (typeof session.concurrencyId === "string" && session.concurrencyId) {
     lines.push(`- Concurrency ID: ${code(session.concurrencyId)}`);
   }
-  appendFileSync(summaryPath, `${lines.join("\n")}\n`, "utf8");
+  try {
+    appendFileSync(summaryPath, `${lines.join("\n")}\n`, "utf8");
+  } catch (error) {
+    // The session is already accepted; a summary failure must not fail the step and invite a rerun.
+    const message = error instanceof Error ? error.message : String(error);
+    process.stdout.write(
+      `::warning::${escapeWorkflowCommand(`Could not write the step summary: ${message}`)}\n`,
+    );
+  }
 }

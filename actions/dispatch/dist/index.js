@@ -679,9 +679,9 @@ function actionErrorMessage(error, baseUrl) {
       return error.message;
     }
   }
-  if (error instanceof AutoHarnessError && error.code === "HTTP_ERROR") {
-    const detail = error.details?.message;
-    return typeof detail === "string" && detail ? `Auto Harness returned ${error.status}: ${detail}` : `Auto Harness returned ${error.status}`;
+  if (error instanceof AutoHarnessError && typeof error.status === "number") {
+    const fallback = `Auto Harness request failed (${error.status})`;
+    return error.message && error.message !== fallback ? `Auto Harness returned ${error.status}: ${error.message}` : `Auto Harness returned ${error.status}`;
   }
   return error instanceof Error ? error.message : String(error);
 }
@@ -789,8 +789,16 @@ function writeSessionSummary(verb, session) {
   if (typeof session.concurrencyId === "string" && session.concurrencyId) {
     lines.push(`- Concurrency ID: ${code(session.concurrencyId)}`);
   }
-  appendFileSync2(summaryPath, `${lines.join("\n")}
+  try {
+    appendFileSync2(summaryPath, `${lines.join("\n")}
 `, "utf8");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stdout.write(
+      `::warning::${escapeWorkflowCommand(`Could not write the step summary: ${message}`)}
+`
+    );
+  }
 }
 
 // actions/dispatch/src/session-result.ts

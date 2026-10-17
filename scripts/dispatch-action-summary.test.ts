@@ -82,4 +82,25 @@ describe("dispatch action step summary", () => {
     expect(text).not.toContain("Provider route");
     expect(text).not.toContain("Concurrency ID");
   });
+
+  it("warns instead of failing when the step summary cannot be written", async () => {
+    const server = await serve(() => ({ body: session }));
+    const directory = await mkdtemp(join(tmpdir(), "auto-harness-dispatch-summary-"));
+
+    const result = await runActionWithEnv({
+      ...Object.fromEntries(
+        Object.entries(dispatchInputs(server.origin)).map(([name, value]) => [
+          inputEnvName(name),
+          value,
+        ]),
+      ),
+      // A directory cannot be appended to, so the summary write throws.
+      GITHUB_STEP_SUMMARY: directory,
+    });
+    await rm(directory, { force: true, recursive: true });
+
+    expect(result.code).toBe(0);
+    expect(result.output["session-id"]).toBe("session-1");
+    expect(result.stdout).toContain("::warning::Could not write the step summary:");
+  });
 });
