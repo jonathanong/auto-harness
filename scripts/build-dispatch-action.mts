@@ -10,7 +10,7 @@ const result = await build({
   format: "esm",
   legalComments: "none",
   platform: "node",
-  target: "node20",
+  target: "node24",
   write: false,
 });
 const generated = result.outputFiles[0]?.text;

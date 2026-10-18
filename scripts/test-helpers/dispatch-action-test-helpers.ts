@@ -9,7 +9,14 @@ import { fileURLToPath } from "node:url";
 const actionPath = fileURLToPath(new URL("../../actions/dispatch/dist/index.js", import.meta.url));
 const servers: ReturnType<typeof createServer>[] = [];
 
-type Response = { body: unknown; bodyDelayMs?: number; delayMs?: number; status?: number };
+type Response = {
+  body: unknown;
+  bodyDelayMs?: number;
+  delayMs?: number;
+  destroy?: boolean;
+  headers?: Record<string, string>;
+  status?: number;
+};
 type Request = {
   body: string;
   headers: Record<string, string | string[] | undefined>;
@@ -47,8 +54,15 @@ export const serve = async (respond: (request: Request) => Response) => {
     for await (const chunk of request) body += chunk;
     requests.push({ body, headers: request.headers, method: request.method, url: request.url });
     const result = respond(requests.at(-1)!);
+    if (result.destroy) {
+      request.socket.destroy();
+      return;
+    }
     if (result.delayMs) await new Promise((resolve) => setTimeout(resolve, result.delayMs));
-    response.writeHead(result.status ?? 200, { "content-type": "application/json" });
+    response.writeHead(result.status ?? 200, {
+      "content-type": "application/json",
+      ...result.headers,
+    });
     if (result.bodyDelayMs) {
       response.flushHeaders();
       await new Promise((resolve) => setTimeout(resolve, result.bodyDelayMs));

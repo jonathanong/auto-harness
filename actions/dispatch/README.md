@@ -42,6 +42,20 @@ receiving the response body. It defaults to `30` seconds and must be a finite po
 greater than `300`. The wait operation uses the shorter of this request timeout and the remaining
 `poll-timeout-seconds` deadline for each status request; it does not retry a timed-out request.
 
+Dispatch and resume retry once after HTTP 408 or 429. When `concurrency-id` is set, they also
+retry once after a 5xx, a request timeout, or a network error. Those failures can follow a request
+that the server already committed, and only a concurrency identity lets the control plane return
+the existing session instead of creating a second one. The control plane releases a
+concurrency identity when its session finishes, so a session that completes within the retry
+window can still be dispatched twice. The retry waits for the response's
+`Retry-After` (seconds or an HTTP date, capped at 60 seconds), or 500 ms when there is none, and
+gets a fresh `request-timeout-seconds` budget. Any other 4xx fails at once, and drain operations
+are never retried. A failed HTTP response reports the status and the server's error message.
+
+After a dispatch or resume, the action writes a notice annotation and a job step summary
+(`$GITHUB_STEP_SUMMARY`) with the session link, whether it was newly created, its provider route,
+and its concurrency ID.
+
 ## Resume
 
 Continues a prior **terminal** session that actually ran — pass the source `session-id` from an
