@@ -51,7 +51,8 @@ Add the `actionlint` check to branch protection if you want it required alongsid
 `pr-shepherd` from an auto-harness worktree so this file loads instead of another checkout's
 rules.
 
-`ignoreChecks` lists the raw GitHub Checks/Statuses name `CodeRabbit`. That drops the CodeRabbit
+The file uses the pr-shepherd v1 schema (`version: 1`). `checks.ignore` lists the raw GitHub
+Checks/Statuses name `CodeRabbit`. That drops the CodeRabbit
 **CI status** from Shepherd's readiness verdict (it often reports "Review rate limited"). It does
 **not** hide CodeRabbit review comments, threads, or `CHANGES_REQUESTED` reviews. Those stay
 visible so a bot `CHANGES_REQUESTED` can be dismissed with `--dismiss-review-ids`. Do not add a
