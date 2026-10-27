@@ -12,7 +12,7 @@ import {
 
 import { EditWorktreeForm } from "../../../components/edit-worktree-form.tsx";
 import { ProviderScopeTable } from "../../../components/provider-scope-table.tsx";
-import { apiGet, apiGetAllPages, apiGetFirstPageWithItems } from "../../../lib/api.ts";
+import { apiGet, apiGetFirstPageWithItems } from "../../../lib/api.ts";
 import { rethrowControlFlowError } from "../../../lib/page-error.ts";
 import { fetchProviderCatalogLookups } from "../../../lib/provider-catalog-fetch.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
@@ -39,6 +39,43 @@ type Session = {
   prompt?: string;
   source?: string;
 };
+
+const TAB_KEYS = ["sessions", "provider-accounts", "settings"];
+
+async function loadRepository(repositoryId: string): Promise<Repo | undefined> {
+  try {
+    return await apiGet<Repo>(`/api/v1/repositories/${encodeURIComponent(repositoryId)}`);
+  } catch (e) {
+    /* ignore — repo path/name stay unknown */
+    rethrowControlFlowError(e);
+    return undefined;
+  }
+}
+
+async function loadSessions(worktreeId: string): Promise<Session[]> {
+  try {
+    // No server-side worktreeId filter yet — scan bounded pages until this worktree appears.
+    const data = await apiGetFirstPageWithItems<Session>(
+      "/api/v1/sessions?limit=100",
+      (session) => session.worktreeId === worktreeId,
+    );
+    return data.items.filter((s) => s.worktreeId === worktreeId);
+  } catch (e) {
+    /* ignore — sessions section stays empty */
+    rethrowControlFlowError(e);
+    return [];
+  }
+}
+
+async function loadInventory(hostId: string): Promise<HostInventory | null> {
+  try {
+    return await apiGet<HostInventory>(`/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`);
+  } catch (e) {
+    /* ignore — edit/remove actions stay hidden below */
+    rethrowControlFlowError(e);
+    return null;
+  }
+}
 
 export default async function WorktreeDetailPage({
   params,
@@ -73,56 +110,22 @@ export default async function WorktreeDetailPage({
     );
   }
 
-  let repoPath: string | undefined;
-  let repoName: string | undefined;
-  let sessions: Session[] = [];
-  try {
-    const repos = await apiGetAllPages<Repo>("/api/v1/repositories?limit=100");
-    const repo = repos.find((r) => r.id === worktree!.repositoryId);
-    repoPath = repo?.url;
-    repoName = repo?.name;
-  } catch (e) {
-    /* ignore — repo path/name stay unknown */
-    rethrowControlFlowError(e);
-  }
-  try {
-    // No server-side worktreeId filter yet — scan bounded pages until this worktree appears.
-    const data = await apiGetFirstPageWithItems<Session>(
-      "/api/v1/sessions?limit=100",
-      (session) => session.worktreeId === worktreeId,
-    );
-    sessions = data.items.filter((s) => s.worktreeId === worktreeId);
-  } catch (e) {
-    /* ignore — sessions section stays empty */
-    rethrowControlFlowError(e);
-  }
-
-  let inventory: HostInventory | null = null;
-  if (worktree.hostId) {
-    try {
-      inventory = await apiGet<HostInventory>(
-        `/api/v1/hosts/${encodeURIComponent(worktree.hostId)}/inventory`,
-      );
-    } catch (e) {
-      /* ignore — edit/remove actions stay hidden below */
-      rethrowControlFlowError(e);
-    }
-  }
-  const hostRepository = inventory?.repositories.find((r) => r.id === worktree.repositoryId);
-  const hostWorktree = hostRepository?.worktrees.find((w) => w.id === worktree.id);
+  // Each tab is a full server render, so only fetch what the active tab shows: the
+  // sessions scan is the slowest call and must not block Settings or Provider accounts.
+  const activeTab = typeof tab === "string" && TAB_KEYS.includes(tab) ? tab : "sessions";
+  const wt = worktree;
+  const [repo, sessions, inventory, catalogLookups] = await Promise.all([
+    activeTab === "settings" ? loadRepository(wt.repositoryId) : undefined,
+    activeTab === "sessions" ? loadSessions(worktreeId) : [],
+    activeTab !== "sessions" && wt.hostId ? loadInventory(wt.hostId) : null,
+    activeTab === "provider-accounts" ? fetchProviderCatalogLookups() : undefined,
+  ]);
+  const hostRepository = inventory?.repositories.find((r) => r.id === wt.repositoryId);
+  const hostWorktree = hostRepository?.worktrees.find((w) => w.id === wt.id);
   const hasInheritedExecutionConfig =
     (inventory?.setupScript ?? "") !== "" ||
     (hostRepository?.setupScript ?? "") !== "" ||
     (hostRepository?.terminalHookScript ?? "") !== "";
-
-  const { providersById, providerAccountsById, commandsById, catalog } =
-    await fetchProviderCatalogLookups();
-  const providerResolutions = resolveProviderAccountsForScope(
-    hostWorktree,
-    hostRepository,
-    inventory ?? undefined,
-    catalog,
-  );
 
   const row: WorktreeRow = {
     id: worktree.id,
@@ -153,7 +156,7 @@ export default async function WorktreeDetailPage({
       >
         <Tabs
           basePath={`/worktrees/${encodeURIComponent(worktreeId)}`}
-          active={typeof tab === "string" ? tab : "sessions"}
+          active={activeTab}
           pw="worktree-detail-tabs"
           tabs={[
             {
@@ -171,22 +174,28 @@ export default async function WorktreeDetailPage({
             {
               key: "provider-accounts",
               label: "Provider accounts",
-              content: worktree.hostId ? (
-                <ProviderScopeTable
-                  hostId={worktree.hostId}
-                  scope={{ repositoryId: worktree.repositoryId, worktreeId: worktree.id }}
-                  inheritedEnabledLabel="repository"
-                  resolutions={providerResolutions}
-                  overridesAtScope={hostWorktree?.providerAccountOverrides ?? {}}
-                  accountsById={providerAccountsById}
-                  providersById={providersById}
-                  commandsById={commandsById}
-                />
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Not associated with a host inventory.
-                </p>
-              ),
+              content:
+                worktree.hostId && catalogLookups ? (
+                  <ProviderScopeTable
+                    hostId={worktree.hostId}
+                    scope={{ repositoryId: worktree.repositoryId, worktreeId: worktree.id }}
+                    inheritedEnabledLabel="repository"
+                    resolutions={resolveProviderAccountsForScope(
+                      hostWorktree,
+                      hostRepository,
+                      inventory ?? undefined,
+                      catalogLookups.catalog,
+                    )}
+                    overridesAtScope={hostWorktree?.providerAccountOverrides ?? {}}
+                    accountsById={catalogLookups.providerAccountsById}
+                    providersById={catalogLookups.providersById}
+                    commandsById={catalogLookups.commandsById}
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Not associated with a host inventory.
+                  </p>
+                ),
             },
             {
               key: "settings",
@@ -195,9 +204,9 @@ export default async function WorktreeDetailPage({
                 <div className="space-y-4">
                   <WorktreeDetailsCard
                     worktree={row}
-                    repositoryName={repoName}
+                    repositoryName={repo?.name}
                     repoHrefBase="/repositories"
-                    repoPath={repoPath}
+                    repoPath={repo?.url}
                     hostHrefBase="/hosts"
                   />
                   {worktree.hostId && hostWorktree ? (

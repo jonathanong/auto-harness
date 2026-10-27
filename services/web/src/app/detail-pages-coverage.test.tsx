@@ -152,7 +152,7 @@ describe("control detail routes previously omitted from coverage include", () =>
         online: true,
         labels: [],
       },
-      "/api/v1/repositories": { items: [{ id: "r-1", name: "Repo", url: "/src/repo" }] },
+      "/api/v1/repositories/r-1": { id: "r-1", name: "Repo", url: "/src/repo" },
       "/api/v1/sessions?limit=100": { items: [], nextCursor: "sessions-next" },
       "/api/v1/sessions?limit=100&cursor=sessions-next": {
         items: [{ id: "session-wt-1", status: "completed", worktreeId: "wt-1" }],
@@ -180,6 +180,22 @@ describe("control detail routes previously omitted from coverage include", () =>
       }),
     );
     expect(html).toContain('data-pw="page-worktree-detail"');
+    expect(html).toContain('data-pw="worktree-detail-repository-link"');
+    expect(html).toContain("/src/repo");
+    expect(html).toContain('data-pw="worktree-edit-open"');
+
+    for (const [tab, marker] of [
+      [undefined, "session-wt-1"],
+      ["provider-accounts", 'data-pw="tab-provider-accounts"'],
+    ] as const) {
+      const tabHtml = await renderPage(
+        WorktreeDetailPage({
+          params: Promise.resolve({ worktreeId: "wt-1" }),
+          searchParams: Promise.resolve(tab ? { tab } : {}),
+        }),
+      );
+      expect(tabHtml).toContain(marker);
+    }
 
     stubApi({ "/api/v1/worktrees": { items: [] } });
     const missing = await renderPage(
@@ -199,7 +215,7 @@ describe("control detail routes previously omitted from coverage include", () =>
         repositoryId: "r-missing",
         path: "/tmp/hostless",
       },
-      "/api/v1/repositories": jsonResponse({}, 503),
+      "/api/v1/repositories/r-missing": jsonResponse({}, 503),
       "/api/v1/sessions?limit=100": jsonResponse({}, 503),
       "/api/v1/providers": jsonResponse({}, 503),
       "/api/v1/provider-accounts": jsonResponse({}, 503),
@@ -220,6 +236,13 @@ describe("control detail routes previously omitted from coverage include", () =>
     );
     expect(html).toContain("Not associated with a host inventory.");
     expect(html).not.toContain('data-pw="remove-worktree-wt-hostless"');
+    html = await renderPage(
+      WorktreeDetailPage({
+        params: Promise.resolve({ worktreeId: "wt-hostless" }),
+        searchParams: Promise.resolve({ tab: "settings" }),
+      }),
+    );
+    expect(html).toContain("r-missing");
 
     stubApi({ "/api/v1/worktrees/wt-hostless": "__throw_string__" });
     const missing = await renderPage(
@@ -250,7 +273,6 @@ describe("control detail routes previously omitted from coverage include", () =>
         path: "/tmp/sparse",
         hostId: "host",
       },
-      "/api/v1/repositories": {},
       "/api/v1/sessions?limit=100": {},
       "/api/v1/hosts/host/inventory": jsonResponse({}, 503),
       "/api/v1/providers": {},
@@ -265,5 +287,59 @@ describe("control detail routes previously omitted from coverage include", () =>
     );
     expect(html).toContain("No recent sessions in this worktree.");
     expect(html).not.toContain('data-pw="remove-worktree-wt-sparse"');
+    const settings = await renderPage(
+      WorktreeDetailPage({
+        params: Promise.resolve({ worktreeId: "wt-sparse" }),
+        searchParams: Promise.resolve({ tab: "settings" }),
+      }),
+    );
+    expect(settings).not.toContain('data-pw="worktree-edit-open"');
+  });
+
+  it("fetches only the active worktree tab's data", async () => {
+    const routes = {
+      "/api/v1/worktrees/wt-1": {
+        id: "wt-1",
+        name: "f",
+        repositoryId: "r-1",
+        path: "/p",
+        hostId: "h",
+      },
+      "/api/v1/repositories/r-1": { id: "r-1", name: "Repo", url: "/src/repo" },
+      "/api/v1/sessions?limit=100": { items: [], nextCursor: null },
+      "/api/v1/hosts/h/inventory": { repositories: [], providerAccounts: [] },
+      "/api/v1/providers": { items: [] },
+      "/api/v1/provider-accounts": { items: [] },
+      "/api/v1/commands": { items: [] },
+    };
+    const pathsFor = async (tab?: string) => {
+      const fetch = stubApi(routes);
+      await renderPage(
+        WorktreeDetailPage({
+          params: Promise.resolve({ worktreeId: "wt-1" }),
+          searchParams: Promise.resolve(tab ? { tab } : {}),
+        }),
+      );
+      return fetch.mock.calls.map(([input]) => new URL(String(input), "http://x").pathname);
+    };
+
+    const sessions = await pathsFor();
+    expect(sessions).toContain("/api/v1/sessions");
+    expect(sessions).not.toContain("/api/v1/hosts/h/inventory");
+    expect(sessions).not.toContain("/api/v1/providers");
+
+    const settings = await pathsFor("settings");
+    expect(settings).not.toContain("/api/v1/sessions");
+    expect(settings).not.toContain("/api/v1/providers");
+    expect(settings).toEqual(
+      expect.arrayContaining(["/api/v1/repositories/r-1", "/api/v1/hosts/h/inventory"]),
+    );
+
+    const providers = await pathsFor("provider-accounts");
+    expect(providers).not.toContain("/api/v1/sessions");
+    expect(providers).not.toContain("/api/v1/repositories/r-1");
+    expect(providers).toEqual(
+      expect.arrayContaining(["/api/v1/providers", "/api/v1/hosts/h/inventory"]),
+    );
   });
 });

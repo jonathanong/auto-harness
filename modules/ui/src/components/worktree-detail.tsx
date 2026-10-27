@@ -70,6 +70,7 @@ export function WorktreeDetailsCard({
                 <Link
                   href={`${repoHrefBase}/${encodeURIComponent(worktree.repositoryId)}`}
                   className="hover:underline"
+                  data-pw="worktree-detail-repository-link"
                 >
                   {repositoryName ?? worktree.repositoryId}
                 </Link>
@@ -86,6 +87,7 @@ export function WorktreeDetailsCard({
                   <Link
                     href={`${hostHrefBase}/${encodeURIComponent(worktree.hostId)}`}
                     className="hover:underline"
+                    data-pw="worktree-detail-host-link"
                   >
                     {worktree.hostId}
                   </Link>
