@@ -21,14 +21,14 @@ test.describe("control plane worktree detail links", () => {
       const wtId = `wt-links-${suffix}`;
       const detailPath = `/worktrees/${wtId}`;
 
-      await putHostRepo(request, {
-        id: repoId,
-        path: `/tmp/${repoName}`,
-        defaultBranch: "main",
-        worktrees: [{ id: wtId, name: wtId, path: `/tmp/${repoName}/${wtId}`, labels: [] }],
-      });
-
       try {
+        await putHostRepo(request, {
+          id: repoId,
+          path: `/tmp/${repoName}`,
+          defaultBranch: "main",
+          worktrees: [{ id: wtId, name: wtId, path: `/tmp/${repoName}/${wtId}`, labels: [] }],
+        });
+
         await page.goto("/worktrees");
         await expect(page.getByTestId(`worktree-link-${wtId}`)).toBeVisible({ timeout: 15_000 });
         await page.getByTestId(`worktree-link-${wtId}`).click();
@@ -66,6 +66,7 @@ test.describe("control plane worktree detail links", () => {
         await expect(page.getByTestId("page-worktrees")).toBeVisible();
       } finally {
         await removeHostRepo(request, repoId);
+        await request.delete(`/api/v1/repositories/${repoId}`);
       }
     });
   });
