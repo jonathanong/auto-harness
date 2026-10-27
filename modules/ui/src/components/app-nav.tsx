@@ -90,12 +90,7 @@ function ChevronDown() {
 
 function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   const link = (
-    <Link
-      href={item.href}
-      data-pw={navItemPw(item)}
-      className={navItemClass(active)}
-      prefetch={false}
-    >
+    <Link href={item.href} data-pw={navItemPw(item)} className={navItemClass(active)}>
       {item.label}
     </Link>
   );
@@ -138,7 +133,6 @@ function NavGroupMenu({
                 "w-full cursor-pointer",
                 item.href === activeHref ? "bg-muted text-foreground" : "text-muted-foreground",
               )}
-              prefetch={false}
             >
               {item.label}
             </Link>

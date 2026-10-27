@@ -64,11 +64,16 @@ test.describe("control plane worktree detail links", () => {
         // breadcrumb's prefetch through — it carries the skeleton — and hold the click's
         // own render.
         const { promise: held, resolve: release } = Promise.withResolvers<void>();
-        const prefetched = page.waitForResponse(
-          (r) =>
+        // Skip the route-tree prefetch (`next-router-segment-prefetch: /_tree`); the
+        // segment prefetch after it carries the skeleton.
+        const prefetched = page.waitForResponse((r) => {
+          const headers = r.request().headers();
+          return (
             new URL(r.url()).pathname === "/worktrees" &&
-            r.request().headers()["next-router-prefetch"] === "1",
-        );
+            headers["next-router-prefetch"] === "1" &&
+            headers["next-router-segment-prefetch"] === undefined
+          );
+        });
         await page.route(
           (url) => url.pathname === "/worktrees",
           async (route) => {

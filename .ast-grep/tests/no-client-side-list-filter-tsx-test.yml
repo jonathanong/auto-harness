@@ -15,3 +15,8 @@ invalid:
       const rows = await apiGetAllPages("/api/v1/sessions?limit=100");
       return rows.filter((r) => r.worktreeId === id);
     }
+  - |
+    async function load() {
+      const rows = await apiGetAllPages<Row>("/api/v1/repositories?limit=100");
+      return rows.toSorted(byName).find((r) => r.id === id);
+    }

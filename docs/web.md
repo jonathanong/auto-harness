@@ -11,10 +11,11 @@ an AWS deploy. Account-backed evidence: deploy → update → REST/web health �
 [qa-production.md](qa-production.md). Sections that say **Target** retain intended product
 behavior without claiming that extra path is already shipped.
 
-Pages fetch only what they render. A tabbed page loads data for the active tab only, and a
-page that needs part of a list asks the API for it with query parameters
-(`/api/v1/sessions?worktreeId=…`) or reads one record by id. It never fetches the whole
-list and filters it in the render. The ast-grep rule
+Pages should fetch only what they render. New tabbed pages load data for the active tab only,
+as the worktree detail page does; older pages such as repository detail still load every
+tab. A page that needs part of a list asks the API for it with query parameters
+(`/api/v1/sessions?worktreeId=…`) or reads one record by id, rather than fetching the whole
+list and filtering it in the render. The ast-grep rule
 `.ast-grep/rules/no-client-side-list-filter.yml` (`pnpm lint:ast`) rejects
 `.filter`/`.find` on `apiGetAllPages` results. When a filter the page needs is missing,
 add it to the API.

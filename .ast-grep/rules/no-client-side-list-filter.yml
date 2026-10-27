@@ -24,8 +24,10 @@ rule:
         - pattern: $OBJ.$METHOD($$$REST)
         - has:
             { field: function, has: { field: object, has: { matches: list-fetch, stopBy: end } } }
+    # `all` applies in order: bind $LIST from the declaration first, then match a
+    # narrowing call on it, directly or after a chain (`rows.toSorted(…).find(…)`).
     - all:
-        - pattern: $LIST.$METHOD($$$REST)
+        - pattern: $OBJ.$METHOD($$$REST)
         - inside:
             stopBy: end
             kind: statement_block
@@ -35,6 +37,13 @@ rule:
               all:
                 - has: { field: name, pattern: $LIST }
                 - has: { field: value, matches: list-fetch }
+        - has:
+            field: function
+            has:
+              field: object
+              any:
+                - pattern: $LIST
+                - has: { pattern: $LIST, stopBy: end }
 constraints:
   METHOD:
     regex: ^(filter|find|findIndex|findLast|some)$
@@ -65,8 +74,10 @@ rule:
         - pattern: $OBJ.$METHOD($$$REST)
         - has:
             { field: function, has: { field: object, has: { matches: list-fetch, stopBy: end } } }
+    # `all` applies in order: bind $LIST from the declaration first, then match a
+    # narrowing call on it, directly or after a chain (`rows.toSorted(…).find(…)`).
     - all:
-        - pattern: $LIST.$METHOD($$$REST)
+        - pattern: $OBJ.$METHOD($$$REST)
         - inside:
             stopBy: end
             kind: statement_block
@@ -76,6 +87,13 @@ rule:
               all:
                 - has: { field: name, pattern: $LIST }
                 - has: { field: value, matches: list-fetch }
+        - has:
+            field: function
+            has:
+              field: object
+              any:
+                - pattern: $LIST
+                - has: { pattern: $LIST, stopBy: end }
 constraints:
   METHOD:
     regex: ^(filter|find|findIndex|findLast|some)$
