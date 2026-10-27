@@ -88,7 +88,7 @@ export default async function RepositoryDetailPage({
     const data = await apiGetFirstPageWithItems<Session>(
       `/api/v1/sessions?repositoryId=${encodeURIComponent(repositoryId)}&limit=100`,
     );
-    sessions = data.items.filter((s) => s.repositoryId === repositoryId);
+    sessions = data.items;
   } catch (e) {
     /* ignore — sessions section stays empty */
     rethrowControlFlowError(e);

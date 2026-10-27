@@ -58,7 +58,40 @@ test.describe("control plane link health", () => {
     }
   });
 
-  test("every internal link on top-level pages resolves", async ({ page, request }) => {
+  test("a slow nav menu navigation shows a loading state at once", async ({ page }) => {
+    // Sibling routes share /settings, so the root loading.tsx cannot cover the click; a
+    // loading.tsx at or below /settings must. The nav link's prefetch delivers it.
+    await page.goto("/settings/account");
+    await expectPageLoaded(page);
+    const { promise: held, resolve: release } = Promise.withResolvers<void>();
+    // Next prefetches the route tree (`next-router-segment-prefetch: /_tree`) and then
+    // the segment data that carries the skeleton; wait for the latter.
+    const prefetched = page.waitForResponse((r) => {
+      const headers = r.request().headers();
+      return (
+        new URL(r.url()).pathname === "/settings/slack" &&
+        headers["next-router-prefetch"] === "1" &&
+        headers["next-router-segment-prefetch"] === undefined
+      );
+    });
+    await page.route(
+      (url) => url.pathname === "/settings/slack",
+      async (route) => {
+        const headers = route.request().headers();
+        if (headers.rsc === "1" && headers["next-router-prefetch"] !== "1") await held;
+        await route.continue();
+      },
+    );
+    await page.getByTestId("nav-group-settings").click();
+    await prefetched;
+    await page.getByTestId("nav-slack").click();
+    await expect(page.getByTestId("app-main").locator('[aria-busy="true"]')).toBeVisible();
+    release();
+    await expect(page).toHaveURL((url) => url.pathname === "/settings/slack");
+    await expectPageLoaded(page);
+  });
+
+  test("every internal link on top-level and detail pages resolves", async ({ page, request }) => {
     await withLocalHostLock(async () => {
       // Seed a repository + worktree so list pages render detail links to check.
       const suffix = `${test.info().parallelIndex}-${Date.now()}`;
@@ -76,7 +109,7 @@ test.describe("control plane link health", () => {
         await expect(page.getByTestId(`worktree-link-${wtId}`)).toBeVisible({ timeout: 15_000 });
 
         const checked = new Set<string>();
-        for (const [, , path] of NAV) {
+        const checkLinksOn = async (path: string) => {
           await page.goto(path);
           await expectPageLoaded(page);
           const hrefs = await internalLinks(page);
@@ -87,10 +120,34 @@ test.describe("control plane link health", () => {
             const response = await page.request.get(href, { maxRedirects: 0 });
             expect(response.status(), `${href} (linked from ${path})`).toBeLessThan(400);
           }
-        }
+        };
+        for (const [, , path] of NAV) await checkLinksOn(path);
         expect([...checked]).toEqual(
           expect.arrayContaining([`/repositories/${repoId}`, `/worktrees/${wtId}`]),
         );
+
+        // One level deeper: visit one detail page per route and check its links
+        // (tabs, breadcrumbs, cross-links), which top-level pages never render.
+        const navPaths = new Set(NAV.map(([, , path]) => path));
+        const detailPages = new Map<string, string>();
+        for (const href of checked) {
+          const { pathname } = new URL(href, "http://x");
+          const route = pathname.replace(/\/[^/]+$/, "/:id");
+          if (navPaths.has(pathname) || route === "/:id" || detailPages.has(route)) continue;
+          detailPages.set(route, pathname);
+        }
+        expect([...detailPages.keys()]).toEqual(
+          expect.arrayContaining(["/repositories/:id", "/worktrees/:id"]),
+        );
+        // Tabs render their own links (e.g. worktree Settings holds the repository and
+        // host links), so scan every tab, not just the default one.
+        for (const path of detailPages.values()) {
+          await checkLinksOn(path);
+          const tabHrefs = (await internalLinks(page)).filter((href) =>
+            href.startsWith(`${path}?tab=`),
+          );
+          for (const tabHref of tabHrefs) await checkLinksOn(tabHref);
+        }
       } finally {
         await removeHostRepo(request, repoId);
         await request.delete(`/api/v1/repositories/${repoId}`);

@@ -1,0 +1,99 @@
+id: no-client-side-list-filter
+language: TypeScript
+severity: error
+message: >-
+  Do not narrow an API list response after fetching it. Every page of the list is
+  fetched, so the request grows with the whole collection (a production worktree
+  page took 4s this way). Pass the filter as a query parameter instead, e.g.
+  `/api/v1/sessions?worktreeId=…`, and add it to the API if it is missing
+  (services/api, docs/api.md, docs/openapi.yaml, plus a CLI flag). To read one
+  record, call the API's `GET …/{id}` route.
+files:
+  - "services/web/src/**/*.ts"
+  - "services/host-pane/src/**/*.ts"
+ignores:
+  - "**/*.test.ts"
+utils:
+  list-fetch:
+    any:
+      - pattern: await apiGetAllPages($$$ARGS)
+      - pattern: await apiGetAllPages<$T>($$$ARGS)
+rule:
+  any:
+    - all:
+        - pattern: $OBJ.$METHOD($$$REST)
+        - has:
+            { field: function, has: { field: object, has: { matches: list-fetch, stopBy: end } } }
+    # `all` applies in order: bind $LIST from the declaration first, then match a
+    # narrowing call on it, directly or after a chain (`rows.toSorted(…).find(…)`).
+    - all:
+        - pattern: $OBJ.$METHOD($$$REST)
+        - inside:
+            stopBy: end
+            kind: statement_block
+            has:
+              stopBy: end
+              kind: variable_declarator
+              all:
+                - has: { field: name, pattern: $LIST }
+                - has: { field: value, matches: list-fetch }
+        - has:
+            field: function
+            has:
+              field: object
+              any:
+                - pattern: $LIST
+                - has: { pattern: $LIST, stopBy: end }
+constraints:
+  METHOD:
+    regex: ^(filter|find|findIndex|findLast|some)$
+---
+id: no-client-side-list-filter-tsx
+language: Tsx
+severity: error
+message: >-
+  Do not narrow an API list response after fetching it. Every page of the list is
+  fetched, so the request grows with the whole collection (a production worktree
+  page took 4s this way). Pass the filter as a query parameter instead, e.g.
+  `/api/v1/sessions?worktreeId=…`, and add it to the API if it is missing
+  (services/api, docs/api.md, docs/openapi.yaml, plus a CLI flag). To read one
+  record, call the API's `GET …/{id}` route.
+files:
+  - "services/web/src/**/*.tsx"
+  - "services/host-pane/src/**/*.tsx"
+ignores:
+  - "**/*.test.tsx"
+utils:
+  list-fetch:
+    any:
+      - pattern: await apiGetAllPages($$$ARGS)
+      - pattern: await apiGetAllPages<$T>($$$ARGS)
+rule:
+  any:
+    - all:
+        - pattern: $OBJ.$METHOD($$$REST)
+        - has:
+            { field: function, has: { field: object, has: { matches: list-fetch, stopBy: end } } }
+    # `all` applies in order: bind $LIST from the declaration first, then match a
+    # narrowing call on it, directly or after a chain (`rows.toSorted(…).find(…)`).
+    - all:
+        - pattern: $OBJ.$METHOD($$$REST)
+        - inside:
+            stopBy: end
+            kind: statement_block
+            has:
+              stopBy: end
+              kind: variable_declarator
+              all:
+                - has: { field: name, pattern: $LIST }
+                - has: { field: value, matches: list-fetch }
+        - has:
+            field: function
+            has:
+              field: object
+              any:
+                - pattern: $LIST
+                - has: { pattern: $LIST, stopBy: end }
+constraints:
+  METHOD:
+    regex: ^(filter|find|findIndex|findLast|some)$

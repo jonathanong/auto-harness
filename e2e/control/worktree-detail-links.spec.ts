@@ -59,9 +59,35 @@ test.describe("control plane worktree detail links", () => {
         await expect(page).toHaveURL(/\/hosts\/local-1$/);
         await expect(page.getByTestId("page-host-detail")).toBeVisible();
 
+        // A slow /worktrees render must show the loading skeleton at once, not leave the
+        // detail page frozen (production reported this click as "does nothing"). Let the
+        // breadcrumb's prefetch through — it carries the skeleton — and hold the click's
+        // own render.
+        const { promise: held, resolve: release } = Promise.withResolvers<void>();
+        // Skip the route-tree prefetch (`next-router-segment-prefetch: /_tree`); the
+        // segment prefetch after it carries the skeleton.
+        const prefetched = page.waitForResponse((r) => {
+          const headers = r.request().headers();
+          return (
+            new URL(r.url()).pathname === "/worktrees" &&
+            headers["next-router-prefetch"] === "1" &&
+            headers["next-router-segment-prefetch"] === undefined
+          );
+        });
+        await page.route(
+          (url) => url.pathname === "/worktrees",
+          async (route) => {
+            const headers = route.request().headers();
+            if (headers.rsc === "1" && headers["next-router-prefetch"] !== "1") await held;
+            await route.continue();
+          },
+        );
         await page.goto(`${detailPath}?tab=settings`);
         await expect(page.getByTestId("worktree-detail-path")).toBeVisible();
+        await prefetched;
         await page.getByTestId("breadcrumb-0").click();
+        await expect(page.getByTestId("app-main").locator('[aria-busy="true"]')).toBeVisible();
+        release();
         await expect(page).toHaveURL(/\/worktrees$/);
         await expect(page.getByTestId("page-worktrees")).toBeVisible();
       } finally {

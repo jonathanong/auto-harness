@@ -47,11 +47,11 @@ export async function apiGetAllPages<T>(path: string): Promise<T[]> {
  *
  * Session queries can return empty pages while a cursor is advancing through sparse
  * partitions. Bounded displays (such as the dashboard) need to advance past those
- * pages without fetching the entire history.
+ * pages without fetching the entire history. Narrow the result with API query
+ * parameters; filtering the returned items here would scan pages the API could skip.
  */
 export async function apiGetFirstPageWithItems<T>(
   path: string,
-  hasMatchingItem: (item: T) => boolean = () => true,
 ): Promise<{ items: T[]; nextCursor: string | null }> {
   const seen = new Set<string>();
   let requestPath = path;
@@ -59,7 +59,7 @@ export async function apiGetFirstPageWithItems<T>(
     const page = await apiGet<{ items?: T[]; nextCursor?: string | null }>(requestPath);
     const items = page.items ?? [];
     const nextCursor = page.nextCursor ?? null;
-    if (items.some(hasMatchingItem) || nextCursor === null) return { items, nextCursor };
+    if (items.length > 0 || nextCursor === null) return { items, nextCursor };
     if (seen.has(nextCursor)) throw new Error(`repeated pagination cursor for ${path}`);
     seen.add(nextCursor);
     requestPath = `${path}${path.includes("?") ? "&" : "?"}cursor=${encodeURIComponent(nextCursor)}`;

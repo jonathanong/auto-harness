@@ -143,7 +143,6 @@ function NewSessionButton({ active }: { active: boolean }) {
       <Link
         href="/sessions/new"
         data-pw="nav-session-new"
-        prefetch={false}
         className={cn(
           "inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-medium transition-colors",
           "outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
