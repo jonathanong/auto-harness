@@ -34,6 +34,24 @@ describe("SessionDetail static markup", () => {
     expect(countOnly).not.toContain("Last retry reason");
   });
 
+  it("renders lineage when only the parent or only the root session is known", () => {
+    const parentOnly = render(
+      <SessionDetailsCard
+        session={{ id: "session/child", status: "running", parentSessionId: "session/parent" }}
+      />,
+    );
+    expect(parentOnly).toContain('data-pw="session-detail-parent-session"');
+    expect(parentOnly).not.toContain('data-pw="session-detail-root-session"');
+
+    const rootOnly = render(
+      <SessionDetailsCard
+        session={{ id: "session/child", status: "running", rootSessionId: "session/root" }}
+      />,
+    );
+    expect(rootOnly).toContain('data-pw="session-detail-root-session"');
+    expect(rootOnly).not.toContain('data-pw="session-detail-parent-session"');
+  });
+
   it("renders linked, plain, and absent session relationships with full details", () => {
     const linkedSession = {
       id: "session/a",
