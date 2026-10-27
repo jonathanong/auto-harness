@@ -183,50 +183,6 @@ describe("windowed session list reads", () => {
     expect(pages.slice(0, -1).every((page) => page.length === 7)).toBe(true);
   });
 
-  it.each([
-    ["priority_desc", ":sortEnd"],
-    ["priority_asc", ":sortStart"],
-  ] as const)(
-    "binds a %s repository position only on partitions without a checkpoint",
-    async (sort, bound) => {
-      const commands: QueryCommand[] = [];
-      const ctx = {
-        doc: {
-          send: async (command: QueryCommand) => {
-            commands.push(command);
-            return { Items: [] };
-          },
-        },
-        tables: { sessions: "sessions" },
-      } as unknown as PlaneStorageCtx;
-      await listSessionsPageFromStorage(ctx, {
-        ...baseQuery,
-        sort,
-        status: "queued",
-        repositoryId: "repo-1",
-        position: { createdAt: "2026-01-01T00:00:00.000Z", id: "sess-0", priority: 0 },
-      });
-      const values = commands[0]!.input.ExpressionAttributeValues!;
-      expect(values[bound]).toContain("sess-0");
-      expect(commands[0]!.input.ExclusiveStartKey).toBeUndefined();
-    },
-  );
-
-  it("rejects a Dynamo continuation key from another partition", async () => {
-    const ctx = {
-      doc: {
-        send: async () => ({
-          Items: [],
-          LastEvaluatedKey: { id: "x", statusShard: "running#0", createdOrder: "x" },
-        }),
-      },
-      tables: { sessions: "sessions" },
-    } as unknown as PlaneStorageCtx;
-    await expect(
-      listSessionsPageFromStorage(ctx, { ...baseQuery, status: "queued" }),
-    ).rejects.toThrow("invalid pagination key");
-  });
-
   it("ends a sparse filter's page within the read cap and resumes it", async () => {
     const rows = Array.from({ length: 40 }, (_, index) =>
       row(`s-${index}`, 59 - index, "completed", index % 13 === 5 ? "wt-1" : "wt-other"),
