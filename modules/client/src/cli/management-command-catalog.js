@@ -11,7 +11,7 @@ export const manifestCommandCatalog = [
   }),
   cmd(["provider", "rm"], "DELETE", "/providers/:providerId", { params: ["providerId"] }),
 
-  cmd(["command", "list"], "GET", "/commands", paged()),
+  cmd(["command", "list"], "GET", "/commands", paged([q("--provider-id", "providerId")])),
   cmd(["command", "get"], "GET", "/commands/:commandId", { params: ["commandId"] }),
   cmd(["command", "create"], "POST", "/commands", { body: "required" }),
   cmd(["command", "update"], ["PUT", "PATCH"], "/commands/:commandId", {
@@ -20,7 +20,12 @@ export const manifestCommandCatalog = [
   }),
   cmd(["command", "rm"], "DELETE", "/commands/:commandId", { params: ["commandId"] }),
 
-  cmd(["provider-account", "list"], "GET", "/provider-accounts", paged()),
+  cmd(
+    ["provider-account", "list"],
+    "GET",
+    "/provider-accounts",
+    paged([q("--provider-id", "providerId")]),
+  ),
   cmd(["provider-account", "get"], "GET", "/provider-accounts/:providerAccountId", {
     params: ["providerAccountId"],
   }),

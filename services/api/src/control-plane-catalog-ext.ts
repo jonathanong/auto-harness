@@ -257,8 +257,21 @@ export class ControlPlaneCatalogService {
   async listCommandsPageDurable(query: {
     limit: number;
     cursor: string | null;
+    providerId?: string;
   }): Promise<{ items: CommandRecord[]; nextCursor: string | null }> {
     const storage = this.state.storage;
+    const providerId = query.providerId;
+    if (providerId !== undefined) {
+      // Filter before slicing so pages and cursors stay correct; filtered cursors are plain ids.
+      if (query.cursor?.startsWith("s1.")) {
+        throw new InvalidListPageQueryError("invalid or mismatched list cursor");
+      }
+      if (storage) await durableCatalog.listCommandsDurable(this.state);
+      return pageByKey(
+        commands.listCommands(this.state).filter((command) => command.providerId === providerId),
+        { limit: query.limit, cursor: query.cursor, key: (command) => command.id },
+      );
+    }
     if (storage && typeof storage.listCommandsPage === "function") {
       const startKey = catalogPageStartKey(
         query.cursor,

@@ -5,6 +5,7 @@ import { handleProviderAccountUsageRoute } from "./local-routes-provider-account
 import { MAX_CONCURRENT_SESSIONS_LIMIT } from "@auto-harness/shared";
 import { mayAccessRepository } from "./auth-policy.ts";
 import { sendListPage } from "./local-list-page.ts";
+import { InvalidListPageQueryError, readSingleQueryParam } from "./control-plane-id-page.ts";
 
 /** Provider account CRUD routes. Returns true if handled. */
 export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolean> {
@@ -12,9 +13,21 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
 
   if (method === "GET" && url.pathname === "/api/v1/provider-accounts") {
     try {
-      sendListPage(ctx, await plane.listProviderAccountsDurable(), (account) => account.id);
-    } catch {
-      sendInternalError(res);
+      const providerId = readSingleQueryParam(url, "providerId");
+      const accounts = await plane.listProviderAccountsDurable();
+      sendListPage(
+        ctx,
+        providerId === undefined
+          ? accounts
+          : accounts.filter((account) => account.providerId === providerId),
+        (account) => account.id,
+      );
+    } catch (error) {
+      if (error instanceof InvalidListPageQueryError) {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: error.message } });
+      } else {
+        sendInternalError(res);
+      }
     }
     return true;
   }

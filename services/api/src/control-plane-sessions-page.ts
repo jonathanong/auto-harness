@@ -38,6 +38,7 @@ function matchesQuery(session: SessionRecord, query: ReturnType<typeof normalize
     (query.repositoryId === null || session.repositoryId === query.repositoryId) &&
     (query.status === null || session.status === query.status) &&
     (query.hostId === null || session.hostId === query.hostId) &&
+    (query.worktreeId === null || session.worktreeId === query.worktreeId) &&
     (query.concurrencyId === null || session.concurrencyId === query.concurrencyId) &&
     (query.scheduleId === null || session.scheduleId === query.scheduleId) &&
     (query.source === null || session.source === query.source)

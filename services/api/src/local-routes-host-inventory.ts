@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- scoped PUT merge shares the inventory route module. */
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { sendListPage } from "./local-list-page.ts";
+import { InvalidListPageQueryError, readSingleQueryParam } from "./control-plane-id-page.ts";
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 import type { Principal } from "./auth.ts";
 import { writeRouteAudit } from "./local-audit.ts";
@@ -37,6 +38,7 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
 
   if (method === "GET" && url.pathname === "/api/v1/host-inventories") {
     try {
+      const repositoryId = readSingleQueryParam(url, "repositoryId");
       sendListPage(
         ctx,
         (await plane.listHostInventoriesDurable())
@@ -50,11 +52,20 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
           .filter(
             (inventory) =>
               inventory.repositories.length > 0 || !ctx.principal?.allowedRepositoryIds,
+          )
+          .filter(
+            (inventory) =>
+              repositoryId === undefined ||
+              inventory.repositories.some((repository) => repository.id === repositoryId),
           ),
         (inventory) => inventory.hostId,
       );
-    } catch {
-      sendInternalError(res);
+    } catch (error) {
+      if (error instanceof InvalidListPageQueryError) {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: error.message } });
+      } else {
+        sendInternalError(res);
+      }
     }
     return true;
   }

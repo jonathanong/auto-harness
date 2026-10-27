@@ -38,6 +38,8 @@ function seedSessions(plane: ControlPlane): void {
   plane.state.sessions.get("s1")!.hostId = "host-a";
   plane.state.sessions.get("s2")!.hostId = "host-b";
   plane.state.sessions.get("s3")!.hostId = "host-a";
+  plane.state.sessions.get("s2")!.worktreeId = "wt-1";
+  plane.state.sessions.get("s5")!.worktreeId = "wt-1";
   plane.state.sessions.get("s4")!.status = "completed";
   plane.state.sessions.get("s2")!.scheduleId = "schedule-a";
   plane.state.sessions.get("s3")!.source = "ui";
@@ -108,6 +110,9 @@ describe("listSessionsPage", () => {
     expect(
       plane.listSessionsPage({ hostId: "host-a", limit: 50 }).items.map((session) => session.id),
     ).toEqual(["s3", "s1"]);
+    expect(
+      plane.listSessionsPage({ worktreeId: "wt-1", limit: 50 }).items.map((session) => session.id),
+    ).toEqual(["s5", "s2"]);
     expect(
       plane
         .listSessionsPage({ concurrencyId: "nightly-pr-123", limit: 50 })

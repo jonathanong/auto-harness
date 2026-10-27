@@ -440,6 +440,29 @@ describe("listSessionsPageFromStorage", () => {
     ).resolves.toEqual({ items: [], continuation: null });
   });
 
+  it("filters by worktreeId after reading each partition", async () => {
+    const other = { ...row("other", "2026-01-03T00:00:00.000Z"), worktreeId: "wt-2" };
+    const match = { ...row("match", "2026-01-02T00:00:00.000Z"), worktreeId: "wt-1" };
+    const ctx = {
+      doc: { send: async () => ({ Items: [other, match] }) },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    const page = await listSessionsPageFromStorage(ctx, {
+      limit: 5,
+      sort: "latest",
+      shardCount: 1,
+      status: "queued",
+      repositoryId: null,
+      repositoryIds: null,
+      hostId: null,
+      worktreeId: "wt-1",
+      source: null,
+      concurrencyId: null,
+      scheduleId: null,
+    });
+    expect(page.items.map((session) => session.id)).toEqual(["match"]);
+  });
+
   it("keeps a sparse nonmatch continuation and resumes at its exact Dynamo key", async () => {
     const commands: QueryCommand[] = [];
     const skipped = row("skipped", "2026-01-03T00:00:00.000Z", "api");

@@ -34,6 +34,7 @@ export type ListSessionsPageQuery = {
   repositoryId?: string;
   status?: string;
   hostId?: string;
+  worktreeId?: string;
   sort?: SessionListSort;
   concurrencyId?: string;
   scheduleId?: string;
@@ -46,6 +47,7 @@ export type CursorQuery = {
   repositoryId: string | null;
   status: SessionStatus | null;
   hostId: string | null;
+  worktreeId: string | null;
   concurrencyId: string | null;
   scheduleId: string | null;
   source: SessionSource | null;
@@ -132,6 +134,7 @@ export function normalizeQuery(query: ListSessionsPageQuery): CursorQuery {
     repositoryId: normalizeFilter(query.repositoryId, "repositoryId"),
     status: status === null || status === "all" ? null : status,
     hostId: normalizeFilter(query.hostId, "hostId"),
+    worktreeId: normalizeFilter(query.worktreeId, "worktreeId"),
     concurrencyId,
     scheduleId: normalizeFilter(query.scheduleId, "scheduleId"),
     source,
@@ -231,7 +234,17 @@ function decodeSignedCursorPayload(state: ControlPlaneState, encoded: string): u
 function normalizeCursorQuery(query: unknown): unknown {
   if (!query || typeof query !== "object" || Array.isArray(query)) return query;
   const cursorQuery = query as Partial<CursorQuery>;
-  return { ...cursorQuery, source: cursorQuery.source ?? null };
+  // Rebuild in normalizeQuery key order so cursors minted before `source` / `worktreeId` existed
+  // still compare equal when the filter is unset.
+  return {
+    repositoryId: cursorQuery.repositoryId,
+    status: cursorQuery.status,
+    hostId: cursorQuery.hostId,
+    worktreeId: cursorQuery.worktreeId ?? null,
+    concurrencyId: cursorQuery.concurrencyId,
+    scheduleId: cursorQuery.scheduleId,
+    source: cursorQuery.source ?? null,
+  };
 }
 
 export function encodeSessionCursor(state: ControlPlaneState, cursor: AnySessionCursor): string {

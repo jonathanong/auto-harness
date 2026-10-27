@@ -4,6 +4,7 @@ const sessionList = paged([
   q("--status", "status"),
   q("--repository-id", "repositoryId"),
   q("--host-id", "hostId"),
+  q("--worktree-id", "worktreeId"),
   q("--source", "source"),
   q("--sort", "sort"),
   q("--concurrency-id", "concurrencyId"),
@@ -75,7 +76,12 @@ export const manifestCommandData = [
   }),
 
   cmd(["host", "get"], "GET", "/hosts/:hostId", { params: ["hostId"] }),
-  cmd(["host", "inventory", "list"], "GET", "/host-inventories", paged()),
+  cmd(
+    ["host", "inventory", "list"],
+    "GET",
+    "/host-inventories",
+    paged([q("--repository-id", "repositoryId")]),
+  ),
   cmd(["host", "inventory", "rm"], "DELETE", "/hosts/:hostId/inventory", { params: ["hostId"] }),
   cmd(["host", "exec-config", "set"], "PUT", "/hosts/:hostId/exec-config", {
     params: ["hostId"],
