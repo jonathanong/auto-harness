@@ -822,7 +822,9 @@ applies there.
 Session filtering is applied while traversing bounded storage pages, so a response may contain
 fewer than `limit` items — including an empty `items` array — while `nextCursor` is non-null. Treat
 only `nextCursor: null` as terminal; clients must continue requesting pages with the returned
-cursor until it becomes null. List items deliberately omit the potentially large structured
+cursor until it becomes null. Storage reads each status/shard partition in windows that start at
+an even share of `limit` and refill only partitions that hold the page back, up to `limit + 1` rows
+per partition per request. List items deliberately omit the potentially large structured
 `result`; fetch the session detail when an automation caller needs the outcome.
 
 #### `GET /sessions/:id`

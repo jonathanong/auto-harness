@@ -1,10 +1,9 @@
 /* eslint-disable max-lines -- bounded partition planning and cursor advancement are coupled. */
 import { SESSION_STATUSES, type SessionStatus } from "@auto-harness/shared";
-import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 
 import {
-  createdOrderKey,
   SESSIONS_CREATED_ORDER_INDEX,
+  createdOrderKey,
   priorityOrderKey,
   repositoryPriorityOrderKey,
   repositoryPriorityOrderRange,
@@ -18,9 +17,20 @@ import type {
   SessionPartitionCheckpoint,
 } from "../control-plane-session-cursor.ts";
 import { InvalidSessionCursorError } from "../control-plane-session-cursor.ts";
-import { compareSessionToCursor, compareSessions } from "../control-plane-session-order.ts";
+import { compareSessions } from "../control-plane-session-order.ts";
 import { statusShardAttr } from "./dynamo.ts";
-import { itemToSession, nextPageKey, type PlaneStorageCtx } from "./plane-storage-types.ts";
+import {
+  extendPartitionWindow,
+  initialWindowLimit,
+  openPartitionWindow,
+  refillableWindows,
+  validCheckpoint,
+  type Partition,
+  type PartitionState,
+  type PartitionWindow,
+  type RawRow,
+} from "./plane-storage-sessions-list-window.ts";
+import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 import type { SessionRecord } from "./types.ts";
 
 export type SessionListPageQuery = {
@@ -46,27 +56,12 @@ export type SessionStoragePage = {
   continuation: SessionCursorV2["partitions"] | null;
 };
 
-type Partition = {
-  id: string;
-  indexName: string;
-  keyName: "statusShard";
-  keyValue: string;
-  forward: boolean;
-  sortKeyName: "createdOrder" | "priorityOrder" | "repositoryPriorityOrder";
-  sortKeyRange?: { start: string; end: string };
-  repositoryId?: string;
-};
-type RawRow = { item: Record<string, unknown>; session: SessionRecord; matching: boolean };
-type PartitionState = SessionCursorV2["partitions"][number];
-type PartitionWindow = {
-  partition: Partition;
-  previous: PartitionState;
-  rows: RawRow[];
-  nextKey: SessionPartitionCheckpoint | undefined;
-  exhaustedRead: boolean;
-};
-
-/** One raw Query per selected partition. Never scans or loops a sparse partition. */
+/**
+ * Query each selected partition for a small window, then refill only the partitions
+ * that hold the page back. Never scans; each partition reads at most `limit + 1` rows
+ * per page (see `extendPartitionWindow`), so a sparse filter ends with a short page
+ * and a continuation rather than a loop.
+ */
 export async function listSessionsPageFromStorage(
   ctx: PlaneStorageCtx,
   query: SessionListPageQuery,
@@ -82,18 +77,38 @@ export async function listSessionsPageFromStorage(
     query.status === null &&
     query.position !== undefined &&
     [...states.values()].some((state) => !state.exhausted);
+  const initialLimit = initialWindowLimit(query.limit, partitions.length);
   const windows = await Promise.all(
-    partitions.map(async (partition) => {
+    partitions.map(async (partition): Promise<PartitionWindow> => {
       const stored = states.get(partition.id)!;
       const previous =
         revisitExhausted && stored.exhausted
           ? { id: stored.id, checkpoint: null, exhausted: false }
           : stored;
       return previous.exhausted
-        ? { partition, previous, rows: [], nextKey: undefined, exhaustedRead: true }
-        : queryPartitionWindow(ctx, query, partition, previous);
+        ? { partition, previous, rows: [], nextKey: undefined, exhaustedRead: true, requested: 0 }
+        : openPartitionWindow(ctx, query, partition, previous, initialLimit);
     }),
   );
+  let selected = selectPage(windows, query);
+  while (selected.length < query.limit) {
+    const refill = refillableWindows(windows, query);
+    if (refill.length === 0) break;
+    await Promise.all(refill.map((window) => extendPartitionWindow(ctx, query, window)));
+    selected = selectPage(windows, query);
+  }
+  const selectedRows = new Set(selected.map(({ row }) => row));
+  const continuation = windows.map((window) => nextState(window, selectedRows));
+  return {
+    items: selected.map(({ row }) => row.session),
+    continuation: continuation.every((state) => state.exhausted) ? null : continuation,
+  };
+}
+
+function selectPage(
+  windows: readonly PartitionWindow[],
+  query: SessionListPageQuery,
+): Array<{ window: PartitionWindow; row: RawRow }> {
   const candidates = windows
     .flatMap((window) => window.rows.filter((row) => row.matching).map((row) => ({ window, row })))
     .toSorted((a, b) => compareSessions(a.row.session, b.row.session, query.sort));
@@ -107,13 +122,7 @@ export async function listSessionsPageFromStorage(
       return frontier !== undefined && compareSessions(row.session, frontier, query.sort) <= 0;
     }),
   );
-  const selected = selectConsumable(safe, query.limit);
-  const selectedRows = new Set(selected.map(({ row }) => row));
-  const continuation = windows.map((window) => nextState(window, selectedRows));
-  return {
-    items: selected.map(({ row }) => row.session),
-    continuation: continuation.every((state) => state.exhausted) ? null : continuation,
-  };
+  return selectConsumable(safe, query.limit);
 }
 
 function selectConsumable(
@@ -222,93 +231,6 @@ function continuationForPlan(
   return new Map(cursor.partitions.map((state) => [state.id, state]));
 }
 
-function validCheckpoint(
-  checkpoint: SessionPartitionCheckpoint | null,
-  partition: Partition,
-): boolean {
-  if (checkpoint === null) return true;
-  const expected = ["id", partition.keyName, partition.sortKeyName];
-  return (
-    Object.keys(checkpoint).length === expected.length &&
-    expected.every((key) => typeof checkpoint[key] === "string") &&
-    checkpoint[partition.keyName] === partition.keyValue
-  );
-}
-
-function matchesFilters(session: SessionRecord, query: SessionListPageQuery): boolean {
-  return (
-    (query.status === null || session.status === query.status) &&
-    (query.repositoryId === null || session.repositoryId === query.repositoryId) &&
-    (query.hostId === null || session.hostId === query.hostId) &&
-    (!query.worktreeId || session.worktreeId === query.worktreeId) &&
-    (query.source === null || session.source === query.source) &&
-    (query.concurrencyId === null || session.concurrencyId === query.concurrencyId) &&
-    (query.scheduleId === null || session.scheduleId === query.scheduleId) &&
-    (query.repositoryIds === null || query.repositoryIds.includes(session.repositoryId)) &&
-    (!query.position || compareSessionToCursor(session, query.position, query.sort) > 0)
-  );
-}
-
-async function queryPartitionWindow(
-  ctx: PlaneStorageCtx,
-  query: SessionListPageQuery,
-  partition: Partition,
-  previous: PartitionState,
-): Promise<PartitionWindow> {
-  const legacySortValue = query.position
-    ? partition.sortKeyName === "createdOrder"
-      ? createdOrderKey(query.position)
-      : partition.sortKeyName === "priorityOrder"
-        ? priorityOrderKey(query.position)
-        : repositoryPriorityOrderKey(partition.repositoryId!, query.position)
-    : undefined;
-  const range = partition.sortKeyRange
-    ? {
-        start:
-          legacySortValue && partition.forward ? legacySortValue : partition.sortKeyRange.start,
-        end: legacySortValue && !partition.forward ? legacySortValue : partition.sortKeyRange.end,
-      }
-    : undefined;
-  const condition = range
-    ? `${partition.keyName} = :key AND ${partition.sortKeyName} BETWEEN :sortStart AND :sortEnd`
-    : legacySortValue
-      ? `${partition.keyName} = :key AND ${partition.sortKeyName} ${
-          partition.sortKeyName === "createdOrder"
-            ? partition.forward
-              ? ">="
-              : "<="
-            : partition.forward
-              ? ">"
-              : "<"
-        } :sortValue`
-      : `${partition.keyName} = :key`;
-  const response = await ctx.doc.send(
-    new QueryCommand({
-      TableName: ctx.tables.sessions,
-      IndexName: partition.indexName,
-      KeyConditionExpression: condition,
-      ExpressionAttributeValues: {
-        ":key": partition.keyValue,
-        ...(range ? { ":sortStart": range.start, ":sortEnd": range.end } : {}),
-        ...(!range && legacySortValue ? { ":sortValue": legacySortValue } : {}),
-      },
-      ScanIndexForward: partition.forward,
-      Limit: query.limit + 1,
-      ...(previous.checkpoint ? { ExclusiveStartKey: previous.checkpoint } : {}),
-    }),
-  );
-  const rows = (response.Items ?? []).map((item) => {
-    const raw = item as Record<string, unknown>;
-    const session = itemToSession(raw);
-    return { item: raw, session, matching: matchesFilters(session, query) };
-  });
-  const nextKey = typedPageKey(
-    response.LastEvaluatedKey as Record<string, unknown> | undefined,
-    partition,
-  );
-  return { partition, previous, rows, nextKey, exhaustedRead: nextKey === undefined };
-}
-
 function nextState(window: PartitionWindow, selected: ReadonlySet<RawRow>): PartitionState {
   if (window.previous.exhausted) return window.previous;
   let lastConsumed = -1;
@@ -351,19 +273,4 @@ function keyForRow(partition: Partition, row: RawRow): SessionPartitionCheckpoin
     throw new Error("session query returned an invalid pagination key");
   }
   return { id, [partition.keyName]: hash, [partition.sortKeyName]: range };
-}
-
-function typedPageKey(
-  key: Record<string, unknown> | undefined,
-  partition: Partition,
-): SessionPartitionCheckpoint | undefined {
-  const normalized = nextPageKey(key);
-  if (!normalized) return undefined;
-  if (Object.values(normalized).some((value) => typeof value !== "string")) {
-    throw new Error("session query returned an invalid pagination key");
-  }
-  const typed = normalized as SessionPartitionCheckpoint;
-  if (!validCheckpoint(typed, partition))
-    throw new Error("session query returned an invalid pagination key");
-  return typed;
 }
