@@ -153,8 +153,11 @@ describe("control detail routes previously omitted from coverage include", () =>
         labels: [],
       },
       "/api/v1/repositories/r-1": { id: "r-1", name: "Repo", url: "/src/repo" },
-      "/api/v1/sessions?limit=100": { items: [], nextCursor: "sessions-next" },
-      "/api/v1/sessions?limit=100&cursor=sessions-next": {
+      "/api/v1/sessions?repositoryId=r-1&worktreeId=wt-1&limit=100": {
+        items: [],
+        nextCursor: "sessions-next",
+      },
+      "/api/v1/sessions?repositoryId=r-1&worktreeId=wt-1&limit=100&cursor=sessions-next": {
         items: [{ id: "session-wt-1", status: "completed", worktreeId: "wt-1" }],
         nextCursor: null,
       },
@@ -216,7 +219,10 @@ describe("control detail routes previously omitted from coverage include", () =>
         path: "/tmp/hostless",
       },
       "/api/v1/repositories/r-missing": jsonResponse({}, 503),
-      "/api/v1/sessions?limit=100": jsonResponse({}, 503),
+      "/api/v1/sessions?repositoryId=r-missing&worktreeId=wt-hostless&limit=100": jsonResponse(
+        {},
+        503,
+      ),
       "/api/v1/providers": jsonResponse({}, 503),
       "/api/v1/provider-accounts": jsonResponse({}, 503),
       "/api/v1/commands": jsonResponse({}, 503),
@@ -273,7 +279,7 @@ describe("control detail routes previously omitted from coverage include", () =>
         path: "/tmp/sparse",
         hostId: "host",
       },
-      "/api/v1/sessions?limit=100": {},
+      "/api/v1/sessions?repositoryId=repo&worktreeId=wt-sparse&limit=100": {},
       "/api/v1/hosts/host/inventory": jsonResponse({}, 503),
       "/api/v1/providers": {},
       "/api/v1/provider-accounts": {},
@@ -306,7 +312,10 @@ describe("control detail routes previously omitted from coverage include", () =>
         hostId: "h",
       },
       "/api/v1/repositories/r-1": { id: "r-1", name: "Repo", url: "/src/repo" },
-      "/api/v1/sessions?limit=100": { items: [], nextCursor: null },
+      "/api/v1/sessions?repositoryId=r-1&worktreeId=wt-1&limit=100": {
+        items: [],
+        nextCursor: null,
+      },
       "/api/v1/hosts/h/inventory": { repositories: [], providerAccounts: [] },
       "/api/v1/providers": { items: [] },
       "/api/v1/provider-accounts": { items: [] },
