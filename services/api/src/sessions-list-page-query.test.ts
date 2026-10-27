@@ -1066,4 +1066,65 @@ describe("listSessionsPageFromStorage", () => {
     });
     expect(commands[1]?.input.ExclusiveStartKey).toEqual(checkpoint);
   });
+
+  it.each([
+    ["priority_desc", ":sortEnd"],
+    ["priority_asc", ":sortStart"],
+  ] as const)(
+    "binds a %s repository position only on partitions without a checkpoint",
+    async (sort, bound) => {
+      const commands: QueryCommand[] = [];
+      const ctx = {
+        doc: {
+          send: async (command: QueryCommand) => {
+            commands.push(command);
+            return { Items: [] };
+          },
+        },
+        tables: { sessions: "sessions" },
+      } as unknown as PlaneStorageCtx;
+      await listSessionsPageFromStorage(ctx, {
+        limit: 10,
+        shardCount: 1,
+        repositoryIds: null,
+        hostId: null,
+        source: null,
+        concurrencyId: null,
+        scheduleId: null,
+        sort,
+        status: "queued",
+        repositoryId: "repo-1",
+        position: { createdAt: "2026-01-01T00:00:00.000Z", id: "sess-0", priority: 0 },
+      });
+      const values = commands[0]!.input.ExpressionAttributeValues!;
+      expect(values[bound]).toContain("sess-0");
+      expect(commands[0]!.input.ExclusiveStartKey).toBeUndefined();
+    },
+  );
+
+  it("rejects a Dynamo continuation key from another partition", async () => {
+    const ctx = {
+      doc: {
+        send: async () => ({
+          Items: [],
+          LastEvaluatedKey: { id: "x", statusShard: "running#0", createdOrder: "x" },
+        }),
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    await expect(
+      listSessionsPageFromStorage(ctx, {
+        limit: 10,
+        sort: "latest",
+        shardCount: 1,
+        status: "queued",
+        repositoryId: null,
+        repositoryIds: null,
+        hostId: null,
+        source: null,
+        concurrencyId: null,
+        scheduleId: null,
+      }),
+    ).rejects.toThrow("invalid pagination key");
+  });
 });
