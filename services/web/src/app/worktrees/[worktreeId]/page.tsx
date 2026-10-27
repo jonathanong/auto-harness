@@ -52,14 +52,13 @@ async function loadRepository(repositoryId: string): Promise<Repo | undefined> {
   }
 }
 
-async function loadSessions(worktreeId: string): Promise<Session[]> {
+async function loadSessions(repositoryId: string, worktreeId: string): Promise<Session[]> {
   try {
-    // No server-side worktreeId filter yet — scan bounded pages until this worktree appears.
-    const data = await apiGetFirstPageWithItems<Session>(
-      "/api/v1/sessions?limit=100",
-      (session) => session.worktreeId === worktreeId,
-    );
-    return data.items.filter((s) => s.worktreeId === worktreeId);
+    // The API filters by worktree, but a filtered page can be empty with a cursor,
+    // so scan bounded pages until the first non-empty one.
+    const query = new URLSearchParams({ repositoryId, worktreeId, limit: "100" });
+    const data = await apiGetFirstPageWithItems<Session>(`/api/v1/sessions?${query}`);
+    return data.items;
   } catch (e) {
     /* ignore — sessions section stays empty */
     rethrowControlFlowError(e);
@@ -116,7 +115,7 @@ export default async function WorktreeDetailPage({
   const wt = worktree;
   const [repo, sessions, inventory, catalogLookups] = await Promise.all([
     activeTab === "settings" ? loadRepository(wt.repositoryId) : undefined,
-    activeTab === "sessions" ? loadSessions(worktreeId) : [],
+    activeTab === "sessions" ? loadSessions(wt.repositoryId, worktreeId) : [],
     activeTab !== "sessions" && wt.hostId ? loadInventory(wt.hostId) : null,
     activeTab === "provider-accounts" ? fetchProviderCatalogLookups() : undefined,
   ]);
