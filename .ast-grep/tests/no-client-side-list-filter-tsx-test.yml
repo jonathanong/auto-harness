@@ -1,0 +1,17 @@
+id: no-client-side-list-filter-tsx
+valid:
+  - |
+    async function load() {
+      const rows = await apiGetAllPages<Row>("/api/v1/sessions?worktreeId=wt&limit=100");
+      return rows.map((row) => <li key={row.id}>{row.id}</li>);
+    }
+invalid:
+  - |
+    async function load() {
+      return (await apiGetAllPages<Row>("/api/v1/sessions?limit=100")).find((r) => r.id === id);
+    }
+  - |
+    async function load() {
+      const rows = await apiGetAllPages("/api/v1/sessions?limit=100");
+      return rows.filter((r) => r.worktreeId === id);
+    }

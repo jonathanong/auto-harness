@@ -58,7 +58,7 @@ test.describe("control plane link health", () => {
     }
   });
 
-  test("every internal link on top-level pages resolves", async ({ page, request }) => {
+  test("every internal link on top-level and detail pages resolves", async ({ page, request }) => {
     await withLocalHostLock(async () => {
       // Seed a repository + worktree so list pages render detail links to check.
       const suffix = `${test.info().parallelIndex}-${Date.now()}`;
@@ -76,7 +76,7 @@ test.describe("control plane link health", () => {
         await expect(page.getByTestId(`worktree-link-${wtId}`)).toBeVisible({ timeout: 15_000 });
 
         const checked = new Set<string>();
-        for (const [, , path] of NAV) {
+        const checkLinksOn = async (path: string) => {
           await page.goto(path);
           await expectPageLoaded(page);
           const hrefs = await internalLinks(page);
@@ -87,10 +87,26 @@ test.describe("control plane link health", () => {
             const response = await page.request.get(href, { maxRedirects: 0 });
             expect(response.status(), `${href} (linked from ${path})`).toBeLessThan(400);
           }
-        }
+        };
+        for (const [, , path] of NAV) await checkLinksOn(path);
         expect([...checked]).toEqual(
           expect.arrayContaining([`/repositories/${repoId}`, `/worktrees/${wtId}`]),
         );
+
+        // One level deeper: visit one detail page per route and check its links
+        // (tabs, breadcrumbs, cross-links), which top-level pages never render.
+        const navPaths = new Set(NAV.map(([, , path]) => path));
+        const detailPages = new Map<string, string>();
+        for (const href of checked) {
+          const { pathname } = new URL(href, "http://x");
+          const route = pathname.replace(/\/[^/]+$/, "/:id");
+          if (navPaths.has(pathname) || route === "/:id" || detailPages.has(route)) continue;
+          detailPages.set(route, pathname);
+        }
+        expect([...detailPages.keys()]).toEqual(
+          expect.arrayContaining(["/repositories/:id", "/worktrees/:id"]),
+        );
+        for (const path of detailPages.values()) await checkLinksOn(path);
       } finally {
         await removeHostRepo(request, repoId);
         await request.delete(`/api/v1/repositories/${repoId}`);
