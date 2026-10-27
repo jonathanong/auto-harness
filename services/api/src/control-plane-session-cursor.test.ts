@@ -27,6 +27,7 @@ const base = {
     repositoryId: null,
     status: null,
     hostId: null,
+    worktreeId: null,
     concurrencyId: null,
     scheduleId: null,
     source: null,
@@ -52,6 +53,9 @@ describe("session cursor primitives", () => {
       status: "queued",
       repositoryId: "repo",
     });
+    expect(normalizeQuery({ worktreeId: "wt-1" }).worktreeId).toBe("wt-1");
+    expect(normalizeQuery({}).worktreeId).toBeNull();
+    expect(() => normalizeQuery({ worktreeId: "" })).toThrow(InvalidSessionListQueryError);
     expect(() => normalizeQuery({ status: "bad" })).toThrow(InvalidSessionListQueryError);
     expect(() => normalizeQuery({ source: "bad" })).toThrow(InvalidSessionListQueryError);
     expect(() => normalizeQuery({ hostId: "" })).toThrow(InvalidSessionListQueryError);

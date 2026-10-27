@@ -31,6 +31,7 @@ export type SessionListPageQuery = {
   repositoryId: string | null;
   repositoryIds: string[] | null;
   hostId: string | null;
+  worktreeId?: string | null;
   source: string | null;
   concurrencyId: string | null;
   scheduleId: string | null;
@@ -239,6 +240,7 @@ function matchesFilters(session: SessionRecord, query: SessionListPageQuery): bo
     (query.status === null || session.status === query.status) &&
     (query.repositoryId === null || session.repositoryId === query.repositoryId) &&
     (query.hostId === null || session.hostId === query.hostId) &&
+    (!query.worktreeId || session.worktreeId === query.worktreeId) &&
     (query.source === null || session.source === query.source) &&
     (query.concurrencyId === null || session.concurrencyId === query.concurrencyId) &&
     (query.scheduleId === null || session.scheduleId === query.scheduleId) &&

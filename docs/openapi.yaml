@@ -742,6 +742,11 @@ paths:
       parameters:
         - $ref: "#/components/parameters/CatalogLimit"
         - $ref: "#/components/parameters/CatalogCursor"
+        - name: providerId
+          in: query
+          required: false
+          description: Only commands bound to this provider. Applied before pagination.
+          schema: { type: string }
       responses:
         "200":
           description: One bounded page of commands visible to the caller
@@ -753,6 +758,12 @@ paths:
     get:
       operationId: listProviderAccounts
       summary: List provider accounts
+      parameters:
+        - name: providerId
+          in: query
+          required: false
+          description: Only accounts of this provider. Applied before pagination.
+          schema: { type: string }
       responses:
         "200":
           description: Provider accounts
@@ -909,6 +920,11 @@ paths:
       parameters:
         - $ref: "#/components/parameters/HostInventoryLimit"
         - $ref: "#/components/parameters/HostInventoryCursor"
+        - name: repositoryId
+          in: query
+          required: false
+          description: Only inventories whose repositories[].id includes this id. Applied before pagination.
+          schema: { type: string }
       responses:
         "200":
           description: Bounded page of host inventories, each with unauthorized repositories filtered out

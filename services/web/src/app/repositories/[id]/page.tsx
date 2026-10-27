@@ -96,8 +96,8 @@ export default async function RepositoryDetailPage({
 
   let attachedHosts: AgentHost[] = [];
   try {
-    attachedHosts = (await apiGetAllPages<AgentHost>("/api/v1/host-inventories?limit=100")).filter(
-      (h) => h.repositories.some((r) => r.id === repositoryId),
+    attachedHosts = await apiGetAllPages<AgentHost>(
+      `/api/v1/host-inventories?repositoryId=${encodeURIComponent(repositoryId)}&limit=100`,
     );
   } catch (e) {
     /* ignore — attached-hosts list stays empty */

@@ -786,6 +786,7 @@ List sessions with optional filters.
 | `status`        | string | Filter by status, or `all` (default): `queued`, `running`, `completed`, `failed`, `cancelled`, `timed_out` |
 | `repositoryId`  | string | Filter by repository                                                                                       |
 | `hostId`        | string | Filter by assigned host                                                                                    |
+| `worktreeId`    | string | Filter by assigned worktree (post-read filter; does not narrow the partitions read)                        |
 | `source`        | string | Filter by origin: `api`, `ui`, `webhook`, or `schedule`                                                    |
 | `sort`          | string | Sort order: `latest` (default), `oldest`, `priority_desc`, `priority_asc`                                  |
 | `limit`         | number | Base-10 integer from 1 to 100 (default: 50)                                                                |
@@ -1638,6 +1639,11 @@ Create a provider. **Does not** create its default command — the control-plane
 `GET /host-inventories`, `GET /auth/users`, and `GET /auth/service-accounts` return a bounded page:
 `limit` 1–100 (default 50) and `nextCursor` when more rows exist. Clients must not assume the first
 page is the complete catalog.
+
+Optional exact-match filters are applied before pagination, so pages and `nextCursor` stay correct:
+`GET /commands?providerId=<id>`, `GET /provider-accounts?providerId=<id>`, and
+`GET /host-inventories?repositoryId=<id>` (inventories whose `repositories[].id` includes it).
+Each param may appear once and must not be empty (`400 VALIDATION_ERROR` otherwise).
 
 Standard CRUD. `PATCH` body: `{ "name"?, "defaultCommandId"?, "usageRates"? }` (`defaultCommandId: null` and `usageRates: null` clear those fields). `usageRates` is optional operator-configured integer micros plus an ISO currency; Auto Harness never fetches vendor prices. The Provider Settings tab is the structured editor.
 `DELETE` fails `409` while an account, command, schedule, or queued/running session references the

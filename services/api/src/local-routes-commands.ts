@@ -1,7 +1,11 @@
 import { send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { commitMutationAudit, readJsonBody, sendRouteError } from "./local-audited-route.ts";
-import { InvalidListPageQueryError, parseListPageQuery } from "./control-plane-id-page.ts";
+import {
+  InvalidListPageQueryError,
+  parseListPageQuery,
+  readSingleQueryParam,
+} from "./control-plane-id-page.ts";
 import { commandPatchFromBody } from "./local-routes-command-patch.ts";
 
 /** Command CRUD routes. Returns true if handled. */
@@ -10,7 +14,15 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
 
   if (method === "GET" && url.pathname === "/api/v1/commands") {
     try {
-      send(res, 200, await plane.listCommandsPageDurable(parseListPageQuery(url)));
+      const providerId = readSingleQueryParam(url, "providerId");
+      send(
+        res,
+        200,
+        await plane.listCommandsPageDurable({
+          ...parseListPageQuery(url),
+          ...(providerId !== undefined ? { providerId } : {}),
+        }),
+      );
     } catch (error) {
       if (error instanceof InvalidListPageQueryError) {
         send(res, 400, { error: { code: "VALIDATION_ERROR", message: error.message } });

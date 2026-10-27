@@ -13,6 +13,13 @@ describe("listSessionsPageDurable storage pages", () => {
     expect(listSessionsPage).not.toHaveBeenCalled();
   });
 
+  it("forwards the worktreeId filter to storage", async () => {
+    const listSessionsPage = vi.fn(async () => ({ items: [], continuation: null }));
+    const plane = new ControlPlane({ storage: { listSessionsPage } as never });
+    await plane.listSessionsPageDurable({ worktreeId: "wt-1" });
+    expect(listSessionsPage).toHaveBeenCalledWith(expect.objectContaining({ worktreeId: "wt-1" }));
+  });
+
   it("maps an authoritative storage page directly", async () => {
     const listSessionsPage = vi.fn(async () => ({ items: [], continuation: null }));
     const plane = new ControlPlane({ storage: { listSessionsPage } as never });
@@ -42,6 +49,7 @@ describe("listSessionsPageDurable storage pages", () => {
           repositoryId: null,
           status: "queued",
           hostId: null,
+          worktreeId: null,
           concurrencyId: null,
           scheduleId: null,
           source: null,
@@ -67,6 +75,7 @@ describe("listSessionsPageDurable storage pages", () => {
         repositoryId: null,
         status: "queued",
         hostId: null,
+        worktreeId: null,
         concurrencyId: null,
         scheduleId: null,
         source: null,
@@ -81,6 +90,7 @@ describe("listSessionsPageDurable storage pages", () => {
         repositoryId: null,
         status: "queued",
         hostId: null,
+        worktreeId: null,
         concurrencyId: null,
         scheduleId: null,
         source: null,
@@ -116,6 +126,7 @@ describe("listSessionsPageDurable storage pages", () => {
         repositoryId: null,
         status: "queued",
         hostId: null,
+        worktreeId: null,
         concurrencyId: null,
         scheduleId: null,
         source: null,

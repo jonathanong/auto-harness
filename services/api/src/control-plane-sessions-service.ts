@@ -168,6 +168,7 @@ export class ControlPlaneSessionsService {
         repositoryId: normalized.query.repositoryId,
         repositoryIds: normalized.scope.repositoryIds,
         hostId: normalized.query.hostId ?? normalized.scope.hostId,
+        worktreeId: normalized.query.worktreeId,
         source: normalized.query.source,
         concurrencyId: normalized.query.concurrencyId,
         scheduleId: normalized.query.scheduleId,

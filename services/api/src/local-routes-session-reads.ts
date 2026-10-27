@@ -17,6 +17,7 @@ type SessionListQueryParam =
   | "repositoryId"
   | "status"
   | "hostId"
+  | "worktreeId"
   | "sort"
   | "concurrencyId"
   | "scheduleId"
@@ -96,6 +97,7 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
       const repositoryId = readSingleQueryParam(url, "repositoryId");
       const status = parseStatus(readSingleQueryParam(url, "status"));
       const hostId = readSingleQueryParam(url, "hostId");
+      const worktreeId = readSingleQueryParam(url, "worktreeId");
       const sortRaw = parseSort(readSingleQueryParam(url, "sort"));
       const concurrencyId = readSingleQueryParam(url, "concurrencyId");
       const scheduleId = readSingleQueryParam(url, "scheduleId");
@@ -106,6 +108,7 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
         ...(repositoryId !== undefined ? { repositoryId } : {}),
         ...(status !== undefined ? { status } : {}),
         ...(hostId !== undefined ? { hostId } : {}),
+        ...(worktreeId !== undefined ? { worktreeId } : {}),
         ...(sortRaw !== undefined ? { sort: sortRaw } : {}),
         ...(concurrencyId !== undefined ? { concurrencyId } : {}),
         ...(scheduleId !== undefined ? { scheduleId } : {}),
