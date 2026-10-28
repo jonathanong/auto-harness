@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
+import { tryAcquireHostLock } from "./plane-storage-locks.ts";
 import {
   clearResumePin,
   getSession,
@@ -96,6 +97,14 @@ describe("DynamoDB Local stored session argv", () => {
       status: "idle",
       online: true,
     });
+    expect(
+      await tryAcquireHostLock(ctx, {
+        hostId: "host",
+        hostInventoryVersion: null,
+        connectionId: "one",
+        replaceExisting: false,
+      }),
+    ).toBe(true);
     expect(await assign("a prompt replaced since it was read")).toBe(false);
     expect(await assign(PROMPT)).toBe(true);
     expect((await rawSession("argv"))?.resolvedArgv).toEqual([
