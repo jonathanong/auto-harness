@@ -129,7 +129,15 @@ function logSlowListRead(
       roundMs,
       limit: query.limit,
       sort: query.sort,
-      filtered: query.status !== null || Boolean(query.worktreeId) || query.repositoryId !== null,
+      filtered:
+        query.status !== null ||
+        query.repositoryId !== null ||
+        query.repositoryIds !== null ||
+        query.hostId !== null ||
+        Boolean(query.worktreeId) ||
+        query.source !== null ||
+        query.concurrencyId !== null ||
+        query.scheduleId !== null,
       partitions: windows.length,
       rowsRead: windows.reduce((sum, window) => sum + window.rows.length, 0),
       rowsRequested: windows.reduce((sum, window) => sum + window.requested, 0),
