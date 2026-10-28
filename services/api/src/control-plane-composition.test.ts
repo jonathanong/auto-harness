@@ -105,8 +105,13 @@ describe("composed control-plane services", () => {
     const withResult = {
       ...session,
       result: { summary: "done", summarySource: "harness" as const },
+      resolvedArgv: ["agent", "-p", session.prompt],
     };
     expect(toPublic(state, withResult)).toHaveProperty("result.summary", "done");
-    expect(toPublic(state, withResult, false)).not.toHaveProperty("result");
+    expect(toPublic(state, withResult)).toHaveProperty("resolvedArgv", withResult.resolvedArgv);
+    const listItem = toPublic(state, withResult, false);
+    expect(listItem).not.toHaveProperty("result");
+    expect(listItem).not.toHaveProperty("resolvedArgv");
+    expect(listItem).toHaveProperty("prompt", session.prompt);
   });
 });
