@@ -22,6 +22,7 @@ import {
   routeWorktreeIdOf,
   SESSION_LIST_PARTITION_VALUE,
 } from "../control-plane-ordering.ts";
+import { decodeStoredArgv } from "../session-argv-storage.ts";
 import type { DynamoTableNames } from "./dynamo.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import type { SessionRecord } from "./types.ts";
@@ -452,6 +453,12 @@ export function itemToSession(item: Record<string, unknown>): SessionRecord {
   const normalized = normalizeTargetDisplayNames(rest);
   if (!("repositoryId" in normalized) && typeof normalized.workspacePoolId === "string") {
     normalized.repositoryId = "";
+  }
+  if (Array.isArray(normalized.resolvedArgv)) {
+    normalized.resolvedArgv = decodeStoredArgv(
+      normalized.resolvedArgv,
+      normalized.prompt as string | undefined,
+    );
   }
   return normalized as SessionRecord;
 }
