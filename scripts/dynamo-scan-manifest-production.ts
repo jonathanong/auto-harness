@@ -144,6 +144,14 @@ export const PRODUCTION_SCAN_MANIFEST: readonly ScanManifestEntry[] = [
     why: "one-time unfenced session-list index backfill (sessionList/routeWorktreeId); Sessions Scan is already granted for the production list paths, covered whichever driver runs it.",
   },
   {
+    file: "services/api/src/db/session-argv-compaction.ts",
+    tableExpr: "tables.sessions",
+    count: 1,
+    tables: ["Sessions"],
+    runsUnderLambdaRole: true,
+    why: "one-time operator backfill that stops legacy rows repeating the prompt in resolvedArgv; Sessions Scan is already granted for the production list paths.",
+  },
+  {
     file: "services/api/src/db/plane-storage-sessions-query.ts",
     tableExpr: "ctx.tables.sessions",
     count: 1,

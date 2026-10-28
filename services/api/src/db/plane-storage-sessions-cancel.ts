@@ -167,9 +167,11 @@ export async function clearResumePin(
         // Also removes resumeSpec: it belongs to the pin's old Command, and the
         // write-once `if_not_exists(resumeSpec, ...)` assignment write would
         // otherwise keep it — and its resumeRefCapture/argv shape — attached
-        // under whatever fresh Command this session lands on next.
+        // under whatever fresh Command this session lands on next. resolvedArgv is
+        // stored against the prompt this write replaces, so it would no longer
+        // decode to the argv that ran; the next assignment writes a fresh one.
         UpdateExpression:
-          "SET resumeFallback = :true, #prompt = :prompt REMOVE pinnedHostId, pinnedProviderAccountId, pinnedTargetIndex, pinnedCommandId, pinExpiresAt, cliResumeRef, resumeSpec",
+          "SET resumeFallback = :true, #prompt = :prompt REMOVE pinnedHostId, pinnedProviderAccountId, pinnedTargetIndex, pinnedCommandId, pinExpiresAt, cliResumeRef, resumeSpec, resolvedArgv",
         ConditionExpression:
           "#s = :queued AND pinnedHostId = :pinnedHostId" +
           (opts.pinExpiresAt === undefined ? "" : " AND pinExpiresAt = :pinExpiresAt"),

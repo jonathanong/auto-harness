@@ -265,6 +265,7 @@ export async function assignWorkspaceQueuedDurable(
             now,
             attemptId,
             resolvedArgv,
+            prompt: session.prompt,
             sessionOutputsSupported: outputs,
             resolvedRoute: {
               targetIndex: route.targetIndex,

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { itemToSession } from "./db/plane-storage-types.ts";
-import { decodeStoredArgv, encodeStoredArgv } from "./session-argv-storage.ts";
+import {
+  decodeStoredArgv,
+  encodeStoredArgv,
+  storedArgvAssignment,
+} from "./session-argv-storage.ts";
 
 const PROMPT = "Fix the flaky test.\nThen open a PR.";
 
@@ -29,6 +33,21 @@ describe("stored session argv", () => {
     expect(encodeStoredArgv(["tool", ""], undefined)).toEqual(["tool", ""]);
     expect(encodeStoredArgv(["tool", ""], "")).toEqual(["tool", ""]);
     expect(decodeStoredArgv([{ before: "a", after: "b" }], undefined)).toEqual(["ab"]);
+  });
+
+  it("conditions an assignment write on the prompt it encoded against", () => {
+    expect(storedArgvAssignment(["claude", PROMPT], PROMPT)).toEqual({
+      argv: ["claude", { before: "", after: "" }],
+      condition: " AND #prompt = :prompt",
+      names: { "#prompt": "prompt" },
+      values: { ":prompt": PROMPT },
+    });
+    expect(storedArgvAssignment(["tool"], "")).toEqual({
+      argv: ["tool"],
+      condition: "",
+      names: {},
+      values: {},
+    });
   });
 
   it("decodes stored argv when hydrating a Session row", () => {

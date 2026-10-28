@@ -17,6 +17,29 @@ export function encodeStoredArgv(
   });
 }
 
+/**
+ * The stored `resolvedArgv` for an assignment write, plus the condition that the
+ * row's prompt is still the one the argv was encoded against.
+ */
+export function storedArgvAssignment(
+  argv: readonly string[],
+  prompt: string | undefined,
+): {
+  argv: StoredArgvElement[];
+  condition: string;
+  names: Record<string, string>;
+  values: Record<string, unknown>;
+} {
+  const stored = encodeStoredArgv(argv, prompt);
+  if (!prompt) return { argv: stored, condition: "", names: {}, values: {} };
+  return {
+    argv: stored,
+    condition: " AND #prompt = :prompt",
+    names: { "#prompt": "prompt" },
+    values: { ":prompt": prompt },
+  };
+}
+
 /** Rebuild argv from a stored row; plain string elements pass through unchanged. */
 export function decodeStoredArgv(stored: readonly unknown[], prompt: string | undefined): string[] {
   return stored.map((arg) => {
