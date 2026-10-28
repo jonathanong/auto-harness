@@ -465,6 +465,7 @@ describe("listSessionsPageFromStorage", () => {
 
   it("keeps a sparse nonmatch continuation and resumes at its exact Dynamo key", async () => {
     const commands: QueryCommand[] = [];
+    const newer = row("newer", "2026-01-04T00:00:00.000Z", "api");
     const skipped = row("skipped", "2026-01-03T00:00:00.000Z", "api");
     const match = row("match", "2026-01-02T00:00:00.000Z");
     const ctx = {
@@ -473,7 +474,7 @@ describe("listSessionsPageFromStorage", () => {
           commands.push(command);
           return commands.length === 1
             ? {
-                Items: [skipped],
+                Items: [newer, skipped],
                 LastEvaluatedKey: {
                   id: skipped.id,
                   statusShard: "queued#0",
@@ -642,15 +643,18 @@ describe("listSessionsPageFromStorage", () => {
   it("merges only the globally safe prefix while querying each status partition once", async () => {
     const commands: QueryCommand[] = [];
     const newest = row("newest", "2026-01-03T00:00:00.000Z", "ui", "repo-a");
+    const newestTail = row("newest-tail", "2026-01-01T12:00:00.000Z", "ui", "repo-a");
     const older = row("older", "2026-01-02T00:00:00.000Z", "ui", "repo-b");
+    const olderTail = row("older-tail", "2026-01-01T00:00:00.000Z", "ui", "repo-b");
     const ctx = {
       doc: {
         send: async (command: QueryCommand) => {
           commands.push(command);
           const statusShard = command.input.ExpressionAttributeValues?.[":key"];
-          const item = statusShard === "queued#0" ? newest : older;
+          const [head, item] =
+            statusShard === "queued#0" ? [newest, newestTail] : [older, olderTail];
           return {
-            Items: [item],
+            Items: [head, item],
             LastEvaluatedKey: {
               id: item.id,
               statusShard,
@@ -1015,6 +1019,7 @@ describe("listSessionsPageFromStorage", () => {
   it("continues priority pages with the exact priority index key", async () => {
     const commands: QueryCommand[] = [];
     const session = { ...row("priority", "2026-01-02T00:00:00.000Z"), priority: 7 };
+    const later = { ...row("later", "2026-01-02T00:00:00.000Z"), priority: 8 };
     const checkpoint = {
       id: session.id,
       statusShard: "queued#0",
@@ -1025,7 +1030,14 @@ describe("listSessionsPageFromStorage", () => {
         send: async (command: QueryCommand) => {
           commands.push(command);
           return commands.length === 1
-            ? { Items: [session], LastEvaluatedKey: checkpoint }
+            ? {
+                Items: [session, later],
+                LastEvaluatedKey: {
+                  ...checkpoint,
+                  id: later.id,
+                  priorityOrder: priorityOrderKey(later),
+                },
+              }
             : { Items: [] };
         },
       },

@@ -826,7 +826,8 @@ cursor until it becomes null. A `worktreeId` filter matches a session that was r
 (`resolvedRoute.worktreeId`, which survives the worktree being released on disconnect) or is
 currently on it (`worktreeId`). Latest/oldest lists with a `worktreeId`, a `repositoryId`, or no
 narrowing filter at all (no `status`, `hostId`, `source`, `concurrencyId`, `scheduleId`, or
-repository scope) read one unsharded index partition, so a page costs a single Query. Every other
+repository scope) read one unsharded index partition in a single Query, continued from its key
+when DynamoDB's 1MB response limit stops it before the page is full. Every other
 list reads each status/shard partition in windows that start at an even share of `limit` and
 refill only partitions that hold the page back, up to `limit + 1` rows per partition per request.
 Cursors minted by one read plan keep being served by that plan. List items deliberately omit the potentially large structured

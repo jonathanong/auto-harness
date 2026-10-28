@@ -46,8 +46,15 @@ function session(index: number, overrides: Partial<SessionRecord> = {}): Session
   };
 }
 
-/** A Query fake over real `sessionToItem` rows: any GSI hash key, either direction, paged. */
-function fakeDynamo(sessions: readonly SessionRecord[], ready: boolean | "stale") {
+/**
+ * A Query fake over real `sessionToItem` rows: any GSI hash key, either direction, paged.
+ * `responseCap` stands in for DynamoDB's 1MB response limit, in rows.
+ */
+function fakeDynamo(
+  sessions: readonly SessionRecord[],
+  ready: boolean | "stale",
+  responseCap = Number.POSITIVE_INFINITY,
+) {
   const items = sessions.map((record) => sessionToItem(record));
   const queries: QueryCommand["input"][] = [];
   let marked = false;
@@ -68,7 +75,7 @@ function fakeDynamo(sessions: readonly SessionRecord[], ready: boolean | "stale"
         const start = command.input.ExclusiveStartKey
           ? partition.findIndex((item) => item.id === command.input.ExclusiveStartKey!.id) + 1
           : 0;
-        const page = partition.slice(start, start + command.input.Limit!);
+        const page = partition.slice(start, start + Math.min(command.input.Limit!, responseCap));
         const last = page.at(-1);
         return {
           Items: page,
@@ -227,6 +234,19 @@ describe("one-partition list reads", () => {
     );
     expect(third.items.map((item) => item.id)).toEqual(["s-01", "s-00"]);
     expect(third.continuation).toBeNull();
+  });
+
+  it("continues a Query cut short by the response size until the page is full", async () => {
+    const { ctx, queries } = fakeDynamo(many, true, 2);
+    const page = await listSessionsPageFromStorage(ctx, baseQuery);
+    expect(page.items.map((item) => item.id)).toEqual(["s-07", "s-06", "s-05"]);
+    expect(queries.map((query) => query.Limit)).toEqual([4, 2]);
+    expect(queries[1]!.ExclusiveStartKey).toMatchObject({ id: "s-06" });
+    const next = await listSessionsPageFromStorage(
+      ctx,
+      continuationQuery(baseQuery, page.continuation!, page.items.at(-1)!),
+    );
+    expect(next.items.map((item) => item.id)).toEqual(["s-04", "s-03", "s-02"]);
   });
 
   it("walks the repository and worktree indexes, hiding later-disconnected sessions' siblings", async () => {
