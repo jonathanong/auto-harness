@@ -1,7 +1,7 @@
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { PrepareSessionOutputsRequest } from "@auto-harness/shared";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
-import { isConditionalTransactionFailed } from "./plane-storage-types.ts";
+import { isConditionalTransactionFailed, itemToSession } from "./plane-storage-types.ts";
 import type { SessionRecord } from "./types.ts";
 import type {
   SessionOutputManifest,
@@ -28,7 +28,7 @@ export class DynamoSessionOutputsStore {
         ConsistentRead: true,
       }),
     );
-    return (result.Item as SessionRecord | undefined) ?? null;
+    return result.Item ? itemToSession(result.Item) : null;
   }
 
   async getManifest(sessionId: string): Promise<SessionOutputManifest | null> {

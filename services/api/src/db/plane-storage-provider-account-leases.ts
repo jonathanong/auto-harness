@@ -11,6 +11,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import {
   isConditionalFailed,
   isConditionalTransactionFailed,
+  itemToSession,
   isConditionalTransactionFailureAt,
   type PlaneStorageCtx,
 } from "./plane-storage-types.ts";
@@ -98,7 +99,12 @@ export async function getProviderAccountLeaseHolderSessions(
       ConsistentRead: true,
     },
   });
-  return new Map((sessions as SessionRecord[]).map((session) => [session.id, session]));
+  return new Map(
+    sessions.map((item) => {
+      const session = itemToSession(item as Record<string, unknown>);
+      return [session.id, session];
+    }),
+  );
 }
 
 /**
