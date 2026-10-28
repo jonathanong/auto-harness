@@ -1,14 +1,10 @@
 /* eslint-disable max-lines -- bounded partition planning and cursor advancement are coupled. */
-import { SESSION_STATUSES, type SessionStatus } from "@auto-harness/shared";
+import type { SessionStatus } from "@auto-harness/shared";
 
 import {
-  SESSIONS_CREATED_ORDER_INDEX,
   createdOrderKey,
   priorityOrderKey,
   repositoryPriorityOrderKey,
-  repositoryPriorityOrderRange,
-  SESSIONS_PRIORITY_ORDER_INDEX,
-  SESSIONS_REPOSITORY_PRIORITY_ORDER_INDEX,
 } from "../control-plane-ordering.ts";
 import type {
   CursorPosition,
@@ -18,7 +14,7 @@ import type {
 } from "../control-plane-session-cursor.ts";
 import { InvalidSessionCursorError } from "../control-plane-session-cursor.ts";
 import { compareSessions } from "../control-plane-session-order.ts";
-import { statusShardAttr } from "./dynamo.ts";
+import { legacyPartitionPlan, singlePartition } from "./plane-storage-sessions-list-plan.ts";
 import {
   extendPartitionWindow,
   initialWindowLimit,
@@ -66,7 +62,7 @@ export async function listSessionsPageFromStorage(
   ctx: PlaneStorageCtx,
   query: SessionListPageQuery,
 ): Promise<SessionStoragePage> {
-  const partitions = partitionPlan(query);
+  const partitions = await planForRequest(ctx, query);
   if (partitions.length === 0) return { items: [], continuation: null };
   const states = continuationForPlan(query.continuation, partitions);
   // A status transition can move an un-emitted row into a partition that was
@@ -188,63 +184,33 @@ function selectConsumable(
   return selected;
 }
 
-function partitionPlan(query: SessionListPageQuery): Partition[] {
-  if (query.repositoryIds?.length === 0) return [];
-  const statusPartitions = statuses(query).flatMap((status) =>
-    [...Array(query.shardCount).keys()].map((shard) => statusPartition(query, status, shard)),
-  );
-  if (query.repositoryId) {
-    if (query.repositoryIds && !query.repositoryIds.includes(query.repositoryId)) return [];
-    return query.sort.startsWith("priority_")
-      ? repositoryPriorityPartitions(query, [query.repositoryId])
-      : statusPartitions;
+/**
+ * One-partition plans are used only once the readiness marker proves the indexes. A cursor
+ * names the plan that minted it, so it also decides across a deploy: a legacy status/shard
+ * cursor keeps its legacy plan, and a one-partition cursor proves the indexes are ready even
+ * when this instance's cached readiness is stale.
+ */
+async function planForRequest(
+  ctx: PlaneStorageCtx,
+  query: SessionListPageQuery,
+): Promise<Partition[]> {
+  const legacy = legacyPartitionPlan(query);
+  const single = singlePartition(query);
+  if (legacy.length === 0 || !single) return legacy;
+  const cursor = query.continuation;
+  if (cursor && planMatches(cursor, [single])) {
+    ctx.sessionListIndexes?.markReady();
+    return [single];
   }
-  // A large scope must not turn into one cursor checkpoint per repository.
-  // Scope filtering happens after the fixed status/shard index reads instead.
-  return statusPartitions;
+  if (cursor) return legacy;
+  return (await ctx.sessionListIndexes?.ready()) ? [single] : legacy;
 }
 
-function repositoryPriorityPartitions(
-  query: SessionListPageQuery,
-  repositoryIds: readonly string[],
-): Partition[] {
-  return statuses(query).flatMap((status) =>
-    [...Array(query.shardCount).keys()].flatMap((shard) =>
-      repositoryIds.map((repositoryId) => {
-        const range = repositoryPriorityOrderRange(repositoryId);
-        return {
-          id: `repository-priority:${repositoryId}:${status}:${shard}`,
-          indexName: SESSIONS_REPOSITORY_PRIORITY_ORDER_INDEX,
-          keyName: "statusShard" as const,
-          keyValue: statusShardAttr(status, shard),
-          forward: query.sort === "priority_asc",
-          sortKeyName: "repositoryPriorityOrder" as const,
-          sortKeyRange: range,
-          repositoryId,
-        };
-      }),
-    ),
+function planMatches(cursor: SessionCursorV2, partitions: readonly Partition[]): boolean {
+  return (
+    cursor.partitions.length === partitions.length &&
+    cursor.partitions.every((state, index) => state.id === partitions[index]?.id)
   );
-}
-
-function statusPartition(
-  query: SessionListPageQuery,
-  status: SessionStatus,
-  shard: number,
-): Partition {
-  const priority = query.sort.startsWith("priority_");
-  return {
-    id: `status:${status}:${shard}`,
-    indexName: priority ? SESSIONS_PRIORITY_ORDER_INDEX : SESSIONS_CREATED_ORDER_INDEX,
-    keyName: "statusShard",
-    keyValue: statusShardAttr(status, shard),
-    forward: priority ? query.sort === "priority_asc" : query.sort !== "latest",
-    sortKeyName: priority ? "priorityOrder" : "createdOrder",
-  };
-}
-
-function statuses(query: SessionListPageQuery): readonly SessionStatus[] {
-  return query.status ? [query.status] : SESSION_STATUSES;
 }
 
 function continuationForPlan(
@@ -309,7 +275,7 @@ function keyForRow(partition: Partition, row: RawRow): SessionPartitionCheckpoin
       : partition.sortKeyName === "priorityOrder"
         ? priorityOrderKey(row.session)
         : repositoryPriorityOrderKey(partition.repositoryId!, row.session));
-  const hash = statusShardAttr(row.session.status, row.session.queueShard);
+  const hash = partition.keyValue;
   if (typeof id !== "string" || typeof range !== "string" || typeof hash !== "string") {
     throw new Error("session query returned an invalid pagination key");
   }

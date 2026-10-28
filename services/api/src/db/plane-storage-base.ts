@@ -24,6 +24,7 @@ import {
   type ViewerTicketRecord,
   type IntegrationSessionFence,
 } from "./plane-storage-types.ts";
+import { SessionListIndexReadiness } from "./session-list-index-readiness.ts";
 import * as sessions from "./plane-storage-sessions.ts";
 import * as providerAccountLeases from "./plane-storage-provider-account-leases.ts";
 import * as hostAssignment from "./plane-storage-host-assignment.ts";
@@ -55,7 +56,7 @@ export class DynamoPlaneStorageBase {
   protected readonly ctx: PlaneStorageCtx;
 
   constructor(doc: DynamoDBDocumentClient, tables: DynamoTableNames) {
-    this.ctx = { doc, tables };
+    this.ctx = { doc, tables, sessionListIndexes: new SessionListIndexReadiness(doc, tables) };
   }
 
   migrateArchiveRetryIndexPage(): Promise<boolean> {

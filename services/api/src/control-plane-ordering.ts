@@ -6,6 +6,26 @@ import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 export const SESSIONS_QUEUE_ORDER_INDEX = "statusShard-queueOrder";
 /** Durable session-list ordering: creation time plus the public id tie-breaker. */
 export const SESSIONS_CREATED_ORDER_INDEX = "statusShard-createdOrder";
+/** Unsharded repository list: `repositoryId` -> `createdOrder` (sparse for workspace sessions). */
+export const SESSIONS_REPOSITORY_CREATED_ORDER_INDEX = "repositoryId-createdOrder";
+/** Unsharded worktree list: `routeWorktreeId` -> `createdOrder` (sparse). */
+export const SESSIONS_ROUTE_WORKTREE_CREATED_ORDER_INDEX = "routeWorktreeId-createdOrder";
+/** Unsharded global list: constant `sessionList` -> `createdOrder`. */
+export const SESSIONS_LIST_CREATED_ORDER_INDEX = "sessionList-createdOrder";
+/** The one partition value of `sessionList-createdOrder`, written on every session item. */
+export const SESSION_LIST_PARTITION_VALUE = "all";
+
+/**
+ * Worktree a session was routed to, as the key of `routeWorktreeId-createdOrder`. Unlike the
+ * top-level `worktreeId` (null at create, nulled on disconnect), this follows the latest route and
+ * is absent whenever the route has no worktree (DynamoDB rejects a null/empty GSI key).
+ */
+export function routeWorktreeIdOf(session: { resolvedRoute?: unknown }): string | undefined {
+  const route = session.resolvedRoute as { worktreeId?: unknown } | undefined;
+  const id = route?.worktreeId;
+  return typeof id === "string" && id.length > 0 ? id : undefined;
+}
+
 /** GSI used by durable session list priority ordering (ascending key order). */
 export const SESSIONS_PRIORITY_ORDER_INDEX = "statusShard-priorityOrder";
 /** GSI used by durable repository-scoped priority listing. */
@@ -151,4 +171,12 @@ export function compareWorktreesForRoundRobin(
   const aT = a.lastAssignedAt == null ? "" : a.lastAssignedAt;
   const bT = b.lastAssignedAt == null ? "" : b.lastAssignedAt;
   return aT.localeCompare(bT) || a.id.localeCompare(b.id);
+}
+
+/** The worktree list filter: routed to the worktree (even if later disconnected) or still on it. */
+export function sessionInWorktree(
+  session: Pick<SessionRecord, "resolvedRoute" | "worktreeId">,
+  worktreeId: string,
+): boolean {
+  return routeWorktreeIdOf(session) === worktreeId || session.worktreeId === worktreeId;
 }

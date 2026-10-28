@@ -25,6 +25,8 @@ import { sessionCancelRedeliveriesTableDefinition } from "./ensure-session-cance
 import { viewerTicketsTableDefinition } from "./ensure-viewer-tickets-table.ts";
 import { ensureSessionsQueueOrderIndex } from "./ensure-queue-order-index.ts";
 import { ensureSessionsPriorityIndexes } from "./ensure-session-priority-index.ts";
+import { ensureSessionListIndexes, SESSION_LIST_INDEXES } from "./ensure-session-list-indexes.ts";
+import { migrateSessionListIndexesPage } from "./ensure-session-list-backfill.ts";
 import {
   ensureSchedulesRepositoryIndex,
   ensureSessionsParentIndex,
@@ -128,9 +130,21 @@ export async function ensureControlPlaneTables(opts: {
       { AttributeName: "activeHostId", AttributeType: ScalarAttributeType.S },
       { AttributeName: "activeHostOrder", AttributeType: ScalarAttributeType.S },
       { AttributeName: "completedAt", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "routeWorktreeId", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "sessionList", AttributeType: ScalarAttributeType.S },
     ],
     KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
     GlobalSecondaryIndexes: [
+      // DynamoDB Local never finishes a GSI added by UpdateTable, so a fresh local table
+      // declares the unsharded list indexes here; ensureSessionListIndexes repairs old tables.
+      ...SESSION_LIST_INDEXES.map((index) => ({
+        IndexName: index.name,
+        KeySchema: [
+          { AttributeName: index.hashAttribute, KeyType: KeyType.HASH },
+          { AttributeName: "createdOrder", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      })),
       {
         IndexName: "statusShard-createdAt",
         KeySchema: [
@@ -210,6 +224,7 @@ export async function ensureControlPlaneTables(opts: {
   await ensureSessionsParentIndex(ddb, names.sessions);
   await ensureSessionsQueueOrderIndex(ddb, names.sessions);
   await ensureSessionsPriorityIndexes(ddb, names.sessions);
+  await ensureSessionListIndexes(ddb, names.sessions);
   await ensureSessionsActiveHostIndex(ddb, names.sessions);
   await ensureSessionRetentionIndex(ddb, names.sessions);
 
@@ -240,6 +255,13 @@ export async function ensureControlPlaneTables(opts: {
   // Local/bootstrap callers must complete the resumable migration before reads
   // switch to the sparse created-order GSI.
   await completeLocalSessionListMigration(DynamoDBDocumentClient.from(ddb), names);
+  // The unsharded list indexes are read only after this marker; local bootstraps backfill inline.
+  await completeLocalSessionListMigration(
+    DynamoDBDocumentClient.from(ddb),
+    names,
+    LOCAL_SESSION_LIST_MIGRATION_MAX_ATTEMPTS,
+    migrateSessionListIndexesPage,
+  );
 
   await createIfMissing(ddb, {
     TableName: names.worktrees,

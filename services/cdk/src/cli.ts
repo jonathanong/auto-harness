@@ -8,6 +8,7 @@ import {
   AutoHarnessFoundationStack,
   type SessionCreatedOrderIndexStage,
   type SessionPriorityIndexStage,
+  type SessionListIndexStage,
   type SessionRetentionIndexStage,
 } from "./foundation-stack.ts";
 import { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
@@ -45,6 +46,12 @@ function sessionRetentionIndexStage(value: string | undefined): SessionRetention
   if (value === undefined || value === "status") return "status";
   if (value === "none") return value;
   throw new Error("sessionRetentionIndexStage context must be none or status");
+}
+
+function sessionListIndexStage(value: string | undefined): SessionListIndexStage {
+  if (value === undefined || value === "all") return "all";
+  if (value === "none" || value === "repository" || value === "worktree") return value;
+  throw new Error("sessionListIndexStage context must be none, repository, worktree, or all");
 }
 
 /** Purge-only. See FoundationStackProps.existingGsiNamesByTable in foundation-stack.ts. */
@@ -86,6 +93,7 @@ const stack = new AutoHarnessFoundationStack(
     sessionRetentionIndexStage: sessionRetentionIndexStage(
       contextString(app, "sessionRetentionIndexStage"),
     ),
+    sessionListIndexStage: sessionListIndexStage(contextString(app, "sessionListIndexStage")),
     tablePrefix,
   },
 );

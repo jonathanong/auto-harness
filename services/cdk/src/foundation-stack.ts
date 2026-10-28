@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one stack defines the whole durable foundation, including staged GSIs. */
 import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
@@ -11,6 +12,21 @@ import { DYNAMO_TABLES, type TableDef } from "./tables.ts";
 export type SessionPriorityIndexStage = "status" | "both";
 export type SessionCreatedOrderIndexStage = "none" | "status";
 export type SessionRetentionIndexStage = "none" | "status";
+/** How many of the unsharded list GSIs exist, in creation order: none, +repository, +worktree, +global. */
+export type SessionListIndexStage = "none" | "repository" | "worktree" | "all";
+
+/** Creation order of the unsharded list GSIs; each takes its own Foundation update. */
+const SESSION_LIST_INDEX_NAMES = [
+  "repositoryId-createdOrder",
+  "routeWorktreeId-createdOrder",
+  "sessionList-createdOrder",
+] as const;
+const SESSION_LIST_INDEX_COUNT: Record<SessionListIndexStage, number> = {
+  none: 0,
+  repository: 1,
+  worktree: 2,
+  all: 3,
+};
 
 type FoundationStackProps = StackProps & {
   /** Physical table name prefix. Must match `HARNESS_DDB_PREFIX` at runtime. */
@@ -25,6 +41,8 @@ type FoundationStackProps = StackProps & {
   sessionCreatedOrderIndexStage?: SessionCreatedOrderIndexStage;
   /** Existing tables add the terminal-retention GSI in its own update. */
   sessionRetentionIndexStage?: SessionRetentionIndexStage;
+  /** Existing tables add the three unsharded list GSIs, one per update. */
+  sessionListIndexStage?: SessionListIndexStage;
   /**
    * Purge-only: pins a named table's synthesized GSIs to exactly this live set, so a
    * deletion retarget makes no index changes regardless of how far that table has drifted
@@ -68,6 +86,7 @@ function stagedTables(
   priorityStage: SessionPriorityIndexStage,
   createdOrderStage: SessionCreatedOrderIndexStage,
   retentionStage: SessionRetentionIndexStage,
+  listStage: SessionListIndexStage,
   existingGsiNamesByTable?: Readonly<Record<string, readonly string[]>>,
 ): readonly TableDef[] {
   return DYNAMO_TABLES.map((definition) => {
@@ -81,7 +100,10 @@ function stagedTables(
         (index) =>
           (priorityStage !== "status" || index.name !== "statusShard-repositoryPriorityOrder") &&
           (createdOrderStage !== "none" || index.name !== "statusShard-createdOrder") &&
-          (retentionStage !== "none" || index.name !== "statusShard-completedAt"),
+          (retentionStage !== "none" || index.name !== "statusShard-completedAt") &&
+          !SESSION_LIST_INDEX_NAMES.slice(SESSION_LIST_INDEX_COUNT[listStage]).some(
+            (hidden) => hidden === index.name,
+          ),
       );
     }
     // Purge's deletion retarget passes this so every restricted table's synthesized GSIs
@@ -137,6 +159,7 @@ export class AutoHarnessFoundationStack extends Stack {
       props.sessionPriorityIndexStage ?? "both",
       props.sessionCreatedOrderIndexStage ?? "status",
       props.sessionRetentionIndexStage ?? "status",
+      props.sessionListIndexStage ?? "all",
       props.existingGsiNamesByTable,
     );
     const tables: Record<string, dynamodb.Table> = {};

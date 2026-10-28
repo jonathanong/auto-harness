@@ -13,6 +13,23 @@ function foundationTemplate(
   return Template.fromStack(stack);
 }
 
+const sessionIndexes = (stage?: "none" | "repository" | "worktree" | "all") => {
+  const template = foundationTemplate(stage ? { sessionListIndexStage: stage } : {});
+  const sessions = template.findResources("AWS::DynamoDB::Table", {
+    Properties: { TableName: "AutoHarness-Sessions" },
+  });
+  const indexes = Object.values(sessions)[0]?.Properties?.GlobalSecondaryIndexes as Array<{
+    IndexName: string;
+    KeySchema: Array<{ AttributeName: string }>;
+    Projection: { ProjectionType: string };
+  }>;
+  return indexes;
+};
+const listNames = (indexes: Array<{ IndexName: string }>) =>
+  indexes
+    .map((index) => index.IndexName)
+    .filter((name) => /^(repositoryId|routeWorktreeId|sessionList)-createdOrder$/u.test(name));
+
 describe("AutoHarnessFoundationStack", () => {
   it("stages only the first priority index for an existing Sessions table", () => {
     const template = foundationTemplate({
@@ -30,6 +47,28 @@ describe("AutoHarnessFoundationStack", () => {
       "statusShard-repositoryPriorityOrder",
     );
     expect(indexes?.map((index) => index.IndexName)).not.toContain("statusShard-createdOrder");
+  });
+
+  it("adds the unsharded list indexes one at a time and all of them by default", () => {
+    expect(listNames(sessionIndexes("none"))).toEqual([]);
+    expect(listNames(sessionIndexes("repository"))).toEqual(["repositoryId-createdOrder"]);
+    expect(listNames(sessionIndexes("worktree"))).toEqual([
+      "repositoryId-createdOrder",
+      "routeWorktreeId-createdOrder",
+    ]);
+    const all = sessionIndexes();
+    expect(listNames(all)).toEqual([
+      "repositoryId-createdOrder",
+      "routeWorktreeId-createdOrder",
+      "sessionList-createdOrder",
+    ]);
+    expect(listNames(sessionIndexes("all"))).toEqual(listNames(all));
+    const global = all.find((index) => index.IndexName === "sessionList-createdOrder")!;
+    expect(global.KeySchema.map((key) => key.AttributeName)).toEqual([
+      "sessionList",
+      "createdOrder",
+    ]);
+    expect(global.Projection.ProjectionType).toBe("ALL");
   });
 
   it("restricts a table's synthesized GSIs to exactly its live set for the deletion retarget", () => {

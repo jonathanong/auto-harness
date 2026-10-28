@@ -12,11 +12,11 @@ function putItemCalls(deps: Deps): string[][] {
 const FRESH_STACK_STATES = [false, false, false, true, true, true];
 
 describe("fresh-deploy readiness markers", () => {
-  it("writes both readiness markers only after a fresh deploy's smoke check passes", async () => {
+  it("writes all readiness markers only after a fresh deploy's smoke check passes", async () => {
     const deps = dependencies(FRESH_STACK_STATES);
     await runDeployment("deploy", config(), deps);
     const putItems = putItemCalls(deps);
-    expect(putItems).toHaveLength(2);
+    expect(putItems).toHaveLength(3);
     expect(putItems[0]).toEqual(
       expect.arrayContaining([
         "dynamodb",
@@ -43,8 +43,18 @@ describe("fresh-deploy readiness markers", () => {
         }),
       ]),
     );
+    expect(putItems[2]).toEqual(
+      expect.arrayContaining([
+        "--item",
+        JSON.stringify({
+          scopeKey: { S: "__session-list-indexes__" },
+          recordKey: { S: "READY-V1" },
+          recordType: { S: "session-list-indexes-v1" },
+        }),
+      ]),
+    );
     expect(deps.log).toHaveBeenCalledWith(
-      "Published session-drain-ledger and session-priority-order readiness markers for the new environment.",
+      "Published session-drain-ledger, session-priority-order and session-list-indexes readiness markers for the new environment.",
     );
   });
 
@@ -72,7 +82,7 @@ describe("fresh-deploy readiness markers", () => {
       return query(command, args);
     });
     await expect(runDeployment("deploy", config(), deps)).resolves.toBeUndefined();
-    expect(putItemCalls(deps)).toHaveLength(2);
+    expect(putItemCalls(deps)).toHaveLength(3);
   });
 
   it("re-running deploy is harmless once both markers are already published", async () => {

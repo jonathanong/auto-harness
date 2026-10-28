@@ -1,3 +1,4 @@
+import { sessionInWorktree } from "./control-plane-ordering.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
@@ -38,7 +39,7 @@ function matchesQuery(session: SessionRecord, query: ReturnType<typeof normalize
     (query.repositoryId === null || session.repositoryId === query.repositoryId) &&
     (query.status === null || session.status === query.status) &&
     (query.hostId === null || session.hostId === query.hostId) &&
-    (query.worktreeId === null || session.worktreeId === query.worktreeId) &&
+    (query.worktreeId === null || sessionInWorktree(session, query.worktreeId)) &&
     (query.concurrencyId === null || session.concurrencyId === query.concurrencyId) &&
     (query.scheduleId === null || session.scheduleId === query.scheduleId) &&
     (query.source === null || session.source === query.source)

@@ -2,6 +2,7 @@
 import { awsArgs } from "./aws-cli.ts";
 import { probeAuthenticatedDeployment } from "./deploy-authenticated-smoke.ts";
 import type { DeploymentConfig } from "./deployment-config.ts";
+import type { SessionListIndexStage } from "./foundation-stack.ts";
 import { recycleRuntimeLambdas } from "./recycle-runtime-lambdas.ts";
 
 export type DeploymentQueryResult = { status: number | null; stderr: string; stdout: string };
@@ -44,6 +45,7 @@ export function cdkContext(
   sessionPriorityIndexStage: "status" | "both" = "both",
   sessionCreatedOrderIndexStage: "none" | "status" = "status",
   sessionRetentionIndexStage: "none" | "status" = "status",
+  sessionListIndexStage: SessionListIndexStage = "all",
 ): string[] {
   return [
     "--app",
@@ -68,6 +70,8 @@ export function cdkContext(
     `sessionCreatedOrderIndexStage=${sessionCreatedOrderIndexStage}`,
     "-c",
     `sessionRetentionIndexStage=${sessionRetentionIndexStage}`,
+    "-c",
+    `sessionListIndexStage=${sessionListIndexStage}`,
     ...(config.alarmEmails.length > 0
       ? (["-c", `alarmEmails=${config.alarmEmails.join(",")}`] as const)
       : []),
@@ -97,7 +101,7 @@ export async function applySessionPriorityIndexStage(
     "cdk",
     "deploy",
     config.foundationStackName,
-    ...cdkContext(config, stage, "none", retentionStage),
+    ...cdkContext(config, stage, "none", retentionStage, "none"),
     "--require-approval",
     "never",
   ]);
@@ -114,7 +118,7 @@ export async function applySessionCreatedOrderIndexStage(
     "cdk",
     "deploy",
     config.foundationStackName,
-    ...cdkContext(config, "both", "status", retentionStage),
+    ...cdkContext(config, "both", "status", retentionStage, "none"),
     "--require-approval",
     "never",
   ]);
@@ -130,7 +134,29 @@ export async function applySessionRetentionIndexStage(
     "cdk",
     "deploy",
     config.foundationStackName,
-    ...cdkContext(config, "both", "status", "status"),
+    ...cdkContext(config, "both", "status", "status", "none"),
+    "--require-approval",
+    "never",
+  ]);
+}
+
+/**
+ * Add one unsharded list GSI after every earlier Sessions GSI is ACTIVE. The wrapper calls this
+ * once per index (repository, worktree, all), waiting for ACTIVE in between: DynamoDB allows
+ * one GSI creation per table update. Runs while the old runtime is serving; nothing reads the
+ * indexes until the backfill publishes its readiness marker.
+ */
+export async function applySessionListIndexStage(
+  config: DeploymentConfig,
+  dependencies: DeploymentDependencies,
+  stage: Exclude<SessionListIndexStage, "none">,
+): Promise<void> {
+  await dependencies.run("pnpm", [
+    "exec",
+    "cdk",
+    "deploy",
+    config.foundationStackName,
+    ...cdkContext(config, "both", "status", "status", stage),
     "--require-approval",
     "never",
   ]);

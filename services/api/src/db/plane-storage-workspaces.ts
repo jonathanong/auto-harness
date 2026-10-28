@@ -9,6 +9,7 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 
+import { routeWorktreeIdOf } from "../control-plane-ordering.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import { activeHostOrder } from "./plane-storage-sessions-active-host.ts";
 import {
@@ -435,6 +436,11 @@ export async function tryAssignWorkspaceSession(
     "sessionOutputsSupported = :outputsSupported",
   ];
   values[":null"] = null;
+  const routeWorktreeId = routeWorktreeIdOf(opts);
+  if (routeWorktreeId) {
+    sets.push("routeWorktreeId = :routeWorktreeId");
+    values[":routeWorktreeId"] = routeWorktreeId;
+  }
   if (opts.providerAccountLease) {
     sets.push("providerAccountLease = :providerAccountLease");
     values[":providerAccountLease"] = opts.providerAccountLease;
@@ -473,7 +479,7 @@ export async function tryAssignWorkspaceSession(
       Update: {
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
-        UpdateExpression: `SET ${sets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt, retryAfter, retryCount, errorCode, errorMessage`,
+        UpdateExpression: `SET ${sets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt, retryAfter, retryCount, errorCode, errorMessage${routeWorktreeId ? "" : ", routeWorktreeId"}`,
         ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: values,
