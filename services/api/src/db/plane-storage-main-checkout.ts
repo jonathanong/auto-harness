@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- assignment and checkout lease transactions share one adapter. */
 import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
+import { routeWorktreeIdOf } from "../control-plane-ordering.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import { activeHostOrder } from "./plane-storage-sessions-active-host.ts";
 import type { SessionRecord } from "./types.ts";
@@ -75,6 +76,7 @@ export async function tryAssignMainCheckoutSession(
 ): Promise<AssignmentWriteResult> {
   const lease = { sessionId: opts.sessionId, connectionId: opts.connectionId };
   const hostAssignmentLease = opts.hostAssignmentLease ?? { hostId: opts.hostId };
+  const routeWorktreeId = routeWorktreeIdOf(opts);
   const drainCheck = sessionDrainAdmissionCheck(ctx, opts.repositoryId, opts.principalId);
   const activityWrite = activityPut(ctx, activeActivityForAssignment(opts));
   const transactItems = [
@@ -152,12 +154,14 @@ export async function tryAssignMainCheckoutSession(
         Key: { id: opts.sessionId },
         UpdateExpression:
           "SET #s = :running, statusShard = :statusShard, worktreeId = :null, hostId = :hostId, activeHostId = :activeHostId, activeHostOrder = :activeHostOrder, startedAt = :now, assignmentSentAt = :now, resolvedArgv = :argv, resolvedRoute = :route, assignmentConnectionId = :connectionId, mainCheckoutLease = :true, attemptId = :attemptId, primaryCommandStartState = :primaryCommandStartState" +
+          (routeWorktreeId ? ", routeWorktreeId = :routeWorktreeId" : "") +
           (opts.resumeSpec ? ", resumeSpec = if_not_exists(resumeSpec, :resumeSpec)" : "") +
           (opts.providerAccountLease ? ", providerAccountLease = :providerAccountLease" : "") +
           (opts.sessionApiKeyHash ? ", sessionApiKeyHash = :sessionApiKeyHash" : "") +
           ", hostAssignmentLease = :hostAssignmentLease, sessionOutputsSupported = :outputsSupported" +
           " REMOVE ackReceivedAt, reconnectDeadlineAt, completedAt, exitCode, errorCode, errorMessage, retryAfter, retryCount" +
-          (opts.sessionApiKeyHash ? "" : ", sessionApiKeyHash"),
+          (opts.sessionApiKeyHash ? "" : ", sessionApiKeyHash") +
+          (routeWorktreeId ? "" : ", routeWorktreeId"),
         ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: {
@@ -171,6 +175,7 @@ export async function tryAssignMainCheckoutSession(
           ":now": opts.now,
           ":argv": opts.resolvedArgv,
           ":route": opts.resolvedRoute,
+          ...(routeWorktreeId ? { ":routeWorktreeId": routeWorktreeId } : {}),
           ":connectionId": opts.connectionId,
           ":true": true,
           ":attemptId": opts.attemptId,

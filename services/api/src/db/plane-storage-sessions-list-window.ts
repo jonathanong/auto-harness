@@ -4,6 +4,7 @@ import {
   createdOrderKey,
   priorityOrderKey,
   repositoryPriorityOrderKey,
+  sessionInWorktree,
 } from "../control-plane-ordering.ts";
 import type {
   SessionCursorV2,
@@ -14,10 +15,11 @@ import type { SessionListPageQuery } from "./plane-storage-sessions-list-page.ts
 import { itemToSession, nextPageKey, type PlaneStorageCtx } from "./plane-storage-types.ts";
 import type { SessionRecord } from "./types.ts";
 
+export type PartitionKeyName = "statusShard" | "repositoryId" | "routeWorktreeId" | "sessionList";
 export type Partition = {
   id: string;
   indexName: string;
-  keyName: "statusShard";
+  keyName: PartitionKeyName;
   keyValue: string;
   forward: boolean;
   sortKeyName: "createdOrder" | "priorityOrder" | "repositoryPriorityOrder";
@@ -124,7 +126,7 @@ function matchesFilters(session: SessionRecord, query: SessionListPageQuery): bo
     (query.status === null || session.status === query.status) &&
     (query.repositoryId === null || session.repositoryId === query.repositoryId) &&
     (query.hostId === null || session.hostId === query.hostId) &&
-    (!query.worktreeId || session.worktreeId === query.worktreeId) &&
+    (!query.worktreeId || sessionInWorktree(session, query.worktreeId)) &&
     (query.source === null || session.source === query.source) &&
     (query.concurrencyId === null || session.concurrencyId === query.concurrencyId) &&
     (query.scheduleId === null || session.scheduleId === query.scheduleId) &&

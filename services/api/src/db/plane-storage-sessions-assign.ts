@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- assignment and active host-claim writes must remain atomic. */
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
+import { routeWorktreeIdOf } from "../control-plane-ordering.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import { activeHostOrder } from "./plane-storage-sessions-active-host.ts";
 import {
@@ -86,6 +87,11 @@ export async function tryAssignSession(
     ":outputsSupported": opts.sessionOutputsSupported ?? false,
     ":route": opts.resolvedRoute,
   };
+  const routeWorktreeId = routeWorktreeIdOf(opts);
+  if (routeWorktreeId) {
+    sessionSets.push("routeWorktreeId = :routeWorktreeId");
+    sessionValues[":routeWorktreeId"] = routeWorktreeId;
+  }
   const hostAssignmentLease = opts.hostAssignmentLease ?? { hostId: opts.hostId };
   if (opts.sessionApiKeyHash !== undefined) {
     sessionSets.push("sessionApiKeyHash = :sessionApiKeyHash");
@@ -153,7 +159,7 @@ export async function tryAssignSession(
       Update: {
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
-        UpdateExpression: `SET ${sessionSets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt, retryAfter, retryCount, errorCode, errorMessage`,
+        UpdateExpression: `SET ${sessionSets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt, retryAfter, retryCount, errorCode, errorMessage${routeWorktreeId ? "" : ", routeWorktreeId"}`,
         ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: sessionValues,

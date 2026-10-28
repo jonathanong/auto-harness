@@ -19,6 +19,8 @@ import {
   priorityOrderKey,
   queueOrderKey,
   repositoryPriorityOrderKey,
+  routeWorktreeIdOf,
+  SESSION_LIST_PARTITION_VALUE,
 } from "../control-plane-ordering.ts";
 import type { DynamoTableNames } from "./dynamo.ts";
 import { statusShardAttr } from "./dynamo.ts";
@@ -27,6 +29,12 @@ import type { SessionRecord } from "./types.ts";
 export type PlaneStorageCtx = {
   doc: DynamoDBDocumentClient;
   tables: DynamoTableNames;
+  /** Gate for the unsharded session-list indexes; absent keeps the legacy status/shard plan. */
+  sessionListIndexes?: {
+    ready(): Promise<boolean>;
+    /** A one-partition cursor proves the READY marker exists, whatever this cache believes. */
+    markReady(): void;
+  };
 };
 
 export type ProviderRecord = Provider;
@@ -408,7 +416,10 @@ export function sessionToItem(session: SessionRecord): Record<string, unknown> {
     createdOrder: createdOrderKey(session),
     queueOrder: queueOrderKey(session),
     priorityOrder: priorityOrderKey(session),
+    sessionList: SESSION_LIST_PARTITION_VALUE,
   };
+  const routeWorktreeId = routeWorktreeIdOf(session);
+  if (routeWorktreeId) item.routeWorktreeId = routeWorktreeId;
   if (repositoryId) {
     item.repositoryId = repositoryId;
     item.repositoryPriorityOrder = repositoryPriorityOrderKey(repositoryId, session);
@@ -434,6 +445,8 @@ export function itemToSession(item: Record<string, unknown>): SessionRecord {
     queueOrder: _qo,
     priorityOrder: _po,
     repositoryPriorityOrder: _rpo,
+    sessionList: _sl,
+    routeWorktreeId: _rwi,
     ...rest
   } = item;
   const normalized = normalizeTargetDisplayNames(rest);
