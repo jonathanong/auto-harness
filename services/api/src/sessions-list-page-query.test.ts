@@ -1127,4 +1127,47 @@ describe("listSessionsPageFromStorage", () => {
       }),
     ).rejects.toThrow("invalid pagination key");
   });
+
+  it("logs the shape of a slow list read and stays quiet for a fast one", async () => {
+    const ctx = {
+      doc: { send: async () => ({ Items: [row("sess-1", "2026-01-01T00:00:00.000Z")] }) },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    const query = {
+      limit: 5,
+      sort: "latest" as const,
+      shardCount: 1,
+      status: null,
+      repositoryId: null,
+      repositoryIds: null,
+      hostId: null,
+      source: null,
+      concurrencyId: null,
+      scheduleId: null,
+    };
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await listSessionsPageFromStorage(ctx, query);
+      expect(log).not.toHaveBeenCalled();
+
+      let now = 0;
+      const clock = vi.spyOn(Date, "now").mockImplementation(() => (now += 400));
+      try {
+        await listSessionsPageFromStorage(ctx, query);
+      } finally {
+        clock.mockRestore();
+      }
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(String(log.mock.calls[0]![0]))).toMatchObject({
+        msg: "slow session list read",
+        limit: 5,
+        filtered: false,
+        partitions: 6,
+        rowsRead: 6,
+        items: 5,
+      });
+    } finally {
+      log.mockRestore();
+    }
+  });
 });
