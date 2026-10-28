@@ -35,7 +35,7 @@ export type PartitionWindow = {
   rows: RawRow[];
   nextKey: SessionPartitionCheckpoint | undefined;
   exhaustedRead: boolean;
-  /** Sum of Query `Limit`s sent for this partition; never exceeds `limit + 1`. */
+  /** Rows asked of this partition by its reads; never exceeds `limit + 1`. */
   requested: number;
 };
 
@@ -174,30 +174,40 @@ async function readPartition(
               : "<"
         } :sortValue`
       : `${partition.keyName} = :key`;
-  const response = await ctx.doc.send(
-    new QueryCommand({
-      TableName: ctx.tables.sessions,
-      IndexName: partition.indexName,
-      KeyConditionExpression: condition,
-      ExpressionAttributeValues: {
-        ":key": partition.keyValue,
-        ...(range ? { ":sortStart": range.start, ":sortEnd": range.end } : {}),
-        ...(!range && legacySortValue ? { ":sortValue": legacySortValue } : {}),
-      },
-      ScanIndexForward: partition.forward,
-      Limit: limit,
-      ...(window.nextKey ? { ExclusiveStartKey: window.nextKey } : {}),
-    }),
-  );
-  for (const item of response.Items ?? []) {
-    const raw = item as Record<string, unknown>;
-    const session = itemToSession(raw);
-    window.rows.push({ item: raw, session, matching: matchesFilters(session, query) });
-  }
-  window.nextKey = typedPageKey(
-    response.LastEvaluatedKey as Record<string, unknown> | undefined,
-    partition,
-  );
+  // A Query response stops at 1MB, about 45 session rows, before reaching `Limit`.
+  // Continue from its key until this read has the rows it asked for, so a
+  // one-partition page is not cut short at the response size.
+  let remaining = limit;
+  let read: number;
+  do {
+    const response = await ctx.doc.send(
+      new QueryCommand({
+        TableName: ctx.tables.sessions,
+        IndexName: partition.indexName,
+        KeyConditionExpression: condition,
+        ExpressionAttributeValues: {
+          ":key": partition.keyValue,
+          ...(range ? { ":sortStart": range.start, ":sortEnd": range.end } : {}),
+          ...(!range && legacySortValue ? { ":sortValue": legacySortValue } : {}),
+        },
+        ScanIndexForward: partition.forward,
+        Limit: remaining,
+        ...(window.nextKey ? { ExclusiveStartKey: window.nextKey } : {}),
+      }),
+    );
+    const items = response.Items ?? [];
+    for (const item of items) {
+      const raw = item as Record<string, unknown>;
+      const session = itemToSession(raw);
+      window.rows.push({ item: raw, session, matching: matchesFilters(session, query) });
+    }
+    window.nextKey = typedPageKey(
+      response.LastEvaluatedKey as Record<string, unknown> | undefined,
+      partition,
+    );
+    read = items.length;
+    remaining -= read;
+  } while (remaining > 0 && read > 0 && window.nextKey !== undefined);
   window.exhaustedRead = window.nextKey === undefined;
   window.requested += limit;
 }
