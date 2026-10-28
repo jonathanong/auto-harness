@@ -194,6 +194,65 @@ wait_for_session_priority_index() {
   return 1
 }
 
+read_session_list_indexes_key() {
+  local output status
+  set +e
+  output="$(aws dynamodb get-item \
+    --region "$AWS_REGION" \
+    --table-name "$ledger_table" \
+    --consistent-read \
+    --key '{"scopeKey":{"S":"__session-list-indexes__"},"recordKey":{"S":"READY-V1"}}' \
+    --query 'Item.recordKey.S' \
+    --output text 2>&1)"
+  status=$?
+  set -e
+  if [[ "$status" -eq 0 ]]; then
+    printf '%s' "$output"
+    return 0
+  fi
+  if [[ "$output" == *"ResourceNotFoundException"* ]]; then
+    return 0
+  fi
+  echo "Could not inspect the session-list-indexes readiness marker: $output" >&2
+  return 1
+}
+
+# DynamoDB permits one GSI creation per table update, so the three unsharded list
+# indexes are added in three Foundation updates, each observed ACTIVE before the next.
+# This needs no maintenance fence: readers stay on the legacy status-partition plan until
+# the readiness marker is published after the backfill (docs/deploy-aws.md).
+stage_session_list_indexes() {
+  local pair index_name stage_op index_state
+  for pair in \
+    "repositoryId-createdOrder:session-list-index-repository" \
+    "routeWorktreeId-createdOrder:session-list-index-worktree" \
+    "sessionList-createdOrder:session-list-index-all"; do
+    index_name="${pair%%:*}"
+    stage_op="${pair##*:}"
+    index_state="$(session_priority_index_state "$index_name")"
+    if [[ "$index_state" == "None" || -z "$index_state" ]]; then
+      pnpm --filter @auto-harness/cdk run "$stage_op"
+    fi
+    wait_for_session_priority_index "$index_name"
+  done
+}
+
+# Runs after the runtime update so every new write carries sessionList/routeWorktreeId.
+# Resumable and idempotent; publishes the readiness marker itself when complete.
+run_session_list_backfill() {
+  if [[ "$(read_session_list_indexes_key)" == "READY-V1" ]]; then
+    echo "Session list indexes are already backfilled and published."
+    return 0
+  fi
+  HARNESS_MIGRATION_SESSIONS_TABLE="$sessions_table" \
+    HARNESS_MIGRATION_DRAINS_TABLE="$ledger_table" \
+    node services/api/scripts/migrate-session-list-indexes.mts
+  if [[ "$(read_session_list_indexes_key)" != "READY-V1" ]]; then
+    echo "Session list index backfill finished without publishing readiness; list reads stay on the status partitions. Rerun to resume." >&2
+    return 1
+  fi
+}
+
 resolve_cron_rule() {
   local rule
   rule="$(aws cloudformation list-stack-resources \
@@ -369,7 +428,9 @@ else
   export HARNESS_DEPLOY_RETENTION_INDEX_STAGE=none
 fi
 if [[ "$needs_ledger" -eq 0 && "$needs_operational_ledger" -eq 0 && "$needs_priority_order" -eq 0 && "$needs_created_order_index" -eq 0 && "$needs_retention_index" -eq 0 ]]; then
+  stage_session_list_indexes
   pnpm --filter @auto-harness/cdk run update
+  run_session_list_backfill
   exit 0
 fi
 
@@ -434,6 +495,7 @@ run_session_migrations() {
 if [[ "$sessions_table_state" == "MISSING" ]]; then
   pnpm --filter @auto-harness/cdk run update
   run_session_migrations
+  run_session_list_backfill
   echo "AWS update complete; fresh session storage and readiness markers are ready."
   exit 0
 fi
@@ -528,6 +590,8 @@ if [[ "$needs_retention_index" -eq 1 ]]; then
   wait_for_session_priority_index "statusShard-completedAt"
 fi
 
+stage_session_list_indexes
+
 if ! pnpm --filter @auto-harness/cdk run update; then
   set +e
   recovery_rule="$(resolve_cron_rule_optional)"
@@ -577,4 +641,5 @@ fi
 run_session_migrations
 if [[ "$scheduler_fenced" -eq 1 ]]; then restore_scheduler_concurrency; fi
 finish_rule_restoration
-echo "AWS update complete; session-drain ledger and priority-order index are ready."
+run_session_list_backfill
+echo "AWS update complete; session-drain ledger, priority-order index and session list indexes are ready."

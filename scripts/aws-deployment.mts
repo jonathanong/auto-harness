@@ -8,6 +8,7 @@ import {
 import { runDeployment } from "../services/cdk/src/deployment.ts";
 import {
   applySessionCreatedOrderIndexStage,
+  applySessionListIndexStage,
   applySessionPriorityIndexStage,
   applySessionRetentionIndexStage,
 } from "../services/cdk/src/deployment-support.ts";
@@ -23,15 +24,23 @@ function operation(
   | "priority-index-status"
   | "priority-index-both"
   | "created-order-index"
-  | "retention-index" {
+  | "retention-index"
+  | "session-list-index-repository"
+  | "session-list-index-worktree"
+  | "session-list-index-all" {
   if (value === "deploy" || value === "update" || value === "teardown" || value === "purge") {
     return value;
   }
   if (value === "priority-index-status" || value === "priority-index-both") return value;
   if (value === "created-order-index") return value;
   if (value === "retention-index") return value;
+  if (value?.startsWith("session-list-index-")) {
+    const stage = value.slice("session-list-index-".length);
+    if (stage === "repository" || stage === "worktree" || stage === "all")
+      return `session-list-index-${stage}`;
+  }
   throw new Error(
-    "usage: aws-deployment.mts <deploy|update|teardown|purge|priority-index-status|priority-index-both|created-order-index|retention-index>",
+    "usage: aws-deployment.mts <deploy|update|teardown|purge|priority-index-status|priority-index-both|created-order-index|retention-index|session-list-index-repository|session-list-index-worktree|session-list-index-all>",
   );
 }
 
@@ -77,6 +86,12 @@ try {
       deploymentConfig("update"),
       dependencies,
       process.env.HARNESS_DEPLOY_RETENTION_INDEX_STAGE === "status" ? "status" : "none",
+    );
+  } else if (selected.startsWith("session-list-index-")) {
+    await applySessionListIndexStage(
+      deploymentConfig("update"),
+      dependencies,
+      selected.slice("session-list-index-".length) as "repository" | "worktree" | "all",
     );
   } else if (selected === "retention-index") {
     await applySessionRetentionIndexStage(deploymentConfig("update"), dependencies);

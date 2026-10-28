@@ -83,6 +83,9 @@ printf "node %s\\n" "$*" >> "$FAKE_LOG"
 if [[ "$*" == *"migrate-operational-ledger.mts"* ]]; then
   touch "$FAKE_DIRECTORY/operational-ready"
 fi
+if [[ "$*" == *"migrate-session-list-indexes.mts"* && "\${FAKE_LIST_BACKFILL_NO_MARKER:-0}" != 1 ]]; then
+  touch "$FAKE_DIRECTORY/list-ready"
+fi
 `,
   );
   executable(
@@ -107,6 +110,10 @@ if [[ "$*" == *"@auto-harness/cdk run created-order-index"* ]]; then
 fi
 if [[ "$*" == *"@auto-harness/cdk run retention-index"* ]]; then
   touch "$FAKE_DIRECTORY/retention-active"
+fi
+if [[ "$*" == *"@auto-harness/cdk run session-list-index-"* ]]; then
+  invocation="$*"
+  touch "$FAKE_DIRECTORY/list-index-\${invocation##*session-list-index-}"
 fi`,
   );
   executable(
@@ -126,6 +133,14 @@ case "$1 $2" in
       [[ -f "$FAKE_DIRECTORY/operational-ready" ]] && echo operational-activity-ready-v2 || echo None
       exit 0
     fi
+    if [[ "$*" == *"__session-list-indexes__"* ]]; then
+      if [[ "\${FAKE_LIST_READY:-0}" == 1 || -f "$FAKE_DIRECTORY/list-ready" ]]; then
+        echo READY-V1
+      else
+        echo None
+      fi
+      exit 0
+    fi
     if [[ "$*" == *"__session-priority-order__"* ]]; then
       if [[ "\${FAKE_PRIORITY_MISSING:-0}" == 1 && ! -f "$FAKE_DIRECTORY/update-complete" ]]; then
         echo None
@@ -134,7 +149,7 @@ case "$1 $2" in
       fi
       exit 0
     fi
-    if [[ -f "$FAKE_DIRECTORY/update-complete" ]]; then
+    if [[ -f "$FAKE_DIRECTORY/update-complete" || "\${FAKE_LEDGER_READY_AT_START:-0}" == 1 ]]; then
       [[ "\${FAKE_LEDGER_READ_FAILURE:-0}" == 1 ]] && { echo unavailable >&2; exit 1; }
       echo ACTIVITY-V1
     else
@@ -155,6 +170,24 @@ case "$1 $2" in
         echo ACTIVE
       else
         echo None
+      fi
+    elif [[ "$*" == *"repositoryId-createdOrder"* ]]; then
+      if [[ "\${FAKE_LIST_INDEXES_MISSING:-0}" == 1 ]]; then
+        [[ -f "$FAKE_DIRECTORY/list-index-repository" ]] && echo ACTIVE || echo None
+      else
+        echo ACTIVE
+      fi
+    elif [[ "$*" == *"routeWorktreeId-createdOrder"* ]]; then
+      if [[ "\${FAKE_LIST_INDEXES_MISSING:-0}" == 1 ]]; then
+        [[ -f "$FAKE_DIRECTORY/list-index-worktree" ]] && echo ACTIVE || echo None
+      else
+        echo ACTIVE
+      fi
+    elif [[ "$*" == *"sessionList-createdOrder"* ]]; then
+      if [[ "\${FAKE_LIST_INDEXES_MISSING:-0}" == 1 ]]; then
+        [[ -f "$FAKE_DIRECTORY/list-index-all" ]] && echo ACTIVE || echo None
+      else
+        echo ACTIVE
       fi
     elif [[ "\${FAKE_PRIORITY_MISSING:-0}" == 1 ]]; then
       if [[ "$*" == *"createdOrder"* ]]; then
@@ -229,9 +262,15 @@ describe("deployment wrapper contracts", () => {
     expect(calls).toContain("aws dynamodb put-item");
     expect(calls).not.toContain("node scripts/migrate-session-drain-ledger.mts");
     expect(calls).not.toContain("aws events enable-rule");
-    expect(
-      calls.trimEnd().endsWith("aws events disable-rule --region us-west-2 --name cron-rule"),
-    ).toBe(true);
+    const lastRuleCall = calls
+      .split("\n")
+      .filter((line) => line.startsWith("aws events "))
+      .at(-1);
+    expect(lastRuleCall).toBe("aws events disable-rule --region us-west-2 --name cron-rule");
+    // The unfenced list-index backfill runs only after the rule is restored.
+    expect(position(calls, "migrate-session-list-indexes.mts")).toBeGreaterThan(
+      calls.lastIndexOf("aws events disable-rule"),
+    );
     expect(result.stdout).toContain("Verified zero drain-affecting sessions");
   });
 
@@ -321,6 +360,61 @@ describe("deployment wrapper contracts", () => {
     expect(calls).toContain("@auto-harness/cdk run priority-index-status");
     expect(calls).toContain("retention-stage status");
     expect(calls).not.toContain("@auto-harness/cdk run retention-index");
+  });
+
+  it("stages the list indexes one at a time, then updates and backfills without a fence", () => {
+    const fixture = fakeEnvironment();
+    awsDeploymentFakes(fixture);
+    writeFileSync(join(fixture.directory, "operational-ready"), "");
+    const result = run(awsScript, [], fixture, {
+      FAKE_LIST_INDEXES_MISSING: "1",
+      FAKE_LEDGER_READY_AT_START: "1",
+      FAKE_RETENTION_ACTIVE: "1",
+    });
+    const calls = readFileSync(fixture.log, "utf8");
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls).not.toContain("aws events disable-rule");
+    expect(position(calls, "run session-list-index-repository")).toBeLessThan(
+      position(calls, "run session-list-index-worktree"),
+    );
+    expect(position(calls, "run session-list-index-worktree")).toBeLessThan(
+      position(calls, "run session-list-index-all"),
+    );
+    expect(position(calls, "run session-list-index-all")).toBeLessThan(
+      position(calls, "@auto-harness/cdk run update"),
+    );
+    expect(position(calls, "@auto-harness/cdk run update")).toBeLessThan(
+      position(calls, "node services/api/scripts/migrate-session-list-indexes.mts"),
+    );
+  });
+
+  it("skips staging and backfill once the indexes are ACTIVE and published", () => {
+    const fixture = fakeEnvironment();
+    awsDeploymentFakes(fixture);
+    writeFileSync(join(fixture.directory, "operational-ready"), "");
+    const result = run(awsScript, [], fixture, {
+      FAKE_LEDGER_READY_AT_START: "1",
+      FAKE_RETENTION_ACTIVE: "1",
+      FAKE_LIST_READY: "1",
+    });
+    const calls = readFileSync(fixture.log, "utf8");
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls).not.toContain("session-list-index-");
+    expect(calls).not.toContain("migrate-session-list-indexes.mts");
+    expect(result.stdout).toContain("already backfilled");
+  });
+
+  it("fails closed when the backfill does not publish readiness", () => {
+    const fixture = fakeEnvironment();
+    awsDeploymentFakes(fixture);
+    writeFileSync(join(fixture.directory, "operational-ready"), "");
+    const result = run(awsScript, [], fixture, {
+      FAKE_LEDGER_READY_AT_START: "1",
+      FAKE_RETENTION_ACTIVE: "1",
+      FAKE_LIST_BACKFILL_NO_MARKER: "1",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("without publishing readiness");
   });
 
   it("blocks an in-place active-host index rollout but allows a missing fresh table", () => {

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { config, dependencies } from "../test-helpers/deployment-test-helpers.ts";
 import {
   applySessionCreatedOrderIndexStage,
+  applySessionListIndexStage,
   applySessionPriorityIndexStage,
   verifySecretParameters,
 } from "./deployment-support.ts";
@@ -74,6 +75,30 @@ describe("runDeployment", () => {
         "sessionCreatedOrderIndexStage=status",
       ]),
     ]);
+  });
+
+  it("adds each unsharded list index in its own foundation update", async () => {
+    for (const stage of ["repository", "worktree", "all"] as const) {
+      const deps = dependencies([]);
+      await applySessionListIndexStage(config(), deps, stage);
+      expect(deps.runs).toEqual([
+        expect.arrayContaining([
+          "deploy",
+          "AutoHarness-review-Foundation",
+          "sessionPriorityIndexStage=both",
+          "sessionCreatedOrderIndexStage=status",
+          "sessionRetentionIndexStage=status",
+          `sessionListIndexStage=${stage}`,
+        ]),
+      ]);
+    }
+  });
+
+  it("keeps the unsharded list indexes out of the earlier staged templates", async () => {
+    const deps = dependencies([]);
+    await applySessionPriorityIndexStage(config(), deps, "status");
+    await applySessionCreatedOrderIndexStage(config(), deps);
+    for (const run of deps.runs) expect(run).toContain("sessionListIndexStage=none");
   });
 
   it("bootstraps, deploys, verifies stacks, and health-checks a new environment", async () => {

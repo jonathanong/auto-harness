@@ -786,7 +786,7 @@ List sessions with optional filters.
 | `status`        | string | Filter by status, or `all` (default): `queued`, `running`, `completed`, `failed`, `cancelled`, `timed_out` |
 | `repositoryId`  | string | Filter by repository                                                                                       |
 | `hostId`        | string | Filter by assigned host                                                                                    |
-| `worktreeId`    | string | Filter by assigned worktree (post-read filter; does not narrow the partitions read)                        |
+| `worktreeId`    | string | Filter by worktree: sessions routed to it (`resolvedRoute.worktreeId`) or currently on it (`worktreeId`)   |
 | `source`        | string | Filter by origin: `api`, `ui`, `webhook`, or `schedule`                                                    |
 | `sort`          | string | Sort order: `latest` (default), `oldest`, `priority_desc`, `priority_asc`                                  |
 | `limit`         | number | Base-10 integer from 1 to 100 (default: 50)                                                                |
@@ -822,9 +822,14 @@ applies there.
 Session filtering is applied while traversing bounded storage pages, so a response may contain
 fewer than `limit` items — including an empty `items` array — while `nextCursor` is non-null. Treat
 only `nextCursor: null` as terminal; clients must continue requesting pages with the returned
-cursor until it becomes null. Storage reads each status/shard partition in windows that start at
-an even share of `limit` and refill only partitions that hold the page back, up to `limit + 1` rows
-per partition per request. List items deliberately omit the potentially large structured
+cursor until it becomes null. A `worktreeId` filter matches a session that was routed to that worktree
+(`resolvedRoute.worktreeId`, which survives the worktree being released on disconnect) or is
+currently on it (`worktreeId`). Latest/oldest lists with a `worktreeId`, a `repositoryId`, or no
+narrowing filter at all (no `status`, `hostId`, `source`, `concurrencyId`, `scheduleId`, or
+repository scope) read one unsharded index partition, so a page costs a single Query. Every other
+list reads each status/shard partition in windows that start at an even share of `limit` and
+refill only partitions that hold the page back, up to `limit + 1` rows per partition per request.
+Cursors minted by one read plan keep being served by that plan. List items deliberately omit the potentially large structured
 `result` and `resolvedArgv` (whose last argument usually repeats the whole prompt); fetch the
 session detail when an automation caller needs either.
 

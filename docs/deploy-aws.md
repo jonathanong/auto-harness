@@ -436,6 +436,27 @@ pnpm deploy:aws -- --yes-priority-order
 
 The wrapper refuses to restore scheduler admission if the marker is absent.
 
+### Unfenced rollout of single-partition session lists
+
+Repository, worktree, and unfiltered session lists read three unsharded indexes
+(`repositoryId-createdOrder`, `routeWorktreeId-createdOrder`, `sessionList-createdOrder`) instead of
+fanning out over the status shards. This rollout needs no maintenance fence: readers keep using the
+status-partition plan until `SessionDrains` `scopeKey=__session-list-indexes__`,
+`recordKey=READY-V1` exists, and that marker is written only after the backfill completes. The
+wrapper (`pnpm deploy:aws`) therefore:
+
+1. adds the three GSIs in three Foundation updates (`session-list-index-repository`,
+   `-worktree`, `-all`), waiting for each to be `ACTIVE` because DynamoDB allows one GSI creation
+   per update;
+2. deploys the runtime, so every new write carries `sessionList` and `routeWorktreeId`;
+3. runs `services/api/scripts/migrate-session-list-indexes.mts`, a resumable, idempotent scan that
+   sets both attributes (each row write is conditioned on the route it observed and recomputed on
+   conflict) and publishes the marker.
+
+Warm old-runtime Lambdas can write a session in the brief window around the runtime update without
+the new attributes; the backfill, which starts after the update, covers them. Cursors minted by the
+status-partition plan stay valid after the marker appears.
+
 ### Operational activity and session retention rollout
 
 The session-retention revision uses the same maintenance fence: disable external admission

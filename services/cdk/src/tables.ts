@@ -105,6 +105,24 @@ export const DYNAMO_TABLES: TableDef[] = [
         sortKey: { name: "createdAt", type: "S" },
       },
       {
+        // Unsharded repository list in createdOrder; sparse (workspace sessions have no repository).
+        name: "repositoryId-createdOrder",
+        partitionKey: { name: "repositoryId", type: "S" },
+        sortKey: { name: "createdOrder", type: "S" },
+      },
+      {
+        // Unsharded worktree list in createdOrder; sparse, keyed on the latest route's worktree.
+        name: "routeWorktreeId-createdOrder",
+        partitionKey: { name: "routeWorktreeId", type: "S" },
+        sortKey: { name: "createdOrder", type: "S" },
+      },
+      {
+        // Unsharded global list in createdOrder; every row carries the constant sessionList "all".
+        name: "sessionList-createdOrder",
+        partitionKey: { name: "sessionList", type: "S" },
+        sortKey: { name: "createdOrder", type: "S" },
+      },
+      {
         // Direct child-session history, oldest first.
         name: "parentSessionId-createdOrder",
         partitionKey: { name: "parentSessionId", type: "S" },

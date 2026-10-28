@@ -6,7 +6,8 @@ import type { DeploymentDependencies } from "./deployment-support.ts";
  * Mirrors `services/api/src/db/plane-storage-session-drains.ts`'s
  * `sessionDrainLedgerReadyRecord()` and `services/api/src/db/ensure-session-priority-order.ts`'s
  * `SESSION_PRIORITY_ORDER_SCOPE_KEY` / `SESSION_PRIORITY_ORDER_READY_RECORD_KEY` (plus its inline
- * `"session-priority-order-v2"` record type), and `scripts/deploy-aws.sh`'s own
+ * `"session-priority-order-v2"` record type), `services/api/src/db/session-list-index-readiness.ts`'s
+ * `SESSION_LIST_INDEXES_*` constants, and `scripts/deploy-aws.sh`'s own
  * `write_readiness_marker` calls. All four must agree on these three literal values per marker.
  *
  * They are duplicated here on purpose, the same way `HEALTHY_LOGIN_HTML` duplicates a
@@ -31,6 +32,12 @@ const SESSION_PRIORITY_ORDER_READY_MARKER: ReadinessMarker = {
   scopeKey: "__session-priority-order__",
   recordKey: "READY-V2",
   recordType: "session-priority-order-v2",
+};
+
+const SESSION_LIST_INDEXES_READY_MARKER: ReadinessMarker = {
+  scopeKey: "__session-list-indexes__",
+  recordKey: "READY-V1",
+  recordType: "session-list-indexes-v1",
 };
 
 /** Matches the `${config.tablePrefix}-<TableName>` convention in deployment-purge-schema.ts. */
@@ -94,7 +101,8 @@ export async function writeFreshDeployReadinessMarkers(
 ): Promise<void> {
   await putReadinessMarkerIfAbsent(config, dependencies, SESSION_DRAIN_LEDGER_READY_MARKER);
   await putReadinessMarkerIfAbsent(config, dependencies, SESSION_PRIORITY_ORDER_READY_MARKER);
+  await putReadinessMarkerIfAbsent(config, dependencies, SESSION_LIST_INDEXES_READY_MARKER);
   dependencies.log(
-    "Published session-drain-ledger and session-priority-order readiness markers for the new environment.",
+    "Published session-drain-ledger, session-priority-order and session-list-indexes readiness markers for the new environment.",
   );
 }

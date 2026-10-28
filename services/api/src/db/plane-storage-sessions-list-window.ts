@@ -15,7 +15,7 @@ import type { SessionListPageQuery } from "./plane-storage-sessions-list-page.ts
 import { itemToSession, nextPageKey, type PlaneStorageCtx } from "./plane-storage-types.ts";
 import type { SessionRecord } from "./types.ts";
 
-export type PartitionKeyName = "statusShard" | "repositoryId" | "routeWorktreeId" | "sessionList";
+type PartitionKeyName = "statusShard" | "repositoryId" | "routeWorktreeId" | "sessionList";
 export type Partition = {
   id: string;
   indexName: string;
