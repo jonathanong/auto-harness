@@ -369,7 +369,7 @@ export function persistWorktree(state: ControlPlaneState, wt: WorktreeRecord): v
 export function toPublic(
   state: ControlPlaneState,
   session: SessionRecord,
-  includeResult = true,
+  detail = true,
 ): PublicSession {
   const {
     principalId: _principalId,
@@ -390,7 +390,12 @@ export function toPublic(
     infrastructureRetryAttemptId: _infrastructureRetryAttemptId,
     ...publicSession
   } = session;
-  if (!includeResult) delete (publicSession as Partial<SessionRecord>).result;
+  if (!detail) {
+    // List views leave out the large fields: the structured `result`, and
+    // `resolvedArgv`, whose last argument usually repeats the whole prompt.
+    delete (publicSession as Partial<SessionRecord>).result;
+    delete (publicSession as Partial<SessionRecord>).resolvedArgv;
+  }
   return {
     ...publicSession,
     repositoryId: session.workspacePoolId ? null : session.repositoryId,

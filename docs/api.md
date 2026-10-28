@@ -753,7 +753,7 @@ and cleanup policy.
 }
 ```
 
-`targetDisplayNames` is the human-readable primary-plus-fallback list fixed at create: a provider target stores the provider name, a provider-backed command stores `"<provider> — <command>"`, and a providerless command stores the command name. Account labels are not included; account selection happens at assignment. Requested provider identity is `target.providerId`, not a top-level `providerId`. Once assigned, the session also gains `resolvedArgv` and `resolvedRoute` (including optional `providerAccountId`); there is no top-level `providerAccountId`.
+`targetDisplayNames` is the human-readable primary-plus-fallback list fixed at create: a provider target stores the provider name, a provider-backed command stores `"<provider> — <command>"`, and a providerless command stores the command name. Account labels are not included; account selection happens at assignment. Requested provider identity is `target.providerId`, not a top-level `providerId`. Once assigned, the session detail also gains `resolvedArgv` (omitted from list responses) and `resolvedRoute` (including optional `providerAccountId`); there is no top-level `providerAccountId`.
 
 The session enters the `queued` state. Assignment is attempted immediately as a best-effort side effect of create, resume, clone, host register/reconnect, terminal transitions, and capacity or cooldown changes. The one-minute EventBridge/local cron is a repair sweep (ack deadlines, running timeouts, stale hosts, and any missed assigns), not the primary dispatcher. If multiple worktrees match, assignment is **round-robin** (least recently assigned first). If none are available, the session remains queued until capacity appears or `queueExpiresAt`. The planner uses advertised host-wide `maxConcurrentAssignments` and per-account execution-profile readiness; daemons still fail closed if a late assign exceeds local capacity.
 
@@ -825,7 +825,8 @@ only `nextCursor: null` as terminal; clients must continue requesting pages with
 cursor until it becomes null. Storage reads each status/shard partition in windows that start at
 an even share of `limit` and refill only partitions that hold the page back, up to `limit + 1` rows
 per partition per request. List items deliberately omit the potentially large structured
-`result`; fetch the session detail when an automation caller needs the outcome.
+`result` and `resolvedArgv` (whose last argument usually repeats the whole prompt); fetch the
+session detail when an automation caller needs either.
 
 #### `GET /sessions/:id`
 
