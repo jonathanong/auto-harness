@@ -36,8 +36,11 @@ function row(id: string, minute: number, status: string, worktreeId = "wt-other"
   };
 }
 
-/** A DynamoDB Query fake: newest-first, honours Limit and ExclusiveStartKey. */
-function fakeDynamo(rows: readonly Row[]) {
+/**
+ * A DynamoDB Query fake: newest-first, honours Limit and ExclusiveStartKey.
+ * `responseCap` stands in for the 1MB response limit, in rows.
+ */
+function fakeDynamo(rows: readonly Row[], responseCap = Number.POSITIVE_INFINITY) {
   const limits: Array<[string, number]> = [];
   const ctx = {
     doc: {
@@ -56,11 +59,11 @@ function fakeDynamo(rows: readonly Row[]) {
         }
         const startId = startKey?.id;
         const start = startId ? partition.findIndex((r) => r.id === startId) + 1 : 0;
-        const items = partition.slice(start, start + limit);
+        const items = partition.slice(start, start + Math.min(limit, responseCap));
         const last = items.at(-1);
         return {
           Items: items,
-          ...(items.length === limit && last
+          ...(items.length === Math.min(limit, responseCap) && last
             ? {
                 LastEvaluatedKey: {
                   id: last.id,
@@ -181,6 +184,21 @@ describe("windowed session list reads", () => {
 
     expect(ids).toEqual(rows.map((r) => r.id));
     expect(pages.slice(0, -1).every((page) => page.length === 7)).toBe(true);
+  });
+
+  it("continues a Query cut short by the response size and walks full pages", async () => {
+    const rows = Array.from({ length: 12 }, (_, index) =>
+      row(`c-${index}`, 59 - index, "completed"),
+    );
+    const query = { ...baseQuery, limit: 5, status: "completed" };
+    const { ctx, limits } = fakeDynamo(rows, 2);
+    const first = await listSessionsPageFromStorage(ctx, query);
+    expect(first.items.map((item) => item.id)).toEqual(rows.slice(0, 5).map((r) => r.id));
+    expect(limits.map(([, limit]) => limit)).toEqual([6, 4, 2]);
+
+    const { pages, ids } = await walk(fakeDynamo(rows, 2).ctx, query);
+    expect(pages.map((page) => page.length)).toEqual([5, 5, 2]);
+    expect(ids).toEqual(rows.map((r) => r.id));
   });
 
   it("ends a sparse filter's page within the read cap and resumes it", async () => {

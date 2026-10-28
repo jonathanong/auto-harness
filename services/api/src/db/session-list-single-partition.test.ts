@@ -242,7 +242,11 @@ describe("one-partition list reads", () => {
     expect(page.items.map((item) => item.id)).toEqual(["s-07", "s-06", "s-05"]);
     expect(queries.map((query) => query.Limit)).toEqual([4, 2]);
     expect(queries[1]!.ExclusiveStartKey).toMatchObject({ id: "s-06" });
-    expect(page.continuation).not.toBeNull();
+    const next = await listSessionsPageFromStorage(
+      ctx,
+      continuationQuery(baseQuery, page.continuation!, page.items.at(-1)!),
+    );
+    expect(next.items.map((item) => item.id)).toEqual(["s-04", "s-03", "s-02"]);
   });
 
   it("walks the repository and worktree indexes, hiding later-disconnected sessions' siblings", async () => {
