@@ -77,6 +77,8 @@ export async function listSessionsPageFromStorage(
     query.status === null &&
     query.position !== undefined &&
     [...states.values()].some((state) => !state.exhausted);
+  const startedAt = Date.now();
+  const roundMs: number[] = [];
   const initialLimit = initialWindowLimit(query.limit, partitions.length);
   const windows = await Promise.all(
     partitions.map(async (partition): Promise<PartitionWindow> => {
@@ -90,19 +92,50 @@ export async function listSessionsPageFromStorage(
         : openPartitionWindow(ctx, query, partition, previous, initialLimit);
     }),
   );
+  roundMs.push(Date.now() - startedAt);
   let selected = selectPage(windows, query);
   while (selected.length < query.limit) {
     const refill = refillableWindows(windows, query);
     if (refill.length === 0) break;
+    const roundStartedAt = Date.now();
     await Promise.all(refill.map((window) => extendPartitionWindow(ctx, query, window)));
+    roundMs.push(Date.now() - roundStartedAt);
     selected = selectPage(windows, query);
   }
   const selectedRows = new Set(selected.map(({ row }) => row));
   const continuation = windows.map((window) => nextState(window, selectedRows));
+  logSlowListRead(query, windows, roundMs, Date.now() - startedAt, selected.length);
   return {
     items: selected.map(({ row }) => row.session),
     continuation: continuation.every((state) => state.exhausted) ? null : continuation,
   };
+}
+
+/** Reads slower than this log their shape, to locate list latency in production. */
+const SLOW_LIST_READ_MS = 500;
+
+function logSlowListRead(
+  query: SessionListPageQuery,
+  windows: readonly PartitionWindow[],
+  roundMs: readonly number[],
+  durationMs: number,
+  items: number,
+): void {
+  if (durationMs < SLOW_LIST_READ_MS) return;
+  console.log(
+    JSON.stringify({
+      msg: "slow session list read",
+      durationMs,
+      roundMs,
+      limit: query.limit,
+      sort: query.sort,
+      filtered: query.status !== null || Boolean(query.worktreeId) || query.repositoryId !== null,
+      partitions: windows.length,
+      rowsRead: windows.reduce((sum, window) => sum + window.rows.length, 0),
+      rowsRequested: windows.reduce((sum, window) => sum + window.requested, 0),
+      items,
+    }),
+  );
 }
 
 function selectPage(
