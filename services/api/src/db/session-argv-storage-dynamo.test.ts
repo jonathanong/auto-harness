@@ -1,5 +1,11 @@
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  GetCommand,
+  PutCommand,
+  ScanCommand,
+  UpdateCommand,
+  type DynamoDBDocumentClient,
+} from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
@@ -12,6 +18,7 @@ import {
   tryAssignSession,
 } from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
+import { compactSessionArgvPage } from "./session-argv-compaction.ts";
 
 const PROMPT = "Fix the flaky test.\nThen open a PR.";
 
@@ -116,5 +123,62 @@ describe("DynamoDB Local stored session argv", () => {
     const raw = await rawSession("fallback");
     expect(raw?.prompt).toBe(`${PROMPT}\n\nprior context`);
     expect(raw).not.toHaveProperty("resolvedArgv");
+  });
+});
+
+/** The real client, with a hook that runs before each row write the backfill sends. */
+function beforeEachUpdate(hook: (id: unknown) => Promise<void>): DynamoDBDocumentClient {
+  return new Proxy(ctx.doc, {
+    get(target, key, receiver) {
+      if (key !== "send") return Reflect.get(target, key, receiver);
+      return async (command: ScanCommand | UpdateCommand) => {
+        if (command instanceof UpdateCommand) await hook(command.input.Key?.id);
+        return target.send(command);
+      };
+    },
+  });
+}
+
+describe("DynamoDB Local session argv backfill", () => {
+  it("compacts legacy rows and leaves a row changed meanwhile to its writer", async () => {
+    for (const id of ["legacy-1", "legacy-2", "raced"]) {
+      await putSession(ctx, { ...session, id, resolvedArgv: ["claude", "-p", PROMPT] });
+    }
+    const doc = beforeEachUpdate(async (id) => {
+      if (id !== "raced") return;
+      await ctx.doc.send(
+        new UpdateCommand({
+          TableName: tables.sessions,
+          Key: { id },
+          UpdateExpression: "SET #prompt = :prompt",
+          ExpressionAttributeNames: { "#prompt": "prompt" },
+          ExpressionAttributeValues: { ":prompt": "rewritten" },
+        }),
+      );
+    });
+    let compacted = 0;
+    let nextKey: Record<string, unknown> | undefined;
+    do {
+      const page = await compactSessionArgvPage(doc, tables, nextKey);
+      compacted += page.compacted;
+      nextKey = page.nextKey;
+    } while (nextKey);
+    expect(compacted).toBe(2);
+    expect((await rawSession("legacy-1"))?.resolvedArgv).toEqual([
+      "claude",
+      "-p",
+      { before: "", after: "" },
+    ]);
+    expect((await getSession(ctx, "legacy-2"))?.resolvedArgv).toEqual(["claude", "-p", PROMPT]);
+    expect((await rawSession("raced"))?.resolvedArgv).toEqual(["claude", "-p", PROMPT]);
+    expect((await compactSessionArgvPage(ctx.doc, tables)).compacted).toBe(0);
+  });
+
+  it("stops on a write failure other than a lost race", async () => {
+    await putSession(ctx, { ...session, id: "throttled", resolvedArgv: [PROMPT] });
+    const doc = beforeEachUpdate(async () => {
+      throw new Error("throttled");
+    });
+    await expect(compactSessionArgvPage(doc, tables)).rejects.toThrow("throttled");
   });
 });

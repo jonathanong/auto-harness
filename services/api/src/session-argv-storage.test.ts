@@ -4,6 +4,7 @@ import { itemToSession } from "./db/plane-storage-types.ts";
 import {
   decodeStoredArgv,
   encodeStoredArgv,
+  legacyArgvCompaction,
   storedArgvAssignment,
 } from "./session-argv-storage.ts";
 
@@ -48,6 +49,23 @@ describe("stored session argv", () => {
       names: {},
       values: {},
     });
+  });
+
+  it("compacts only legacy rows that repeat the prompt in plain argv", () => {
+    expect(legacyArgvCompaction({ prompt: PROMPT, resolvedArgv: ["claude", PROMPT] })).toEqual({
+      prompt: PROMPT,
+      argv: ["claude", PROMPT],
+      stored: ["claude", { before: "", after: "" }],
+    });
+    for (const item of [
+      { prompt: PROMPT, resolvedArgv: ["claude", { before: "", after: "" }] },
+      { prompt: PROMPT, resolvedArgv: ["tool", "run"] },
+      { prompt: "", resolvedArgv: ["tool"] },
+      { prompt: PROMPT },
+      { resolvedArgv: [PROMPT] },
+    ]) {
+      expect(legacyArgvCompaction(item)).toBeNull();
+    }
   });
 
   it("decodes stored argv when hydrating a Session row", () => {

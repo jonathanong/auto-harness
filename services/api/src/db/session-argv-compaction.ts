@@ -1,26 +1,10 @@
 import { ScanCommand, UpdateCommand, type DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
-import { encodeStoredArgv } from "../session-argv-storage.ts";
+import { legacyArgvCompaction } from "../session-argv-storage.ts";
 import type { DynamoTableNames } from "./dynamo.ts";
 import { isConditionalFailed, nextPageKey } from "./plane-storage-types.ts";
 
 const SCAN_LIMIT = 100;
-
-/** Rows written before argv was stored with the prompt factored out still repeat it in full. */
-function repeatsPrompt(item: Record<string, unknown>): item is {
-  id: string;
-  prompt: string;
-  resolvedArgv: string[];
-} {
-  const { prompt, resolvedArgv } = item;
-  return (
-    typeof prompt === "string" &&
-    prompt !== "" &&
-    Array.isArray(resolvedArgv) &&
-    resolvedArgv.every((arg) => typeof arg === "string") &&
-    resolvedArgv.some((arg: string) => arg.includes(prompt))
-  );
-}
 
 /**
  * Rewrite one page of legacy Session rows so `resolvedArgv` no longer repeats the prompt.
@@ -39,12 +23,13 @@ export async function compactSessionArgvPage(
       Limit: SCAN_LIMIT,
       ProjectionExpression: "id, #prompt, resolvedArgv",
       ExpressionAttributeNames: { "#prompt": "prompt" },
-      ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      ExclusiveStartKey: startKey,
     }),
   );
   let compacted = 0;
-  for (const item of (page.Items ?? []) as Record<string, unknown>[]) {
-    if (!repeatsPrompt(item)) continue;
+  for (const item of page.Items as Record<string, unknown>[]) {
+    const compaction = legacyArgvCompaction(item);
+    if (!compaction) continue;
     try {
       await doc.send(
         new UpdateCommand({
@@ -54,9 +39,9 @@ export async function compactSessionArgvPage(
           ConditionExpression: "#prompt = :prompt AND resolvedArgv = :argv",
           ExpressionAttributeNames: { "#prompt": "prompt" },
           ExpressionAttributeValues: {
-            ":stored": encodeStoredArgv(item.resolvedArgv, item.prompt),
-            ":prompt": item.prompt,
-            ":argv": item.resolvedArgv,
+            ":stored": compaction.stored,
+            ":prompt": compaction.prompt,
+            ":argv": compaction.argv,
           },
         }),
       );
