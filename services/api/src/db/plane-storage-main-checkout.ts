@@ -2,6 +2,7 @@
 import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
 import { routeWorktreeIdOf } from "../control-plane-ordering.ts";
+import { storedArgvAssignment } from "../session-argv-storage.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import { activeHostOrder } from "./plane-storage-sessions-active-host.ts";
 import type { SessionRecord } from "./types.ts";
@@ -59,6 +60,8 @@ export async function tryAssignMainCheckoutSession(
     connectionId: string;
     now: string;
     resolvedArgv: string[];
+    /** The session prompt `resolvedArgv` is stored against; see `storedArgvAssignment`. */
+    prompt?: string | undefined;
     resumeSpec?: import("@auto-harness/shared").SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
@@ -77,6 +80,7 @@ export async function tryAssignMainCheckoutSession(
   const lease = { sessionId: opts.sessionId, connectionId: opts.connectionId };
   const hostAssignmentLease = opts.hostAssignmentLease ?? { hostId: opts.hostId };
   const routeWorktreeId = routeWorktreeIdOf(opts);
+  const argv = storedArgvAssignment(opts.resolvedArgv, opts.prompt);
   const drainCheck = sessionDrainAdmissionCheck(ctx, opts.repositoryId, opts.principalId);
   const activityWrite = activityPut(ctx, activeActivityForAssignment(opts));
   const transactItems = [
@@ -162,9 +166,10 @@ export async function tryAssignMainCheckoutSession(
           " REMOVE ackReceivedAt, reconnectDeadlineAt, completedAt, exitCode, errorCode, errorMessage, retryAfter, retryCount" +
           (opts.sessionApiKeyHash ? "" : ", sessionApiKeyHash") +
           (routeWorktreeId ? "" : ", routeWorktreeId"),
-        ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
-        ExpressionAttributeNames: { "#s": "status" },
+        ConditionExpression: `#s = :queued AND queueExpiresAt > :now${argv.condition}`,
+        ExpressionAttributeNames: { "#s": "status", ...argv.names },
         ExpressionAttributeValues: {
+          ...argv.values,
           ":running": "running",
           ":statusShard": statusShardAttr("running", opts.queueShard),
           ":queued": "queued",
@@ -173,7 +178,7 @@ export async function tryAssignMainCheckoutSession(
           ":activeHostId": opts.hostId,
           ":activeHostOrder": activeHostOrder(opts.now, opts.sessionId),
           ":now": opts.now,
-          ":argv": opts.resolvedArgv,
+          ":argv": argv.argv,
           ":route": opts.resolvedRoute,
           ...(routeWorktreeId ? { ":routeWorktreeId": routeWorktreeId } : {}),
           ":connectionId": opts.connectionId,

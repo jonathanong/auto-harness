@@ -457,6 +457,23 @@ Warm old-runtime Lambdas can write a session in the brief window around the runt
 the new attributes; the backfill, which starts after the update, covers them. Cursors minted by the
 status-partition plan stay valid after the marker appears.
 
+### Session rows that store the prompt once
+
+A Session row stores `resolvedArgv` with the prompt factored out: an argument containing the
+prompt is stored as `{ before, after }` and rebuilt from `prompt` on read. Rows written before
+that change repeat the prompt in full and still read correctly. To shrink them, which roughly
+halves the bytes a session list reads, run the resumable, idempotent backfill once with the
+Sessions table name; it is safe while the API is live:
+
+```bash
+AWS_REGION=us-west-2 HARNESS_MIGRATION_SESSIONS_TABLE=<Sessions table> \
+  node services/api/scripts/compact-session-argv.mts
+```
+
+Each row write is conditioned on the prompt and argv it read, so a concurrent assignment or
+resume fallback wins. Every runtime that reads the stored shape must be live before the backfill
+or any new assignment writes it.
+
 ### Operational activity and session retention rollout
 
 The session-retention revision uses the same maintenance fence: disable external admission

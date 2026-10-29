@@ -2,6 +2,7 @@
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
 import { routeWorktreeIdOf } from "../control-plane-ordering.ts";
+import { storedArgvAssignment } from "../session-argv-storage.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import { activeHostOrder } from "./plane-storage-sessions-active-host.ts";
 import {
@@ -41,6 +42,8 @@ export async function tryAssignSession(
     now: string;
     attemptId: string;
     resolvedArgv: string[];
+    /** The session prompt `resolvedArgv` is stored against; see `storedArgvAssignment`. */
+    prompt?: string | undefined;
     resumeSpec?: import("@auto-harness/shared").SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
@@ -55,6 +58,7 @@ export async function tryAssignSession(
     sessionOutputsSupported?: boolean;
   },
 ): Promise<AssignmentWriteResult> {
+  const argv = storedArgvAssignment(opts.resolvedArgv, opts.prompt);
   const sessionSets = [
     "#s = :running",
     "statusShard = :statusShard",
@@ -81,7 +85,8 @@ export async function tryAssignSession(
     ":activeHostOrder": activeHostOrder(opts.now, opts.sessionId),
     ":now": opts.now,
     ":attemptId": opts.attemptId,
-    ":argv": opts.resolvedArgv,
+    ":argv": argv.argv,
+    ...argv.values,
     ":connectionId": opts.connectionId,
     ":primaryCommandStartState": opts.primaryCommandStartState ?? "pending",
     ":outputsSupported": opts.sessionOutputsSupported ?? false,
@@ -160,8 +165,8 @@ export async function tryAssignSession(
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
         UpdateExpression: `SET ${sessionSets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt, retryAfter, retryCount, errorCode, errorMessage${routeWorktreeId ? "" : ", routeWorktreeId"}`,
-        ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
-        ExpressionAttributeNames: { "#s": "status" },
+        ConditionExpression: `#s = :queued AND queueExpiresAt > :now${argv.condition}`,
+        ExpressionAttributeNames: { "#s": "status", ...argv.names },
         ExpressionAttributeValues: sessionValues,
       },
     },

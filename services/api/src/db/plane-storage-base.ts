@@ -443,6 +443,7 @@ export class DynamoPlaneStorageBase {
     now: string;
     attemptId: string;
     resolvedArgv: string[];
+    prompt?: string | undefined;
     resumeSpec?: SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
@@ -544,6 +545,7 @@ export class DynamoPlaneStorageBase {
     connectionId: string;
     now: string;
     resolvedArgv: string[];
+    prompt?: string | undefined;
     resumeSpec?: SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;

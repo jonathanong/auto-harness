@@ -293,6 +293,7 @@ export async function assignQueuedDurable(
           connectionId,
           now: nowIso,
           resolvedArgv,
+          prompt: session.prompt,
           sessionOutputsSupported: outputs,
           resumeSpec: route.resumeSpec,
           resolvedRoute: {
@@ -433,6 +434,7 @@ function clearResumePin(session: import("./db/types.ts").SessionRecord): void {
   delete session.pinExpiresAt;
   delete session.cliResumeRef;
   delete session.resumeSpec;
+  delete session.resolvedArgv;
   session.resumeFallback = true;
   session.prompt = appendPriorContextPointer(session.prompt);
 }

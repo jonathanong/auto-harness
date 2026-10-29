@@ -10,6 +10,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 
 import { routeWorktreeIdOf } from "../control-plane-ordering.ts";
+import { storedArgvAssignment } from "../session-argv-storage.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import { activeHostOrder } from "./plane-storage-sessions-active-host.ts";
 import {
@@ -385,6 +386,8 @@ export async function tryAssignWorkspaceSession(
     now: string;
     attemptId: string;
     resolvedArgv: string[];
+    /** The session prompt `resolvedArgv` is stored against; see `storedArgvAssignment`. */
+    prompt?: string | undefined;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
     providerId?: string;
@@ -397,6 +400,7 @@ export async function tryAssignWorkspaceSession(
     queueShard: number;
   },
 ): Promise<AssignmentWriteResult> {
+  const argv = storedArgvAssignment(opts.resolvedArgv, opts.prompt);
   const values: Record<string, unknown> = {
     ":running": "running",
     ":queued": "queued",
@@ -406,7 +410,8 @@ export async function tryAssignWorkspaceSession(
     ":hostId": opts.hostId,
     ":now": opts.now,
     ":attemptId": opts.attemptId,
-    ":argv": opts.resolvedArgv,
+    ":argv": argv.argv,
+    ...argv.values,
     ":route": opts.resolvedRoute,
     ":connectionId": opts.connectionId,
     ":true": true,
@@ -480,8 +485,8 @@ export async function tryAssignWorkspaceSession(
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
         UpdateExpression: `SET ${sets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt, retryAfter, retryCount, errorCode, errorMessage${routeWorktreeId ? "" : ", routeWorktreeId"}`,
-        ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
-        ExpressionAttributeNames: { "#s": "status" },
+        ConditionExpression: `#s = :queued AND queueExpiresAt > :now${argv.condition}`,
+        ExpressionAttributeNames: { "#s": "status", ...argv.names },
         ExpressionAttributeValues: values,
       },
     },

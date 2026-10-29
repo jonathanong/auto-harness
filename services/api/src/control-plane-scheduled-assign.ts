@@ -199,6 +199,7 @@ export async function assignScheduledQueuedDurable(
               connectionId,
               now,
               resolvedArgv,
+              prompt: session.prompt,
               sessionOutputsSupported: outputs,
               resumeSpec: target.resumeSpec,
               resolvedRoute: {
